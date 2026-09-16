@@ -1,0 +1,10 @@
+{
+  "name": "nextgen-editor",
+  "version-string": "0.1.0",
+  "dependencies": [
+    "glfw3",
+    "imgui[glfw-binding,opengl3-binding]",
+    "glad",
+    "opengl"
+  ]
+}
