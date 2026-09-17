@@ -4,18 +4,31 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake ninja-build
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgDirectory: '${{ github.workspace }}/vcpkg'
+          vcpkgJsonGlob: '${{ github.workspace }}/vcpkg.json'
+
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DBUILD_TESTING=ON
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
+          -DVCPKG_MANIFEST_MODE=ON
+          -DBUILD_TESTING=ON
+
       - name: Build
         run: cmake --build build --parallel
+
       - name: Test
         run: ctest --test-dir build --output-on-failure
