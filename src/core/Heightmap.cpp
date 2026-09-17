@@ -17,12 +17,12 @@ void Heightmap::Resize(std::uint32_t width, std::uint32_t height, float fillValu
 }
 
 float Heightmap::At(std::uint32_t x, std::uint32_t z) const noexcept {
-    assert(InBounds(x, z) && "Heightmap::At außerhalb des Gitters");
+    assert(InBounds(x, z) && "Heightmap::At au\u00dferhalb des Gitters");
     return data_[static_cast<std::size_t>(z) * width_ + x];
 }
 
 void Heightmap::Set(std::uint32_t x, std::uint32_t z, float value) noexcept {
-    assert(InBounds(x, z) && "Heightmap::Set außerhalb des Gitters");
+    assert(InBounds(x, z) && "Heightmap::Set au\u00dferhalb des Gitters");
     data_[static_cast<std::size_t>(z) * width_ + x] = value;
 }
 
@@ -31,6 +31,7 @@ float Heightmap::SampleWorld(float worldX, float worldZ) const noexcept {
         return 0.0f;
     }
 
+    // Weltkoordinate -> gebrochene Gitterkoordinate.
     const float gx = std::clamp(worldX / blockWidth_, 0.0f, static_cast<float>(width_ - 1));
     const float gz = std::clamp(worldZ / blockHeight_, 0.0f, static_cast<float>(height_ - 1));
 

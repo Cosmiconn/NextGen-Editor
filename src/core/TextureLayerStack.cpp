@@ -12,6 +12,7 @@ void TextureLayerStack::Resize(std::uint32_t width, std::uint32_t height) {
         layer.blend.Resize(width, height, 0.0f);
     }
     if (!layers_.empty()) {
+        // Erster Layer bleibt Basis-Layer -> nach Resize wieder voll belegen.
         auto data = layers_.front().blend.MutableData();
         std::fill(data.begin(), data.end(), 1.0f);
     }
