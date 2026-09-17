@@ -46,6 +46,11 @@ private:
     std::vector<float> data_;
 };
 
+// Bilineares Resampling auf eine Zielauflösung. Für Layer, deren echte Blend-BMP von der
+// gemeinsamen Stack-Auflösung abweicht (beobachtet bei der echten Adl-Karte: 8 von 10 Layern
+// nutzen 476x476 statt 512x512 wie der Rest) - Alternative zum Verwerfen dieser Layer, siehe
+// docs/MAP_FORMAT.md. Kein Rundungsfehler-freier Vorgang, aber deutlich besser als leere
+// Gewichte für diese Layer.
 BlendMap ResampleBlendMap(const BlendMap& src, std::uint32_t newWidth, std::uint32_t newHeight);
 
 } // namespace theseed::mapeditor::core

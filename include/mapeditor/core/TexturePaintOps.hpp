@@ -14,15 +14,17 @@ namespace theseed::mapeditor::core {
 enum class PaintMode { Increase, Decrease };
 
 struct TexturePaintSettings {
-    float radius = 200.0f;
-    float strength = 0.5f;
+    float radius = 200.0f;   // Weltraum-Radius
+    float strength = 0.5f;   // Gewichtsänderung im Zentrum pro Anwendung (0..1)
 };
 
+// Ein rückgängig machbarer Malschritt: pro betroffener Zelle die Gewichte ALLER Layer vor der
+// Anwendung (nicht nur des Ziel-Layers, da Normalisierung auch andere Layer verändert).
 struct TexturePaintPatch {
     struct Entry {
         std::uint32_t x;
         std::uint32_t z;
-        std::vector<float> oldWeights;
+        std::vector<float> oldWeights; // Größe = LayerCount() zum Zeitpunkt der Anwendung
     };
     std::vector<Entry> entries;
 };
