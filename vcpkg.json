@@ -1,6 +1,7 @@
 {
   "name": "theseed-map-editor",
   "version": "0.1.0",
+  "builtin-baseline": "e4161dbac4fce60b4c94b3b7db01e5710815b410",
   "dependencies": [
     "glfw3",
     "glad",
