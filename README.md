@@ -1,6 +1,6 @@
 # NextGen-Editor
 
-Standalone Fiesta/TheSeed asset editor. The map-editor core remains GUI-free so format handling and tests can be reused independently of the desktop UI.
+Standalone Fiesta asset editor. The map-editor core remains GUI-free so format handling and tests can be reused independently of the desktop UI.
 
 ## Current focus
 
