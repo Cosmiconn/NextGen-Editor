@@ -19,6 +19,8 @@ bool ReadRaw(std::ifstream& in, T& value) {
     return static_cast<bool>(in);
 }
 
+// Portable Alternative zu strnlen (reine C++-Standardbibliothek, keine POSIX-Abhängigkeit -
+// TheSeed muss auch unter Windows/MSVC bauen).
 std::size_t PortableStrnlen(const char* buf, std::size_t maxLen) {
     const void* found = std::memchr(buf, '\0', maxLen);
     return found != nullptr ? static_cast<const char*>(found) - buf : maxLen;
@@ -26,26 +28,35 @@ std::size_t PortableStrnlen(const char* buf, std::size_t maxLen) {
 
 } // namespace
 
+// ---------------------------------------------------------------------------------------------
+// .idm
+// ---------------------------------------------------------------------------------------------
+
 std::expected<ObjectSpatialIndex, std::string> ParseLegacyIdm(const std::filesystem::path& file) {
     std::ifstream in(file, std::ios::binary);
-    if (!in) return std::unexpected("Konnte .idm nicht öffnen: " + file.string());
+    if (!in) {
+        return std::unexpected("Konnte .idm nicht \u00f6ffnen: " + file.string());
+    }
 
     ObjectSpatialIndex index;
     index.hash.resize(32);
     in.read(index.hash.data(), 32);
-    if (!in) return std::unexpected("Unerwartetes Dateiende im Hash-Header: " + file.string());
+    if (!in) {
+        return std::unexpected("Unerwartetes Dateiende im Hash-Header: " + file.string());
+    }
 
     char newline = 0;
     if (!ReadRaw(in, newline) || newline != '\n') {
         return std::unexpected("Erwarteter Zeilenumbruch nach Hash fehlt: " + file.string());
     }
+
     if (!ReadRaw(in, index.headerValue)) {
-        return std::unexpected("Unerwartetes Dateiende beim führenden Wert: " + file.string());
+        return std::unexpected("Unerwartetes Dateiende beim f\u00fchrenden Wert: " + file.string());
     }
 
     while (true) {
         std::int32_t count = 0;
-        if (!ReadRaw(in, count)) break;
+        if (!ReadRaw(in, count)) break; // sauberes Dateiende
         if (count < 0) {
             return std::unexpected("Negativer Gruppen-Count in .idm - Datei korrupt oder Format falsch verstanden: " + file.string());
         }
@@ -58,6 +69,7 @@ std::expected<ObjectSpatialIndex, std::string> ParseLegacyIdm(const std::filesys
         }
         index.groups.push_back(std::move(group));
     }
+
     return index;
 }
 
@@ -65,32 +77,51 @@ std::expected<void, std::string> SerializeLegacyIdm(const ObjectSpatialIndex& in
     if (index.hash.size() != 32) {
         return std::unexpected("SerializeLegacyIdm: hash muss exakt 32 Zeichen lang sein");
     }
+
     std::ofstream out(file, std::ios::binary | std::ios::trunc);
-    if (!out) return std::unexpected("Konnte .idm nicht zum Schreiben öffnen: " + file.string());
+    if (!out) {
+        return std::unexpected("Konnte .idm nicht zum Schreiben \u00f6ffnen: " + file.string());
+    }
 
     out.write(index.hash.data(), 32);
     out.put('\n');
     WriteRaw(out, index.headerValue);
+
     for (const auto& group : index.groups) {
         WriteRaw(out, static_cast<std::int32_t>(group.indices.size()));
-        for (const auto idx : group.indices) WriteRaw(out, idx);
+        for (const auto idx : group.indices) {
+            WriteRaw(out, idx);
+        }
     }
-    if (!out) return std::unexpected("Fehler beim Schreiben der .idm: " + file.string());
+
+    if (!out) {
+        return std::unexpected("Fehler beim Schreiben der .idm: " + file.string());
+    }
     return {};
 }
 
+// ---------------------------------------------------------------------------------------------
+// .aid
+// ---------------------------------------------------------------------------------------------
+
 std::expected<ZoneMetadata, std::string> ParseLegacyAid(const std::filesystem::path& file) {
     std::ifstream in(file, std::ios::binary);
-    if (!in) return std::unexpected("Konnte .aid nicht öffnen: " + file.string());
+    if (!in) {
+        return std::unexpected("Konnte .aid nicht \u00f6ffnen: " + file.string());
+    }
 
     ZoneMetadata zone;
     if (!ReadRaw(in, zone.recordType)) {
         return std::unexpected("Unerwartetes Dateiende bei recordType: " + file.string());
     }
+
     char nameBuf[32]{};
     in.read(nameBuf, sizeof(nameBuf));
-    if (!in) return std::unexpected("Unerwartetes Dateiende im Namensfeld: " + file.string());
-
+    if (!in) {
+        return std::unexpected("Unerwartetes Dateiende im Namensfeld: " + file.string());
+    }
+    // Nullterminiert, aber NICHT vollständig genullt (siehe Header-Kommentar) - Rohpuffer
+    // zusätzlich zum String sichern, damit ein Re-Export byte-exakt bleibt.
     std::memcpy(zone.rawNameBuffer, nameBuf, sizeof(nameBuf));
     zone.hasRawNameBuffer = true;
     const std::size_t len = PortableStrnlen(nameBuf, sizeof(nameBuf));
@@ -100,32 +131,49 @@ std::expected<ZoneMetadata, std::string> ParseLegacyAid(const std::filesystem::p
         return std::unexpected("Unerwartetes Dateiende bei flag: " + file.string());
     }
     for (float& b : zone.bounds) {
-        if (!ReadRaw(in, b)) return std::unexpected("Unerwartetes Dateiende in bounds: " + file.string());
+        if (!ReadRaw(in, b)) {
+            return std::unexpected("Unerwartetes Dateiende in bounds: " + file.string());
+        }
     }
+
     return zone;
 }
 
 std::expected<void, std::string> SerializeLegacyAid(const ZoneMetadata& zone, const std::filesystem::path& file) {
     if (zone.name.size() > 32) {
-        return std::unexpected("SerializeLegacyAid: Zonenname länger als 32 Byte (Legacy-Feldgröße)");
+        return std::unexpected("SerializeLegacyAid: Zonenname l\u00e4nger als 32 Byte (Legacy-Feldgr\u00f6\u00dfe)");
     }
+
     std::ofstream out(file, std::ios::binary | std::ios::trunc);
-    if (!out) return std::unexpected("Konnte .aid nicht zum Schreiben öffnen: " + file.string());
+    if (!out) {
+        return std::unexpected("Konnte .aid nicht zum Schreiben \u00f6ffnen: " + file.string());
+    }
 
     WriteRaw(out, zone.recordType);
-    char nameBuf[32]{};
+
+    char nameBuf[32]{}; // nullinitialisiert -> sauberes Zero-Padding als Default für neue Zonen
     bool useRaw = false;
     if (zone.hasRawNameBuffer) {
+        // Nur wiederverwenden, wenn `name` (bis zum ersten \0) noch zum Rohpuffer passt - sonst
+        // würde ein geänderter Name mit den alten Speicherresten "vermischt".
         const std::size_t rawLen = PortableStrnlen(reinterpret_cast<const char*>(zone.rawNameBuffer), sizeof(zone.rawNameBuffer));
         useRaw = (zone.name.size() == rawLen && std::memcmp(zone.name.data(), zone.rawNameBuffer, rawLen) == 0);
     }
-    if (useRaw) std::memcpy(nameBuf, zone.rawNameBuffer, sizeof(nameBuf));
-    else std::memcpy(nameBuf, zone.name.data(), zone.name.size());
+    if (useRaw) {
+        std::memcpy(nameBuf, zone.rawNameBuffer, sizeof(nameBuf));
+    } else {
+        std::memcpy(nameBuf, zone.name.data(), zone.name.size());
+    }
     out.write(nameBuf, sizeof(nameBuf));
 
     WriteRaw(out, zone.flag);
-    for (const float b : zone.bounds) WriteRaw(out, b);
-    if (!out) return std::unexpected("Fehler beim Schreiben der .aid: " + file.string());
+    for (const float b : zone.bounds) {
+        WriteRaw(out, b);
+    }
+
+    if (!out) {
+        return std::unexpected("Fehler beim Schreiben der .aid: " + file.string());
+    }
     return {};
 }
 

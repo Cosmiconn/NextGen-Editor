@@ -50,10 +50,10 @@ std::expected<LegacyMapProject, std::string> OpenLegacyMap(
             AddIssue(report, "Heightmap (.HTD): " + hmResult.error());
         }
     } else {
-        AddIssue(report, "Keine .HTD-Datei gefunden (weder über HeightFileName noch über Namens-Konvention) - diese Karte nutzt möglicherweise ein anderes Format, siehe docs/MAP_FORMAT.md (z.B. 'Eld').");
+        AddIssue(report, "Keine .HTD-Datei gefunden (weder \u00fcber HeightFileName noch \u00fcber Namens-Konvention) - diese Karte nutzt m\u00f6glicherweise ein anderes Format, siehe docs/MAP_FORMAT.md (z.B. 'Eld').");
     }
 
-    // --- Texturing: nutzt bereits eigene, robuste Pfadauflösung (siehe LegacyTextureSetIO). ---
+    // --- Texturing: nutzt bereits eigene, robuste Pfadaufl\u00f6sung (siehe LegacyTextureSetIO). ---
     TextureSetImportReport texReport;
     auto texResult = ImportLegacyTextureSet(iniPath, &texReport);
     if (texResult) {
@@ -65,11 +65,11 @@ std::expected<LegacyMapProject, std::string> OpenLegacyMap(
         AddIssue(report, "Texturing: " + msg);
     }
 
-    // --- Block&Walk: Auflösung bevorzugt DIREKT aus dem Datei-Header lesen (zweites
-    // Header-Feld = tatsächliche Gitterhöhe, verifiziert an 4 echten Karten - robuster als
+    // --- Block&Walk: Aufl\u00f6sung bevorzugt DIREKT aus dem Datei-Header lesen (zweites
+    // Header-Feld = tats\u00e4chliche Gitterh\u00f6he, verifiziert an 4 echten Karten - robuster als
     // eine reine Formel-Herleitung, siehe docs/MAP_FORMAT.md). Formel als Fallback, falls der
     // Header nicht lesbar/plausibel ist. WICHTIGE KORREKTUR: das Gitter ist NICHT quadratisch
-    // (frühere Annahme war falsch, siehe Changelog v0.11.0). ---
+    // (fr\u00fchere Annahme war falsch, siehe Changelog v0.11.0). ---
     if (auto shbdPath = FindSiblingFileByStem(mapDir, stem, ".shbd")) {
         std::uint32_t gridWidth = 0, gridHeight = 0;
 
@@ -86,8 +86,8 @@ std::expected<LegacyMapProject, std::string> OpenLegacyMap(
             }
         }
         if (gridWidth == 0 || gridHeight == 0) {
-            // Fallback: Breite = QuadsBreite/2, Höhe = QuadsBreite*8 (siehe SyncWalkGridSize
-            // in main.cpp für dieselbe Formel/Herleitung).
+            // Fallback: Breite = QuadsBreite/2, H\u00f6he = QuadsBreite*8 (siehe SyncWalkGridSize
+            // in main.cpp f\u00fcr dieselbe Formel/Herleitung).
             const std::uint32_t quadsW = project.ini.heightmapWidth > 1 ? project.ini.heightmapWidth - 1 : 0;
             gridWidth = quadsW / 2;
             gridHeight = quadsW * 8;
@@ -119,14 +119,14 @@ std::expected<LegacyMapProject, std::string> OpenLegacyMap(
         AddIssue(report, "Keine .shmd-Datei neben der ini gefunden.");
     }
 
-    // --- Räumlicher Index (optional, reiner Pass-Through). ---
+    // --- R\u00e4umlicher Index (optional, reiner Pass-Through). ---
     if (auto idmPath = FindSiblingFileByStem(mapDir, stem, ".idm")) {
         auto idmResult = ParseLegacyIdm(*idmPath);
         if (idmResult) {
             project.spatialIndex = std::move(*idmResult);
             project.hasSpatialIndex = true;
         } else {
-            AddIssue(report, "Räumlicher Index (.idm): " + idmResult.error());
+            AddIssue(report, "R\u00e4umlicher Index (.idm): " + idmResult.error());
         }
     }
 

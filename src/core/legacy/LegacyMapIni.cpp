@@ -6,6 +6,7 @@
 namespace theseed::mapeditor::core::legacy {
 
 namespace {
+
 std::string Trim(const std::string& s) {
     const auto isSpace = [](unsigned char c) { return std::isspace(c) != 0; };
     auto begin = s.begin();
@@ -16,30 +17,42 @@ std::string Trim(const std::string& s) {
 }
 
 float ParseFloatSafe(const std::string& s) {
-    try { return std::stof(s); } catch (...) { return 0.0f; }
+    try {
+        return std::stof(s);
+    } catch (...) {
+        return 0.0f;
+    }
 }
 
 std::uint32_t ParseUIntSafe(const std::string& s) {
-    try { return static_cast<std::uint32_t>(std::stoul(s)); } catch (...) { return 0; }
+    try {
+        return static_cast<std::uint32_t>(std::stoul(s));
+    } catch (...) {
+        return 0;
+    }
 }
+
 } // namespace
 
 std::expected<LegacyMapIni, std::string> ParseLegacyMapIni(const std::filesystem::path& file) {
     std::ifstream in(file);
-    if (!in) return std::unexpected("Konnte .ini nicht öffnen: " + file.string());
+    if (!in) {
+        return std::unexpected("Konnte .ini nicht \u00f6ffnen: " + file.string());
+    }
 
     LegacyMapIni result;
     bool pendingLayer = false;
     bool inLayer = false;
     LegacyLayerDef currentLayer;
-    std::string rawLine;
 
+    std::string rawLine;
     while (std::getline(in, rawLine)) {
         const auto commentPos = rawLine.find("//");
-        std::string line = commentPos != std::string::npos ? rawLine.substr(0, commentPos) : rawLine;
+        std::string line = (commentPos != std::string::npos) ? rawLine.substr(0, commentPos) : rawLine;
         line = Trim(line);
         if (line.empty()) continue;
         if (line == "#END_FILE") break;
+
         if (line == "{") {
             if (pendingLayer) {
                 inLayer = true;
@@ -55,15 +68,23 @@ std::expected<LegacyMapIni, std::string> ParseLegacyMapIni(const std::filesystem
             }
             continue;
         }
-        if (line == "#Layer") { pendingLayer = true; continue; }
-        if (line.front() != '#') continue;
+        if (line == "#Layer") {
+            pendingLayer = true;
+            continue;
+        }
+        if (line.front() != '#') {
+            continue; // unerwartetes Format - defensiv \u00fcberspringen statt abzubrechen
+        }
 
         const auto colonPos = line.find(':');
-        if (colonPos == std::string::npos) continue;
+        if (colonPos == std::string::npos) {
+            continue;
+        }
         const std::string key = Trim(line.substr(1, colonPos - 1));
         std::string value = Trim(line.substr(colonPos + 1));
-        if (value.size() >= 2 && value.front() == '"' && value.back() == '"')
+        if (value.size() >= 2 && value.front() == '"' && value.back() == '"') {
             value = value.substr(1, value.size() - 2);
+        }
 
         if (inLayer) {
             if (key == "Name") currentLayer.name = value;
@@ -84,36 +105,53 @@ std::expected<LegacyMapIni, std::string> ParseLegacyMapIni(const std::filesystem
             else if (key == "OneBlockHeight") result.oneBlockHeight = ParseFloatSafe(value);
             else if (key == "QuadsWide") result.quadsWide = ParseUIntSafe(value);
             else if (key == "QuadsHigh") result.quadsHigh = ParseUIntSafe(value);
+            // PGFILE / FILE_VER bewusst ignoriert (f\u00fcr keines der vier Module ben\u00f6tigt).
         }
     }
 
-    if (result.heightmapWidth == 0 || result.heightmapHeight == 0)
+    if (result.heightmapWidth == 0 || result.heightmapHeight == 0) {
         return std::unexpected("HEIGHTMAP_WIDTH/HEIGHT fehlt oder ist 0 in: " + file.string());
+    }
+
     return result;
 }
 
 std::expected<void, std::string> SerializeLegacyMapIni(const LegacyMapIni& ini, const std::filesystem::path& file) {
     std::ofstream out(file, std::ios::trunc);
-    if (!out) return std::unexpected("Konnte .ini nicht zum Schreiben öffnen: " + file.string());
+    if (!out) {
+        return std::unexpected("Konnte .ini nicht zum Schreiben \u00f6ffnen: " + file.string());
+    }
 
-    out << "#PGFILE : HeightMap\n#FILE_VER : 0.01\n\n";
+    out << "#PGFILE : HeightMap\n";
+    out << "#FILE_VER : 0.01\n\n";
     out << "#HeightFileName : \"" << ini.heightFileName << "\"\n";
     out << "#VerTexColorTexture : \"" << ini.vertexColorTexture << "\"\n\n";
-    out << "#HEIGHTMAP_WIDTH : " << ini.heightmapWidth << "\n#HEIGHTMAP_HEIGHT : " << ini.heightmapHeight << "\n\n";
-    out << "#OneBlockWidth : " << ini.oneBlockWidth << "f\n#OneBlockHeight : " << ini.oneBlockHeight << "f\n\n";
-    out << "#QuadsWide : " << ini.quadsWide << "\n#QuadsHigh : " << ini.quadsHigh << "\n\n";
+    out << "#HEIGHTMAP_WIDTH : " << ini.heightmapWidth << "\n";
+    out << "#HEIGHTMAP_HEIGHT : " << ini.heightmapHeight << "\n\n";
+    out << "#OneBlockWidth : " << ini.oneBlockWidth << "f\n";
+    out << "#OneBlockHeight : " << ini.oneBlockHeight << "f\n\n";
+    out << "#QuadsWide : " << ini.quadsWide << "\n";
+    out << "#QuadsHigh : " << ini.quadsHigh << "\n\n";
 
     for (const auto& layer : ini.layers) {
         out << "#Layer\n{\n";
         out << "\t#Name : " << layer.name << "\n";
         out << "\t#DiffuseFileName : \"" << layer.diffuseFileName << "\"\n";
         out << "\t#BlendFileName : \"" << layer.blendFileName << "\"\n";
-        out << "\t#StartPos_X : " << layer.startX << "f\n#StartPos_Y : " << layer.startY << "f\n";
-        out << "\t#Width : " << layer.width << "f\n#Height : " << layer.height << "f\n";
-        out << "\t#UVScaleDiffuse : " << layer.uvScaleDiffuse << "f\n#UVScaleBlend : " << layer.uvScaleBlend << "f\n}\n";
+        out << "\t#StartPos_X : " << layer.startX << "f\n";
+        out << "\t#StartPos_Y : " << layer.startY << "f\n";
+        out << "\t#Width : " << layer.width << "f\n";
+        out << "\t#Height : " << layer.height << "f\n";
+        out << "\t#UVScaleDiffuse : " << layer.uvScaleDiffuse << "f\n";
+        out << "\t#UVScaleBlend : " << layer.uvScaleBlend << "f\n";
+        out << "}\n";
     }
+
     out << "\n#END_FILE\n";
-    if (!out) return std::unexpected("Fehler beim Schreiben der .ini: " + file.string());
+
+    if (!out) {
+        return std::unexpected("Fehler beim Schreiben der .ini: " + file.string());
+    }
     return {};
 }
 

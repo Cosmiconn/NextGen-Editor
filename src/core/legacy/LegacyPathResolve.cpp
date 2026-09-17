@@ -22,6 +22,11 @@ bool EqualsCaseInsensitive(const std::string& a, const std::string& b) {
 }
 
 namespace {
+// Entfernt JEDES Leerzeichen im String (nicht nur am Rand) - manche in .nif-Dateien
+// eingebetteten Dateinamen enthalten ein zusätzliches Leerzeichen MITTEN im Namen, direkt vor
+// der Endung (z.B. "road01_lamp .dds" statt "road01_lamp.dds" - byte-exakt im Original-Asset
+// bestätigt, kein Lesefehler). Ein einfaches Rand-Trimmen reicht hier nicht, da das
+// Leerzeichen nicht am Anfang/Ende steht.
 std::string RemoveAllWhitespace(const std::string& s) {
     std::string out;
     out.reserve(s.size());
@@ -61,7 +66,7 @@ std::optional<std::filesystem::path> ResolveCaseInsensitivePath(
         }
 
         bool found = false;
-        std::optional<std::filesystem::path> trimmedFallback;
+        std::optional<std::filesystem::path> trimmedFallback; // siehe EqualsCaseInsensitiveTrimmed
         std::error_code iterEc;
         std::filesystem::directory_iterator it(current, iterEc);
         if (!iterEc) {
@@ -87,6 +92,13 @@ std::optional<std::filesystem::path> ResolveCaseInsensitivePath(
 }
 
 namespace {
+// Bounded rekursive Suche nach EINER Datei mit passendem Namen (case-insensitiv, mit
+// Leerzeichen-Toleranz, siehe RemoveAllWhitespace) unter root - für Fälle, in denen ein
+// referenzierter Dateiname KEINE Verzeichnisangabe enthält (siehe ResolveLegacyAssetPath:
+// Objekt-Texturen in .nif-Dateien sind oft nur der nackte Dateiname, z.B. "grass.dds", ohne
+// "fieldTexture\"-Präfix - die Datei kann dann in einem beliebigen Unterordner der geteilten
+// Textur-Ablage liegen). Mehrdeutigkeit (mehrere Treffer) wird NICHT aufgelöst - lieber
+// nichts finden als eine falsche Textur laden.
 std::optional<std::filesystem::path> FindFileRecursiveBounded(
     const std::filesystem::path& root, const std::string& filename, int maxDepth) {
     std::error_code ec;
@@ -122,12 +134,24 @@ std::optional<std::filesystem::path> ResolveLegacyAssetPath(
     if (auto r = ResolveCaseInsensitivePath(mapDir, stripped)) {
         return r;
     }
+    // Zwei Ebenen über dem Kartenordner: bei Layout "<AssetRoot>/field/<Karte>/karte.ini" landet
+    // man hier genau bei <AssetRoot>, wo z.B. "fieldTexture/" als Geschwister von "field/" liegt.
     const std::filesystem::path assetRoot = mapDir.parent_path().parent_path();
     if (!assetRoot.empty()) {
         if (auto r = ResolveCaseInsensitivePath(assetRoot, stripped)) {
             return r;
         }
 
+        // KORRIGIERT: Objekt-Texturen aus .nif-Dateien sind oft NUR ein nackter Dateiname
+        // ohne jede Verzeichnisangabe (z.B. "ELDERIN_wg.DDS", "lightYellow3.dds" - byte-exakt
+        // aus echten Testdateien bestätigt) - anders als Heightmap-/Textur-Set-Pfade aus der
+        // .ini, die immer den vollen "resmap\field\<Karte>\..."-Pfad enthalten. Für solche
+        // Ein-Komponenten-Pfade zusätzlich gezielt in "fieldTexture" suchen (bekannter
+        // Geschwisterordner von "field", siehe oben), und falls dort nicht direkt vorhanden,
+        // begrenzt rekursiv darin suchen (Texturen können in Unterordnern liegen). NICHT
+        // verifiziert gegen echte Textur-Dateien (in dieser Sandbox nicht vorhanden) - falls
+        // Objekte danach weiterhin untexturiert bleiben, bitte den tatsächlichen Ablageort
+        // der .dds-Dateien relativ zum Client-Ordner mitteilen.
         if (std::distance(stripped.begin(), stripped.end()) == 1) {
             const std::string bareName = stripped.filename().string();
             for (const char* sharedFolder : {"fieldTexture", "FieldTexture", "fieldtexture"}) {
@@ -140,7 +164,7 @@ std::optional<std::filesystem::path> ResolveLegacyAssetPath(
                 if (auto nested = FindFileRecursiveBounded(candidateDir, bareName, 4)) {
                     return nested;
                 }
-                break;
+                break; // Ordner existiert (Groß-/Kleinschreibung getroffen), weitere Varianten unnötig
             }
         }
     }
@@ -159,7 +183,7 @@ std::optional<std::filesystem::path> FindSiblingFileByStem(
         const auto& p = entry.path();
         if (EqualsCaseInsensitive(p.stem().string(), stem) && EqualsCaseInsensitive(p.extension().string(), extension)) {
             if (match.has_value()) {
-                return std::nullopt;
+                return std::nullopt; // mehrdeutig - lieber nichts finden als falsch raten
             }
             match = p;
         }

@@ -108,7 +108,7 @@ std::expected<void, std::string> ExportLegacyTextureSet(
 
     LegacyMapIni outIni = iniMeta;
     // WICHTIG: outIni.heightmapWidth/Height NICHT anfassen - das sind Heightmap-Felder, die
-    // Textur-Layer-Aufl\u00f6sung (stack.Width()/Height()) ist davon unabh\u00e4ngig und hat im
+    // Textur-Layer-Auflösung (stack.Width()/Height()) ist davon unabhängig und hat im
     // Legacy-.ini-Format gar kein eigenes Feld (steckt implizit in der BMP selbst).
     for (std::size_t i = 0; i < stack.LayerCount(); ++i) {
         outIni.layers[i].name = stack.Layer(i).name;
@@ -130,7 +130,7 @@ std::expected<void, std::string> ExportLegacyTextureSet(
     }
 
     for (std::size_t i = 0; i < stack.LayerCount(); ++i) {
-        // Export schreibt NEUE Dateien - "resmap"-Pr\u00e4fix entfernen (symmetrisch zum Import,
+        // Export schreibt NEUE Dateien - "resmap"-Präfix entfernen (symmetrisch zum Import,
         // sonst findet ein nachfolgender Import der eigenen Export-Ausgabe die Dateien nicht).
         const std::filesystem::path blendPath =
             outDir / StripResmapPrefix(LegacyPathToNative(outIni.layers[i].blendFileName));
