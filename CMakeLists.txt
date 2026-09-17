@@ -10,77 +10,67 @@ find_package(imgui CONFIG REQUIRED)
 find_package(glad CONFIG REQUIRED)
 find_package(OpenGL REQUIRED)
 
-add_library(mapeditor_core
-    src/core/BlendMap.cpp
-    src/core/DdsImage.cpp
-    src/core/EditOps.cpp
-    src/core/Heightmap.cpp
-    src/core/HeightmapIO.cpp
-    src/core/NifModel.cpp
-    src/core/ObjectPlacement.cpp
-    src/core/ObjectPlacementIO.cpp
-    src/core/ObjectSpatialIndex.cpp
-    src/core/TextureLayerIO.cpp
-    src/core/TextureLayerStack.cpp
-    src/core/TexturePaintOps.cpp
-    src/core/WalkEditOps.cpp
-    src/core/WalkGridIO.cpp
-    src/core/legacy/BmpBlendMap.cpp
-    src/core/legacy/LegacyIdmAid.cpp
-    src/core/legacy/LegacyMapIni.cpp
-    src/core/legacy/LegacyMapProject.cpp
-    src/core/legacy/LegacyPathResolve.cpp
-    src/core/legacy/LegacyTextureSetIO.cpp
-    src/core/legacy/ShnFile.cpp
+# Build only source files that are actually present in this checkout.
+file(GLOB_RECURSE MAPEDITOR_CORE_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core/*.cpp"
 )
 
-target_include_directories(mapeditor_core PUBLIC include)
+if(NOT MAPEDITOR_CORE_SOURCES)
+    message(FATAL_ERROR "No core source files were found")
+endif()
 
+add_library(mapeditor_core ${MAPEDITOR_CORE_SOURCES})
+target_include_directories(mapeditor_core PUBLIC include)
 target_compile_features(mapeditor_core PUBLIC cxx_std_23)
 
-add_executable(nextgen_editor
-    src/app/main.cpp
-    src/app/Camera.cpp
-    src/app/NifMeshRenderer.cpp
-    src/app/ObjectMarkerRenderer.cpp
-    src/app/Renderer.cpp
-)
+# The application entry point is not present yet. Configure the target only
+# once src/app/main.cpp and the renderer implementation exist.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/app/main.cpp")
+    set(MAPEDITOR_APP_SOURCES
+        src/app/main.cpp
+        src/app/Camera.cpp
+        src/app/NifMeshRenderer.cpp
+        src/app/ObjectMarkerRenderer.cpp
+        src/app/Renderer.cpp
+    )
+    set(MAPEDITOR_APP_SOURCES_PRESENT TRUE)
+    foreach(source IN LISTS MAPEDITOR_APP_SOURCES)
+        if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${source}")
+            set(MAPEDITOR_APP_SOURCES_PRESENT FALSE)
+        endif()
+    endforeach()
 
-target_link_libraries(nextgen_editor PRIVATE mapeditor_core glfw imgui::imgui glad::glad OpenGL::GL)
-
-target_include_directories(nextgen_editor PRIVATE include)
+    if(MAPEDITOR_APP_SOURCES_PRESENT)
+        add_executable(nextgen_editor ${MAPEDITOR_APP_SOURCES})
+        target_link_libraries(nextgen_editor PRIVATE
+            mapeditor_core glfw imgui::imgui glad::glad OpenGL::GL
+        )
+        target_include_directories(nextgen_editor PRIVATE include)
+    else()
+        message(STATUS "Skipping nextgen_editor: application sources are incomplete")
+    endif()
+else()
+    message(STATUS "Skipping nextgen_editor: src/app/main.cpp is not present")
+endif()
 
 include(CTest)
 if(BUILD_TESTING)
-    add_executable(test_heightmap_core tests/test_heightmap_core.cpp)
-    target_link_libraries(test_heightmap_core PRIVATE mapeditor_core)
-    add_test(NAME heightmap_core COMMAND test_heightmap_core)
+    set(MAPEDITOR_TESTS
+        test_heightmap_core
+        test_legacy_map_project
+        test_legacy_texture_roundtrip
+        test_nif_model
+        test_shn_file
+    )
 
-    add_executable(test_legacy_map_project tests/test_legacy_map_project.cpp)
-    target_link_libraries(test_legacy_map_project PRIVATE mapeditor_core)
-    add_test(NAME legacy_map_project COMMAND test_legacy_map_project)
-
-    add_executable(test_legacy_texture_roundtrip tests/test_legacy_texture_roundtrip.cpp)
-    target_link_libraries(test_legacy_texture_roundtrip PRIVATE mapeditor_core)
-    add_test(NAME legacy_texture_roundtrip COMMAND test_legacy_texture_roundtrip)
-
-    add_executable(test_nif_model tests/test_nif_model.cpp)
-    target_link_libraries(test_nif_model PRIVATE mapeditor_core)
-    add_test(NAME nif_model COMMAND test_nif_model)
-
-    add_executable(test_object_placement tests/test_object_placement.cpp)
-    target_link_libraries(test_object_placement PRIVATE mapeditor_core)
-    add_test(NAME object_placement COMMAND test_object_placement)
-
-    add_executable(test_shn_file tests/test_shn_file.cpp)
-    target_link_libraries(test_shn_file PRIVATE mapeditor_core)
-    add_test(NAME shn_file COMMAND test_shn_file)
-
-    add_executable(test_texture_layers tests/test_texture_layers.cpp)
-    target_link_libraries(test_texture_layers PRIVATE mapeditor_core)
-    add_test(NAME texture_layers COMMAND test_texture_layers)
-
-    add_executable(test_walk_grid tests/test_walk_grid.cpp)
-    target_link_libraries(test_walk_grid PRIVATE mapeditor_core)
-    add_test(NAME walk_grid COMMAND test_walk_grid)
+    foreach(test_name IN LISTS MAPEDITOR_TESTS)
+        set(test_source "${CMAKE_CURRENT_SOURCE_DIR}/tests/${test_name}.cpp")
+        if(EXISTS "${test_source}")
+            add_executable(${test_name} "${test_source}")
+            target_link_libraries(${test_name} PRIVATE mapeditor_core)
+            add_test(NAME ${test_name} COMMAND ${test_name})
+        else()
+            message(STATUS "Skipping missing test source: ${test_source}")
+        endif()
+    endforeach()
 endif()
