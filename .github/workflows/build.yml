@@ -9,7 +9,17 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            triplet: x64-linux
+          - os: windows-latest
+            triplet: x64-windows
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,6 +35,7 @@ jobs:
           cmake -S . -B build -G Ninja
           -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
           -DVCPKG_MANIFEST_MODE=ON
+          -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }}
           -DBUILD_TESTING=ON
 
       - name: Build
