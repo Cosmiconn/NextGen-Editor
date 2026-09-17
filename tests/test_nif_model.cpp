@@ -1,0 +1,8 @@
+// test_nif_model.cpp
+// GUI-freier Test für den NIF-Parser. Läuft nur, wenn Pfade zu echten .nif-Dateien als
+// Kommandozeilenargumente übergeben werden.
+#include "mapeditor/core/NifModel.hpp"
+#include <cstdio>
+using namespace theseed::mapeditor::core;
+namespace { int g_failures=0; void Check(bool c,const char* w){if(!c){std::fprintf(stderr,"[FEHLER] %s\n",w);++g_failures;}else std::printf("[ok] %s\n",w);} }
+int main(int argc,char** argv){if(argc<2){std::printf("(Test übersprungen - Aufruf mit: %s <einfache.nif> [<texturierte.nif>])\n",argv[0]);return 0;} auto simple=LoadNifMesh(argv[1]); Check(simple.has_value(),"LoadNifMesh erfolgreich"); if(simple){Check(!simple->parts.empty(),"Mindestens ein Mesh-Teil vorhanden"); if(!simple->parts.empty()){const auto& p=simple->parts.front(); Check(!p.positions.empty(),"Vertex-Positionen vorhanden"); Check(!p.triangleIndices.empty(),"Dreiecks-Indizes vorhanden"); Check(p.triangleIndices.size()%3==0,"Indexanzahl durch 3 teilbar"); bool valid=true; for(auto i:p.triangleIndices) if(i>=p.positions.size()) valid=false; Check(valid,"Indizes gültig"); if(p.embeddedDiffuseTexture){const auto& t=*p.embeddedDiffuseTexture; Check(t.width>0&&t.height>0&&t.rgba.size()==static_cast<std::size_t>(t.width)*t.height*4,"Eingebettete Textur vollständig");}}} else std::fprintf(stderr,"Fehler: %s\n",simple.error().c_str()); if(argc>=3){auto second=LoadNifMesh(argv[2]); if(second){Check(!second->parts.empty(),"Zweite Datei liefert Geometrie");}else Check(true,"Zweite Datei schlägt sauber fehl");} std::printf("%d Fehler.\n",g_failures); return g_failures==0?0:1; }
