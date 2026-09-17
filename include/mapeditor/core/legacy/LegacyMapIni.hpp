@@ -1,6 +1,12 @@
 #pragma once
 // LegacyMapIni.hpp
-// Parser für das Legacy-Karten-.ini-Format.
+// Parser für das Legacy-Karten-.ini-Format (siehe "Rou.ini"): Key:Value-Zeilen mit "#"-Präfix
+// plus "#Layer { ... }"-Blöcke. Liefert sowohl die Heightmap-Metadaten (Dimensionen, Blockgröße)
+// als auch die Textur-Layer-Definitionen - beide Module (Heightmap-Import, Texturing-Import)
+// nutzen denselben Parser, statt das Format zweimal zu interpretieren.
+//
+// Bewusst NICHT Teil des nativen TheSeed-Formats - reiner Import-/Migrationspfad, siehe
+// docs/MAP_FORMAT.md.
 
 #include <cstdint>
 #include <expected>
@@ -35,6 +41,11 @@ struct LegacyMapIni {
 };
 
 std::expected<LegacyMapIni, std::string> ParseLegacyMapIni(const std::filesystem::path& file);
+
+// Schreibt die Struktur wieder im Legacy-Text-Layout (Key:Value + #Layer{}-Blöcke). Inhaltlich
+// vollständig (parse(serialize(x)) == x), aber NICHT byte-identisch zum Original: Kommentare
+// und exaktes Whitespace/Tab-Layout des Originals werden nicht reproduziert, da sie beim Parsen
+// bewusst verworfen werden (siehe ParseLegacyMapIni).
 std::expected<void, std::string> SerializeLegacyMapIni(const LegacyMapIni& ini, const std::filesystem::path& file);
 
 } // namespace theseed::mapeditor::core::legacy
