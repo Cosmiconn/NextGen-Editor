@@ -4,7 +4,13 @@
   "builtin-baseline": "386d7c478221b7ee0c97bfe6ea61dcf65121d564",
   "dependencies": [
     "glfw3",
-    "imgui[glfw-binding,opengl3-binding]",
+    {
+      "name": "imgui",
+      "features": [
+        "glfw-binding",
+        "opengl3-binding"
+      ]
+    },
     "glad",
     "opengl"
   ]
