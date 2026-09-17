@@ -24,11 +24,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install Linux build prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build autoconf autoconf-archive automake libtool
+
       - name: Set up vcpkg
         uses: lukka/run-vcpkg@v11
         with:
-          vcpkgDirectory: '${{ github.workspace }}/vcpkg'
-          vcpkgJsonGlob: '${{ github.workspace }}/vcpkg.json'
+          vcpkgDirectory: vcpkg
+          vcpkgJsonGlob: vcpkg.json
 
       - name: Configure
         run: >
