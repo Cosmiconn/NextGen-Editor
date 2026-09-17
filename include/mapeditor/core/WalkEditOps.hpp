@@ -1,7 +1,7 @@
 #pragma once
 // WalkEditOps.hpp
 // Bearbeitung des Block&Walk-Gitters. Anders als Heightmap/Textur-Gewichte sind die Werte
-diskret (siehe WalkGrid.hpp) - deshalb kein Falloff-Blending, sondern ein einfacher
+// diskret (siehe WalkGrid.hpp) - deshalb kein Falloff-Blending, sondern ein einfacher
 // "Stempel": alle Zellen im Radius werden auf einen festen Rohwert gesetzt.
 
 #include "mapeditor/core/WalkGrid.hpp"
@@ -12,8 +12,8 @@ diskret (siehe WalkGrid.hpp) - deshalb kein Falloff-Blending, sondern ein einfac
 namespace theseed::mapeditor::core {
 
 struct WalkStampSettings {
-    float radius = 100.0f;
-    std::int16_t value = -1;
+    float radius = 100.0f;      // Weltraum-Radius
+    std::int16_t value = -1;    // Zielwert (-1 = in der Referenzdatei "frei/unbelegt")
 };
 
 struct WalkUndoPatch {
@@ -25,6 +25,8 @@ struct WalkUndoPatch {
     std::vector<Entry> entries;
 };
 
+// Setzt alle Zellen im Kreis um (worldX, worldZ) auf settings.value (harte Kante, kein Falloff -
+// passend für diskrete Flag-/Bitmask-Werte statt kontinuierlicher Höhen/Gewichte).
 WalkUndoPatch ApplyWalkStamp(
     WalkGrid& grid,
     const WalkStampSettings& settings,
