@@ -58,6 +58,9 @@ void OrbitCamera::Zoom(float deltaDistance) {
 }
 
 void OrbitCamera::PanBy(float deltaRight, float deltaUp) {
+    // Dieselbe Rechts-/Auf-Achsen-Herleitung wie in ViewMatrix() (Blickrichtung aus Yaw/Pitch),
+    // damit Pan unabhängig von der aktuellen Kamera-Ausrichtung intuitiv in Bildschirmrichtung
+    // wirkt (nicht nur entlang der Weltachsen).
     const Vec3 eyeOffset{
         distance_ * std::cos(pitch_) * std::sin(yaw_),
         distance_ * std::sin(pitch_),
@@ -74,6 +77,8 @@ void OrbitCamera::PanBy(float deltaRight, float deltaUp) {
 }
 
 Mat4 OrbitCamera::ViewMatrix() const {
+    // Kugelkoordinaten um das Ziel (Rechtssystem, Y = "oben" - konsistent mit den
+    // Weltkoordinaten der Heightmap: X/Z sind die Grundfläche, Y die Höhe).
     const Vec3 eye{
         targetX_ + distance_ * std::cos(pitch_) * std::sin(yaw_),
         targetY_ + distance_ * std::sin(pitch_),
@@ -87,6 +92,7 @@ Mat4 OrbitCamera::ViewMatrix() const {
     const Vec3 u = Cross(s, f);
 
     Mat4 view = Mat4::Identity();
+    // Spalte 0..2 = Basisvektoren (transponiert, da Rotation orthonormal), Spalte 3 = Translation.
     view.m[0] = s.x; view.m[4] = s.y; view.m[8] = s.z;  view.m[12] = -Dot(s, eye);
     view.m[1] = u.x; view.m[5] = u.y; view.m[9] = u.z;  view.m[13] = -Dot(u, eye);
     view.m[2] = -f.x; view.m[6] = -f.y; view.m[10] = -f.z; view.m[14] = Dot(f, eye);
@@ -106,6 +112,9 @@ Mat4 OrbitCamera::PerspectiveMatrix(float fovYRad, float aspect, float nearZ, fl
 }
 
 Mat4 OrthoTopDownViewProj(float centerX, float centerZ, float halfWidth, float halfHeight, float heightPadding) {
+    // Blickrichtung senkrecht von oben nach unten (f = (0,-1,0)). Referenz-"Auf" bewusst
+    // (0,0,-1) gewählt, damit "oben im Bild" der Weltrichtung -Z entspricht - konsistent mit
+    // der u*spanX/v*spanZ-Konvention im 2D-Editor (main.cpp: v=0 oben = Z=0).
     const Vec3 eye{centerX, heightPadding, centerZ};
     constexpr Vec3 f{0.0f, -1.0f, 0.0f};
     constexpr Vec3 upRef{0.0f, 0.0f, -1.0f};
