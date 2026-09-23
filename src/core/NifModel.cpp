@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <cstdlib>
 #include <fstream>
 #include <unordered_map>
 #include <unordered_set>
@@ -1946,6 +1947,7 @@ std::expected<NifModel, std::string> LoadNifMesh(const std::filesystem::path& fi
         return std::unexpected(headerResult.error());
     }
     const NifHeader& hdr = *headerResult;
+    const bool traceBlocks = std::getenv("NEXTGEN_NIF_TRACE") != nullptr;
 
     static const std::unordered_set<std::string> kSupportedPropertyTypes = {
         "NiZBufferProperty", "NiVertexColorProperty", "NiMaterialProperty", "NiTexturingProperty",
@@ -1969,6 +1971,11 @@ std::expected<NifModel, std::string> LoadNifMesh(const std::filesystem::path& fi
     for (std::uint32_t blockIdx = 0; blockIdx < hdr.numBlocks; ++blockIdx) {
         if (blockIdx >= hdr.blockTypeIndex.size()) break;
         const std::string& type = hdr.blockTypes[hdr.blockTypeIndex[blockIdx]];
+        const std::size_t blockStart = r.Pos();
+        if (traceBlocks) {
+            std::fprintf(stderr, "[NifTrace] begin block=%u type=%s offset=%zu\n",
+                         blockIdx, type.c_str(), blockStart);
+        }
 
         if (type == "NiNode") {
             NiNodeBlock node = ParseNiNode(r);
@@ -2436,8 +2443,15 @@ std::expected<NifModel, std::string> LoadNifMesh(const std::filesystem::path& fi
                                     " - nur einfache untexturierte Meshes werden aktuell unterst\u00fctzt");
         }
 
+        if (traceBlocks) {
+            std::fprintf(stderr, "[NifTrace] end   block=%u type=%s start=%zu end=%zu ok=%d\n",
+                         blockIdx, type.c_str(), blockStart, r.Pos(), r.Ok() ? 1 : 0);
+        }
         if (!r.Ok()) {
-            return std::unexpected("Unerwartetes Dateiende beim Parsen von Block " + std::to_string(blockIdx) + " (" + type + ")");
+            return std::unexpected("Unerwartetes Dateiende beim Parsen von Block " +
+                                   std::to_string(blockIdx) + " (" + type + "), start=" +
+                                   std::to_string(blockStart) + ", pos=" + std::to_string(r.Pos()) +
+                                   ", fileSize=" + std::to_string(data.size()));
         }
     }
 
