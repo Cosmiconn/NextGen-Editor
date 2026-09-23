@@ -1275,8 +1275,17 @@ NiTriStripsBlock ParseNiTriStripsHeader(ByteReader& r) {
     block.base = ParseAVObjectBase(r);
     block.dataRef = r.I32();
     r.I32(); // skin_instance ref
-    r.U8();  // unbekanntes Byte, in Beispieldaten immer 0
-    r.SizedString(); // Freitextfeld, Bedeutung unklar (Shader-/Effekt-Name?)
+
+    // NiGeometry for the Fiesta-era versions stores Has Shader here. The shader
+    // name + trailing uint32 exist only when the flag is set. The old parser
+    // always consumed a SizedString, which swallowed the next block's name when
+    // Has Shader == 0 (e.g. H_rou_Light.nif block 21 -> block 22 by exactly
+    // 4 + strlen("Object176") = 13 bytes).
+    const std::uint8_t hasShader = r.U8();
+    if (hasShader) {
+        r.SizedString(); // shader_name
+        r.U32();         // unknown_integer
+    }
     return block;
 }
 
@@ -2277,6 +2286,18 @@ std::expected<NifModel, std::string> LoadNifMesh(const std::filesystem::path& fi
                 (blockIdx + 1 < hdr.blockTypeIndex.size()) &&
                 hdr.blockTypes[hdr.blockTypeIndex[blockIdx + 1]] == "NiSourceTexture";
             if (!nextIsSourceTexture) {
+                const bool nextIsParticleData =
+                    (blockIdx + 1 < hdr.blockTypeIndex.size()) &&
+                    (hdr.blockTypes[hdr.blockTypeIndex[blockIdx + 1]] == "NiPSysData" ||
+                     hdr.blockTypes[hdr.blockTypeIndex[blockIdx + 1]] == "NiMeshPSysData");
+                if (nextIsParticleData && hdr.version == 0x14000004u) {
+                    // NiPixelData 20.0.0.4 stores Num Faces (u32) after Num Pixels.
+                    // ParseNiPixelData in this verification branch still treats this as
+                    // an external tail; consume exactly that field. In rou_waterwell.nif
+                    // this moves the next block from the false 294606 to the real
+                    // NiPSysData start 294602.
+                    r.Skip(4);
+                } else {
                 // KORREKTUR (Partikel-Glow-Texturen, unkomprimiertes 8-Bit-Format): bei
                 // mindestens einer echten Datei (BH_Karen_water_effect.nif) sind es nur 4
                 // Byte statt der sonst üblichen 8 - der Pixelformat-Header war dabei
@@ -2375,6 +2396,7 @@ std::expected<NifModel, std::string> LoadNifMesh(const std::filesystem::path& fi
                     r.Skip(4);
                 } else {
                     r.I32(); r.U32();
+                }
                 }
             }
         } else if (type == "NiTriStripsData") {
