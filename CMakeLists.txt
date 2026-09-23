@@ -107,3 +107,11 @@ target_link_libraries(test_shn_file PRIVATE mapeditor_core)
 add_executable(test_nif_model tests/test_nif_model.cpp)
 target_link_libraries(test_nif_model PRIVATE mapeditor_core)
 add_test(NAME nif_model COMMAND test_nif_model)
+
+# Real Fiesta particle-system regression fixtures. These exercise the NiPSysData
+# inheritance/alignment path that previously shifted following blocks and made
+# downstream NiPixelData/NiTri* blocks fail.
+add_test(NAME nif_particle_h_rou_light
+         COMMAND test_nif_model "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/H_rou_Light.nif")
+add_test(NAME nif_particle_rou_waterwell
+         COMMAND test_nif_model "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/rou_waterwell.nif")
