@@ -694,18 +694,24 @@ std::uint32_t SkipNiGeometryDataHeader(ByteReader& r, bool isOlderVersion) {
 // NiParticlesData : NiGeometryData + has_radii+Radii + num_active(u16) + has_sizes+Sizes +
 // has_rotations+Rotations(Quaternion je 16 Byte) + has_rotation_angles+Angles +
 // has_rotation_axes+Achsen(Vector3 je 12 Byte).
-std::uint32_t SkipNiParticlesData(ByteReader& r) {
-    // Bewusst weiterhin isOlderVersion=false: für Partikel-Daten liegt (anders als bei
-    // NiTriStripsData/NiTriShapeData, siehe Abschnitt 36) noch KEIN bestätigter Fund vor, dass
-    // ältere Versionen hier ebenfalls ein fehlendes additional_data_ref-Feld haben - nicht
-    // spekulativ ändern, ohne konkreten Beleg.
-    const std::uint32_t numVerts = SkipNiGeometryDataHeader(r, false);
-    if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 4u); // has_radii
-    r.U16(); // num_active
-    if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 4u); // has_sizes
-    if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 16u); // has_rotations (Quaternion)
-    if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 4u); // has_rotation_angles
-    if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 12u); // has_rotation_axes (Vector3)
+std::uint32_t SkipNiParticlesData(ByteReader& r, std::uint32_t version) {
+    // NiGeometryData starts with an unknown uint32 since 10.2.0.0. The old skip path
+    // started directly at num_vertices, shifting every 10.2/20.0 particle block by 4 bytes.
+    if (version >= 0x0A020000u) {
+        r.U32(); // NiGeometryData::unknownInt
+    }
+
+    // Additional Data was introduced with 20.0.0.4; 10.1/10.2 only carry the older
+    // consistency-flags tail.
+    const bool isOlderVersion = version != 0x14000004u;
+    const std::uint32_t numVerts = SkipNiGeometryDataHeader(r, isOlderVersion);
+
+    if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 4u);  // has_radii
+    r.U16();                                                       // num_active
+    if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 4u);  // has_sizes
+    if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 16u); // has_rotations
+    if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 4u);  // has_rotation_angles
+    if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 12u); // has_rotation_axes
     return numVerts;
 }
 
@@ -718,13 +724,33 @@ std::uint32_t SkipNiParticlesData(ByteReader& r) {
 // gültiger Ref (zeigt in der Testdatei sogar exakt auf den nachfolgenden NiNode-Block selbst -
 // wird nirgends weiterverwendet, da keine Partikel gerendert werden, daher genügt die
 // GESAMTLÄNGE ohne Feld-Interpretation).
-void SkipNiPSysData(ByteReader& r, bool isMeshVariant = false) {
-    const std::uint32_t numVerts = SkipNiParticlesData(r);
-    r.Skip(static_cast<std::size_t>(numVerts) * 28u); // NiParticleInfo je Vertex
-    if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 4u); // has_unknown_floats
-    r.U16(); r.U16(); // unknown_short_1, unknown_short_2
+void SkipNiPSysData(ByteReader& r, std::uint32_t version, bool isMeshVariant = false) {
+    const std::uint32_t numVerts = SkipNiParticlesData(r, version);
+    r.Skip(static_cast<std::size_t>(numVerts) * 28u); // ParticleDesc per vertex
+
+    // hasUnknownFloats3 exists from 20.0.0.4 onward. Reading this byte in 10.1/10.2
+    // shifts all following fields and was a second independent old-version alignment bug.
+    if (version >= 0x14000004u) {
+        if (r.U8()) {
+            r.Skip(static_cast<std::size_t>(numVerts) * 4u);
+        }
+    }
+
+    r.U16(); // unknown_short_1
+    r.U16(); // unknown_short_2
+
     if (isMeshVariant) {
-        r.Skip(17); // siehe Kommentar oben
+        // NiMeshPSysData has a variable-length trailer. The former fixed 17-byte skip
+        // only happened to match instances where numUnknownInts1 == 1.
+        if (version >= 0x0A020000u) {
+            r.U32(); // unknownInt2
+            r.U8();  // unknownByte3
+            const std::uint32_t numUnknownInts1 = r.CountU32(4096u);
+            for (std::uint32_t i = 0; i < numUnknownInts1; ++i) {
+                r.U32();
+            }
+        }
+        r.I32(); // unknownNode ref (present for all supported versions)
     }
 }
 
@@ -2113,7 +2139,7 @@ std::expected<NifModel, std::string> LoadNifMesh(const std::filesystem::path& fi
                 }
             }
         } else if (type == "NiPSysData" || type == "NiMeshPSysData") {
-            SkipNiPSysData(r, type == "NiMeshPSysData");
+            SkipNiPSysData(r, hdr.version, type == "NiMeshPSysData");
         } else if (type == "NiPSysEmitterCtlr") {
             SkipNiPSysEmitterCtlr(r);
         } else if (type == "NiPSysModifierActiveCtlr") {
