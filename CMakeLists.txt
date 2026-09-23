@@ -115,3 +115,8 @@ add_test(NAME nif_particle_h_rou_light
          COMMAND test_nif_model "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/H_rou_Light.nif")
 add_test(NAME nif_particle_rou_waterwell
          COMMAND test_nif_model "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/rou_waterwell.nif")
+
+add_executable(test_nif_fixture_corpus tests/test_nif_fixture_corpus.cpp)
+target_link_libraries(test_nif_fixture_corpus PRIVATE mapeditor_core)
+add_test(NAME nif_fixture_corpus
+         COMMAND test_nif_fixture_corpus "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
