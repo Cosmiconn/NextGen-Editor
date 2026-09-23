@@ -1,0 +1,14 @@
+/build*/
+/nextgen-v12/
+/vcpkg/
+/releases/
+/bin/
+__pycache__/
+*.pyc
+*.pyo
+*.user
+*.suo
+/.vs/
+/imgui.ini
+*.log
+!docs/v12-results/ctest.log

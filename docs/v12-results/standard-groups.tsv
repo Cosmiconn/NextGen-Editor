@@ -1,0 +1,3 @@
+count	blocktype	cause
+3	NiBlendAccumTransformInterpolator	Nicht unterstützter Block-Typ 'NiBlendAccumTransformInterpolator' bei Block # - nur einfache untexturierte Meshes werden aktuell unterstützt
+3	NPTR_ISShader_v2	Nicht unterstützter Block-Typ 'NPTR_ISShader_v#' bei Block # - nur einfache untexturierte Meshes werden aktuell unterstützt

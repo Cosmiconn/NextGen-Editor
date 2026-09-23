@@ -1,0 +1,43 @@
+{
+  "occurrences": 63984,
+  "distinct_inputs": 11418,
+  "standard": {
+    "OK_GEOMETRY": 11325,
+    "ERROR": 6,
+    "OK_NO_GEOMETRY": 87,
+    "RECOVERY_OK": 0,
+    "RECOVERY_PARTIAL": 0,
+    "TIMEOUT": 0
+  },
+  "recovery": {
+    "ERROR": 4,
+    "RECOVERY_PARTIAL": 2,
+    "OK_GEOMETRY": 0,
+    "OK_NO_GEOMETRY": 0,
+    "RECOVERY_OK": 0,
+    "TIMEOUT": 0
+  },
+  "final_distinct": {
+    "OK_GEOMETRY": 11325,
+    "ERROR": 4,
+    "RECOVERY_PARTIAL": 2,
+    "OK_NO_GEOMETRY": 87,
+    "RECOVERY_OK": 0,
+    "TIMEOUT": 0
+  },
+  "final_occurrences": {
+    "OK_GEOMETRY": 63612,
+    "ERROR": 17,
+    "RECOVERY_PARTIAL": 9,
+    "OK_NO_GEOMETRY": 346,
+    "RECOVERY_OK": 0,
+    "TIMEOUT": 0
+  },
+  "archive_status": {
+    "READABLE": 63
+  },
+  "distinct_inputs_with_warnings": 3,
+  "timeout_seconds": 5,
+  "jobs": 4,
+  "standard_regressions_vs_v11": 0
+}

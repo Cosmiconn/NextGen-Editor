@@ -1,0 +1,16 @@
+{
+  "name": "theseed-map-editor",
+  "version": "0.1.0",
+  "dependencies": [
+    "glfw3",
+    "glad",
+    {
+      "name": "imgui",
+      "features": [
+        "docking-experimental",
+        "glfw-binding",
+        "opengl3-binding"
+      ]
+    }
+  ]
+}
