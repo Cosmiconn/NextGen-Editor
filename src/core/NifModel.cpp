@@ -543,8 +543,9 @@ void SkipNiCollisionData(ByteReader& r) {
     switch (collisionType) {
         case 0: r.Skip(16); break; // Sphere: Center(12) + Radius(4)
         case 1: r.Skip(60); break; // Box: Center(12) + Rotation(36) + Extent(12)
-        case 2: r.Skip(32); break; // Capsule: Center(12) + Achse(12) + Extent(4) + Radius(4)
-        default: r.Invalidate(); break; // Union/Halfspace - nicht unterstützt, siehe oben
+        case 2: r.Skip(32); break; // Capsule: Center(12) + Origin(12) + 2 Floats
+        case 5: r.Skip(24); break; // HalfSpace: Normal(Vector3) + Center(Vector3)
+        default: r.Invalidate(); break; // weitere/Union-Varianten derzeit nicht unterstützt
     }
 }
 
