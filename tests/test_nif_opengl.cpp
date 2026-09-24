@@ -5,6 +5,7 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <chrono>
 
 using namespace theseed::mapeditor;
 
@@ -30,7 +31,12 @@ int main(int argc, char** argv) {
         app::NifMeshRenderer renderer;
         renderer.Init();
         if (glGetError() != GL_NO_ERROR) ++failures;
-        for (const char* name : {"machine.nif", "machine_Urg.nif", "Yak_VaporPower.nif", "Back_Shamrock.nif", "StaXReward01.nif"}) {
+        std::vector<std::string> names;
+        for (const auto& entry : std::filesystem::directory_iterator(argv[1]))
+            if (entry.path().extension() == ".nif") names.push_back(entry.path().filename().string());
+        std::sort(names.begin(), names.end());
+        if (names.empty()) ++failures;
+        for (const auto& name : names) {
             auto model = core::LoadNifMesh(std::filesystem::path(argv[1]) / name, false);
             if (!model) { ++failures; continue; }
             const bool expectVisible = std::any_of(model->parts.begin(), model->parts.end(),
@@ -69,6 +75,14 @@ int main(int argc, char** argv) {
             out << "P6\n512 512\n255\n";
             for (int y = 511; y >= 0; --y) for (int x = 0; x < 512; ++x)
                 out.write(reinterpret_cast<const char*>(pixels.data() + (y * 512 + x) * 4), 3);
+            const auto begin = std::chrono::steady_clock::now();
+            for (int frame = 0; frame < 30; ++frame) {
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                renderer.Draw(set, camera, 512, 512);
+            }
+            glFinish();
+            std::cout << name << ": warm_frame_ms=" <<
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count() / 30.0 << '\n';
             // Negative control: hiding the object must leave the framebuffer clear.
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             const std::vector<char> hidden{1};

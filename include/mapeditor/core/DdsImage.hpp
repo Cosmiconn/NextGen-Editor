@@ -1,15 +1,14 @@
 #pragma once
 // DdsImage.hpp
-// GUI-freier DDS-Loader (nur Top-Mip wird dekodiert - für die Terrain-Textur-Vorschau reicht
-// das, Mipmaps sind hier keine echte Voraussetzung). Deckt die drei in den echten
-// Field-Texturen tatsächlich vorkommenden Formate ab (empirisch geprüft, 160 echte Dateien):
-// BC1/DXT1 (140), BC2/DXT3 (17), BC3/DXT5 (3). Kein Support für unkomprimierte DDS oder andere
-// FourCCs - kamen in den Referenzdaten nicht vor.
+// GUI-free top-mip DDS decoder: BC1/BC2/BC3 and packed RGB/RGBA masks.
+// NIF embedded textures share the same bounded pixel decoders.
 
 #include <cstdint>
+#include <array>
 #include <expected>
 #include <filesystem>
 #include <string>
+#include <span>
 #include <vector>
 
 namespace theseed::mapeditor::core {
@@ -29,6 +28,13 @@ std::expected<DdsImage, std::string> LoadTgaImage(const std::filesystem::path& f
 // eingebetteten Top-Mip. PixelFormat: 4=DXT1, 5=DXT3, 6=DXT5.
 std::expected<DdsImage, std::string> DecodeBcImage(std::uint32_t width, std::uint32_t height,
                                                      std::uint32_t pixelFormat,
-                                                     const std::vector<std::uint8_t>& data);
+                                                     std::span<const std::uint8_t> data);
+
+// Little-endian packed RGB/RGBA, using the format's actual masks (8/16/24/32 bits).
+// Returns file row order; the DDS/NIF caller applies its own vertical convention.
+std::expected<DdsImage, std::string> DecodePackedImage(
+    std::uint32_t width, std::uint32_t height, std::uint32_t bitsPerPixel,
+    const std::array<std::uint32_t, 4>& masks, std::span<const std::uint8_t> data,
+    std::size_t rowPitch = 0);
 
 } // namespace theseed::mapeditor::core

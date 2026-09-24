@@ -105,6 +105,13 @@ public:
         return out;
     }
 
+    std::span<const std::uint8_t> BytesView(std::size_t n) {
+        if (!ok_ || n > Remaining()) { ok_ = false; return {}; }
+        auto out = std::span<const std::uint8_t>(data_).subspan(pos_, n);
+        pos_ += n;
+        return out;
+    }
+
     // Liest einen uint32 an einer Position relativ zur aktuellen, OHNE die Position zu
     // verändern - für Plausibilitäts-Heuristiken (siehe LooksLikeFreshName).
     [[nodiscard]] std::uint32_t PeekU32(std::size_t offset) const {
@@ -1339,6 +1346,48 @@ void SkipNiBlendInterpolator(ByteReader& r) {
     }
 }
 
+void ParseFiestaAccumulationState(ByteReader& r) {
+    // Fiesta 20.0.0.4 extension, field layout established from EglackMad, Helga
+    // and M_MajesticLion. Two groups of two 8-float transform states plus a
+    // 3x3 basis, followed by one final 8-float state. The -FLT_MAX sentinels
+    // denote unset components. Playback semantics are not inferred from them.
+    if (r.Version() != 0x14000004u) { r.Invalidate(); return; }
+    SkipNiBlendInterpolator(r);
+    const auto readFloats = [&](auto& values) {
+        for (auto& value : values) {
+            value = r.F32();
+            if (!std::isfinite(value)) r.Invalidate();
+        }
+    };
+    for (int group = 0; group < 2; ++group) {
+        std::array<float, 8> first{}, second{};
+        std::array<float, 9> basis{};
+        readFloats(first); readFloats(second); readFloats(basis);
+    }
+    std::array<float, 8> finalState{};
+    readFloats(finalState);
+}
+
+void ParseFiestaShaderReference(ByteReader& r) {
+    // This is a named shader reference, not NiObjectNET. Validate the on-disk
+    // vendor/version signature; do not search for a plausible next block.
+    if (r.Version() != 0x14000004u || r.SizedString() != "NPTR_IS" ||
+        r.SizedString() != "PTSEV2" || r.U8() > 1) r.Invalidate();
+}
+
+void ParseFiestaToonExtraData(ByteReader& r) {
+    // Fiesta-specific NiExtraData payload. Names can include a terminating NUL.
+    // Keep field order explicit; the u32 is opaque vendor state (varies among
+    // otherwise identical hat files), not a block link or an array length.
+    if (r.Version() != 0x14000004u) { r.Invalidate(); return; }
+    r.SizedString();
+    for (int i = 0; i < 4; ++i) r.F32();
+    r.U32();
+    r.F32();
+    if (r.U8() > 1 || r.U8() > 1) r.Invalidate();
+    r.F32(); r.F32();
+}
+
 // NiPSysEmitterCtlr: NiPSysModifierCtlr (= NiSingleInterpController(30 Byte) +
 // modifier_name(String)) + visibility_interpolator_ref(i32).
 void SkipNiPSysEmitterCtlr(ByteReader& r) {
@@ -1867,24 +1916,38 @@ std::shared_ptr<const NifEmbeddedTexture> ParseNiPixelData(
     const std::unordered_map<std::uint32_t, NifPaletteState>& palettes,
     PendingPalettedTexture* pendingPalette = nullptr) {
     const std::uint32_t pixelFormat = r.PeekU32(0);
+    std::array<std::uint32_t, 4> colorMasks{};
+    std::uint32_t bitsPerPixel = 0;
+    bool packedFormatSupported = true;
     if (r.LegacyLayout()) {
         r.Skip(isOlderVersion ? 50 : 72);
     } else {
         r.U32(); // pixel format
         if (isOlderVersion) {
-            for (int i = 0; i < 4; ++i) r.U32(); // RGBA masks
-            r.U32(); // bits per pixel
+            for (auto& mask : colorMasks) mask = r.U32();
+            bitsPerPixel = r.U32();
             r.Skip(8); // old fast-compare byte array
-            r.U32(); // tiling
+            packedFormatSupported = r.U32() == 0; // no tiled raw images
         } else {
-            r.U8(); // bits per pixel
+            bitsPerPixel = r.U8();
             r.U32(); r.U32(); // renderer hint, extra data
             r.U8(); // flags
-            r.U32(); // tiling
+            packedFormatSupported = r.U32() == 0;
+            unsigned shift = 0;
             for (int i = 0; i < 4; ++i) {
-                r.U32(); r.U32(); // component type and representation
-                r.U8(); r.U8(); // bits per channel, signed
+                const auto component = r.U32(), representation = r.U32();
+                const auto bits = r.U8(), isSigned = r.U8();
+                if (bits > 32 || shift + bits > 32) packedFormatSupported = false;
+                // Fiesta exporters set the trailing channel flag to 1 even for
+                // unsigned RGB8/RGB5A1 colors (including one-bit alpha). Match
+                // the existing RGB8 interpretation; do not sign-extend colors.
+                else if (bits && component < 4 && representation == 0 && isSigned <= 1) {
+                    if (colorMasks[component]) packedFormatSupported = false;
+                    colorMasks[component] = static_cast<std::uint32_t>(((std::uint64_t{1} << bits) - 1) << shift);
+                } else if (bits && component != 14 && component != 19) packedFormatSupported = false;
+                shift += bits;
             }
+            if (bitsPerPixel && shift != bitsPerPixel) packedFormatSupported = false;
         }
     }
     const std::int32_t paletteRef = r.I32();
@@ -1901,7 +1964,7 @@ std::shared_ptr<const NifEmbeddedTexture> ParseNiPixelData(
     const std::uint32_t dataSize = r.CountU32(64u * 1024u * 1024u);
     const auto faces = !r.LegacyLayout() && !isOlderVersion ? r.CountU32(6) : 1u;
     if (faces == 0) r.Invalidate();
-    auto allPixels = r.Bytes(dataSize);
+    auto allPixels = r.BytesView(dataSize);
     if (faces > 1) r.Skip(static_cast<std::size_t>(faces - 1) * dataSize);
     if (!r.Ok() || mips.empty()) return {};
     // KORREKTUR (CHANGELOG [0.44.27], nif.xml-Referenz): Ab NIF 10.4.0.2 folgt auf "Num Pixels"
@@ -1913,18 +1976,20 @@ std::shared_ptr<const NifEmbeddedTexture> ParseNiPixelData(
     // dekodiert ("Objekt-Texturen nicht bunt"). Empirisch belegt: nur bei Versatz 4 sind die
     // DXT-Endpunkte benachbarter Bloecke glatt (Differenz ~10 statt ~80).
     std::size_t faceShift = 0;
+    std::vector<std::uint8_t> compatibilityPixels;
     if (r.LegacyLayout() && !isOlderVersion) {
         faceShift = 4;
         const std::uint32_t tail = r.PeekU32(0);
-        for (int i = 0; i < 4; ++i) allPixels.push_back(static_cast<std::uint8_t>((tail >> (8 * i)) & 0xFFu));
+        compatibilityPixels.assign(allPixels.begin(), allPixels.end());
+        for (int i = 0; i < 4; ++i) compatibilityPixels.push_back(static_cast<std::uint8_t>((tail >> (8 * i)) & 0xFFu));
+        allPixels = compatibilityPixels;
     }
     const auto& top = mips.front();
     if (top.width == 0 || top.height == 0 || top.offset + faceShift >= allPixels.size()) return {};
     std::size_t topSize = allPixels.size() - (top.offset + faceShift);
     if (mips.size() > 1 && mips[1].offset > top.offset)
         topSize = std::min(topSize, static_cast<std::size_t>(mips[1].offset - top.offset));
-    std::vector<std::uint8_t> topData(allPixels.begin() + static_cast<std::ptrdiff_t>(top.offset + faceShift),
-                                      allPixels.begin() + static_cast<std::ptrdiff_t>(top.offset + faceShift + topSize));
+    const auto topData = allPixels.subspan(top.offset + faceShift, topSize);
     if (g_probeNoDecode) return nullptr;
     std::expected<DdsImage, std::string> decoded = std::unexpected(std::string("nicht gesetzt"));
     if (bytesPerPixel == 1 && paletteRef >= 0) {
@@ -1961,6 +2026,10 @@ std::shared_ptr<const NifEmbeddedTexture> ParseNiPixelData(
                 decoded = std::move(img);
             }
         }
+    } else if (!r.LegacyLayout() && bytesPerPixel >= 1 && bytesPerPixel <= 4) {
+        if (!packedFormatSupported || bitsPerPixel != bytesPerPixel * 8)
+            decoded = std::unexpected(std::string("Nicht unterstuetzte Rohpixel-Kanalbeschreibung"));
+        else decoded = DecodePackedImage(top.width, top.height, bitsPerPixel, colorMasks, topData);
     } else if (bytesPerPixel == 3 || bytesPerPixel == 4) {
         // Unkomprimierte Pixel (Reihenfolge R,G,B[,A]). Fuer diese steht in "pixelFormat" NICHT
         // 4/5/6 - die Groesse des Top-Mips entscheidet (siehe CHANGELOG [0.44.27]).
@@ -2769,10 +2838,18 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             r.U32(); r.U32(); r.U32(); // translation, rotation and scale handles
             if (type == "NiBSplineCompTransformInterpolator")
                 for (int i = 0; i < 6; ++i) r.F32(); // offset and half-range per channel
+        } else if (type == "NiBSplineFloatInterpolator" || type == "NiBSplineCompFloatInterpolator" ||
+                   type == "NiBSplinePoint3Interpolator" || type == "NiBSplineCompPoint3Interpolator") {
+            r.F32(); r.F32(); // start and stop time (NiBSplineInterpolator)
+            r.I32(); r.I32(); // spline and basis references
+            const bool point = type.find("Point3") != std::string::npos;
+            for (int i = 0; i < (point ? 3 : 1); ++i) r.F32(); // base value
+            r.U32(); // data handle
+            if (type.find("Comp") != std::string::npos) { r.F32(); r.F32(); } // offset, half-range
         } else if (type == "NiBSplineData") {
-            const auto floats = r.CountU32();
+            const auto floats = r.U32(); // Size is bounded by the remaining file, not an arbitrary key count.
             r.Skip(static_cast<std::size_t>(floats) * 4);
-            const auto shorts = r.CountU32();
+            const auto shorts = r.U32();
             r.Skip(static_cast<std::size_t>(shorts) * 2);
         } else if (type == "NiBSplineBasisData") {
             r.U32(); // number of control points
@@ -2783,6 +2860,12 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         } else if (type == "NiStringPalette") {
             r.SizedString(); // binary string table, includes NUL separators
             r.U32(); // repeated length
+        } else if (type == "NiBlendAccumTransformInterpolator") {
+            ParseFiestaAccumulationState(r);
+        } else if (type == "NPTR_ISShader_v2") {
+            ParseFiestaShaderReference(r);
+        } else if (type == "NsPgToonExtraData") {
+            ParseFiestaToonExtraData(r);
         } else if (type == "NiBlendFloatInterpolator" || type == "NiBlendBoolInterpolator" ||
                    type == "NiBlendTransformInterpolator" || type == "NiBlendPoint3Interpolator") {
             SkipNiBlendInterpolator(r);
@@ -3960,17 +4043,27 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
 
     model.partial = partialStop;
     model.recovered = r.LegacyLayout();
+    model.decodedEmbeddedTextures = static_cast<std::uint32_t>(embeddedPixelTextures.size());
+    for (const auto typeIndex : hdr.blockTypeIndex)
+        if (typeIndex < hdr.blockTypes.size() && hdr.blockTypes[typeIndex] == "NiPixelData") ++model.undecodedEmbeddedTextures;
+    model.undecodedEmbeddedTextures -= std::min(model.undecodedEmbeddedTextures, model.decodedEmbeddedTextures);
     return model;
 }
 
 } // namespace
 
 std::expected<NifModel, std::string> LoadNifMesh(const std::filesystem::path& file, bool allowRecovery) {
-    std::ifstream in(file, std::ios::binary);
+    std::ifstream in(file, std::ios::binary | std::ios::ate);
     if (!in) {
         return std::unexpected("Konnte NIF-Datei nicht \u00f6ffnen: " + file.string());
     }
-    std::vector<std::uint8_t> data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    const auto size = in.tellg();
+    if (size < 0 || size > 256 * 1024 * 1024)
+        return std::unexpected("NIF-Dateigroesse ungueltig oder groesser als 256 MiB");
+    std::vector<std::uint8_t> data(static_cast<std::size_t>(size));
+    in.seekg(0);
+    if (!in.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>(data.size())))
+        return std::unexpected("NIF-Datei konnte nicht vollstaendig gelesen werden");
 
     std::uint32_t materialCount = 0, pixelCount = 0;
     auto result = LoadNifMeshData(data, 0, 0, false, &materialCount, &pixelCount, nullptr, false, false, false);

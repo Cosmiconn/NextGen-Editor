@@ -1,5 +1,5 @@
 // test_walk_grid.cpp
-// GUI-freier Test. Prüft WalkGrid-Grundfunktionen, Stamp+Undo/Redo, .tswalk-Roundtrip und
+// GUI-freier Test. Prüft WalkGrid-Grundfunktionen, Stamp+Undo/Redo, .shbd-Roundtrip und
 // den Legacy-Import/Export gegen die echte Rou.shbd (Byte-für-Byte-Vergleich, analog zum
 // Heightmap-Test).
 
@@ -89,16 +89,16 @@ void TestCellLevel() {
     Check(pp2.entries.empty(), "zweites Anwenden aendert nichts");
 }
 
-void TestTswalkRoundtrip() {
+void TestShbdRoundtrip() {
     WalkGrid grid(5, 3);
     grid.Set(2, 1, static_cast<std::int16_t>(0xFFE0));
 
-    const auto path = std::filesystem::temp_directory_path() / "map_editor_tswalk_test.tswalk";
-    auto saveResult = SaveTsWalk(grid, path);
-    Check(saveResult.has_value(), "SaveTsWalk erfolgreich");
+    const auto path = std::filesystem::temp_directory_path() / "map_editor_tswalk_test.shbd";
+    auto saveResult = ExportLegacyShbd(grid, path);
+    Check(saveResult.has_value(), "ExportLegacyShbd erfolgreich");
 
-    auto loadResult = LoadTsWalk(path);
-    Check(loadResult.has_value(), "LoadTsWalk erfolgreich");
+    auto loadResult = ImportLegacyShbd(path, grid.Width(), grid.Height());
+    Check(loadResult.has_value(), "ImportLegacyShbd erfolgreich");
     if (loadResult) {
         Check(loadResult->Width() == grid.Width() && loadResult->Height() == grid.Height(), "Dimensionen nach Roundtrip identisch");
         Check(loadResult->At(2, 1) == grid.At(2, 1), "Bitmask-Wert nach Roundtrip identisch");
@@ -135,6 +135,8 @@ void TestLegacyShbdRoundtrip(const std::filesystem::path& shbdPath) {
     Check(originalBytes.size() == exportedBytes.size(), "Exportierte Datei hat identische Gr\u00f6\u00dfe wie Original");
     Check(originalBytes == exportedBytes, "Exportierte Datei ist BYTE-F\u00dcR-BYTE IDENTISCH zum Original (Rou.shbd)");
 
+    original.close();
+    exported.close();
     std::filesystem::remove(exportPath);
 }
 
@@ -145,7 +147,7 @@ int main(int argc, char** argv) {
     TestBasicWalkGrid();
     TestStampAndUndo();
     TestCellLevel();
-    TestTswalkRoundtrip();
+    TestShbdRoundtrip();
 
     if (argc >= 2) {
         std::printf("\n== Legacy-shbd-Roundtrip (Byte-f\u00fcr-Byte gegen echte Datei) ==\n");

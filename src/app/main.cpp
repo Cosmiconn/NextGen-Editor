@@ -297,7 +297,6 @@ struct EditorState {
     char walkLegacyPath[512] = "";
     int walkLegacyWidth = 512;
     int walkLegacyHeight = 512;
-    char tswalkPath[512] = "walk.tswalk";
 
     core::ObjectPlacementSet placementSet;
     int selectedObject = -1;
@@ -307,14 +306,15 @@ struct EditorState {
     char newObjectModelPath[512] = "resmap\\field\\Rou\\GuildHall.nif";
     float newObjectScale = 1.0f;
     float newObjectRotDeg = 0.0f;
-    char tsobjPath[512] = "objects.tsobj";
     char legacyShmdPath[512] = "";
     char legacyIdmPath[512] = "";
     char legacyAidPath[512] = "";
     core::ObjectSpatialIndex legacySpatialIndex;
     bool hasLegacySpatialIndex = false;
     core::legacy::ZoneMetadata legacyZoneMetadata;
+    std::vector<core::legacy::PreservedMapFile> preservedMapFiles;
     bool hasLegacyZoneMetadata = false;
+    int selectedZone = 0;
     char zoneNameBuf[256] = "";
 
     app::OrbitCamera camera;
@@ -376,8 +376,6 @@ struct EditorState {
     float legacyBlockWidth = 50.0f;
     float legacyBlockHeight = 50.0f;
 
-    char tshmPath[512] = "map.tshm";
-    char tstexPath[512] = "layers.tstex";
 
     // Legacy-Texturing-Set (ini + Blend-BMPs) - für den Export werden die beim Import
     // gelesenen Nicht-Layer-Metadaten (Pfade, BlendFileName je Layer) wiederverwendet.
@@ -845,13 +843,14 @@ void SyncProjectRoots(EditorState& state) {
 core::legacy::LegacyMapProject BuildProjectFromState(const EditorState& state) {
     core::legacy::LegacyMapProject project;
     project.ini = state.legacyIniMeta;
+    project.preservedFiles = state.preservedMapFiles;
     project.heightmap = state.heightmap;
-    project.hasHeightmap = true;
+    project.hasHeightmap = state.heightmap.Width() > 0 && state.heightmap.Height() > 0;
     project.htdHeader = state.htdHeader;
     project.htdTrailingBytes = state.htdTrailingBytes;
     project.textureStack = state.textureStack;
     project.walkGrid = state.walkGrid;
-    project.hasWalkGrid = true;
+    project.hasWalkGrid = state.walkGrid.Width() > 0 && state.walkGrid.Height() > 0;
     project.shbdHeader = state.shbdHeader;
     project.objects = state.placementSet;
     project.hasObjects = true;
@@ -865,6 +864,7 @@ core::legacy::LegacyMapProject BuildProjectFromState(const EditorState& state) {
 // Verteilt ein frisch geöffnetes LegacyMapProject auf die einzelnen Editor-Zustandsfelder -
 // setzt außerdem alle Undo-Stacks/Auswahl/Dirty-Flags zurück (neue Karte, alte Historie ungültig).
 void ApplyProjectToState(EditorState& state, core::legacy::LegacyMapProject&& project, const std::filesystem::path& mapDir) {
+    state.preservedMapFiles = std::move(project.preservedFiles);
     state.heightmap = std::move(project.heightmap);
     state.htdHeader = project.htdHeader;
     state.htdTrailingBytes = project.htdTrailingBytes;
@@ -904,6 +904,7 @@ void ApplyProjectToState(EditorState& state, core::legacy::LegacyMapProject&& pr
     state.legacySpatialIndex = std::move(project.spatialIndex);
     state.hasLegacySpatialIndex = project.hasSpatialIndex;
     state.legacyZoneMetadata = std::move(project.zone);
+    state.selectedZone = 0;
     state.hasLegacyZoneMetadata = project.hasZone;
     std::snprintf(state.zoneNameBuf, sizeof(state.zoneNameBuf), "%s", state.legacyZoneMetadata.name.c_str());
 
@@ -1366,29 +1367,6 @@ void DrawAdvancedFileOps(EditorState& state) {
         }
         ImGui::Separator();
 
-        ImGui::TextDisabled("Heightmap");
-        UI::InputText("##tshmPath", state.tshmPath, sizeof(state.tshmPath));
-        ImGui::SameLine();
-        if (UI::Button("Laden (.tshm)")) {
-            auto result = core::LoadTshm(state.tshmPath);
-            if (result) {
-                state.heightmap = std::move(*result);
-                state.undo.Clear();
-                state.meshDirty = true;
-                SyncWalkGridSize(state);
-                state.statusMessage = "Geladen: " + std::string(state.tshmPath);
-            } else {
-                state.statusMessage = "Fehler beim Laden: " + result.error();
-            }
-        }
-        ImGui::SameLine();
-        if (UI::Button("Speichern (.tshm)")) {
-            auto result = core::SaveTshm(state.heightmap, state.tshmPath);
-            state.statusMessage = result ? "Gespeichert: " + std::string(state.tshmPath)
-                                          : "Fehler beim Speichern: " + result.error();
-        }
-
-        ImGui::Separator();
         ImGui::TextDisabled("Legacy-Heightmap-Import/Export (.HTD / .HTDG)");
         UI::InputText("Pfad##legacy", state.legacyPath, sizeof(state.legacyPath));
         UI::InputInt("Breite (aus .ini)", &state.legacyWidth);
@@ -1418,29 +1396,6 @@ void DrawAdvancedFileOps(EditorState& state) {
             auto result = core::ExportLegacyHtd(state.heightmap, state.legacyPath, state.htdHeader, state.htdTrailingBytes);
             state.statusMessage = result ? "Legacy-HTD exportiert nach: " + std::string(state.legacyPath)
                                           : "Export fehlgeschlagen: " + result.error();
-        }
-
-        ImGui::Separator();
-        ImGui::TextDisabled("Texturing (natives Format)");
-        UI::InputText("##tstexPath", state.tstexPath, sizeof(state.tstexPath));
-        ImGui::SameLine();
-        if (UI::Button("Laden (.tstex)")) {
-            auto result = core::LoadTsTex(state.tstexPath);
-            if (result) {
-                state.textureStack = std::move(*result);
-                state.textureUndo.Clear();
-                state.selectedLayer = state.textureStack.LayerCount() > 0 ? 0 : -1;
-                state.layerPreviewDirty = true;
-                state.statusMessage = "Textur-Layer geladen: " + std::string(state.tstexPath);
-            } else {
-                state.statusMessage = "Fehler beim Laden: " + result.error();
-            }
-        }
-        ImGui::SameLine();
-        if (UI::Button("Speichern (.tstex)")) {
-            auto result = core::SaveTsTex(state.textureStack, state.tstexPath);
-            state.statusMessage = result ? "Gespeichert: " + std::string(state.tstexPath)
-                                          : "Fehler beim Speichern: " + result.error();
         }
 
         ImGui::Separator();
@@ -1476,27 +1431,6 @@ void DrawAdvancedFileOps(EditorState& state) {
         }
 
         ImGui::Separator();
-        ImGui::TextDisabled("Block&Walk (natives Format)");
-        UI::InputText("##tswalkPath", state.tswalkPath, sizeof(state.tswalkPath));
-        ImGui::SameLine();
-        if (UI::Button("Laden (.tswalk)")) {
-            auto result = core::LoadTsWalk(state.tswalkPath);
-            if (result) {
-                state.walkGrid = std::move(*result);
-                state.walkUndo.Clear();
-                state.walkPreviewDirty = true;
-                state.statusMessage = "Block&Walk-Gitter geladen: " + std::string(state.tswalkPath);
-            } else {
-                state.statusMessage = "Fehler beim Laden: " + result.error();
-            }
-        }
-        ImGui::SameLine();
-        if (UI::Button("Speichern (.tswalk)")) {
-            auto result = core::SaveTsWalk(state.walkGrid, state.tswalkPath);
-            state.statusMessage = result ? "Gespeichert: " + std::string(state.tswalkPath)
-                                          : "Fehler beim Speichern: " + result.error();
-        }
-
         ImGui::TextDisabled("Legacy-Import/Export (.shbd)");
         UI::InputText("Pfad##walkLegacy", state.walkLegacyPath, sizeof(state.walkLegacyPath));
         UI::InputInt("Breite##walkLegacy", &state.walkLegacyWidth);
@@ -1525,28 +1459,6 @@ void DrawAdvancedFileOps(EditorState& state) {
         }
 
         ImGui::Separator();
-        ImGui::TextDisabled("Objekt-Placement (natives Format)");
-        UI::InputText("##tsobjPath", state.tsobjPath, sizeof(state.tsobjPath));
-        ImGui::SameLine();
-        if (UI::Button("Laden (.tsobj)")) {
-            auto result = core::LoadTsObj(state.tsobjPath);
-            if (result) {
-                state.placementSet = std::move(*result);
-                state.selectedObject = -1;
-                state.selectedObjects.clear();
-                state.nifMeshRenderer.LoadModelsForSet(state.placementSet, std::filesystem::path(state.tsobjPath).parent_path());
-                state.statusMessage = "Objekte geladen: " + std::string(state.tsobjPath);
-            } else {
-                state.statusMessage = "Fehler beim Laden: " + result.error();
-            }
-        }
-        ImGui::SameLine();
-        if (UI::Button("Speichern (.tsobj)")) {
-            auto result = core::SaveTsObj(state.placementSet, state.tsobjPath);
-            state.statusMessage = result ? "Gespeichert: " + std::string(state.tsobjPath)
-                                          : "Fehler beim Speichern: " + result.error();
-        }
-
         ImGui::TextDisabled("Legacy-Objekt-Placement (.shmd)");
         UI::InputText("Pfad##shmd", state.legacyShmdPath, sizeof(state.legacyShmdPath));
         if (UI::Button("Importieren##shmd")) {
@@ -1595,6 +1507,7 @@ void DrawAdvancedFileOps(EditorState& state) {
             auto result = core::legacy::ParseLegacyAid(state.legacyAidPath);
             if (result) {
                 state.legacyZoneMetadata = *result;
+                state.selectedZone = 0;
                 state.hasLegacyZoneMetadata = true;
                 std::snprintf(state.zoneNameBuf, sizeof(state.zoneNameBuf), "%s", state.legacyZoneMetadata.name.c_str());
                 state.statusMessage = "Legacy-aid importiert (Zone '" + state.legacyZoneMetadata.name + "'): " + std::string(state.legacyAidPath);
@@ -1605,14 +1518,31 @@ void DrawAdvancedFileOps(EditorState& state) {
         ImGui::SameLine();
         ImGui::BeginDisabled(!state.hasLegacyZoneMetadata);
         if (UI::Button("Exportieren##aid")) {
-            state.legacyZoneMetadata.name = state.zoneNameBuf;
             auto result = core::legacy::SerializeLegacyAid(state.legacyZoneMetadata, state.legacyAidPath);
             state.statusMessage = result ? "Legacy-aid exportiert nach: " + std::string(state.legacyAidPath)
                                           : "Export fehlgeschlagen: " + result.error();
         }
         ImGui::EndDisabled();
         if (state.hasLegacyZoneMetadata) {
-            UI::InputText("Zonenname", state.zoneNameBuf, sizeof(state.zoneNameBuf));
+            auto& zones = state.legacyZoneMetadata;
+            ImGui::Text("Zonen: %zu", zones.AreaCount());
+            if (zones.AreaCount() > 0) {
+                state.selectedZone = std::clamp(state.selectedZone, 0, static_cast<int>(zones.AreaCount()) - 1);
+                if (ImGui::BeginCombo("Zone##aid", zones.Area(state.selectedZone).name.c_str())) {
+                    for (std::size_t i = 0; i < zones.AreaCount(); ++i) {
+                        ImGui::PushID(static_cast<int>(i));
+                        if (ImGui::Selectable(zones.Area(i).name.c_str(), state.selectedZone == static_cast<int>(i))) {
+                            state.selectedZone = static_cast<int>(i);
+                            std::snprintf(state.zoneNameBuf, sizeof(state.zoneNameBuf), "%s", zones.Area(i).name.c_str());
+                        }
+                        ImGui::PopID();
+                    }
+                    ImGui::EndCombo();
+                }
+                auto& area = zones.Area(state.selectedZone);
+                if (UI::InputText("Zonenname", state.zoneNameBuf, 33)) area.name = state.zoneNameBuf;
+                ImGui::TextDisabled("Datensatztyp %d; %d Werte", area.flag, area.flag == 0 ? 3 : 5);
+            }
         }
 }
 
@@ -7801,7 +7731,7 @@ void DrawMapEditorWorkspace(EditorState& state) {
     ImGui::Separator();
     DrawToolsContent(state);
 
-    if (UI::CollapsingHeader("Erweitert (natives Format / Legacy Import-Export)")) {
+    if (UI::CollapsingHeader("Erweitert (Fiesta Import/Export)")) {
         DrawAdvancedFileOps(state);
     }
     ImGui::End();

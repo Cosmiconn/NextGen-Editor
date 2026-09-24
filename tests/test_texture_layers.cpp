@@ -2,7 +2,7 @@
 // GUI-freier Test, baubar direkt mit g++ (siehe README.md). Prüft:
 //   1) TextureLayerStack Grundfunktionen
 //   2) PaintLayerWeight inkl. Normalisierungs-Invariante + Undo/Redo
-//   3) .tstex Save/Load-Roundtrip
+//   3)  Fiesta-BMP Save/Load-Roundtrip
 //   4) LegacyMapIni-Parser gegen den echten Inhalt der hochgeladenen Rou.ini
 //      (tests/fixtures/Rou.ini - inhaltlich identisch, Kommentartexte vereinfacht, da das
 //      Original nicht UTF-8-kodiert war; das Parsing ist davon nicht betroffen, Kommentare
@@ -12,6 +12,7 @@
 #include "mapeditor/core/TextureLayerStack.hpp"
 #include "mapeditor/core/TexturePaintOps.hpp"
 #include "mapeditor/core/legacy/LegacyMapIni.hpp"
+#include "mapeditor/core/legacy/LegacyTextureSetIO.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -70,24 +71,29 @@ void TestPaintNormalization() {
     Check(std::abs(stack.WeightSumAt(4, 4) - 1.0f) < 1e-4f, "Gewichtssumme bleibt auch nach Undo ~1.0");
 }
 
-void TestTstexRoundtrip() {
+void TestFiestaTextureRoundtrip() {
     TextureLayerStack stack(5, 3);
     stack.AddLayer("Base", "base.dds", 4.0f);
     const auto rock = stack.AddLayer("Rock", "rock.dds", 5.0f);
     stack.Layer(rock).blend.Set(2, 1, 0.5f);
 
-    const auto tmpPath = std::filesystem::temp_directory_path() / "map_editor_tstex_test.tstex";
-    auto saveResult = SaveTsTex(stack, tmpPath);
-    Check(saveResult.has_value(), "SaveTsTex erfolgreich");
-
-    auto loadResult = LoadTsTex(tmpPath);
-    Check(loadResult.has_value(), "LoadTsTex erfolgreich");
-    if (loadResult) {
-        Check(loadResult->LayerCount() == 2, "LayerCount nach Roundtrip identisch");
-        Check(loadResult->Layer(1).name == "Rock", "Layer-Name nach Roundtrip identisch");
-        Check(std::abs(loadResult->Layer(1).blend.At(2, 1) - 0.5f) < 0.01f, "Blend-Gewicht nach Roundtrip identisch (Quantisierungsfehler < 0.01)");
+    const auto dir = std::filesystem::temp_directory_path() / "nextgen_texture_roundtrip";
+    std::filesystem::create_directories(dir);
+    legacy::LegacyMapIni ini;
+    ini.heightmapWidth=9; ini.heightmapHeight=9;
+    for (std::size_t i=0; i<stack.LayerCount(); ++i) {
+        legacy::LegacyLayerDef layer;
+        layer.name=stack.Layer(i).name;
+        layer.blendFileName="layer"+std::to_string(i)+".bmp";
+        ini.layers.push_back(layer);
     }
-    std::filesystem::remove(tmpPath);
+    auto saved=legacy::ExportLegacyTextureSet(stack,ini,dir,"map.ini");
+    Check(saved.has_value(),"Fiesta-Texturset exportiert");
+    auto loaded=legacy::ImportLegacyTextureSet(dir/"map.ini");
+    Check(loaded && loaded->LayerCount()==2,"Fiesta-Texturset importiert");
+    if(loaded) Check(std::abs(loaded->Layer(1).blend.At(2,1)-0.5f)<0.01f,"BMP Blend-Gewicht erhalten");
+    for(const auto* file : {"map.ini","layer0.bmp","layer1.bmp"}) std::filesystem::remove(dir/file);
+    std::filesystem::remove(dir);
 }
 
 void TestLegacyIniParser(const std::filesystem::path& iniPath) {
@@ -163,10 +169,10 @@ void TestBmpRawRowOrder() {
 }
 
 int main() {
-    std::printf("== TextureLayerStack / TexturePaintOps / .tstex Tests ==\n");
+    std::printf("== TextureLayerStack / TexturePaintOps /  Fiesta-BMP Tests ==\n");
     TestLayerStackBasics();
     TestPaintNormalization();
-    TestTstexRoundtrip();
+    TestFiestaTextureRoundtrip();
     TestBmpRawRowOrder();
 
     std::printf("\n== Legacy-ini-Parser gegen echten Rou.ini-Inhalt ==\n");

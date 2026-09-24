@@ -12,18 +12,6 @@
 namespace theseed::mapeditor::core {
 
 // -----------------------------------------------------------------------------------------
-// Natives Format ".tswalk" — Little-Endian, selbstbeschreibend.
-//   Offset 0   char[4]   Magic = "TSWK"
-//          4   uint32    Version (aktuell 1)
-//          8   uint32    Width
-//          12  uint32    Height
-//   Danach:    int16[Width*Height]  Rohwerte, row-major
-// -----------------------------------------------------------------------------------------
-
-std::expected<WalkGrid, std::string> LoadTsWalk(const std::filesystem::path& file);
-std::expected<void, std::string> SaveTsWalk(const WalkGrid& grid, const std::filesystem::path& file);
-
-// -----------------------------------------------------------------------------------------
 // Legacy-Import/-Export ("Rou.shbd"): 8 rohe Header-Bytes (in der Referenzdatei
 // 00 01 00 00 00 08 00 00 - Bedeutung nicht gesichert) + Width*Height int16, row-major.
 // Dimensionen stehen NICHT in der Datei selbst (in der Referenzdatei 512x512, siehe

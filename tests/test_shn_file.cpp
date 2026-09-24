@@ -37,6 +37,7 @@ int main(int argc, char** argv) {
     auto reloaded = LoadShnFile(editedPath);
     assert(reloaded);
     assert(ShnValueToString(reloaded->rows.front().values[0]) == ShnValueToString(edited.rows.front().values[0]));
+    a.close(); b.close();
     std::filesystem::remove(out);
     std::filesystem::remove(editedPath);
     std::cout << "SHN OK: " << src.filename().string() << " rows=" << f.rows.size() << " cols=" << f.columns.size() << "\n";

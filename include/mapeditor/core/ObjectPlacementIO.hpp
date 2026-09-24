@@ -8,15 +8,6 @@
 #include <filesystem>
 #include <string>
 
-namespace theseed::mapeditor::core {
-
-// Natives Format ".tsobj": einfaches Text-Format (eigene Zeilen, keine Legacy-Kompatibilität
-// nötig, da es sich um ein neues, selbstbeschreibendes Format handelt).
-std::expected<ObjectPlacementSet, std::string> LoadTsObj(const std::filesystem::path& file);
-std::expected<void, std::string> SaveTsObj(const ObjectPlacementSet& set, const std::filesystem::path& file);
-
-} // namespace theseed::mapeditor::core
-
 namespace theseed::mapeditor::core::legacy {
 
 // -----------------------------------------------------------------------------------------

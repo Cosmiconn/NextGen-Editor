@@ -29,7 +29,14 @@
 
 namespace theseed::mapeditor::core::legacy {
 
+// Opaque companion data is preserved without claiming its semantics are decoded.
+struct PreservedMapFile {
+    std::string fileName;
+    std::vector<std::uint8_t> bytes;
+};
+
 struct LegacyMapProject {
+    std::vector<PreservedMapFile> preservedFiles;
     LegacyMapIni ini;
 
     core::Heightmap heightmap;

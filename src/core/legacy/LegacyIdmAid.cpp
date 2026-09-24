@@ -54,19 +54,24 @@ std::expected<ObjectSpatialIndex, std::string> ParseLegacyIdm(const std::filesys
         return std::unexpected("Unerwartetes Dateiende beim f\u00fchrenden Wert: " + file.string());
     }
 
+    const auto payloadStart = in.tellg();
+    in.seekg(0, std::ios::end);
+    const auto end = in.tellg();
+    in.seekg(payloadStart);
+
     while (true) {
         std::int32_t count = 0;
-        if (!ReadRaw(in, count)) break; // sauberes Dateiende
-        if (count < 0) {
+        if (!ReadRaw(in, count)) {
+            if (in.gcount() != 0 || !in.eof()) return std::unexpected("Abgeschnittener IDM-Gruppenzaehler");
+            break;
+        }
+        if (count < 0 || static_cast<std::uint64_t>(count) * 4 > static_cast<std::uint64_t>(end - in.tellg())) {
             return std::unexpected("Negativer Gruppen-Count in .idm - Datei korrupt oder Format falsch verstanden: " + file.string());
         }
         SpatialIndexGroup group;
         group.indices.resize(static_cast<std::size_t>(count));
-        for (std::int32_t i = 0; i < count; ++i) {
-            if (!ReadRaw(in, group.indices[static_cast<std::size_t>(i)])) {
-                return std::unexpected("Unerwartetes Dateiende innerhalb einer Gruppe: " + file.string());
-            }
-        }
+        in.read(reinterpret_cast<char*>(group.indices.data()), static_cast<std::streamsize>(group.indices.size() * 4));
+        if (!in) return std::unexpected("Abgeschnittene IDM-Gruppe");
         index.groups.push_back(std::move(group));
     }
 
@@ -105,75 +110,58 @@ std::expected<void, std::string> SerializeLegacyIdm(const ObjectSpatialIndex& in
 // ---------------------------------------------------------------------------------------------
 
 std::expected<ZoneMetadata, std::string> ParseLegacyAid(const std::filesystem::path& file) {
-    std::ifstream in(file, std::ios::binary);
-    if (!in) {
-        return std::unexpected("Konnte .aid nicht \u00f6ffnen: " + file.string());
+    std::ifstream in(file, std::ios::binary | std::ios::ate);
+    if (!in) return std::unexpected("AID konnte nicht geoeffnet werden: " + file.string());
+    const auto bytes = in.tellg();
+    if (bytes < 4 || bytes > 64 * 1024 * 1024) return std::unexpected("Ungueltige AID-Dateigroesse");
+    in.seekg(0);
+    ZoneMetadata zones;
+    std::uint32_t count = 0;
+    if (!ReadRaw(in, count) || count > 100000 || std::uint64_t(count) * 48 > static_cast<std::uint64_t>(bytes) - 4)
+        return std::unexpected("AID-Zonenanzahl passt nicht zur Dateigroesse");
+    zones.recordType = static_cast<std::int32_t>(count);
+    if (count) zones.additionalAreas.resize(count - 1);
+    for (std::uint32_t i = 0; i < count; ++i) {
+        auto& area = zones.Area(i);
+        in.read(reinterpret_cast<char*>(area.rawNameBuffer), sizeof(area.rawNameBuffer));
+        if (!in || !ReadRaw(in, area.flag)) return std::unexpected("Abgeschnittener AID-Zonenkopf");
+        area.hasRawNameBuffer = true;
+        area.name.assign(reinterpret_cast<const char*>(area.rawNameBuffer),
+            PortableStrnlen(reinterpret_cast<const char*>(area.rawNameBuffer), sizeof(area.rawNameBuffer)));
+        if (area.flag != 0 && area.flag != 1) return std::unexpected("Unbekannter AID-Zonentyp: " + std::to_string(area.flag));
+        const int values = area.flag == 0 ? 3 : 5;
+        for (int v = 0; v < values; ++v)
+            if (!ReadRaw(in, area.bounds[v])) return std::unexpected("Abgeschnittene AID-Zonendaten");
     }
-
-    ZoneMetadata zone;
-    if (!ReadRaw(in, zone.recordType)) {
-        return std::unexpected("Unerwartetes Dateiende bei recordType: " + file.string());
-    }
-
-    char nameBuf[32]{};
-    in.read(nameBuf, sizeof(nameBuf));
-    if (!in) {
-        return std::unexpected("Unerwartetes Dateiende im Namensfeld: " + file.string());
-    }
-    // Nullterminiert, aber NICHT vollständig genullt (siehe Header-Kommentar) - Rohpuffer
-    // zusätzlich zum String sichern, damit ein Re-Export byte-exakt bleibt.
-    std::memcpy(zone.rawNameBuffer, nameBuf, sizeof(nameBuf));
-    zone.hasRawNameBuffer = true;
-    const std::size_t len = PortableStrnlen(nameBuf, sizeof(nameBuf));
-    zone.name.assign(nameBuf, len);
-
-    if (!ReadRaw(in, zone.flag)) {
-        return std::unexpected("Unerwartetes Dateiende bei flag: " + file.string());
-    }
-    for (float& b : zone.bounds) {
-        if (!ReadRaw(in, b)) {
-            return std::unexpected("Unerwartetes Dateiende in bounds: " + file.string());
-        }
-    }
-
-    return zone;
+    if (in.tellg() != bytes) return std::unexpected("AID enthaelt Daten hinter den deklarierten Zonen");
+    return zones;
 }
 
-std::expected<void, std::string> SerializeLegacyAid(const ZoneMetadata& zone, const std::filesystem::path& file) {
-    if (zone.name.size() > 32) {
-        return std::unexpected("SerializeLegacyAid: Zonenname l\u00e4nger als 32 Byte (Legacy-Feldgr\u00f6\u00dfe)");
+std::expected<void, std::string> SerializeLegacyAid(const ZoneMetadata& zones, const std::filesystem::path& file) {
+    const auto count = zones.AreaCount();
+    if (count > 100000) return std::unexpected("Zu viele AID-Zonen");
+    // Validate all areas before opening/truncating an existing output file.
+    for (std::size_t i = 0; i < count; ++i) {
+        const auto& area = zones.Area(i);
+        if (area.name.size() > 32 || (area.flag != 0 && area.flag != 1))
+            return std::unexpected("Ungueltiger AID-Zonenname oder Zonentyp");
     }
-
     std::ofstream out(file, std::ios::binary | std::ios::trunc);
-    if (!out) {
-        return std::unexpected("Konnte .aid nicht zum Schreiben \u00f6ffnen: " + file.string());
+    if (!out) return std::unexpected("AID konnte nicht geschrieben werden: " + file.string());
+    WriteRaw(out, static_cast<std::uint32_t>(count));
+    for (std::size_t i = 0; i < count; ++i) {
+        const auto& area = zones.Area(i);
+        char name[32]{};
+        const auto* raw = reinterpret_cast<const char*>(area.rawNameBuffer);
+        const auto rawLength = PortableStrnlen(raw, sizeof(area.rawNameBuffer));
+        if (area.hasRawNameBuffer && area.name.size() == rawLength && std::memcmp(area.name.data(), raw, rawLength) == 0)
+            std::memcpy(name, raw, sizeof(name));
+        else std::memcpy(name, area.name.data(), area.name.size());
+        out.write(name, sizeof(name));
+        WriteRaw(out, area.flag);
+        for (int v = 0; v < (area.flag == 0 ? 3 : 5); ++v) WriteRaw(out, area.bounds[v]);
     }
-
-    WriteRaw(out, zone.recordType);
-
-    char nameBuf[32]{}; // nullinitialisiert -> sauberes Zero-Padding als Default für neue Zonen
-    bool useRaw = false;
-    if (zone.hasRawNameBuffer) {
-        // Nur wiederverwenden, wenn `name` (bis zum ersten \0) noch zum Rohpuffer passt - sonst
-        // würde ein geänderter Name mit den alten Speicherresten "vermischt".
-        const std::size_t rawLen = PortableStrnlen(reinterpret_cast<const char*>(zone.rawNameBuffer), sizeof(zone.rawNameBuffer));
-        useRaw = (zone.name.size() == rawLen && std::memcmp(zone.name.data(), zone.rawNameBuffer, rawLen) == 0);
-    }
-    if (useRaw) {
-        std::memcpy(nameBuf, zone.rawNameBuffer, sizeof(nameBuf));
-    } else {
-        std::memcpy(nameBuf, zone.name.data(), zone.name.size());
-    }
-    out.write(nameBuf, sizeof(nameBuf));
-
-    WriteRaw(out, zone.flag);
-    for (const float b : zone.bounds) {
-        WriteRaw(out, b);
-    }
-
-    if (!out) {
-        return std::unexpected("Fehler beim Schreiben der .aid: " + file.string());
-    }
+    if (!out) return std::unexpected("AID-Schreibfehler");
     return {};
 }
 

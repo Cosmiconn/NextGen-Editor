@@ -5,120 +5,26 @@
 #include <fstream>
 #include <iomanip>
 #include <sstream>
-
-namespace theseed::mapeditor::core {
-
-// ---------------------------------------------------------------------------------------------
-// Natives Format ".tsobj" - einfaches, selbstbeschreibendes Text-Format.
-// ---------------------------------------------------------------------------------------------
-
-std::expected<ObjectPlacementSet, std::string> LoadTsObj(const std::filesystem::path& file) {
-    std::ifstream in(file);
-    if (!in) {
-        return std::unexpected("Konnte .tsobj nicht \u00f6ffnen: " + file.string());
-    }
-
-    std::string magic;
-    int version = 0;
-    in >> magic >> version;
-    if (magic != "TSOBJ" || version != 1) {
-        return std::unexpected("Ung\u00fcltige .tsobj-Datei (Magic/Version stimmt nicht): " + file.string());
-    }
-
-    ObjectPlacementSet set;
-
-    std::string keyword;
-    in >> keyword; // "CATEGORIES"
-    std::size_t categoryCount = 0;
-    in >> categoryCount;
-    for (std::size_t i = 0; i < categoryCount; ++i) {
-        in >> keyword; // "CATEGORY"
-        ObjectCategoryList category;
-        in >> std::quoted(category.name);
-        std::size_t pathCount = 0;
-        in >> pathCount;
-        for (std::size_t p = 0; p < pathCount; ++p) {
-            std::string path;
-            in >> std::quoted(path);
-            category.modelPaths.push_back(std::move(path));
-        }
-        set.categories.push_back(std::move(category));
-    }
-
-    in >> keyword; // "ENVIRONMENT"
-    in >> keyword >> set.environment.globalLight[0] >> set.environment.globalLight[1] >> set.environment.globalLight[2];
-    in >> keyword >> set.environment.fog[0] >> set.environment.fog[1] >> set.environment.fog[2] >> set.environment.fog[3];
-    in >> keyword >> set.environment.backgroundColor[0] >> set.environment.backgroundColor[1] >> set.environment.backgroundColor[2];
-    in >> keyword >> set.environment.frustumFar;
-    in >> keyword >> set.environment.directionLightAmbient[0] >> set.environment.directionLightAmbient[1] >> set.environment.directionLightAmbient[2];
-    in >> keyword >> set.environment.directionLightDiffuse[0] >> set.environment.directionLightDiffuse[1] >> set.environment.directionLightDiffuse[2];
-
-    in >> keyword; // "OBJECTS"
-    std::size_t objectCount = 0;
-    in >> objectCount;
-    for (std::size_t i = 0; i < objectCount; ++i) {
-        in >> keyword; // "OBJ"
-        PlacedObject obj;
-        in >> std::quoted(obj.modelPath);
-        in >> obj.posX >> obj.posY >> obj.posZ >> obj.rotX >> obj.rotY >> obj.rotZ >> obj.rotW >> obj.scale;
-        set.AddObject(std::move(obj));
-    }
-
-    if (!in) {
-        return std::unexpected("Unerwartetes Dateiende / Parse-Fehler in .tsobj: " + file.string());
-    }
-    return set;
-}
-
-std::expected<void, std::string> SaveTsObj(const ObjectPlacementSet& set, const std::filesystem::path& file) {
-    std::ofstream out(file, std::ios::trunc);
-    if (!out) {
-        return std::unexpected("Konnte .tsobj nicht zum Schreiben \u00f6ffnen: " + file.string());
-    }
-
-    out << "TSOBJ 1\n";
-    out << "CATEGORIES " << set.categories.size() << "\n";
-    for (const auto& category : set.categories) {
-        out << "CATEGORY " << std::quoted(category.name) << " " << category.modelPaths.size() << "\n";
-        for (const auto& path : category.modelPaths) {
-            out << std::quoted(path) << "\n";
-        }
-    }
-
-    out << "ENVIRONMENT\n";
-    const auto& env = set.environment;
-    out << "GlobalLight " << env.globalLight[0] << " " << env.globalLight[1] << " " << env.globalLight[2] << "\n";
-    out << "Fog " << env.fog[0] << " " << env.fog[1] << " " << env.fog[2] << " " << env.fog[3] << "\n";
-    out << "BackgroundColor " << env.backgroundColor[0] << " " << env.backgroundColor[1] << " " << env.backgroundColor[2] << "\n";
-    out << "Frustum " << env.frustumFar << "\n";
-    out << "DirectionLightAmbient " << env.directionLightAmbient[0] << " " << env.directionLightAmbient[1] << " " << env.directionLightAmbient[2] << "\n";
-    out << "DirectionLightDiffuse " << env.directionLightDiffuse[0] << " " << env.directionLightDiffuse[1] << " " << env.directionLightDiffuse[2] << "\n";
-
-    out << "OBJECTS " << set.Count() << "\n";
-    for (const auto& obj : set.Objects()) {
-        out << "OBJ " << std::quoted(obj.modelPath) << " "
-            << obj.posX << " " << obj.posY << " " << obj.posZ << " "
-            << obj.rotX << " " << obj.rotY << " " << obj.rotZ << " " << obj.rotW << " "
-            << obj.scale << "\n";
-    }
-
-    if (!out) {
-        return std::unexpected("Fehler beim Schreiben der .tsobj: " + file.string());
-    }
-    return {};
-}
-
-} // namespace theseed::mapeditor::core
-
-// ---------------------------------------------------------------------------------------------
-// Legacy-Import/-Export ("Rou.shmd")
-// ---------------------------------------------------------------------------------------------
+#include <charconv>
+#include <unordered_map>
 
 namespace theseed::mapeditor::core::legacy {
+namespace {
+std::string CanonicalShmd(const ObjectPlacementSet& set);
+bool ReadFloat(std::istream& in, float& value) {
+    std::string token;
+    if (!(in >> token)) return false;
+    const auto [end, error] = std::from_chars(token.data(), token.data() + token.size(), value);
+    return error == std::errc{} && end == token.data() + token.size();
+}
+} // namespace
 
 std::expected<ObjectPlacementSet, std::string> ParseLegacyShmd(const std::filesystem::path& file) {
-    std::ifstream in(file, std::ios::binary);
-    if (!in) {
+    std::ifstream source(file, std::ios::binary);
+    std::string original((std::istreambuf_iterator<char>(source)), {});
+    std::istringstream in(original);
+    in.imbue(std::locale::classic());
+    if (!source) {
         return std::unexpected("Konnte .shmd nicht \u00f6ffnen: " + file.string());
     }
 
@@ -128,6 +34,8 @@ std::expected<ObjectPlacementSet, std::string> ParseLegacyShmd(const std::filesy
     if (!(in >> formatVersion)) {
         return std::unexpected("Leere/ung\u00fcltige .shmd-Datei: " + file.string());
     }
+
+    if (formatVersion != "shmd0_5") return std::unexpected("Unbekannte SHMD-Version: " + formatVersion);
 
     // Kategorie-Bl\u00f6cke (generisch, nicht auf "Sky"/"Water"/"GroundObject" hartkodiert) bis
     // zum Token "GlobalLight".
@@ -181,7 +89,9 @@ std::expected<ObjectPlacementSet, std::string> ParseLegacyShmd(const std::filesy
             float legacyX = 0, legacyY = 0, legacyZ = 0;
             float legacyRotX = 0, legacyRotY = 0, legacyRotZ = 0, legacyRotW = 1;
             float scale = 1;
-            if (!(in >> legacyX >> legacyY >> legacyZ >> legacyRotX >> legacyRotY >> legacyRotZ >> legacyRotW >> scale)) {
+            if (!ReadFloat(in, legacyX) || !ReadFloat(in, legacyY) || !ReadFloat(in, legacyZ) ||
+                !ReadFloat(in, legacyRotX) || !ReadFloat(in, legacyRotY) || !ReadFloat(in, legacyRotZ) ||
+                !ReadFloat(in, legacyRotW) || !ReadFloat(in, scale)) {
                 return std::unexpected("Unerwartetes Dateiende in Instanzdaten von '" + modelPath + "': " + file.string());
             }
             PlacedObject obj;
@@ -207,9 +117,16 @@ std::expected<ObjectPlacementSet, std::string> ParseLegacyShmd(const std::filesy
             set.AddObject(std::move(obj));
         }
     }
-    if (!in) {
-        return std::unexpected("Token 'DataObjectLoadingEnd' nicht gefunden: " + file.string());
+    // Some supplied shmd0_5 maps end on a complete object boundary (or directly
+    // after Frustum). Preserve this footer-less variant; an incomplete record
+    // still fails above and is never treated as a complete map.
+    if (in.eof() && token != "DataObjectLoadingEnd") {
+        set.hasLightingFooter = false;
+        set.originalText = std::move(original);
+        set.originalCanonical = CanonicalShmd(set);
+        return set;
     }
+    if (!in) return std::unexpected("SHMD-Lesefehler: " + file.string());
 
     if (!(in >> kw) || kw != "DirectionLightAmbient" ||
         !(in >> env.directionLightAmbient[0] >> env.directionLightAmbient[1] >> env.directionLightAmbient[2])) {
@@ -220,6 +137,8 @@ std::expected<ObjectPlacementSet, std::string> ParseLegacyShmd(const std::filesy
         return std::unexpected("Fehler beim Lesen von DirectionLightDiffuse: " + file.string());
     }
 
+    set.originalText = std::move(original);
+    set.originalCanonical = CanonicalShmd(set);
     return set;
 }
 
@@ -232,6 +151,13 @@ namespace {
 // from-zero" (-> "482.320313", typisches MSVC-CRT-Verhalten). Ohne diese manuelle Rundung
 // wich der Export in ca. 60 von 1580 Zeilen im letzten Nachkommadigit vom Original ab.
 std::string FormatFloat6(float value) {
+    if (std::isnan(value)) return std::signbit(value) ? "-nan(ind)" : "nan";
+    if (std::isinf(value)) return std::signbit(value) ? "-inf" : "inf";
+    if (std::abs(static_cast<double>(value)) > 9e12) {
+        char text[64];
+        const auto [end, ec] = std::to_chars(text, text + sizeof(text), value);
+        return ec == std::errc{} ? std::string(text, end) : "0";
+    }
     const double d = static_cast<double>(value);
     const bool negative = std::signbit(d);
     const double absVal = negative ? -d : d;
@@ -245,7 +171,7 @@ std::string FormatFloat6(float value) {
 
 // Schreibt eine "Zeile" aus beliebig vielen bereits formatierten Tokens: jedes Token gefolgt von
 // einem Leerzeichen, danach CRLF - exakt das im Original beobachtete Muster.
-void WriteRecordLine(std::ofstream& out, const std::vector<std::string>& tokens) {
+void WriteRecordLine(std::ostream& out, const std::vector<std::string>& tokens) {
     for (const auto& t : tokens) {
         out << t << " ";
     }
@@ -254,12 +180,10 @@ void WriteRecordLine(std::ofstream& out, const std::vector<std::string>& tokens)
 
 } // namespace
 
-std::expected<void, std::string> SerializeLegacyShmd(const ObjectPlacementSet& set, const std::filesystem::path& file) {
-    std::ofstream out(file, std::ios::binary | std::ios::trunc);
-    if (!out) {
-        return std::unexpected("Konnte .shmd nicht zum Schreiben \u00f6ffnen: " + file.string());
-    }
-
+namespace {
+std::string CanonicalShmd(const ObjectPlacementSet& set) {
+    std::ostringstream out;
+    out.imbue(std::locale::classic());
     WriteRecordLine(out, {"shmd0_5"});
 
     for (const auto& category : set.categories) {
@@ -279,19 +203,11 @@ std::expected<void, std::string> SerializeLegacyShmd(const ObjectPlacementSet& s
     // Original-Blockstruktur exakt, solange die Objektliste nicht umsortiert wurde).
     std::vector<std::string> blockOrder;
     std::vector<std::vector<const PlacedObject*>> blockObjects;
+    std::unordered_map<std::string, std::size_t> groupIndex;
     for (const auto& obj : set.Objects()) {
-        bool found = false;
-        for (std::size_t i = 0; i < blockOrder.size(); ++i) {
-            if (blockOrder[i] == obj.modelPath) {
-                blockObjects[i].push_back(&obj);
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            blockOrder.push_back(obj.modelPath);
-            blockObjects.push_back({&obj});
-        }
+        const auto [it, inserted] = groupIndex.try_emplace(obj.modelPath, blockOrder.size());
+        if (inserted) { blockOrder.push_back(obj.modelPath); blockObjects.emplace_back(); }
+        blockObjects[it->second].push_back(&obj);
     }
 
     for (std::size_t i = 0; i < blockOrder.size(); ++i) {
@@ -306,14 +222,23 @@ std::expected<void, std::string> SerializeLegacyShmd(const ObjectPlacementSet& s
         }
     }
 
+    if (set.hasLightingFooter) {
     out << "DataObjectLoadingEnd\r\n"; // Sonderfall: KEIN trailing space (siehe Header-Kommentar)
 
     WriteRecordLine(out, {"DirectionLightAmbient", FormatFloat6(env.directionLightAmbient[0]), FormatFloat6(env.directionLightAmbient[1]), FormatFloat6(env.directionLightAmbient[2])});
     WriteRecordLine(out, {"DirectionLightDiffuse", FormatFloat6(env.directionLightDiffuse[0]), FormatFloat6(env.directionLightDiffuse[1]), FormatFloat6(env.directionLightDiffuse[2])});
 
-    if (!out) {
-        return std::unexpected("Fehler beim Schreiben der .shmd: " + file.string());
     }
+    return out.str();
+}
+} // namespace
+
+std::expected<void, std::string> SerializeLegacyShmd(const ObjectPlacementSet& set, const std::filesystem::path& file) {
+    const auto canonical = CanonicalShmd(set);
+    const auto& text = !set.originalText.empty() && canonical == set.originalCanonical ? set.originalText : canonical;
+    std::ofstream out(file, std::ios::binary | std::ios::trunc);
+    out.write(text.data(), static_cast<std::streamsize>(text.size()));
+    if (!out) return std::unexpected("Fehler beim Schreiben der .shmd: " + file.string());
     return {};
 }
 

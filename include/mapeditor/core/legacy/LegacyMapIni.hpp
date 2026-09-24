@@ -5,8 +5,7 @@
 // als auch die Textur-Layer-Definitionen - beide Module (Heightmap-Import, Texturing-Import)
 // nutzen denselben Parser, statt das Format zweimal zu interpretieren.
 //
-// Bewusst NICHT Teil des nativen TheSeed-Formats - reiner Import-/Migrationspfad, siehe
-// docs/MAP_FORMAT.md.
+// Preserves the source text and unknown fields while patching edited known values.
 
 #include <cstdint>
 #include <expected>
@@ -38,14 +37,13 @@ struct LegacyMapIni {
     std::uint32_t quadsWide = 0;
     std::uint32_t quadsHigh = 0;
     std::vector<LegacyLayerDef> layers;
+    std::string originalText;
+    std::string originalCanonical;
 };
 
 std::expected<LegacyMapIni, std::string> ParseLegacyMapIni(const std::filesystem::path& file);
 
-// Schreibt die Struktur wieder im Legacy-Text-Layout (Key:Value + #Layer{}-Blöcke). Inhaltlich
-// vollständig (parse(serialize(x)) == x), aber NICHT byte-identisch zum Original: Kommentare
-// und exaktes Whitespace/Tab-Layout des Originals werden nicht reproduziert, da sie beim Parsen
-// bewusst verworfen werden (siehe ParseLegacyMapIni).
+// Unedited imports retain their bytes; edits patch known values and retain unknown lines.
 std::expected<void, std::string> SerializeLegacyMapIni(const LegacyMapIni& ini, const std::filesystem::path& file);
 
 } // namespace theseed::mapeditor::core::legacy

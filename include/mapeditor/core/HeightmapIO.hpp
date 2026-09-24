@@ -1,7 +1,6 @@
 #pragma once
 // HeightmapIO.hpp
-// Persistenz für das Heightmap-Modul: natives, selbstbeschreibendes TheSeed-Format
-// sowie ein Importer für das reverse-engineerte Legacy-Format (Referenzdateien "Rou.HTD").
+// Import und Export der Fiesta-Heightmaps HTD/HTDG mit erhaltenem Header und Trailer.
 
 #include "mapeditor/core/Heightmap.hpp"
 
@@ -12,25 +11,6 @@
 #include <vector>
 
 namespace theseed::mapeditor::core {
-
-// -----------------------------------------------------------------------------------------
-// Natives Format ".tshm" (TheSeed HeightMap) — Little-Endian.
-//
-//   Offset  Typ        Feld
-//   0       char[4]    Magic = "TSHM"
-//   4       uint32     Version (aktuell 1)
-//   8       uint32     Width
-//   12      uint32     Height
-//   16      float32    BlockWidth
-//   20      float32    BlockHeight
-//   24      float32[]  Höhenwerte, row-major (Width * Height Einträge)
-//
-// Im Gegensatz zum Legacy-Format sind die Gitterdimensionen Teil der Datei selbst
-// (kein externes .ini mit HEIGHTMAP_WIDTH/HEIGHT nötig).
-// -----------------------------------------------------------------------------------------
-
-std::expected<Heightmap, std::string> LoadTshm(const std::filesystem::path& file);
-std::expected<void, std::string> SaveTshm(const Heightmap& heightmap, const std::filesystem::path& file);
 
 // -----------------------------------------------------------------------------------------
 // Legacy-Import (z.B. "Rou.HTD" / "Rou.HTDG"):

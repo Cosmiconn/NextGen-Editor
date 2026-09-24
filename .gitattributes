@@ -1,0 +1,9 @@
+* text=auto
+*.cpp text eol=lf
+*.hpp text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
+*.tsv text eol=lf whitespace=-blank-at-eol
+tests/fixtures/** -text
+*.png -text
+*.zip -text

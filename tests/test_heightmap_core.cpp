@@ -2,7 +2,7 @@
 // Eigenständiger Smoke-/Regressionstest ohne GUI-Abhängigkeiten (kein GLFW/ImGui nötig).
 // Baubar direkt mit g++, siehe README.md. Prüft:
 //   1) Heightmap-Grundfunktionen (At/Set/SampleWorld/MinMax)
-//   2) .tshm Save/Load-Roundtrip
+//   2) .HTD Save/Load-Roundtrip
 //   3) Legacy-Import gegen die echten, vom Nutzer bereitgestellten Rou.HTD/Rou.HTDG-Dateien
 //      (Pfad wird als Kommandozeilenargument übergeben, Test wird sonst übersprungen).
 
@@ -89,7 +89,7 @@ void TestFlattenConverges() {
     Check(std::abs(hm.At(4, 4) - 0.0f) < 1.0f, "Flatten konvergiert gegen Zielhöhe");
 }
 
-void TestTshmRoundtrip() {
+void TestHtdRoundtrip() {
     Heightmap hm(5, 3, 25.0f, 30.0f);
     for (std::uint32_t z = 0; z < hm.Height(); ++z) {
         for (std::uint32_t x = 0; x < hm.Width(); ++x) {
@@ -97,12 +97,12 @@ void TestTshmRoundtrip() {
         }
     }
 
-    const auto tmpPath = std::filesystem::temp_directory_path() / "map_editor_roundtrip_test.tshm";
-    auto saveResult = SaveTshm(hm, tmpPath);
-    Check(saveResult.has_value(), "SaveTshm erfolgreich");
+    const auto tmpPath = std::filesystem::temp_directory_path() / "map_editor_roundtrip_test.HTD";
+    auto saveResult = ExportLegacyHtd(hm, tmpPath);
+    Check(saveResult.has_value(), "ExportLegacyHtd erfolgreich");
 
-    auto loadResult = LoadTshm(tmpPath);
-    Check(loadResult.has_value(), "LoadTshm erfolgreich");
+    auto loadResult = ImportLegacyHtd(tmpPath, hm.Width(), hm.Height(), hm.BlockWidth(), hm.BlockHeight());
+    Check(loadResult.has_value(), "ImportLegacyHtd erfolgreich");
     if (loadResult) {
         const Heightmap& loaded = *loadResult;
         Check(loaded.Width() == hm.Width() && loaded.Height() == hm.Height(), "Dimensionen nach Roundtrip identisch");
@@ -170,6 +170,8 @@ void TestLegacyExportRoundtrip(const std::filesystem::path& htdPath) {
     Check(originalBytes.size() == exportedBytes.size(), "Exportierte Datei hat identische Größe wie Original");
     Check(originalBytes == exportedBytes, "Exportierte Datei ist BYTE-FÜR-BYTE IDENTISCH zum Original (Rou.HTD)");
 
+    original.close();
+    exported.close();
     std::filesystem::remove(exportPath);
 }
 
@@ -227,7 +229,7 @@ int main(int argc, char** argv) {
     TestBasicHeightmap();
     TestUndoRedo();
     TestFlattenConverges();
-    TestTshmRoundtrip();
+    TestHtdRoundtrip();
     TestNaNAndZeroBlockSizeSafety();
 
     if (argc >= 3) {

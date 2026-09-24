@@ -8,8 +8,10 @@
 #include "mapeditor/core/legacy/LegacyMapProject.hpp"
 
 #include <cmath>
+#include <algorithm>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 
 using namespace theseed::mapeditor::core;
 
@@ -26,9 +28,44 @@ void Check(bool condition, const char* what) {
     }
 }
 
+
+void TestIniPreservation() {
+    const auto path = std::filesystem::temp_directory_path() / "nextgen-ini-preservation.ini";
+    const std::string original = "// Keep this comment\r\n#HEIGHTMAP_WIDTH : 3\r\n#HEIGHTMAP_HEIGHT : 3\r\n"
+        "#VendorValue : mystery\r\n#OneBlockWidth : 50f // keep units comment\r\n"
+        "#Layer\r\n{\r\n#Name : original\r\n#UVScaleDiffuse : 1f\r\n#UnknownLayer : xyz\r\n}\r\n#END_FILE\r\n// footer\r\n";
+    { std::ofstream out(path, std::ios::binary); out << original; }
+    const auto read = [&] { std::ifstream in(path, std::ios::binary); return std::string((std::istreambuf_iterator<char>(in)), {}); };
+    auto ini = legacy::ParseLegacyMapIni(path);
+    Check(ini.has_value(), "INI preservation input parsed");
+    if (!ini) return;
+    Check(legacy::SerializeLegacyMapIni(*ini, path).has_value() && read() == original, "Unedited INI retains every byte");
+    ini->oneBlockWidth = 75.25f;
+    ini->layers[0].uvScaleDiffuse = 0.123456789f;
+    ini->layers[0].name = "edited";
+    Check(legacy::SerializeLegacyMapIni(*ini, path).has_value(), "Edited INI written");
+    const auto text = read();
+    Check(text.find("#VendorValue : mystery") != std::string::npos && text.find("#UnknownLayer : xyz") != std::string::npos
+        && text.find("// keep units comment") != std::string::npos && text.ends_with("// footer\r\n"), "INI unknown fields and comments retained");
+    const auto edited = legacy::ParseLegacyMapIni(path);
+    Check(edited && edited->oneBlockWidth == 75.25f && edited->layers[0].uvScaleDiffuse == ini->layers[0].uvScaleDiffuse
+        && edited->layers[0].name == "edited", "INI edits and float precision survive reparse");
+    ini->layers.push_back(ini->layers[0]); ini->layers.back().name = "added";
+    Check(legacy::SerializeLegacyMapIni(*ini, path).has_value(), "Add INI layer");
+    const auto added = legacy::ParseLegacyMapIni(path);
+    Check(added && added->layers.size() == 2 && added->layers.back().name == "added", "New INI layer survives reparse");
+    ini->layers.clear();
+    Check(legacy::SerializeLegacyMapIni(*ini, path).has_value(), "Remove INI layers");
+    const auto removed = legacy::ParseLegacyMapIni(path);
+    Check(removed && removed->layers.empty() && read().find("#VendorValue : mystery") != std::string::npos,
+        "Layer removal preserves global unknown fields");
+    std::filesystem::remove(path);
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
+    TestIniPreservation();
     if (argc < 2) {
         std::printf("(Test \u00fcbersprungen - Aufruf mit: %s <pfad/zu/karte.ini>)\n", argv[0]);
         return 0;
@@ -70,6 +107,8 @@ int main(int argc, char** argv) {
     std::filesystem::remove_all(outDir);
 
     std::printf("\n== Speichern nach %s ==\n", outDir.string().c_str());
+    const std::vector<std::uint8_t> companion{0, 1, 255, 0, 42};
+    project->preservedFiles.push_back({"roundtrip.sbi", companion});
     auto saveResult = legacy::SaveLegacyMap(*project, outDir, stem);
     Check(saveResult.has_value(), "SaveLegacyMap erfolgreich");
     if (!saveResult) {
@@ -88,6 +127,13 @@ int main(int argc, char** argv) {
     for (const auto& issue : reopenReport.issues) {
         std::printf("         Hinweis: %s\n", issue.c_str());
     }
+
+    const auto kept = std::find_if(reopened->preservedFiles.begin(), reopened->preservedFiles.end(),
+        [](const auto& file) { return file.fileName == "roundtrip.sbi"; });
+    Check(kept != reopened->preservedFiles.end() && kept->bytes == companion, "Opaque companion remains byte-exact");
+    project->preservedFiles.push_back({"../invalid.sbi", companion});
+    Check(!legacy::SaveLegacyMap(*project, outDir, stem), "Reject escaping companion path before export");
+    project->preservedFiles.pop_back();
 
     Check(reopened->heightmap.Width() == project->heightmap.Width() &&
               reopened->heightmap.Height() == project->heightmap.Height(),

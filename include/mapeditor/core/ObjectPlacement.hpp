@@ -40,6 +40,9 @@ class ObjectPlacementSet {
 public:
     std::vector<ObjectCategoryList> categories;
     SceneEnvironment environment;
+    bool hasLightingFooter = true;
+    std::string originalText;
+    std::string originalCanonical;
 
     std::size_t AddObject(PlacedObject object);
     void RemoveObject(std::size_t index);

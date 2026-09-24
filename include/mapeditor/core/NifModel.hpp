@@ -187,6 +187,8 @@ struct NifNodeInfo {
 struct NifModel {
     bool recovered = false; // compatibility parsing was required
     bool partial = false;   // stopped before all declared blocks were consumed
+    std::uint32_t decodedEmbeddedTextures = 0;
+    std::uint32_t undecodedEmbeddedTextures = 0;
     std::string rootName;
     std::vector<NifMeshPart> parts;
     std::vector<NifNodeInfo> nodes; // alle benannten NiNode-Knoten (Weltposition)

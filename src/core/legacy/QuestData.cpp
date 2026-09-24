@@ -116,6 +116,7 @@ std::expected<QuestDataFile, std::string> LoadQuestData(const std::filesystem::p
         }
 
         const std::uint32_t dropCount = r.U32();
+        if (!r.Ok() || dropCount > 11) return std::unexpected("Quest drop count exceeds the 11 stored slots");
         rec.drops.reserve(dropCount);
         for (std::uint32_t i = 0; i < dropCount; ++i) {
             QuestDrop d;

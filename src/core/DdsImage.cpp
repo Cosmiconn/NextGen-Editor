@@ -2,6 +2,8 @@
 
 #include <cstring>
 #include <fstream>
+#include <bit>
+#include <limits>
 
 namespace theseed::mapeditor::core {
 
@@ -112,7 +114,7 @@ BcFormat DetectFormat(const char fourCC[4]) {
 
 std::expected<DdsImage, std::string> DecodeBcImage(std::uint32_t width, std::uint32_t height,
                                                      std::uint32_t pixelFormat,
-                                                     const std::vector<std::uint8_t>& data) {
+                                                     std::span<const std::uint8_t> data) {
     // pixelFormat ist ein Gamebryo-internes Enum (kleine Werte 0..N), NICHT der rohe D3DFORMAT-
     // Code der Engine (bestaetigt: David, 22.09.2026 - Fiesta rendert direkt mit DirectX 9, aber
     // dieses Feld bildet trotzdem ueber eine eigene Tabelle ab statt den D3DFORMAT-Wert 1:1 zu
@@ -130,7 +132,7 @@ std::expected<DdsImage, std::string> DecodeBcImage(std::uint32_t width, std::uin
         }
         return std::unexpected("Nicht unterstuetztes NiPixelData-Pixelformat: " + std::to_string(pixelFormat));
     }
-    if (width == 0 || height == 0) {
+    if (width == 0 || height == 0 || static_cast<std::uint64_t>(width) * height > 64u * 1024u * 1024u) {
         return std::unexpected("Ungueltige NiPixelData-Dimensionen");
     }
 
@@ -188,6 +190,51 @@ std::expected<DdsImage, std::string> DecodeBcImage(std::uint32_t width, std::uin
     return image;
 }
 
+std::expected<DdsImage, std::string> DecodePackedImage(
+    std::uint32_t width, std::uint32_t height, std::uint32_t bitsPerPixel,
+    const std::array<std::uint32_t, 4>& masks, std::span<const std::uint8_t> data,
+    std::size_t rowPitch) {
+    const auto pixels = static_cast<std::uint64_t>(width) * height;
+    if (!pixels || pixels > 64u * 1024u * 1024u || bitsPerPixel == 0 ||
+        bitsPerPixel > 32 || bitsPerPixel % 8 != 0)
+        return std::unexpected("Ungueltige Rohpixel-Dimensionen/Bittiefe");
+    const auto pixelBytes = bitsPerPixel / 8;
+    const auto rowBytes = static_cast<std::size_t>(width) * pixelBytes;
+    if (!rowPitch) rowPitch = rowBytes;
+    if (rowPitch < rowBytes || rowPitch > data.size() / height)
+        return std::unexpected("Rohpixel kuerzer als das angegebene Top-Mip/Zeilenformat");
+    std::uint32_t used = 0;
+    std::array<unsigned, 4> shifts{};
+    std::array<std::uint32_t, 4> maxima{};
+    for (std::size_t c = 0; c < masks.size(); ++c) {
+        const auto mask = masks[c];
+        if ((used & mask) || (bitsPerPixel < 32 && (mask >> bitsPerPixel)))
+            return std::unexpected("Ueberlappende oder zu grosse Farbmasken");
+        used |= mask;
+        if (!mask) continue;
+        shifts[c] = std::countr_zero(mask);
+        maxima[c] = mask >> shifts[c];
+        if ((maxima[c] & (maxima[c] + 1u)) != 0)
+            return std::unexpected("Nicht zusammenhaengende Farbmaske");
+    }
+    if (!used) return std::unexpected("Rohpixel ohne Farbmasken");
+    DdsImage image{width, height, std::vector<std::uint8_t>(static_cast<std::size_t>(pixels) * 4)};
+    for (std::uint32_t y = 0; y < height; ++y) {
+        const auto* src = data.data() + static_cast<std::size_t>(y) * rowPitch;
+        auto* dst = image.rgba.data() + static_cast<std::size_t>(y) * width * 4;
+        for (std::uint32_t x = 0; x < width; ++x) {
+            std::uint32_t packed = 0;
+            for (unsigned b = 0; b < pixelBytes; ++b) packed |= std::uint32_t(src[x * pixelBytes + b]) << (8 * b);
+            for (std::size_t c = 0; c < masks.size(); ++c) {
+                const auto value = (packed & masks[c]) >> shifts[c];
+                dst[x * 4 + c] = masks[c] ? static_cast<std::uint8_t>(
+                    (static_cast<std::uint64_t>(value) * 255 + maxima[c] / 2) / maxima[c]) : (c == 3 ? 255 : 0);
+            }
+        }
+    }
+    return image;
+}
+
 void FlipVertical(DdsImage& image) {
     const std::size_t rowBytes = static_cast<std::size_t>(image.width) * 4;
     std::vector<std::uint8_t> row(rowBytes);
@@ -215,6 +262,32 @@ std::expected<DdsImage, std::string> LoadDdsImage(const std::filesystem::path& f
     std::uint32_t height = 0, width = 0;
     std::memcpy(&height, header + 12, 4);
     std::memcpy(&width, header + 16, 4);
+
+    auto u32 = [&](std::size_t offset) { std::uint32_t v; std::memcpy(&v, header + offset, 4); return v; };
+    if (u32(4) != 124 || u32(76) != 32 || width == 0 || height == 0 ||
+        static_cast<std::uint64_t>(width) * height > 64u * 1024u * 1024u)
+        return std::unexpected("Ungueltiger DDS-Header oder Bildgroesse: " + file.string());
+    if ((u32(80) & 0x40u) != 0 && (u32(80) & 0x4u) == 0) { // DDPF_RGB, no FOURCC
+        const auto bits = u32(88);
+        if (!bits || bits > 32 || bits % 8)
+            return std::unexpected("Nicht unterstuetzte DDS-RGB-Bittiefe");
+        const auto rowBytes = static_cast<std::size_t>(width) * (bits / 8);
+        const auto pitch = (u32(8) & 8u) ? static_cast<std::size_t>(u32(20)) : rowBytes;
+        if (pitch < rowBytes || pitch > 256u * 1024u * 1024u / height)
+            return std::unexpected("Ungueltiger DDS-RGB-Zeilenabstand");
+        const auto bytes = pitch * height;
+        const auto start = in.tellg(); in.seekg(0, std::ios::end);
+        if (in.tellg() - start < static_cast<std::streamoff>(bytes))
+            return std::unexpected("DDS-RGB-Datei ist abgeschnitten");
+        in.seekg(start);
+        std::vector<std::uint8_t> raw(bytes);
+        in.read(reinterpret_cast<char*>(raw.data()), static_cast<std::streamsize>(raw.size()));
+        if (!in) return std::unexpected("DDS-RGB-Lesefehler");
+        auto image = DecodePackedImage(width, height, bits, {u32(92), u32(96), u32(100),
+            (u32(80) & 1u) ? u32(104) : 0u}, raw, pitch);
+        if (image) FlipVertical(*image);
+        return image;
+    }
 
     char fourCC[4]{};
     std::memcpy(fourCC, header + 84, 4);
@@ -269,13 +342,14 @@ std::expected<DdsImage, std::string> LoadTgaImage(const std::filesystem::path& f
     const std::uint8_t depth = h[16];
     if (width == 0 || height == 0) return std::unexpected("Ungueltige TGA-Dimensionen: " + file.string());
     const bool grayscale = imageType == 3;
-    if (grayscale ? depth != 8 : (depth != 24 && depth != 32)) {
+    if (grayscale ? depth != 8 : (depth != 16 && depth != 24 && depth != 32)) {
         return std::unexpected("Nicht unterstuetzte TGA-Bittiefe: " + std::to_string(depth) + ": " + file.string());
     }
     in.seekg(idLen, std::ios::cur);
     if (!in) return std::unexpected("Unerwartetes TGA-Dateiende nach Image-ID: " + file.string());
     const std::size_t pixelBytes = grayscale ? 1u : static_cast<std::size_t>(depth / 8u);
     const std::size_t pixelCount = static_cast<std::size_t>(width) * height;
+    if (pixelCount > 64u * 1024u * 1024u) return std::unexpected("TGA exceeds decoded pixel limit");
     DdsImage image;
     image.width = width; image.height = height;
     image.rgba.resize(pixelCount * 4);
@@ -283,9 +357,29 @@ std::expected<DdsImage, std::string> LoadTgaImage(const std::filesystem::path& f
     auto putPixel = [&](const std::uint8_t* src) {
         auto* dst = image.rgba.data() + outPixel * 4;
         if (grayscale) { dst[0] = dst[1] = dst[2] = src[0]; dst[3] = 255; }
+        else if (depth == 16) {
+            const auto packed = static_cast<std::uint16_t>(src[0] | (src[1] << 8));
+            dst[0] = static_cast<std::uint8_t>((((packed >> 10) & 31) * 255 + 15) / 31);
+            dst[1] = static_cast<std::uint8_t>((((packed >> 5) & 31) * 255 + 15) / 31);
+            dst[2] = static_cast<std::uint8_t>(((packed & 31) * 255 + 15) / 31);
+            dst[3] = (h[17] & 15) == 0 || (packed & 0x8000) ? 255 : 0;
+        }
         else { dst[0] = src[2]; dst[1] = src[1]; dst[2] = src[0]; dst[3] = pixelBytes == 4 ? src[3] : 255; }
         ++outPixel;
     };
+    if (imageType != 10) {
+        const auto start = in.tellg();
+        in.seekg(0, std::ios::end);
+        const auto remaining = in.tellg() - start;
+        in.seekg(start);
+        const auto bytes = pixelCount * pixelBytes;
+        if (remaining < 0 || static_cast<std::uint64_t>(remaining) < bytes)
+            return std::unexpected("Truncated TGA pixels");
+        std::vector<std::uint8_t> raw(bytes);
+        in.read(reinterpret_cast<char*>(raw.data()), static_cast<std::streamsize>(bytes));
+        if (!in) return std::unexpected("TGA pixel read failed");
+        for (std::size_t i = 0; i < bytes; i += pixelBytes) putPixel(raw.data() + i);
+    }
     std::vector<std::uint8_t> px(pixelBytes);
     while (outPixel < pixelCount) {
         std::size_t run = 1;
@@ -308,6 +402,12 @@ std::expected<DdsImage, std::string> LoadTgaImage(const std::filesystem::path& f
     // TGA Origin-Bit: bit 5 gesetzt = obere Zeile zuerst, sonst untere Zeile zuerst.
     // OpenGL erwartet bei unserem gemeinsamen Texturpfad V=0 unten; daher nur bei Top-Origin flippen.
     if ((h[17] & 0x20u) != 0) FlipVertical(image);
+    if ((h[17] & 0x10u) != 0) {
+        for (std::size_t y = 0; y < height; ++y)
+            for (std::size_t x = 0; x < width / 2u; ++x)
+                for (std::size_t c = 0; c < 4; ++c)
+                    std::swap(image.rgba[(y * width + x) * 4 + c], image.rgba[(y * width + width - 1 - x) * 4 + c]);
+    }
     return image;
 }
 

@@ -6,6 +6,9 @@
 
 #include <algorithm>
 
+#include <fstream>
+#include <set>
+
 namespace theseed::mapeditor::core::legacy {
 
 namespace {
@@ -141,12 +144,38 @@ std::expected<LegacyMapProject, std::string> OpenLegacyMap(
         }
     }
 
+    // Keep companion files whose semantics are not edited here. Never synthesize them.
+    const std::set<std::string> preservedExtensions{".htdg", ".conf", ".sbi", ".sbisss", ".shab", ".shad", ".bdt"};
+    for (const auto& entry : std::filesystem::directory_iterator(mapDir)) {
+        if (!entry.is_regular_file()) continue;
+        auto extension = entry.path().extension().string();
+        for (auto& c : extension) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (!preservedExtensions.contains(extension)) continue;
+        std::ifstream in(entry.path(), std::ios::binary | std::ios::ate);
+        const auto size = in.tellg();
+        if (!in || size < 0 || size > 64 * 1024 * 1024)
+            return std::unexpected("Begleitdatei kann nicht sicher erhalten werden: " + entry.path().string());
+        PreservedMapFile preserved{entry.path().filename().string(), std::vector<std::uint8_t>(static_cast<std::size_t>(size))};
+        in.seekg(0); in.read(reinterpret_cast<char*>(preserved.bytes.data()), size);
+        if (!in) return std::unexpected("Begleitdatei konnte nicht vollstaendig gelesen werden: " + entry.path().string());
+        project.preservedFiles.push_back(std::move(preserved));
+    }
+    if (!project.preservedFiles.empty()) AddIssue(report,
+        "Begleitdateien werden unveraendert erhalten; abgeleitete Daten werden bei Karten-Aenderungen noch nicht neu berechnet.");
+
     return project;
 }
 
 std::expected<void, std::string> SaveLegacyMap(
     LegacyMapProject& project, const std::filesystem::path& outDir, const std::string& mapStem) {
 
+    if (mapStem.empty() || mapStem == "." || mapStem == ".." || mapStem.find_first_of("/\\:") != std::string::npos)
+        return std::unexpected("Ungueltiger Kartenname");
+    for (const auto& preserved : project.preservedFiles) {
+        if (preserved.fileName.empty() || preserved.fileName == "." || preserved.fileName == ".." ||
+            preserved.fileName.find_first_of("/\\:") != std::string::npos)
+            return std::unexpected("Ungueltiger Begleitdateiname");
+    }
     std::error_code ec;
     std::filesystem::create_directories(outDir, ec);
     if (ec) {
@@ -213,6 +242,12 @@ std::expected<void, std::string> SaveLegacyMap(
     if (project.hasZone) {
         auto r = SerializeLegacyAid(project.zone, outDir / (mapStem + ".aid"));
         if (!r) return std::unexpected(r.error());
+    }
+
+    for (const auto& preserved : project.preservedFiles) {
+        std::ofstream out(outDir / preserved.fileName, std::ios::binary | std::ios::trunc);
+        out.write(reinterpret_cast<const char*>(preserved.bytes.data()), static_cast<std::streamsize>(preserved.bytes.size()));
+        if (!out) return std::unexpected("Begleitdatei konnte nicht gespeichert werden: " + preserved.fileName);
     }
 
     return {};

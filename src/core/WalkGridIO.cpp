@@ -7,14 +7,6 @@ namespace theseed::mapeditor::core {
 
 namespace {
 
-constexpr char kTswkMagic[4] = {'T', 'S', 'W', 'K'};
-constexpr std::uint32_t kTswkVersion = 1;
-
-template <typename T>
-void WriteRaw(std::ofstream& out, const T& value) {
-    out.write(reinterpret_cast<const char*>(&value), sizeof(T));
-}
-
 template <typename T>
 bool ReadRaw(std::ifstream& in, T& value) {
     in.read(reinterpret_cast<char*>(&value), sizeof(T));
@@ -22,56 +14,6 @@ bool ReadRaw(std::ifstream& in, T& value) {
 }
 
 } // namespace
-
-std::expected<WalkGrid, std::string> LoadTsWalk(const std::filesystem::path& file) {
-    std::ifstream in(file, std::ios::binary);
-    if (!in) {
-        return std::unexpected("Konnte Datei nicht \u00f6ffnen: " + file.string());
-    }
-
-    char magic[4]{};
-    in.read(magic, sizeof(magic));
-    if (!in || std::memcmp(magic, kTswkMagic, sizeof(magic)) != 0) {
-        return std::unexpected("Ung\u00fcltige .tswalk-Datei (Magic stimmt nicht): " + file.string());
-    }
-
-    std::uint32_t version = 0, width = 0, height = 0;
-    if (!ReadRaw(in, version) || !ReadRaw(in, width) || !ReadRaw(in, height)) {
-        return std::unexpected("Unerwartetes Dateiende im Header: " + file.string());
-    }
-    if (version != kTswkVersion) {
-        return std::unexpected("Nicht unterst\u00fctzte .tswalk-Version: " + std::to_string(version));
-    }
-
-    WalkGrid grid(width, height);
-    auto data = grid.MutableData();
-    in.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>(data.size_bytes()));
-    if (!in) {
-        return std::unexpected("Unerwartetes Dateiende in den Gitterdaten: " + file.string());
-    }
-
-    return grid;
-}
-
-std::expected<void, std::string> SaveTsWalk(const WalkGrid& grid, const std::filesystem::path& file) {
-    std::ofstream out(file, std::ios::binary | std::ios::trunc);
-    if (!out) {
-        return std::unexpected("Konnte Datei nicht zum Schreiben \u00f6ffnen: " + file.string());
-    }
-
-    out.write(kTswkMagic, sizeof(kTswkMagic));
-    WriteRaw(out, kTswkVersion);
-    WriteRaw(out, grid.Width());
-    WriteRaw(out, grid.Height());
-
-    const auto data = grid.Data();
-    out.write(reinterpret_cast<const char*>(data.data()), static_cast<std::streamsize>(data.size_bytes()));
-
-    if (!out) {
-        return std::unexpected("Fehler beim Schreiben: " + file.string());
-    }
-    return {};
-}
 
 std::expected<LegacyShbdHeaderInfo, std::string> PeekLegacyShbdHeader(const std::filesystem::path& file) {
     std::ifstream in(file, std::ios::binary);

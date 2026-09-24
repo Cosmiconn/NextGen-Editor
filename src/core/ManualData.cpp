@@ -138,13 +138,13 @@ The keys only work while the mouse is over the 3D image and no text field is act
      R"MAN(- Karte öffnen: im Map-Editor-Start den Pfad der Karten-.ini angeben (z.B. resmap/field/Rou/Rou.ini) und 'Karte öffnen'. Der Editor liest Heightmap (.HTD), Texturen (.ini + BMPs), Block&Walk (.shbd) und Objekte (.shmd/.idm/.aid) automatisch.
 - Neue Karte: 'Neue Karte' legt eine Karte an (z.B. 257x257 Blöcke). Sie startet flach und ganz gesperrt.
 - Karte speichern: Ausgabeverzeichnis und Kartenname angeben; 'Karte speichern' schreibt alle Legacy-Dateien.
-- 'Erweitert (natives Format / Legacy Import-Export)': einzelne Dateien getrennt importieren/exportieren, außerdem das eigene Format (.tshm Höhe, .tstex Texturen, .tswalk Begehbarkeit, .tsobj Objekte).
+- 'Erweitert (Fiesta Import/Export)': einzelne Fiesta-Dateien getrennt importieren/exportieren.
 # Große Karten
 Bei großen Karten (z.B. Adelia 951x476 Blöcke) deckt jede Blend-Textur laut .ini nur eine Region ab. Der Editor zeichnet das korrekt (bis zu 24 Layer). Das Block&Walk-Gitter ist dabei immer quadratisch (Zelle = 6,25 Einheiten) und deckt die längere Kartenseite ab.)MAN",
      R"MAN(- Open a map: in the map editor start enter the path of the map .ini (e.g. resmap/field/Rou/Rou.ini) and 'Open map'. The editor reads heightmap (.HTD), textures (.ini + BMPs), Block&Walk (.shbd) and objects (.shmd/.idm/.aid) automatically.
 - New map: 'New map' creates a map (e.g. 257x257 blocks). It starts flat and fully blocked.
 - Save map: enter output directory and map name; 'Save map' writes all legacy files.
-- 'Advanced (native format / legacy import-export)': import/export single files separately, plus the own format (.tshm height, .tstex textures, .tswalk walkability, .tsobj objects).
+- 'Advanced (Fiesta import/export)': import/export individual Fiesta files.
 # Large maps
 On large maps (e.g. Adelia 951x476 blocks) each blend texture covers only one region according to the .ini. The editor draws this correctly (up to 24 layers). The Block&Walk grid is always square (cell = 6.25 units) and covers the longer side of the map.)MAN",
      "karte map öffnen speichern neu ini htd shbd shmd"},
@@ -463,8 +463,6 @@ const TipRow kTips[] = {
     {"Kartenname", "Name der Karte = Dateiname der geschriebenen Dateien (ohne Endung).", "Name of the map = file name of the written files (without extension)."},
     {"Karte speichern", "Schreibt die Karte im Originalformat (Höhe, Texturen, Block&Walk, Objekte) in das Ausgabeverzeichnis.", "Writes the map in its original format (height, textures, Block&Walk, objects) to the output directory."},
     {"Neu (257x257)", "Legt eine neue, flache Karte mit 257x257 Höhenpunkten an.", "Creates a new flat map with 257x257 height points."},
-    {"Laden (.tshm)", "Lädt die Höhenkarte im eigenen Format .tshm.", "Loads the heightmap in the own .tshm format."},
-    {"Speichern (.tshm)", "Speichert die Höhenkarte im eigenen Format .tshm.", "Saves the heightmap in the own .tshm format."},
     {"Pfad##legacy", "Pfad der Original-Höhendatei (.HTD).", "Path of the original height file (.HTD)."},
     {"Breite (aus .ini)", "Anzahl der Höhenpunkte in X-Richtung (steht in der Karten-.ini).", "Number of height points in X direction (found in the map .ini)."},
     {"Höhe (aus .ini)", "Anzahl der Höhenpunkte in Z-Richtung (steht in der Karten-.ini).", "Number of height points in Z direction (found in the map .ini)."},
@@ -472,21 +470,15 @@ const TipRow kTips[] = {
     {"Blockhöhe", "Größe eines Höhenblocks in Z (Welteinheiten, meist 50).", "Size of a height block in Z (world units, usually 50)."},
     {"Importieren##htd", "Liest eine Höhendatei (.HTD) mit den obigen Maßen.", "Reads a height file (.HTD) with the dimensions above."},
     {"Exportieren##htd", "Schreibt die Höhenkarte als Original-.HTD.", "Writes the heightmap as an original .HTD."},
-    {"Laden (.tstex)", "Lädt die Texturschichten im eigenen Format .tstex.", "Loads the texture layers in the own .tstex format."},
-    {"Speichern (.tstex)", "Speichert die Texturschichten im eigenen Format .tstex.", "Saves the texture layers in the own .tstex format."},
     {"ini-Pfad##legacyTex", "Karten-.ini, aus der die Texturschichten (mit Regionen) importiert werden.", "Map .ini from which the texture layers (with regions) are imported."},
     {"Legacy-Set importieren", "Importiert alle Texturschichten samt Blend-BMPs aus der .ini.", "Imports all texture layers including blend BMPs from the .ini."},
     {"Export-Verzeichnis##legacyTex", "Ordner, in den die Textur-Dateien (.ini und BMPs) exportiert werden.", "Folder to which the texture files (.ini and BMPs) are exported."},
     {"Legacy-Set exportieren", "Schreibt Texturschichten als .ini und Blend-BMPs im Originalformat.", "Writes texture layers as .ini and blend BMPs in the original format."},
-    {"Laden (.tswalk)", "Lädt die Begehbarkeit im eigenen Format .tswalk.", "Loads the walkability in the own .tswalk format."},
-    {"Speichern (.tswalk)", "Speichert die Begehbarkeit im eigenen Format .tswalk.", "Saves the walkability in the own .tswalk format."},
     {"Pfad##walkLegacy", "Pfad der Original-Begehbarkeitsdatei (.shbd).", "Path of the original walkability file (.shbd)."},
     {"Breite##walkLegacy", "Breite des Gitters in 16-Bit-Wörtern (je 16 Zellen).", "Grid width in 16-bit words (16 cells each)."},
     {"Höhe##walkLegacy", "Höhe des Gitters in Zeilen (= Zellen).", "Grid height in rows (= cells)."},
     {"Importieren##shbd", "Liest eine .shbd-Datei mit den obigen Maßen.", "Reads a .shbd file with the dimensions above."},
     {"Exportieren##shbd", "Schreibt die Begehbarkeit als Original-.shbd.", "Writes the walkability as an original .shbd."},
-    {"Laden (.tsobj)", "Lädt die Objekte im eigenen Format .tsobj.", "Loads the objects in the own .tsobj format."},
-    {"Speichern (.tsobj)", "Speichert die Objekte im eigenen Format .tsobj.", "Saves the objects in the own .tsobj format."},
     {"Pfad##shmd", "Pfad der Objektdatei (.shmd).", "Path of the object file (.shmd)."},
     {"Importieren##shmd", "Liest die Objektliste aus einer .shmd.", "Reads the object list from a .shmd."},
     {"Exportieren##shmd", "Schreibt die Objektliste als .shmd.", "Writes the object list as a .shmd."},
@@ -496,7 +488,7 @@ const TipRow kTips[] = {
     {"Pfad##aid", "Pfad der Objekt-Attributdatei (.aid).", "Path of the object attribute file (.aid)."},
     {"Importieren##aid", "Liest die Objekt-Attributdatei (.aid).", "Reads the object attribute file (.aid)."},
     {"Exportieren##aid", "Schreibt die Objekt-Attributdatei (.aid).", "Writes the object attribute file (.aid)."},
-    {"Erweitert (natives Format / Legacy Import-Export)", "Einzelne Dateien getrennt importieren/exportieren und das eigene Format nutzen.", "Import/export single files separately and use the own format."},
+    {"Erweitert (Fiesta Import/Export)", "Einzelne Dateien getrennt importieren/exportieren.", "Import/export single files separately."},
     {"Neu durchsuchen", "Liest die Modell-/Textur-Bibliothek des Asset-Ordners erneut ein.", "Rescans the model/texture library of the asset folder."},
     {"Übernehmen", "Wendet den eingegebenen Wert an. Ungültige Werte werden abgelehnt.", "Applies the entered value. Invalid values are rejected."},
     {"Abbrechen", "Verwirft die Eingabe.", "Discards the input."},
@@ -711,10 +703,6 @@ const TipRow kTips[] = {
     {"InputText:##shncell", "Neuer Wert der gewählten Zelle. Enter oder 'Übernehmen' wendet ihn an.", "New value of the selected cell. Enter or 'Apply' applies it."},
     {"InputText:##skillfilter", "Sucht Skills nach Name, InxName oder ID.", "Searches skills by name, InxName or ID."},
     {"InputText:##tplfilter", "Sucht die Vorlage nach Name oder InxName.", "Searches the template by name or InxName."},
-    {"InputText:##tshmPath", "Pfad der eigenen Höhenkarten-Datei (.tshm).", "Path of the own heightmap file (.tshm)."},
-    {"InputText:##tsobjPath", "Pfad der eigenen Objekt-Datei (.tsobj).", "Path of the own object file (.tsobj)."},
-    {"InputText:##tstexPath", "Pfad der eigenen Textur-Datei (.tstex).", "Path of the own texture file (.tstex)."},
-    {"InputText:##tswalkPath", "Pfad der eigenen Begehbarkeits-Datei (.tswalk).", "Path of the own walkability file (.tswalk)."},
     {"InputText:##n", "Name.", "Name."},
     {"InputText:##v", "Wert dieses Felds. Beschreibung: Mauszeiger über den Feldnamen links.", "Value of this field. Description: hover the field name on the left."},
     {"InputText:##newmob", "Name (MobIndex) des Monsters, das der Zone hinzugefügt wird.", "Name (MobIndex) of the monster added to the zone."},

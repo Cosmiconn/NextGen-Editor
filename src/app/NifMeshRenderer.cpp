@@ -349,9 +349,42 @@ std::vector<core::NifVec3> ComputeFallbackNormals(const core::NifMeshPart& part)
 NifMeshRenderer::~NifMeshRenderer() { Shutdown(); }
 
 void NifMeshRenderer::Init() {
+    if (shaderProgram_) Shutdown();
     const std::uint32_t vs = CompileShader(GL_VERTEX_SHADER, kVertexShaderSrc);
     const std::uint32_t fs = CompileShader(GL_FRAGMENT_SHADER, kFragmentShaderSrc);
     shaderProgram_ = LinkProgram(vs, fs);
+    uniforms_.locViewProj = glGetUniformLocation(shaderProgram_, "uViewProj");
+    uniforms_.locModel = glGetUniformLocation(shaderProgram_, "uModel");
+    uniforms_.locLightDir = glGetUniformLocation(shaderProgram_, "uLightDir");
+    uniforms_.locCameraPos = glGetUniformLocation(shaderProgram_, "uCameraPos");
+    uniforms_.locAmbientColor = glGetUniformLocation(shaderProgram_, "uAmbientColor");
+    uniforms_.locDiffuseColor = glGetUniformLocation(shaderProgram_, "uDiffuseColor");
+    uniforms_.locSpecularColor = glGetUniformLocation(shaderProgram_, "uSpecularColor");
+    uniforms_.locEmissiveColor = glGetUniformLocation(shaderProgram_, "uEmissiveColor");
+    uniforms_.locGlossiness = glGetUniformLocation(shaderProgram_, "uGlossiness");
+    uniforms_.locSpecularEnabled = glGetUniformLocation(shaderProgram_, "uSpecularEnabled");
+    uniforms_.locApplyMode = glGetUniformLocation(shaderProgram_, "uApplyMode");
+    uniforms_.locBumpLumaScale = glGetUniformLocation(shaderProgram_, "uBumpLumaScale");
+    uniforms_.locBumpLumaOffset = glGetUniformLocation(shaderProgram_, "uBumpLumaOffset");
+    uniforms_.locBumpMatrix = glGetUniformLocation(shaderProgram_, "uBumpMatrix");
+    uniforms_.locAlphaTest = glGetUniformLocation(shaderProgram_, "uAlphaTest");
+    uniforms_.locAlphaCutoff = glGetUniformLocation(shaderProgram_, "uAlphaCutoff");
+    uniforms_.locAlphaTestFunc = glGetUniformLocation(shaderProgram_, "uAlphaTestFunc");
+    uniforms_.locMaterialAlpha = glGetUniformLocation(shaderProgram_, "uMaterialAlpha");
+
+    for (int slot = 0; slot < 10; ++slot) {
+        char name[64];
+        std::snprintf(name, sizeof(name), "uHasTex[%d]", slot); uniforms_.locHasTex[slot] = glGetUniformLocation(shaderProgram_, name);
+        std::snprintf(name, sizeof(name), "uUvSet[%d]", slot); uniforms_.locUvSet[slot] = glGetUniformLocation(shaderProgram_, name);
+        std::snprintf(name, sizeof(name), "uHasTexTransform[%d]", slot); uniforms_.locHasTransform[slot] = glGetUniformLocation(shaderProgram_, name);
+        std::snprintf(name, sizeof(name), "uTexTranslation[%d]", slot); uniforms_.locTranslation[slot] = glGetUniformLocation(shaderProgram_, name);
+        std::snprintf(name, sizeof(name), "uTexScale[%d]", slot); uniforms_.locScale[slot] = glGetUniformLocation(shaderProgram_, name);
+        std::snprintf(name, sizeof(name), "uTexRotation[%d]", slot); uniforms_.locRotation[slot] = glGetUniformLocation(shaderProgram_, name);
+        std::snprintf(name, sizeof(name), "uTexCenter[%d]", slot); uniforms_.locCenter[slot] = glGetUniformLocation(shaderProgram_, name);
+        std::snprintf(name, sizeof(name), "uTex%d", slot); uniforms_.locSampler[slot] = glGetUniformLocation(shaderProgram_, name);
+    }
+
+
 }
 
 void NifMeshRenderer::ReleaseModel(LoadedModel& model) {
@@ -375,6 +408,8 @@ void NifMeshRenderer::Shutdown() {
     }
     textureCache_.clear();
     perObjectModel_.clear();
+    opaqueItems_.clear();
+    blendedItems_.clear();
     if (shaderProgram_) glDeleteProgram(shaderProgram_);
     shaderProgram_ = 0;
 }
@@ -452,6 +487,8 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
     // Textur-Cache bewusst NICHT geleert - Texturen sind unabhängig vom Modell-Cache gültig
     // und werden oft von Modellen auf verschiedenen Karten wiederverwendet (z.B. "grass.dds").
     perObjectModel_.assign(set.Count(), nullptr);
+    std::unordered_map<std::string, std::optional<std::filesystem::path>> resolvedModels;
+    std::unordered_map<std::string, std::optional<std::filesystem::path>> resolvedTextures;
 
     for (std::size_t i = 0; i < set.Count(); ++i) {
         const auto& obj = set.At(i);
@@ -463,9 +500,11 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
         }
         std::optional<std::filesystem::path> resolved;
         if (customModel == nullptr) {
-            resolved = core::legacy::ResolveLegacyAssetPath(mapDir, obj.modelPath);
+            auto [entry, inserted] = resolvedModels.try_emplace(obj.modelPath);
+            if (inserted) entry->second = core::legacy::ResolveLegacyAssetPath(mapDir, obj.modelPath);
+            resolved = entry->second;
             if (!resolved) {
-                std::fprintf(stderr, "[NifMeshRenderer] NIF nicht gefunden: model=%s mapDir=%s\n",
+                if (inserted) std::fprintf(stderr, "[NifMeshRenderer] NIF nicht gefunden: model=%s mapDir=%s\n",
                              obj.modelPath.c_str(), mapDir.string().c_str());
                 continue;
             }
@@ -588,7 +627,7 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                         for (char& ch : t) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
                         return t;
                     };
-                    auto resolveTexturePath = [&](const std::string& textureName) -> std::optional<std::filesystem::path> {
+                    auto findTexturePath = [&](const std::string& textureName) -> std::optional<std::filesystem::path> {
                         auto texPath = core::legacy::ResolveLegacyAssetPath(mapDir, textureName);
                         if (texPath || modelDir.empty()) return texPath;
                         std::string want = textureName;
@@ -599,6 +638,13 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                             if (lowerOf(entry.path().filename().string()) == wantLower) return entry.path();
                         }
                         return std::nullopt;
+                    };
+
+                    const auto resolveTexturePath = [&](const std::string& textureName) {
+                        const auto cacheKey = modelDir.string() + "\n" + textureName;
+                        auto [entry, inserted] = resolvedTextures.try_emplace(cacheKey);
+                        if (inserted) entry->second = findTexturePath(textureName);
+                        return entry->second;
                     };
 
                     for (std::size_t slotIndex = 0; slotIndex < part.textureSlots.size(); ++slotIndex) {
@@ -906,52 +952,43 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     static const auto animationEpoch = std::chrono::steady_clock::now();
     const float animationTime = std::chrono::duration<float>(std::chrono::steady_clock::now() - animationEpoch).count();
 
-    const GLint locViewProj = glGetUniformLocation(shaderProgram_, "uViewProj");
-    const GLint locModel = glGetUniformLocation(shaderProgram_, "uModel");
-    const GLint locLightDir = glGetUniformLocation(shaderProgram_, "uLightDir");
-    const GLint locCameraPos = glGetUniformLocation(shaderProgram_, "uCameraPos");
-    const GLint locAmbientColor = glGetUniformLocation(shaderProgram_, "uAmbientColor");
-    const GLint locDiffuseColor = glGetUniformLocation(shaderProgram_, "uDiffuseColor");
-    const GLint locSpecularColor = glGetUniformLocation(shaderProgram_, "uSpecularColor");
-    const GLint locEmissiveColor = glGetUniformLocation(shaderProgram_, "uEmissiveColor");
-    const GLint locGlossiness = glGetUniformLocation(shaderProgram_, "uGlossiness");
-    const GLint locSpecularEnabled = glGetUniformLocation(shaderProgram_, "uSpecularEnabled");
-    const GLint locApplyMode = glGetUniformLocation(shaderProgram_, "uApplyMode");
-    const GLint locBumpLumaScale = glGetUniformLocation(shaderProgram_, "uBumpLumaScale");
-    const GLint locBumpLumaOffset = glGetUniformLocation(shaderProgram_, "uBumpLumaOffset");
-    const GLint locBumpMatrix = glGetUniformLocation(shaderProgram_, "uBumpMatrix");
-    const GLint locAlphaTest = glGetUniformLocation(shaderProgram_, "uAlphaTest");
-    const GLint locAlphaCutoff = glGetUniformLocation(shaderProgram_, "uAlphaCutoff");
-    const GLint locAlphaTestFunc = glGetUniformLocation(shaderProgram_, "uAlphaTestFunc");
-    const GLint locMaterialAlpha = glGetUniformLocation(shaderProgram_, "uMaterialAlpha");
-
-    std::array<GLint, 10> locHasTex{}, locUvSet{}, locHasTransform{}, locTranslation{},
-                          locScale{}, locRotation{}, locCenter{}, locSampler{};
-    for (int slot = 0; slot < 10; ++slot) {
-        char name[64];
-        std::snprintf(name, sizeof(name), "uHasTex[%d]", slot); locHasTex[slot] = glGetUniformLocation(shaderProgram_, name);
-        std::snprintf(name, sizeof(name), "uUvSet[%d]", slot); locUvSet[slot] = glGetUniformLocation(shaderProgram_, name);
-        std::snprintf(name, sizeof(name), "uHasTexTransform[%d]", slot); locHasTransform[slot] = glGetUniformLocation(shaderProgram_, name);
-        std::snprintf(name, sizeof(name), "uTexTranslation[%d]", slot); locTranslation[slot] = glGetUniformLocation(shaderProgram_, name);
-        std::snprintf(name, sizeof(name), "uTexScale[%d]", slot); locScale[slot] = glGetUniformLocation(shaderProgram_, name);
-        std::snprintf(name, sizeof(name), "uTexRotation[%d]", slot); locRotation[slot] = glGetUniformLocation(shaderProgram_, name);
-        std::snprintf(name, sizeof(name), "uTexCenter[%d]", slot); locCenter[slot] = glGetUniformLocation(shaderProgram_, name);
-        std::snprintf(name, sizeof(name), "uTex%d", slot); locSampler[slot] = glGetUniformLocation(shaderProgram_, name);
-        glUniform1i(locSampler[slot], slot);
-    }
+    const auto& locViewProj = uniforms_.locViewProj;
+    const auto& locModel = uniforms_.locModel;
+    const auto& locLightDir = uniforms_.locLightDir;
+    const auto& locCameraPos = uniforms_.locCameraPos;
+    const auto& locAmbientColor = uniforms_.locAmbientColor;
+    const auto& locDiffuseColor = uniforms_.locDiffuseColor;
+    const auto& locSpecularColor = uniforms_.locSpecularColor;
+    const auto& locEmissiveColor = uniforms_.locEmissiveColor;
+    const auto& locGlossiness = uniforms_.locGlossiness;
+    const auto& locSpecularEnabled = uniforms_.locSpecularEnabled;
+    const auto& locApplyMode = uniforms_.locApplyMode;
+    const auto& locBumpLumaScale = uniforms_.locBumpLumaScale;
+    const auto& locBumpLumaOffset = uniforms_.locBumpLumaOffset;
+    const auto& locBumpMatrix = uniforms_.locBumpMatrix;
+    const auto& locAlphaTest = uniforms_.locAlphaTest;
+    const auto& locAlphaCutoff = uniforms_.locAlphaCutoff;
+    const auto& locAlphaTestFunc = uniforms_.locAlphaTestFunc;
+    const auto& locMaterialAlpha = uniforms_.locMaterialAlpha;
+    const auto& locHasTex = uniforms_.locHasTex;
+    const auto& locUvSet = uniforms_.locUvSet;
+    const auto& locHasTransform = uniforms_.locHasTransform;
+    const auto& locTranslation = uniforms_.locTranslation;
+    const auto& locScale = uniforms_.locScale;
+    const auto& locRotation = uniforms_.locRotation;
+    const auto& locCenter = uniforms_.locCenter;
+    const auto& locSampler = uniforms_.locSampler;
+    for (int slot = 0; slot < 10; ++slot) glUniform1i(locSampler[slot], slot);
 
     glUniformMatrix4fv(locViewProj, 1, GL_FALSE, viewProj.m);
     glUniform3f(locLightDir, -0.4f, -1.0f, -0.3f);
     glUniform3f(locCameraPos, camera.EyeX(), camera.EyeY(), -camera.EyeZ());
     glEnable(GL_DEPTH_TEST);
 
-    struct DrawItem {
-        const SubMesh* sub = nullptr;
-        Mat4 model = Mat4::Identity();
-        float depth = 0.0f; // positive camera distance along view direction
-    };
-    std::vector<DrawItem> opaqueItems;
-    std::vector<DrawItem> blendedItems;
+    auto& opaqueItems = opaqueItems_;
+    auto& blendedItems = blendedItems_;
+    opaqueItems.clear();
+    blendedItems.clear();
 
     std::size_t estimatedItems = 0;
     for (const auto* model : perObjectModel_) if (model != nullptr) estimatedItems += model->subMeshes.size();
@@ -964,6 +1001,11 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
         if (hidden != nullptr && i < hidden->size() && (*hidden)[i] != 0) continue;
 
         const auto& obj = set.At(i);
+        // Invalid source transforms stay in the document for lossless export, but
+        // must not propagate NaNs/Infs into matrices or transparency sorting.
+        if (!std::isfinite(obj.posX) || !std::isfinite(obj.posY) || !std::isfinite(obj.posZ) ||
+            !std::isfinite(obj.rotX) || !std::isfinite(obj.rotY) || !std::isfinite(obj.rotZ) ||
+            !std::isfinite(obj.rotW) || !std::isfinite(obj.scale)) continue;
         Mat4 modelMat = QuatToMat4Local(obj.rotX, obj.rotY, obj.rotZ, obj.rotW);
         for (int col = 0; col < 3; ++col) {
             modelMat.m[col * 4 + 0] *= obj.scale;
