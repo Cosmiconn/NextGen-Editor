@@ -8925,6 +8925,45 @@ void DrawPreview3DContent(EditorState& state) {
     DrawObjectGizmoToolbar(state, imageScreenPos);
     DrawNpcOverlay3D(state, imageScreenPos, w, h);
 
+    // Direktes 3D-Picking: nächster projizierter Objektursprung unter dem Mauszeiger.
+    if (state.editMode==EditMode::ObjectPlacement && viewImageHovered && !gizmoCapturing &&
+        ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        const ImVec2 mouse=ImGui::GetMousePos();
+        float best=18.0f;
+        int bestId=kNoObjectSelection;
+        RefreshObjectVisibility(state);
+        for(std::size_t i=0;i<state.placementSet.Count();++i) {
+            if(IsObjectHidden(state,i)||IsObjectEditorLocked(state,static_cast<int>(i))) continue;
+            const auto& obj=state.placementSet.At(i);
+            ImVec2 p;
+            if(!ProjectWorldTo3DView(state,imageScreenPos,w,h,{obj.posX,obj.posY,obj.posZ},p)) continue;
+            const float dx=p.x-mouse.x,dy=p.y-mouse.y;
+            const float d=std::sqrt(dx*dx+dy*dy);
+            if(d<best){best=d;bestId=static_cast<int>(i);}
+        }
+        RefreshShmdCategoryVisibility(state);
+        for(std::size_t i=0;i<state.shmdCategoryRenderSet.Count();++i) {
+            if(i<state.shmdCategoryHidden.size()&&state.shmdCategoryHidden[i]) continue;
+            const auto poly=ObjectFootprintWorldPolygon(state,state.shmdCategoryRenderSet.At(i));
+            if(poly.empty()) continue;
+            float x=0.0f,z=0.0f;
+            for(const auto& q:poly){x+=q.first;z+=q.second;}
+            x/=static_cast<float>(poly.size());z/=static_cast<float>(poly.size());
+            ImVec2 p;
+            if(!ProjectWorldTo3DView(state,imageScreenPos,w,h,{x,state.heightmap.SampleWorld(x,z),z},p)) continue;
+            const float dx=p.x-mouse.x,dy=p.y-mouse.y;
+            const float d=std::sqrt(dx*dx+dy*dy);
+            if(d<best){best=d;bestId=ShmdSelectionId(i);}
+        }
+        if(bestId!=kNoObjectSelection) {
+            state.objectPlaceMode=0;
+            SelectObjectOnCanvas(state,bestId,ImGui::GetIO().KeyCtrl);
+            state.objectGizmoMatrixValid=false;
+        } else if(!ImGui::GetIO().KeyCtrl) {
+            ClearObjectSelection(state);
+        }
+    }
+
     // ---- Kamera-Steuerung (CHANGELOG [0.44.32]): Ego-Kamera wie in einem Level-Editor
     //  rechte Maustaste halten + Maus = umsehen | W/A/S/D = laufen | Q/E = runter/hoch | Shift = schnell,
     //  Strg = langsam | Mausrad = Zoom (multiplikativ, bis ganz nah) | mittlere Taste = schieben |
