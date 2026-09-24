@@ -44,6 +44,7 @@
 #include "imgui_internal.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
+#include "ImGuizmo.h"
 
 #include "mapeditor/core/AvatarPreview.hpp"
 #include "mapeditor/core/DdsImage.hpp"
@@ -318,6 +319,17 @@ struct EditorState {
     bool selectedObjectModelPathDirty = false;
     int objectListRangeAnchor = -1; // Shift-Bereichsauswahl in der Objektliste
     int objectPlaceMode = 1; // 1 = Platzieren, 0 = Auswählen (ImGui::RadioButton braucht int*)
+
+    // Level-Editor Transform-Werkzeuge (0=Move, 1=Rotate, 2=Scale).
+    int objectGizmoOperation = 0;
+    bool objectGizmoLocal = false;
+    bool objectGizmoSnap = true;
+    float objectMoveSnap = 50.0f;
+    float objectRotateSnap = 15.0f;
+    float objectScaleSnap = 0.10f;
+    std::vector<core::PlacedObject> objectClipboard;
+    std::vector<char> objectEditorHidden; // nur Editor-Sichtbarkeit, nicht SHMD-Export
+    std::vector<char> objectEditorLocked; // nur Editor-Lock, nicht SHMD-Export
     char newObjectModelPath[512] = "resmap\\field\\Rou\\GuildHall.nif";
     float newObjectScale = 1.0f;
     float newObjectRotDeg = 0.0f;
