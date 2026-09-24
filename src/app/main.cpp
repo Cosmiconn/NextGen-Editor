@@ -103,54 +103,60 @@ namespace {
 // darüber gezielt nur noch die Blau-Abstufungen aus der Palette verwenden.
 void ApplyEditorTheme() {
     ImGuiStyle& style = ImGui::GetStyle();
-    style.WindowRounding = 6.0f;
+    style.WindowRounding = 5.0f;
     style.ChildRounding = 5.0f;
     style.FrameRounding = 4.0f;
-    style.PopupRounding = 5.0f;
-    style.GrabRounding = 4.0f;
+    style.PopupRounding = 6.0f;
+    style.GrabRounding = 3.0f;
     style.ScrollbarRounding = 4.0f;
     style.TabRounding = 4.0f;
     style.WindowBorderSize = 1.0f;
     style.ChildBorderSize = 1.0f;
-    style.FrameBorderSize = 1.0f;
+    style.FrameBorderSize = 0.0f;
+    style.TabBorderSize = 0.0f;
     style.ItemSpacing = ImVec2(8.0f, 6.0f);
+    style.ItemInnerSpacing = ImVec2(6.0f, 4.0f);
     style.FramePadding = ImVec2(9.0f, 6.0f);
+    style.WindowPadding = ImVec2(10.0f, 9.0f);
+    style.ScrollbarSize = 13.0f;
 
     ImVec4* c = style.Colors;
-    c[ImGuiCol_Text]                 = ImVec4(0.92f, 0.95f, 0.98f, 1.0f);
-    c[ImGuiCol_TextDisabled]         = ImVec4(0.48f, 0.53f, 0.60f, 1.0f);
-    c[ImGuiCol_WindowBg]             = ImVec4(0.035f, 0.045f, 0.060f, 1.0f);
-    c[ImGuiCol_ChildBg]              = ImVec4(0.065f, 0.080f, 0.105f, 1.0f);
-    c[ImGuiCol_PopupBg]              = ImVec4(0.075f, 0.090f, 0.115f, 0.98f);
-    c[ImGuiCol_Border]               = ImVec4(0.20f, 0.25f, 0.32f, 1.0f);
+    c[ImGuiCol_Text]                 = ImVec4(0.91f, 0.94f, 0.98f, 1.0f);
+    c[ImGuiCol_TextDisabled]         = ImVec4(0.48f, 0.54f, 0.62f, 1.0f);
+    c[ImGuiCol_WindowBg]             = ImVec4(0.025f, 0.035f, 0.050f, 1.0f);
+    c[ImGuiCol_ChildBg]              = ImVec4(0.040f, 0.055f, 0.075f, 1.0f);
+    c[ImGuiCol_PopupBg]              = ImVec4(0.045f, 0.060f, 0.082f, 0.99f);
+    c[ImGuiCol_Border]               = ImVec4(0.12f, 0.18f, 0.25f, 1.0f);
     c[ImGuiCol_BorderShadow]         = ImVec4(0, 0, 0, 0);
-    c[ImGuiCol_FrameBg]              = ImVec4(0.10f, 0.125f, 0.16f, 1.0f);
-    c[ImGuiCol_FrameBgHovered]       = ImVec4(0.14f, 0.20f, 0.28f, 1.0f);
-    c[ImGuiCol_FrameBgActive]        = ImVec4(0.16f, 0.24f, 0.34f, 1.0f);
-    c[ImGuiCol_TitleBg]              = ImVec4(0.025f, 0.035f, 0.05f, 1.0f);
-    c[ImGuiCol_TitleBgActive]        = ImVec4(0.05f, 0.10f, 0.16f, 1.0f);
-    c[ImGuiCol_MenuBarBg]             = ImVec4(0.04f, 0.055f, 0.075f, 1.0f);
-    c[ImGuiCol_ScrollbarBg]          = ImVec4(0.025f, 0.03f, 0.04f, 1.0f);
-    c[ImGuiCol_ScrollbarGrab]        = ImVec4(0.20f, 0.25f, 0.32f, 1.0f);
-    c[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.25f, 0.35f, 0.46f, 1.0f);
-    c[ImGuiCol_ScrollbarGrabActive]  = ImVec4(0.30f, 0.45f, 0.60f, 1.0f);
-    c[ImGuiCol_CheckMark]            = ImVec4(0.35f, 0.65f, 0.95f, 1.0f);
-    c[ImGuiCol_SliderGrab]           = ImVec4(0.30f, 0.58f, 0.88f, 1.0f);
-    c[ImGuiCol_SliderGrabActive]     = ImVec4(0.40f, 0.70f, 1.0f, 1.0f);
-    c[ImGuiCol_Button]               = ImVec4(0.13f, 0.25f, 0.38f, 1.0f);
-    c[ImGuiCol_ButtonHovered]        = ImVec4(0.18f, 0.36f, 0.55f, 1.0f);
-    c[ImGuiCol_ButtonActive]         = ImVec4(0.11f, 0.28f, 0.45f, 1.0f);
-    c[ImGuiCol_Header]               = ImVec4(0.12f, 0.24f, 0.36f, 1.0f);
-    c[ImGuiCol_HeaderHovered]        = ImVec4(0.18f, 0.36f, 0.55f, 1.0f);
-    c[ImGuiCol_HeaderActive]         = ImVec4(0.14f, 0.30f, 0.48f, 1.0f);
-    c[ImGuiCol_Separator]            = ImVec4(0.20f, 0.27f, 0.35f, 1.0f);
-    c[ImGuiCol_SeparatorHovered]     = ImVec4(0.30f, 0.52f, 0.72f, 1.0f);
-    c[ImGuiCol_SeparatorActive]      = ImVec4(0.35f, 0.62f, 0.85f, 1.0f);
-    c[ImGuiCol_Tab]                  = ImVec4(0.08f, 0.16f, 0.24f, 1.0f);
-    c[ImGuiCol_TabHovered]           = ImVec4(0.18f, 0.36f, 0.55f, 1.0f);
-    c[ImGuiCol_TabActive]            = ImVec4(0.13f, 0.29f, 0.46f, 1.0f);
-    c[ImGuiCol_TabUnfocused]         = ImVec4(0.06f, 0.11f, 0.17f, 1.0f);
-    c[ImGuiCol_TabUnfocusedActive]   = ImVec4(0.10f, 0.21f, 0.33f, 1.0f);
+    c[ImGuiCol_FrameBg]              = ImVec4(0.070f, 0.095f, 0.130f, 1.0f);
+    c[ImGuiCol_FrameBgHovered]       = ImVec4(0.090f, 0.150f, 0.215f, 1.0f);
+    c[ImGuiCol_FrameBgActive]        = ImVec4(0.105f, 0.195f, 0.285f, 1.0f);
+    c[ImGuiCol_TitleBg]              = ImVec4(0.018f, 0.028f, 0.042f, 1.0f);
+    c[ImGuiCol_TitleBgActive]        = ImVec4(0.030f, 0.070f, 0.110f, 1.0f);
+    c[ImGuiCol_MenuBarBg]            = ImVec4(0.026f, 0.038f, 0.055f, 1.0f);
+    c[ImGuiCol_ScrollbarBg]          = ImVec4(0.020f, 0.027f, 0.038f, 1.0f);
+    c[ImGuiCol_ScrollbarGrab]        = ImVec4(0.15f, 0.21f, 0.29f, 1.0f);
+    c[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.21f, 0.32f, 0.43f, 1.0f);
+    c[ImGuiCol_ScrollbarGrabActive]  = ImVec4(0.20f, 0.45f, 0.68f, 1.0f);
+    c[ImGuiCol_CheckMark]            = ImVec4(0.18f, 0.68f, 1.00f, 1.0f);
+    c[ImGuiCol_SliderGrab]           = ImVec4(0.18f, 0.60f, 0.92f, 1.0f);
+    c[ImGuiCol_SliderGrabActive]     = ImVec4(0.25f, 0.76f, 1.00f, 1.0f);
+    c[ImGuiCol_Button]               = ImVec4(0.060f, 0.095f, 0.135f, 1.0f);
+    c[ImGuiCol_ButtonHovered]        = ImVec4(0.080f, 0.190f, 0.300f, 1.0f);
+    c[ImGuiCol_ButtonActive]         = ImVec4(0.070f, 0.280f, 0.455f, 1.0f);
+    c[ImGuiCol_Header]               = ImVec4(0.060f, 0.140f, 0.220f, 1.0f);
+    c[ImGuiCol_HeaderHovered]        = ImVec4(0.080f, 0.220f, 0.350f, 1.0f);
+    c[ImGuiCol_HeaderActive]         = ImVec4(0.075f, 0.300f, 0.490f, 1.0f);
+    c[ImGuiCol_Separator]            = ImVec4(0.12f, 0.18f, 0.25f, 1.0f);
+    c[ImGuiCol_SeparatorHovered]     = ImVec4(0.18f, 0.46f, 0.68f, 1.0f);
+    c[ImGuiCol_SeparatorActive]      = ImVec4(0.22f, 0.62f, 0.90f, 1.0f);
+    c[ImGuiCol_Tab]                  = ImVec4(0.040f, 0.075f, 0.110f, 1.0f);
+    c[ImGuiCol_TabHovered]           = ImVec4(0.075f, 0.200f, 0.320f, 1.0f);
+    c[ImGuiCol_TabActive]            = ImVec4(0.060f, 0.240f, 0.390f, 1.0f);
+    c[ImGuiCol_TabUnfocused]         = ImVec4(0.030f, 0.052f, 0.075f, 1.0f);
+    c[ImGuiCol_TabUnfocusedActive]   = ImVec4(0.050f, 0.140f, 0.220f, 1.0f);
+    c[ImGuiCol_DockingPreview]       = ImVec4(0.10f, 0.55f, 0.90f, 0.70f);
+    c[ImGuiCol_NavHighlight]         = ImVec4(0.15f, 0.62f, 0.98f, 0.85f);
 }
 
 #ifdef _WIN32
@@ -2024,7 +2030,97 @@ void DrawIconClapper(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
     }
 }
 
+void DrawIconTerrain(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
+    const ImVec2 a[3] = {ImVec2(c.x-r*1.05f,c.y+r*0.75f), ImVec2(c.x-r*0.2f,c.y-r*0.9f), ImVec2(c.x+r*0.45f,c.y+r*0.75f)};
+    const ImVec2 b[3] = {ImVec2(c.x-r*0.15f,c.y+r*0.75f), ImVec2(c.x+r*0.55f,c.y-r*0.45f), ImVec2(c.x+r*1.05f,c.y+r*0.75f)};
+    dl->AddPolyline(a,3,col,ImDrawFlags_Closed,2.5f); dl->AddPolyline(b,3,col,ImDrawFlags_Closed,2.5f);
+}
+void DrawIconBrush(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
+    dl->AddLine(ImVec2(c.x+r*0.75f,c.y-r*0.85f), ImVec2(c.x-r*0.25f,c.y+r*0.20f), col, 4.5f);
+    dl->AddTriangleFilled(ImVec2(c.x-r*0.15f,c.y+r*0.05f), ImVec2(c.x-r*0.95f,c.y+r*0.55f),
+                          ImVec2(c.x-r*0.45f,c.y+r*0.95f), col);
+}
+void DrawIconLayers(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
+    for(int i=0;i<3;++i){ const float y=c.y-r*0.55f+i*r*0.55f;
+        const ImVec2 p[4]={ImVec2(c.x,y-r*0.35f),ImVec2(c.x+r,y),ImVec2(c.x,y+r*0.35f),ImVec2(c.x-r,y)};
+        dl->AddPolyline(p,4,col,ImDrawFlags_Closed,2.2f);
+    }
+}
+void DrawIconGrid(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
+    dl->AddRect(ImVec2(c.x-r,c.y-r),ImVec2(c.x+r,c.y+r),col,2.0f,0,2.2f);
+    for(int i=-1;i<=1;i+=2){ dl->AddLine(ImVec2(c.x+i*r/3,c.y-r),ImVec2(c.x+i*r/3,c.y+r),col,1.7f);
+        dl->AddLine(ImVec2(c.x-r,c.y+i*r/3),ImVec2(c.x+r,c.y+i*r/3),col,1.7f); }
+}
+void DrawIconCube(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
+    const ImVec2 top(c.x,c.y-r), l(c.x-r,c.y-r*0.35f), rr(c.x+r,c.y-r*0.35f);
+    const ImVec2 bl(c.x-r,c.y+r*0.65f), br(c.x+r,c.y+r*0.65f), bot(c.x,c.y+r);
+    dl->AddLine(top,l,col,2.3f); dl->AddLine(top,rr,col,2.3f); dl->AddLine(l,ImVec2(c.x,c.y+r*0.05f),col,2.3f);
+    dl->AddLine(rr,ImVec2(c.x,c.y+r*0.05f),col,2.3f); dl->AddLine(l,bl,col,2.3f); dl->AddLine(rr,br,col,2.3f);
+    dl->AddLine(bl,bot,col,2.3f); dl->AddLine(br,bot,col,2.3f); dl->AddLine(ImVec2(c.x,c.y+r*0.05f),bot,col,2.3f);
+}
+void DrawIconPerson(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
+    dl->AddCircleFilled(ImVec2(c.x,c.y-r*0.55f),r*0.32f,col);
+    dl->AddRectFilled(ImVec2(c.x-r*0.55f,c.y-r*0.05f),ImVec2(c.x+r*0.55f,c.y+r*0.8f),col,r*0.25f);
+}
+void DrawIconSpawn(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
+    dl->AddCircle(c,r*0.80f,col,24,2.2f); dl->AddCircleFilled(c,r*0.20f,col);
+    for(int i=0;i<4;++i){ const float a=0.785398f+i*1.570796f;
+        dl->AddCircleFilled(ImVec2(c.x+std::cos(a)*r*0.72f,c.y+std::sin(a)*r*0.72f),r*0.15f,col); }
+}
+void DrawIconPortal(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
+    dl->AddEllipse(c,ImVec2(r*0.82f,r),col,0.0f,28,3.0f);
+    dl->AddEllipse(c,ImVec2(r*0.42f,r*0.58f),col,0.0f,24,2.0f);
+    dl->AddCircleFilled(c,r*0.12f,col);
+}
+void DrawIconSave(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
+    dl->AddRect(ImVec2(c.x-r,c.y-r),ImVec2(c.x+r,c.y+r),col,2.0f,0,2.2f);
+    dl->AddRect(ImVec2(c.x-r*0.55f,c.y-r),ImVec2(c.x+r*0.45f,c.y-r*0.25f),col,1.0f,0,2.0f);
+    dl->AddRect(ImVec2(c.x-r*0.55f,c.y+r*0.15f),ImVec2(c.x+r*0.55f,c.y+r*0.75f),col,1.0f,0,2.0f);
+}
+void DrawIconUndo(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
+    dl->PathClear(); dl->PathArcTo(ImVec2(c.x+r*0.1f,c.y+r*0.15f),r*0.78f,-2.7f,0.65f,24); dl->PathStroke(col,0,2.6f);
+    dl->AddTriangleFilled(ImVec2(c.x-r*0.95f,c.y-r*0.1f),ImVec2(c.x-r*0.35f,c.y-r*0.55f),ImVec2(c.x-r*0.35f,c.y+r*0.35f),col);
+}
+void DrawIconRedo(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
+    dl->PathClear(); dl->PathArcTo(ImVec2(c.x-r*0.1f,c.y+r*0.15f),r*0.78f,2.5f,5.85f,24); dl->PathStroke(col,0,2.6f);
+    dl->AddTriangleFilled(ImVec2(c.x+r*0.95f,c.y-r*0.1f),ImVec2(c.x+r*0.35f,c.y-r*0.55f),ImVec2(c.x+r*0.35f,c.y+r*0.35f),col);
+}
+void DrawIconTable(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
+    DrawIconGrid(dl,c,r,col);
+    dl->AddRectFilled(ImVec2(c.x-r,c.y-r),ImVec2(c.x+r,c.y-r*0.48f),col,1.5f);
+}
+void DrawIconBolt(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
+    const ImVec2 p[6]={ImVec2(c.x+r*0.10f,c.y-r),ImVec2(c.x-r*0.55f,c.y+r*0.05f),ImVec2(c.x-r*0.10f,c.y+r*0.05f),
+                       ImVec2(c.x-r*0.25f,c.y+r),ImVec2(c.x+r*0.60f,c.y-r*0.15f),ImVec2(c.x+r*0.12f,c.y-r*0.15f)};
+    dl->AddConvexPolyFilled(p,6,col);
+}
+
 using IconDrawFn = void (*)(ImDrawList*, ImVec2, float, ImU32);
+
+bool DrawIconButton(const char* id, const char* label, IconDrawFn icon, bool active = false,
+                    ImVec2 size = ImVec2(74.0f, 58.0f), bool enabled = true) {
+    ImGui::PushID(id);
+    const ImVec2 p = ImGui::GetCursorScreenPos();
+    ImGui::BeginDisabled(!enabled);
+    const bool clicked = ImGui::InvisibleButton("##iconButton", size);
+    ImGui::EndDisabled();
+    const bool hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled);
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const ImU32 bg = active ? IM_COL32(10, 91, 151, 255)
+                     : hovered && enabled ? IM_COL32(20, 57, 86, 255)
+                                          : IM_COL32(10, 25, 38, 255);
+    const ImU32 border = active ? IM_COL32(45, 168, 245, 255) : IM_COL32(28, 54, 76, 255);
+    const ImU32 fg = enabled ? (active ? IM_COL32(120, 218, 255, 255) : IM_COL32(214, 229, 244, 255))
+                             : IM_COL32(100, 112, 126, 255);
+    dl->AddRectFilled(p, ImVec2(p.x + size.x, p.y + size.y), bg, 5.0f);
+    dl->AddRect(p, ImVec2(p.x + size.x, p.y + size.y), border, 5.0f, 0, active ? 1.7f : 1.0f);
+    if (icon) icon(dl, ImVec2(p.x + size.x * 0.5f, p.y + 21.0f), 10.0f, fg);
+    const ImVec2 ts = ImGui::CalcTextSize(label);
+    dl->AddText(ImVec2(p.x + (size.x - ts.x) * 0.5f, p.y + size.y - 19.0f), fg, label);
+    if (hovered) ImGui::SetTooltip("%s", label);
+    ImGui::PopID();
+    return clicked && enabled;
+}
 
 // Zeichnet eine einzelne Editor-Karte (siehe Mockup "Projekt"-Übersicht). Gibt true zurück,
 // wenn der Start-Knopf in diesem Frame geklickt wurde. Die gelben Klebezettel aus dem Mockup
@@ -8351,7 +8447,7 @@ int main() {
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
 
-    GLFWwindow* window = glfwCreateWindow(1600, 900, "TheSeed Map-Editor - Heightmap + Texturing", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(1600, 900, "NextGen-Editor", nullptr, nullptr);
     if (window == nullptr) {
         std::fprintf(stderr, "glfwCreateWindow fehlgeschlagen\n");
         glfwTerminate();
