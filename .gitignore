@@ -24,3 +24,7 @@ __pycache__/
 /docs/v13-results/nif-recovery.tsv
 /docs/v13-results/extensions.tsv
 /docs/v13-results/*.png
+
+# KFM per-file details and screenshots remain in the local release.
+/docs/v14-results/local/
+!docs/v14-results/*.log

@@ -24,6 +24,7 @@ add_library(mapeditor_core
     src/core/BlendMap.cpp
     src/core/DdsImage.cpp
     src/core/NifModel.cpp
+    src/core/KfmFile.cpp
     src/core/TextureLayerStack.cpp
     src/core/TexturePaintOps.cpp
     src/core/TextureLayerIO.cpp
@@ -75,6 +76,7 @@ find_package(OpenGL REQUIRED)
 
 add_executable(map_editor
     src/app/main.cpp
+    src/app/KfmPanel.cpp
     src/app/Camera.cpp
     src/app/Renderer.cpp
     src/app/ObjectMarkerRenderer.cpp
@@ -146,6 +148,10 @@ add_test(NAME shn_file COMMAND test_shn_file ${CMAKE_CURRENT_SOURCE_DIR}/tests/f
 add_test(NAME shinetext COMMAND test_shinetext ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/data/NPC.txt)
 add_test(NAME questdata COMMAND test_questdata ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/data/QuestData.shn)
 
+add_executable(test_kfm_file tests/test_kfm_file.cpp)
+target_link_libraries(test_kfm_file PRIVATE mapeditor_core)
+add_test(NAME kfm_file COMMAND test_kfm_file)
+
 add_executable(test_packed_images tests/test_packed_images.cpp)
 target_link_libraries(test_packed_images PRIVATE mapeditor_core)
 add_test(NAME packed_images COMMAND test_packed_images)
@@ -180,6 +186,7 @@ if(NEXTGEN_EDITOR_BUILD_GUI)
 # (NPC-Blickrichtung: Vorzeichen/Versatz).
 add_executable(test_npc_orientation
     tests/test_npc_orientation.cpp
+    src/app/KfmPanel.cpp
     src/app/Camera.cpp
     src/app/Renderer.cpp
     src/app/ObjectMarkerRenderer.cpp
@@ -197,6 +204,10 @@ if (WIN32)
     target_link_libraries(test_npc_orientation PRIVATE Shell32 Ole32 Windowscodecs)
 endif()
 add_test(NAME npc_orientation COMMAND test_npc_orientation)
+
+add_executable(test_kfm_opengl tests/test_kfm_opengl.cpp src/app/KfmPanel.cpp)
+target_include_directories(test_kfm_opengl PRIVATE src/app)
+target_link_libraries(test_kfm_opengl PRIVATE mapeditor_core glfw imgui::imgui glad::glad OpenGL::GL)
 
 add_executable(test_nif_opengl tests/test_nif_opengl.cpp src/app/Camera.cpp src/app/NifMeshRenderer.cpp)
 target_include_directories(test_nif_opengl PRIVATE src/app)

@@ -50,6 +50,8 @@ inline const std::unordered_map<std::string, std::pair<const char*, const char*>
         {"nav.back", {"Zurück", "Back"}},
         {"nav.language", {"Sprache", "Language"}},
 
+        {"card.kfm.title", {"KFM-Animationen", "KFM animations"}},
+
         // Editor-Karten im Projekt-Hub
         {"card.mapeditor.title", {"MapEditor", "MapEditor"}},
         {"card.mapeditor.f1", {"Hightmap", "Hightmap"}},

@@ -1,3 +1,14 @@
+## v0.44.35 / v14 — KFM-Codec und Animationskatalog
+- C++23-Reader/Writer für Fiesta-KFM 1.2.4b und 2.0.0.0b, einschließlich Textschlüsselpaaren und Zwischenanimationen; durch Dateigröße und Speicherbudget begrenzt.
+- 1.380/1.380 echte Dateien bytegleich rekonstruiert; Verweisbefunde getrennt von Codecfehlern.
+- DE/EN-Katalog mit Filter, Übergängen, expliziter Verweisprüfung und Export einer neuen Kopie; sichtbare Tabellenzeilen begrenzen die Renderarbeit.
+- 19/19 CTest und echte OpenGL-Paneltests mit drei Katalogen; vollständiger Bericht in `docs/V14_VALIDATION.md`.
+
+## v0.44.35 / v13 — Fiesta-Formate, NIF-Erweiterungen und Performance
+- NIF-/B-Spline-Erweiterungen, gepackte Texturformate, alle AID-Zonen, INI-/SHMD-Erhaltung und opaque Kartenbegleitdateien.
+- C++23-Massenauditor, entfernte eigene Zwischenformate, Renderer-/Dateiladeoptimierungen.
+- 18/18 CTest, 11.418 eindeutige NIFs und 41.067 lose Codecdateien geprüft; Grenzen und OpenGL-Nachweise in `docs/V13_VALIDATION.md`.
+
 ## v0.44.35 / v12 — struktureller NIF-Standardparser, Partikel und Vollbestandstest
 - `NiGeometryData`-Group-ID vor der Vertex-Anzahl; versionsabhängige ParticleDesc-, Rotations- und Emitterfelder.
 - `NiMeshPSysData` liest den variablen Bereich `13 + 4*N` statt pauschal 17 Bytes. Zusätzliche Particle-Controller, Zylinder-/Kugelemitter und Bomb-/Kollisionsmodifikatoren.

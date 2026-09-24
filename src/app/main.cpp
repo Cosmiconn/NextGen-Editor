@@ -70,6 +70,7 @@
 #include "mapeditor/app/Localization.hpp"
 
 #include "Camera.hpp"
+#include "KfmPanel.hpp"
 #include "ObjectMarkerRenderer.hpp"
 #include "NifMeshRenderer.hpp"
 #include "Renderer.hpp"
@@ -207,7 +208,7 @@ enum class EditMode { Heightmap, TexturePaint, BlockWalk, ObjectPlacement, Npcs,
 // HANDOFF.md / MAP_FORMAT.md für den Kontext). ComingSoon deckt die vier Editor-Karten ab,
 // die im Mockup als "Noch nicht entschieden" markiert sind bzw. noch nicht gebaut wurden
 // (Quest/Interface/Drop Table/Skill+Action) sowie den SHN Editor.
-enum class AppScreen { ProjectHub, NewProjectConfig, MapEditorLauncher, MapEditorWorkspace, ShnEditor, ComingSoon };
+enum class AppScreen { ProjectHub, NewProjectConfig, MapEditorLauncher, MapEditorWorkspace, ShnEditor, KfmBrowser, ComingSoon };
 
 // Projekt-Ebene (NEU): getrennt von den Client-/Server-Ordnern, siehe die Erläuterung im
 // Mockup ("Neues Projekt konfigurieren") - im Projekt-Ordner werden geänderte Dateien mit
@@ -272,6 +273,7 @@ struct DiscoveredMap {
 };
 
 struct EditorState {
+    app::KfmPanel kfmPanel;
     core::Heightmap heightmap{257, 257, 50.0f, 50.0f};
     core::UndoStack undo;
     core::BrushMode brushMode = core::BrushMode::Raise;
@@ -1067,7 +1069,7 @@ std::optional<std::string> BrowseForFolderWindows(const char* title) {
     // aktiv (RPC_E_CHANGED_MODE, z.B. durch eine andere Bibliothek), NICHT per CoUninitialize
     // eingreifen, das würde fremden Zustand kaputt machen.
     const HRESULT comInit = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-    const bool weOwnCom = comInit == S_OK;
+    const bool weOwnCom = SUCCEEDED(comInit);
 
     std::optional<std::string> result;
     IFileOpenDialog* dialog = nullptr;
@@ -1110,9 +1112,9 @@ std::optional<std::string> BrowseForFolderWindows(const char* title) {
 #endif
 
 #ifdef _WIN32
-std::optional<std::string> BrowseForShnFileWindows(const char* title) {
+std::optional<std::string> BrowseForShnFileWindows(const char* title, bool kfm = false) {
     const HRESULT comInit = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-    const bool weOwnCom = comInit == S_OK;
+    const bool weOwnCom = SUCCEEDED(comInit);
     std::optional<std::string> result;
     IFileOpenDialog* dialog = nullptr;
     if (SUCCEEDED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
@@ -1120,7 +1122,7 @@ std::optional<std::string> BrowseForShnFileWindows(const char* title) {
         DWORD options = 0;
         dialog->GetOptions(&options);
         dialog->SetOptions(options | FOS_FORCEFILESYSTEM | FOS_FILEMUSTEXIST | FOS_PATHMUSTEXIST);
-        COMDLG_FILTERSPEC filters[] = {{L"Fiesta SHN", L"*.shn"}, {L"Alle Dateien", L"*.*"}};
+        COMDLG_FILTERSPEC filters[] = {{kfm ? L"Fiesta KFM" : L"Fiesta SHN", kfm ? L"*.kfm" : L"*.shn"}, {L"Alle Dateien", L"*.*"}};
         dialog->SetFileTypes(static_cast<UINT>(std::size(filters)), filters);
         wchar_t wtitle[256]{};
         MultiByteToWideChar(CP_UTF8, 0, title, -1, wtitle, static_cast<int>(std::size(wtitle)));
@@ -2592,6 +2594,7 @@ void DrawShnEditor(EditorState& state) {
 
 void DrawProjectHub(EditorState& state) {
     DrawTopNav(state, nullptr);
+    if (UI::Button(T("card.kfm.title"))) state.screen = AppScreen::KfmBrowser;
 
     const ImVec2 avail = ImGui::GetContentRegionAvail();
     const float gap = 10.0f;
@@ -7835,6 +7838,15 @@ int main() {
             case AppScreen::MapEditorLauncher: DrawMapEditorLauncher(state); break;
             case AppScreen::MapEditorWorkspace: DrawMapEditorWorkspace(state); break;
             case AppScreen::ShnEditor: DrawShnEditor(state); break;
+            case AppScreen::KfmBrowser:
+                DrawTopNav(state, "KFM");
+                if (UI::Button(T("nav.back"))) state.screen = AppScreen::ProjectHub;
+#ifdef _WIN32
+                state.kfmPanel.Draw([] { return BrowseForShnFileWindows("Fiesta KFM", true); });
+#else
+                state.kfmPanel.Draw({});
+#endif
+                break;
             case AppScreen::ComingSoon: DrawComingSoon(state); break;
         }
 

@@ -1,6 +1,7 @@
 #include "ProcessRunner.hpp"
 #include "mapeditor/core/DdsImage.hpp"
 #include "mapeditor/core/NifModel.hpp"
+#include "mapeditor/core/KfmFile.hpp"
 #include "mapeditor/core/HeightmapIO.hpp"
 #include "mapeditor/core/ObjectPlacementIO.hpp"
 #include "mapeditor/core/WalkGridIO.hpp"
@@ -52,6 +53,20 @@ Result probe(const fs::path& path,const fs::path& scratch,bool recovery=false) {
         return {m->partial?"RECOVERY_PARTIAL":m->recovered?"RECOVERY_OK":parts?"OK_GEOMETRY":"OK_NO_GEOMETRY",
             "parts="+std::to_string(parts)+", vertices="+std::to_string(vertices)+", triangles="+std::to_string(triangles)+", textures="+std::to_string(textures)+
             ", decoded="+std::to_string(m->decodedEmbeddedTextures)+", undecoded="+std::to_string(m->undecodedEmbeddedTextures)};
+    }
+    if(ext==".kfm") {
+        auto f=core::LoadKfmFile(path);if(!f)return {"ERROR",f.error()};
+        const auto refs=core::InspectKfmReferences(*f,path);
+        std::size_t transitions=0,keys=0,intermediate=0;
+        for(const auto& a:f->animations)for(const auto& t:a.transitions){++transitions;keys+=t.textKeys.size();intermediate+=t.intermediateAnimations.size();}
+        auto saved=core::SaveKfmFile(*f,scratch);if(!saved)return {"ERROR",saved.error()};
+        Result result{equalFiles(path,scratch)?"ROUNDTRIP_EXACT":"ROUNDTRIP_CHANGED",{}};
+        result.detail="version="+std::string(core::KfmVersionName(f->version))+", animations="+std::to_string(f->animations.size())+
+            ", transitions="+std::to_string(transitions)+", textkeys="+std::to_string(keys)+", intermediate="+std::to_string(intermediate)+
+            ", missingNif="+std::to_string(!refs.nif)+", missingKf="+std::to_string(refs.missingKfFiles)+
+            ", duplicateIds="+std::to_string(refs.duplicateEventCodes)+", missingTargets="+std::to_string(refs.missingTransitionTargets)+
+            ", missingIntermediateTargets="+std::to_string(refs.missingIntermediateTargets)+"; "+result.detail;
+        return result;
     }
     if(ext==".dds"||ext==".tga") {
         auto image=ext==".dds"?core::LoadDdsImage(path):core::LoadTgaImage(path);
@@ -136,7 +151,7 @@ int main(int argc,char** argv) {
             throw std::runtime_error("Usage: fiesta_audit --root directory [--root directory] --out directory [--nif-only] [--jobs 4] [--timeout-ms 5000]");
         out=fs::absolute(out);fs::create_directories(out/"scratch");
         std::vector<Item> inputs;std::map<std::string,std::size_t> extensions;
-        const std::set<std::string> codecs{".nif",".kf",".dds",".tga",".shn",".txt",".idm",".aid",".shmd",".shbd",".htd",".htdg",".ini"};
+        const std::set<std::string> codecs{".nif",".kf",".kfm",".dds",".tga",".shn",".txt",".idm",".aid",".shmd",".shbd",".htd",".htdg",".ini"};
         std::ofstream inventory(out/"inventory.tsv");inventory<<"path\textension\tbytes\tcodec\n";
         std::set<fs::path> seen;
         for(const auto& root:roots) {

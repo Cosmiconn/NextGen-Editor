@@ -1,14 +1,14 @@
-# Fiesta-Formatstatus · v13
+# Fiesta-Formatstatus · v14
 
 Stand: 24.09.2026. „Bytegenau erhalten“ beweist den Rückschreibpfad für die geprüften Dateien,
 nicht automatisch die Bedeutung aller Felder oder das Verhalten des Spiels.
-Die vollständigen Messzahlen und Einzelbefunde stehen in [V13_VALIDATION.md](V13_VALIDATION.md).
+Messzahlen: [v13 Gesamtprüfung](V13_VALIDATION.md) und [v14 KFM-Prüfung](V14_VALIDATION.md).
 
 | Format | Implementierter Umfang | Grenze / nächste Forschungsarbeit |
 |---|---|---|
 | NIF | Alle 11.418 eindeutigen Dateien des vorhandenen Gesamtbestands strukturell im Standardmodus geladen; Meshes, Materialien, Texturen, Scene-Graph und vorhandene Texturcontroller | Kein NIF-Writer, keine vollständige Partikelsimulation; Spiel-/NifSkope-Gleichheit nicht belegt. Proprietäre Shader-/Accumulation-Blöcke sind strukturell gelesen, nicht vollständig semantisch umgesetzt. |
 | KF | NIF-Animationscontainer einschließlich B-Spline-Transform-, Float- und Point3-Interpolatoren strukturell gelesen | Struktureller Erfolg ist kein vollständiges Skelettanimations-Playback. |
-| KFM | Noch kein vollständiger Codec | Zuordnung und Wiedergabe von Animationssequenzen/Übergängen erforschen. 1.380 Dateien inventarisiert. |
+| KFM | Strukturierter Reader/Writer für 1.2.4b und 2.0.0.0b; 1.380/1.380 bytegleiche Roundtrips; Katalog, Übergänge, Verweisprüfung und Kopie-Export | Unbekannte Werte erhalten, Runtime-Semantik teilweise offen. Keine Feldbearbeitung oder vollständige Skelettwiedergabe. 12 NIF- und 250 KF-Verweise nicht aufgelöst; drei Zwischenziele fehlen. |
 | DDS | BC1/BC2/BC3 sowie gepacktes RGB/RGBA mit Masken und Zeilenabstand; Top-Mip | Kein DDS-Writer, keine vollständige DDS-Formatfamilie. Die leere `_C_FloofBoots copy.dds` ist ein Eingabefehler. |
 | TGA | 8-Bit-Grau, 16-Bit-BGR5A1, 24-/32-Bit-Farbe; unterstützte RLE-Pakete und beide Ursprungsachsen | Keine Palette/alle historischen TGA-Varianten; getestet gegen den vorhandenen Bestand. |
 | INI | Kartenmetadaten und Layer; Originalbytes bei unverändertem Modell; bekannte Änderungen werden gepatcht, unbekannte Zeilen/Kommentare erhalten | Kein allgemeiner INI-Parser. Leere Karten-INIs bzw. andere INI-Typen bleiben separat ausgewiesen. |
