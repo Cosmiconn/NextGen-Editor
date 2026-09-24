@@ -8199,7 +8199,7 @@ void DrawWorkspaceTabBar(EditorState& state) {
             state.walkPreviewDirty = true;
         }
         if (mode == EditMode::TexturePaint) ImGui::SetWindowFocus("Layer##layerManager");
-        if (mode == EditMode::ObjectPlacement) ImGui::SetWindowFocus("Objekte##objectOutliner");
+        if (mode == EditMode::ObjectPlacement) ImGui::SetWindowFocus("Szene##sceneOutliner");
     };
     auto undoAvailable = [&]() {
         switch (state.editMode) {
@@ -8309,17 +8309,92 @@ void DrawWorkspaceTabBar(EditorState& state) {
 
 
 
-void DrawObjectOutlinerPanel(EditorState& state) {
-    const std::size_t shmdSceneCount = state.shmdCategoryRenderSet.Count();
-    const std::size_t total = state.placementSet.Count() + shmdSceneCount;
-
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "OBJEKT-OUTLINER");
+void DrawSceneOutlinerPanel(EditorState& state) {
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "SZENE");
     ImGui::SameLine();
-    ImGui::TextDisabled("%zu", total);
+
+    const char* context = "Objekte";
+    if (state.editMode == EditMode::Npcs) context = "NPCs";
+    else if (state.editMode == EditMode::Mobs) context = "Mob-Zonen";
+    else if (state.editMode == EditMode::Portals) context = "Portale";
+    ImGui::TextDisabled("%s", context);
     ImGui::Separator();
 
-    UI::InputTextWithHint("##objectOutlinerFilter", "Objekte filtern...",
+    UI::InputTextWithHint("##objectOutlinerFilter", "Szene filtern...",
                           state.objectOutlinerFilter, sizeof(state.objectOutlinerFilter));
+    const std::string needle = LowerAscii(state.objectOutlinerFilter);
+
+    if (state.editMode == EditMode::Npcs) {
+        EnsureNpcTextLoaded(state);
+        if (!state.npcTextLoaded || state.legacySaveStem[0] == '\0') {
+            ImGui::TextDisabled("Keine NPC-Daten für die aktuelle Karte verfügbar.");
+            return;
+        }
+        auto* table = state.npcTextFile.FindTable("ShineNPC");
+        if (!table) { ImGui::TextDisabled("ShineNPC-Tabelle fehlt."); return; }
+        const auto indices = NpcRecordsForCurrentMap(state);
+        ImGui::TextDisabled("%zu NPCs", indices.size());
+        ImGui::BeginChild("##sceneNpcList", ImVec2(0,0), true);
+        for (std::size_t idx : indices) {
+            auto& rec = table->records[idx];
+            if (rec.values.size() < 8) continue;
+            const std::string label = rec.values[0] + "  ·  " + rec.values[6];
+            if (!needle.empty() && LowerAscii(label).find(needle) == std::string::npos) continue;
+            if (UI::Selectable((label + "##npcScene" + std::to_string(idx)).c_str(),
+                               state.selectedNpcRecordIdx == static_cast<int>(idx))) {
+                state.selectedNpcRecordIdx = static_cast<int>(idx);
+            }
+        }
+        ImGui::EndChild();
+        return;
+    }
+
+    if (state.editMode == EditMode::Mobs) {
+        EnsureMobRegenLoaded(state);
+        if (!state.mobRegenTextLoaded || state.legacySaveStem[0] == '\0') {
+            ImGui::TextDisabled("Keine MobRegen-Daten für die aktuelle Karte verfügbar.");
+            return;
+        }
+        auto* zones = state.mobRegenTextFile.FindTable("MobRegenGroup");
+        if (!zones) { ImGui::TextDisabled("MobRegenGroup-Tabelle fehlt."); return; }
+        ImGui::TextDisabled("%zu Spawn-Zonen", zones->records.size());
+        ImGui::BeginChild("##sceneMobZoneList", ImVec2(0,0), true);
+        for (std::size_t i = 0; i < zones->records.size(); ++i) {
+            auto& rec = zones->records[i];
+            if (rec.values.empty()) continue;
+            const std::string label = rec.values[0];
+            if (!needle.empty() && LowerAscii(label).find(needle) == std::string::npos) continue;
+            if (UI::Selectable((label + "##mobScene" + std::to_string(i)).c_str(),
+                               state.selectedMobZoneIdx == static_cast<int>(i))) {
+                state.selectedMobZoneIdx = static_cast<int>(i);
+            }
+        }
+        ImGui::EndChild();
+        return;
+    }
+
+    if (state.editMode == EditMode::Portals) {
+        EnsurePortalDataLoaded(state);
+        const auto markers = CollectPortalMarkers(state);
+        ImGui::TextDisabled("%zu Ziele", markers.size());
+        ImGui::BeginChild("##scenePortalList", ImVec2(0,0), true);
+        for (std::size_t i = 0; i < markers.size(); ++i) {
+            const auto& m = markers[i];
+            std::string label = m.kind == kPortalKindTown ? m.label : ("Schriftrolle · " + m.label);
+            if (!needle.empty() && LowerAscii(label).find(needle) == std::string::npos) continue;
+            const bool selected = m.kind == state.selectedPortalKind && static_cast<int>(m.idx) == state.selectedPortalIdx;
+            if (UI::Selectable((label + "##portalScene" + std::to_string(i)).c_str(), selected)) {
+                state.selectedPortalKind = m.kind;
+                state.selectedPortalIdx = static_cast<int>(m.idx);
+            }
+        }
+        ImGui::EndChild();
+        return;
+    }
+
+    const std::size_t shmdSceneCount = state.shmdCategoryRenderSet.Count();
+    const std::size_t total = state.placementSet.Count() + shmdSceneCount;
+    ImGui::TextDisabled("%zu Objekte", total);
 
     if (!ImGui::GetIO().WantTextInput && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
         ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_A, false)) {
@@ -8332,7 +8407,6 @@ void DrawObjectOutlinerPanel(EditorState& state) {
     ImGui::SameLine();
     ImGui::TextDisabled("%zu gewählt", state.selectedObjects.size());
 
-    const std::string needle = LowerAscii(state.objectOutlinerFilter);
     std::vector<int> visibleIds;
     std::vector<std::string> labels;
     visibleIds.reserve(total);
@@ -8350,11 +8424,10 @@ void DrawObjectOutlinerPanel(EditorState& state) {
         appendIfMatch(id, "[" + (category.empty() ? std::string("SHMD") : category) + "] " +
                           state.shmdCategoryRenderSet.At(i).modelPath);
     }
-    for (std::size_t i = 0; i < state.placementSet.Count(); ++i) {
+    for (std::size_t i = 0; i < state.placementSet.Count(); ++i)
         appendIfMatch(static_cast<int>(i), "[Placement] " + state.placementSet.At(i).modelPath);
-    }
 
-    ImGui::BeginChild("##objectOutlinerList", ImVec2(0,0), true);
+    ImGui::BeginChild("##sceneObjectList", ImVec2(0,0), true);
     ImGuiListClipper clipper;
     clipper.Begin(static_cast<int>(visibleIds.size()));
     while (clipper.Step()) {
@@ -8552,7 +8625,7 @@ void DrawMapEditorWorkspace(EditorState& state) {
         ImGui::DockBuilderDockWindow("Navigator##mapNavigator", navigatorId);
         ImGui::DockBuilderDockWindow("Layer##layerManager", sceneId);
         ImGui::DockBuilderDockWindow("Sichtbarkeit##visibilityPanel", sceneId);
-        ImGui::DockBuilderDockWindow("Objekte##objectOutliner", sceneId);
+        ImGui::DockBuilderDockWindow("Szene##sceneOutliner", sceneId);
         ImGui::DockBuilderDockWindow("Eigenschaften##fileToolsCol", inspectorId);
         ImGui::DockBuilderDockWindow("Asset Browser##assetBrowser", assetId);
         ImGui::DockBuilderDockWindow("2D-Ansicht##view2d", view2dId);
@@ -8604,8 +8677,8 @@ void DrawMapEditorWorkspace(EditorState& state) {
     ImGui::PopStyleColor();
 
     ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(7, 18, 28, 255));
-    ImGui::Begin("Objekte##objectOutliner");
-    DrawObjectOutlinerPanel(state);
+    ImGui::Begin("Szene##sceneOutliner");
+    DrawSceneOutlinerPanel(state);
     ImGui::End();
     ImGui::PopStyleColor();
 
