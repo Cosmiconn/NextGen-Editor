@@ -8418,6 +8418,85 @@ void DrawWorkspaceTabBar(EditorState& state) {
 
 
 
+void DrawWorkspaceAssetBrowser(EditorState& state) {
+    const bool objectMode = state.editMode == EditMode::ObjectPlacement;
+    const bool textureMode = state.editMode == EditMode::TexturePaint;
+
+    if (objectMode && !state.nifListScanned) {
+        if (const auto resmapRoot = FindResmapRootForAssets(state.project.clientFolder)) {
+            state.availableNifFiles = ListFilesByExtension(*resmapRoot, {".nif"});
+            state.nifAssetRoot = *resmapRoot;
+            state.resmapRootForThumbnails = *resmapRoot;
+            state.nifListScanned = true;
+        }
+    }
+    if (textureMode && !state.textureListScanned) {
+        if (const auto resmapRoot = FindResmapRootForAssets(state.project.clientFolder)) {
+            if (const auto texRoot = FindNamedSubfolder(*resmapRoot, {"fieldtexture"})) {
+                state.availableTextureFiles = ListFilesByExtension(*texRoot, {".dds"});
+                state.textureAssetRoot = *texRoot;
+                state.textureListScanned = true;
+            }
+        }
+    }
+
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "ASSET BROWSER");
+    ImGui::SameLine();
+    ImGui::TextDisabled(objectMode ? "NIF Modelle" : textureMode ? "Texturen" : "kontextsensitiv");
+    ImGui::Separator();
+
+    if (!objectMode && !textureMode) {
+        ImGui::TextWrapped("Der Asset Browser wird bei 'Objekte' und 'Textur' aktiv. "
+                           "Weitere Asset-Typen können später hier ergänzt werden.");
+        return;
+    }
+
+    UI::InputTextWithHint("##workspaceAssetFilter", "Assets filtern...",
+                          state.workspaceAssetFilter, sizeof(state.workspaceAssetFilter));
+
+    const auto& files = objectMode ? state.availableNifFiles : state.availableTextureFiles;
+    const auto& root = objectMode ? state.nifAssetRoot : state.textureAssetRoot;
+    std::string needle = LowerAscii(state.workspaceAssetFilter);
+    std::vector<std::size_t> matching;
+    matching.reserve(files.size());
+    for (std::size_t i = 0; i < files.size(); ++i) {
+        if (needle.empty() || LowerAscii(files[i]).find(needle) != std::string::npos) matching.push_back(i);
+    }
+    ImGui::TextDisabled("%zu / %zu Assets", matching.size(), files.size());
+
+    ImGui::BeginChild("##workspaceAssetList", ImVec2(0,0), true);
+    constexpr float thumbSize = 38.0f;
+    ImGuiListClipper clipper;
+    clipper.Begin(static_cast<int>(matching.size()));
+    while (clipper.Step()) {
+        for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row) {
+            const std::size_t index = matching[static_cast<std::size_t>(row)];
+            const std::string& rel = files[index];
+            ImGui::PushID(static_cast<int>(index));
+            const auto thumb = GetOrLoadAssetThumbnail(
+                state, root / rel, objectMode, objectMode ? state.resmapRootForThumbnails : std::filesystem::path{});
+            if (thumb.tex) {
+                ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(thumb.tex)), ImVec2(thumbSize,thumbSize));
+            } else {
+                ImGui::Dummy(ImVec2(thumbSize,thumbSize));
+            }
+            ImGui::SameLine();
+            if (UI::Selectable(rel.c_str(), false, 0, ImVec2(0,thumbSize))) {
+                if (objectMode) {
+                    const std::string legacy = ToLegacyResmapModelPath(rel);
+                    std::snprintf(state.newObjectModelPath, sizeof(state.newObjectModelPath), "%s", legacy.c_str());
+                    state.statusMessage = "Objekt-Asset gewählt: " + legacy;
+                } else {
+                    std::snprintf(state.newLayerDiffuse, sizeof(state.newLayerDiffuse), "%s", rel.c_str());
+                    state.statusMessage = "Textur-Asset gewählt: " + rel;
+                }
+            }
+            ImGui::PopID();
+        }
+    }
+    ImGui::EndChild();
+}
+
 // Der eigentliche Arbeitsbereich (siehe Mockup, zweites/rechtes Bild): Tab-Leiste oben,
 // darunter drei Spalten - "Datei"+"Tools/etc" links, "2D View" Mitte, "3D View" rechts.
 void DrawMapEditorWorkspace(EditorState& state) {
@@ -8432,14 +8511,17 @@ void DrawMapEditorWorkspace(EditorState& state) {
         ImGui::DockBuilderSetNodeSize(dockspaceId, ImGui::GetContentRegionAvail());
 
         ImGuiID center = dockspaceId;
-        ImGuiID navigatorId = 0, inspectorId = 0, view2dId = 0;
+        ImGuiID navigatorId = 0, inspectorId = 0, bottomId = 0;
         ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, 0.16f, &navigatorId, &center);
         ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, 0.25f, &inspectorId, &center);
-        ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, 0.34f, &view2dId, &center);
+        ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, 0.34f, &bottomId, &center);
+        ImGuiID assetId = 0, view2dId = bottomId;
+        ImGui::DockBuilderSplitNode(bottomId, ImGuiDir_Left, 0.43f, &assetId, &view2dId);
         const ImGuiID view3dId = center;
 
         ImGui::DockBuilderDockWindow("Navigator##mapNavigator", navigatorId);
         ImGui::DockBuilderDockWindow("Inspector##fileToolsCol", inspectorId);
+        ImGui::DockBuilderDockWindow("Asset Browser##assetBrowser", assetId);
         ImGui::DockBuilderDockWindow("2D-Ansicht##view2d", view2dId);
         ImGui::DockBuilderDockWindow("3D-Ansicht##view3d", view3dId);
         ImGui::DockBuilderFinish(dockspaceId);
@@ -8521,6 +8603,12 @@ void DrawMapEditorWorkspace(EditorState& state) {
     ImGui::SameLine(); ImGui::TextDisabled("%s", modeName());
     ImGui::Separator();
     DrawPreview3DContent(state);
+    ImGui::End();
+    ImGui::PopStyleColor();
+
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(7, 17, 27, 255));
+    ImGui::Begin("Asset Browser##assetBrowser");
+    DrawWorkspaceAssetBrowser(state);
     ImGui::End();
     ImGui::PopStyleColor();
 
