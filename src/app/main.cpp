@@ -1420,7 +1420,7 @@ void MoveSelectedObjectsBy(EditorState& state, float dx, float dy, float dz) {
     if (state.selectedObjects.empty()) return;
     PromoteSelectedShmdObjectsToPlacements(state);
     for (const int id : state.selectedObjects) {
-        if (id < 0 || static_cast<std::size_t>(id) >= state.placementSet.Count()) continue;
+        if (id < 0 || static_cast<std::size_t>(id) >= state.placementSet.Count() || IsObjectEditorLocked(state,id)) continue;
         auto& object = state.placementSet.At(static_cast<std::size_t>(id));
         object.posX += dx;
         object.posY += dy;
@@ -1434,7 +1434,7 @@ void RotateSelectedObjectsYawBy(EditorState& state, float deltaRadians) {
     const float sy = std::sin(deltaRadians * 0.5f);
     const float cy = std::cos(deltaRadians * 0.5f);
     for (const int id : state.selectedObjects) {
-        if (id < 0 || static_cast<std::size_t>(id) >= state.placementSet.Count()) continue;
+        if (id < 0 || static_cast<std::size_t>(id) >= state.placementSet.Count() || IsObjectEditorLocked(state,id)) continue;
         auto& object = state.placementSet.At(static_cast<std::size_t>(id));
         const float x = object.rotX, y = object.rotY, z = object.rotZ, w = object.rotW;
         object.rotX = cy * x + sy * z;
@@ -1453,9 +1453,9 @@ void ScaleSelectedObjectsBy(EditorState& state, float factor) {
     if (state.selectedObjects.empty() || !std::isfinite(factor) || factor <= 0.0f) return;
     PromoteSelectedShmdObjectsToPlacements(state);
     for (const int id : state.selectedObjects) {
-        if (id < 0 || static_cast<std::size_t>(id) >= state.placementSet.Count()) continue;
+        if (id < 0 || static_cast<std::size_t>(id) >= state.placementSet.Count() || IsObjectEditorLocked(state,id)) continue;
         auto& object = state.placementSet.At(static_cast<std::size_t>(id));
-        object.scale = std::clamp(object.scale * factor, 0.1f, 5.0f);
+        object.scale = std::clamp(object.scale * factor, 0.01f, 100.0f);
     }
 }
 
