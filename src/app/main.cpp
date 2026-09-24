@@ -6890,9 +6890,23 @@ void DrawToolsContent(EditorState& state) {
         ImGui::TextDisabled("  %zu Placement + %zu SHMD-Szenenmodelle; %zu mit echtem Mesh",
                             state.placementSet.Count(), shmdSceneCount,
                             state.nifMeshRenderer.RealMeshCount() + state.shmdCategoryMeshRenderer.RealMeshCount());
-        ImGui::BeginChild("ObjectList", ImVec2(0, 170), true);
 
-        for (std::size_t i = 0; i < shmdSceneCount; ++i) {
+        if (!ImGui::GetIO().WantTextInput && ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_A, false))
+            SelectAllNormalObjects(state);
+
+        if (UI::SmallButton("Alle normalen auswählen")) SelectAllNormalObjects(state);
+        ImGui::SameLine();
+        if (UI::SmallButton("Auswahl aufheben")) ClearObjectSelection(state);
+        ImGui::TextDisabled("Strg+Klick: hinzufügen/entfernen · Shift+Klick: Bereich · Strg+A: alle normalen");
+
+        std::vector<int> objectListIds;
+        objectListIds.reserve(shmdSceneCount + state.placementSet.Count());
+        for (std::size_t i = 0; i < shmdSceneCount; ++i) objectListIds.push_back(ShmdSelectionId(i));
+        for (std::size_t i = 0; i < state.placementSet.Count(); ++i) objectListIds.push_back(static_cast<int>(i));
+
+        ImGui::BeginChild("ObjectList", ImVec2(0, 190), true);
+        int listOrdinal = 0;
+        for (std::size_t i = 0; i < shmdSceneCount; ++i, ++listOrdinal) {
             const int id = ShmdSelectionId(i);
             const bool selected = std::find(state.selectedObjects.begin(), state.selectedObjects.end(), id) != state.selectedObjects.end();
             const std::string categoryName = ShmdSelectionCategoryName(state, id);
@@ -6900,21 +6914,32 @@ void DrawToolsContent(EditorState& state) {
                                       state.shmdCategoryRenderSet.At(i).modelPath;
             ImGui::PushID("shmd-scene");
             ImGui::PushID(static_cast<int>(i));
-            if (UI::Selectable(label.c_str(), selected)) SelectObjectId(state, id, ImGui::GetIO().KeyCtrl);
+            if (UI::Selectable(label.c_str(), selected))
+                SelectObjectFromList(state, id, listOrdinal, objectListIds,
+                                     ImGui::GetIO().KeyCtrl, ImGui::GetIO().KeyShift);
             ImGui::PopID();
             ImGui::PopID();
         }
-        for (std::size_t i = 0; i < state.placementSet.Count(); ++i) {
+        for (std::size_t i = 0; i < state.placementSet.Count(); ++i, ++listOrdinal) {
             const int id = static_cast<int>(i);
             const bool selected = std::find(state.selectedObjects.begin(), state.selectedObjects.end(), id) != state.selectedObjects.end();
             const std::string label = "[Placement] " + state.placementSet.At(i).modelPath;
             ImGui::PushID("placement");
             ImGui::PushID(id);
-            if (UI::Selectable(label.c_str(), selected)) SelectObjectId(state, id, ImGui::GetIO().KeyCtrl);
+            if (UI::Selectable(label.c_str(), selected))
+                SelectObjectFromList(state, id, listOrdinal, objectListIds,
+                                     ImGui::GetIO().KeyCtrl, ImGui::GetIO().KeyShift);
             ImGui::PopID();
             ImGui::PopID();
         }
         ImGui::EndChild();
+
+        const bool multipleSelection = state.selectedObjects.size() > 1;
+        if (multipleSelection) {
+            ImGui::Text("%zu Objekte ausgewählt", state.selectedObjects.size());
+            ImGui::TextWrapped("Koordinaten, Rotation, Skalierung und Drag&Drop wirken gemeinsam. "
+                               "Relative Abstände und Höhen bleiben beim Verschieben erhalten.");
+        }
 
         SyncSelectedObjectModelPath(state);
         if (auto* obj = EditableObject(state, state.selectedObject)) {
@@ -6923,11 +6948,15 @@ void DrawToolsContent(EditorState& state) {
             if (shmdScene) {
                 const std::string categoryName = ShmdSelectionCategoryName(state, state.selectedObject);
                 ImGui::Text("SHMD-Kategorie: %s", categoryName.empty() ? "Szenenmodell" : categoryName.c_str());
-                ImGui::TextWrapped("Modellpfad und Löschen bleiben in der Kategorie. "
-                                   "Position/Rotation/Skalierung wandeln den Eintrag automatisch in ein normales Placement um, "
-                                   "weil das SHMD-Kategoriefeld selbst keine Transform-Daten besitzt.");
+            }
+            if (shmdScene || (multipleSelection && std::any_of(state.selectedObjects.begin(), state.selectedObjects.end(),
+                                                               [](int id) { return IsShmdSelection(id); }))) {
+                ImGui::TextWrapped("Transformänderungen wandeln betroffene Sky/Water/GroundObject-Einträge automatisch "
+                                   "in normale Placements um, da die SHMD-Kategorielisten keine Transformfelder besitzen.");
             }
 
+            ImGui::BeginDisabled(multipleSelection);
+            if (multipleSelection) ImGui::TextDisabled("Modellwechsel nur bei Einzelauswahl");
             if (UI::InputText("Modellpfad##selected", state.selectedObjectModelPath, sizeof(state.selectedObjectModelPath))) {
                 state.selectedObjectModelPathDirty = true;
             }
@@ -6955,38 +6984,51 @@ void DrawToolsContent(EditorState& state) {
                     obj = EditableObject(state, state.selectedObject);
                 }
             }
+            ImGui::EndDisabled();
 
             if (obj) {
-                float position[3] = {obj->posX, obj->posY, obj->posZ};
-                if (ImGui::InputFloat3("Position", position, "%.1f")) {
-                    obj->posX = position[0]; obj->posY = position[1]; obj->posZ = position[2];
-                    if (shmdScene) {
-                        PromoteSelectedShmdObjectsToPlacements(state, state.selectedObject);
+                const float oldX = obj->posX, oldY = obj->posY, oldZ = obj->posZ;
+                float position[3] = {oldX, oldY, oldZ};
+                if (ImGui::InputFloat3(multipleSelection ? "Position (aktives Objekt)" : "Position", position, "%.1f")) {
+                    MoveSelectedObjectsBy(state, position[0] - oldX, position[1] - oldY, position[2] - oldZ);
+                    obj = EditableObject(state, state.selectedObject);
+                }
+
+                if (obj) {
+                    const float oldRotDeg = std::atan2(obj->rotY, obj->rotW) * 2.0f * 180.0f / 3.14159265f;
+                    float rotDeg = oldRotDeg;
+                    if (UI::SliderFloat("Rotation um Hochachse (°)", &rotDeg, -180.0f, 180.0f)) {
+                        RotateSelectedObjectsYawBy(state, (rotDeg - oldRotDeg) * 3.14159265f / 180.0f);
                         obj = EditableObject(state, state.selectedObject);
                     }
                 }
 
                 if (obj) {
-                    float rotDeg = std::atan2(obj->rotY, obj->rotW) * 2.0f * 180.0f / 3.14159265f;
-                    if (UI::SliderFloat("Rotation um Hochachse (°)", &rotDeg, -180.0f, 180.0f)) {
-                        const float rad = rotDeg * 3.14159265f / 180.0f / 2.0f;
-                        obj->rotX = 0.0f; obj->rotZ = 0.0f;
-                        obj->rotY = std::sin(rad);
-                        obj->rotW = std::cos(rad);
-                        if (shmdScene) {
-                            PromoteSelectedShmdObjectsToPlacements(state, state.selectedObject);
-                            obj = EditableObject(state, state.selectedObject);
-                        }
+                    const float oldScale = obj->scale;
+                    float scale = oldScale;
+                    if (UI::SliderFloat("Skalierung", &scale, 0.1f, 5.0f)) {
+                        const float factor = oldScale > 1.0e-6f ? scale / oldScale : 1.0f;
+                        ScaleSelectedObjectsBy(state, factor);
+                        obj = EditableObject(state, state.selectedObject);
                     }
-                }
-
-                if (obj && UI::SliderFloat("Skalierung", &obj->scale, 0.1f, 5.0f) && shmdScene) {
-                    PromoteSelectedShmdObjectsToPlacements(state, state.selectedObject);
-                    obj = EditableObject(state, state.selectedObject);
                 }
             }
 
             if (UI::Button("Ausgewählte Objekte löschen")) DeleteSelectedObjects(state);
+        }
+
+        ImGui::Separator();
+        if (UI::Button("Alle normalen Objekte entfernen")) ImGui::OpenPopup("##deleteAllNormalObjects");
+        if (ImGui::BeginPopupModal("##deleteAllNormalObjects", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::Text("Wirklich alle %zu normalen Placement-Objekte entfernen?", state.placementSet.Count());
+            ImGui::TextDisabled("Sky, Water und GroundObject bleiben erhalten.");
+            if (UI::Button("Alle normalen entfernen")) {
+                DeleteAllNormalObjects(state);
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (UI::Button("Abbrechen")) ImGui::CloseCurrentPopup();
+            ImGui::EndPopup();
         }
     } else if (state.editMode == EditMode::Npcs) {
         if (state.shineTextRoot.empty()) {
@@ -7772,17 +7814,12 @@ void DrawEditor2DContent(EditorState& state) {
                 // Mehrfachauswahl gemeinsam bewegt werden kann.
                 if (!state.objectPlaceMode && state.objectDragActive && ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
                     ImGui::IsMouseDragging(ImGuiMouseButton_Left, 1.0f) && !state.selectedObjects.empty()) {
-                    PromoteSelectedShmdObjectsToPlacements(state);
                     const ImVec2 delta = ImGui::GetIO().MouseDelta;
                     const float dx = imageSize.x > 0.0f ? delta.x * spanX / imageSize.x : 0.0f;
                     const float dz = imageSize.y > 0.0f ? -delta.y * spanZ / imageSize.y : 0.0f;
-                    for (int idx : state.selectedObjects) {
-                        if (idx < 0 || static_cast<std::size_t>(idx) >= state.placementSet.Count()) continue;
-                        auto& moved = state.placementSet.At(static_cast<std::size_t>(idx));
-                        moved.posX += dx;
-                        moved.posZ += dz;
-                        moved.posY = state.heightmap.SampleWorld(moved.posX, moved.posZ);
-                    }
+                    // 2D-Drag verändert nur X/Z. Y bleibt bewusst unverändert, damit mehrere
+                    // Objekte ihre individuellen Höhen/Offsets nicht beim ersten Pixel verlieren.
+                    MoveSelectedObjectsBy(state, dx, 0.0f, dz);
                 }
                 if (state.objectPlaceMode) {
                     core::PlacedObject obj;
@@ -7797,6 +7834,7 @@ void DrawEditor2DContent(EditorState& state) {
                     state.selectedObject = static_cast<int>(state.placementSet.AddObject(std::move(obj)));
                     state.selectedObjects = {state.selectedObject};
                     state.selectedObjectModelPathFor = kNoObjectSelection;
+                    state.objectListRangeAnchor = -1;
                     ReloadObjectRenderers(state);
                 } else if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
                     // Auswahl wird ausschließlich auf dem initialen Klick geändert. Danach darf
@@ -7833,11 +7871,9 @@ void DrawEditor2DContent(EditorState& state) {
                         }
                     }
                     if (bestIdx != kNoObjectSelection) {
-                        SelectObjectId(state, bestIdx, ImGui::GetIO().KeyCtrl);
+                        SelectObjectOnCanvas(state, bestIdx, ImGui::GetIO().KeyCtrl);
                     } else if (!ImGui::GetIO().KeyCtrl) {
-                        state.selectedObjects.clear();
-                        state.selectedObject = kNoObjectSelection;
-                        state.selectedObjectModelPathFor = kNoObjectSelection;
+                        ClearObjectSelection(state);
                     }
                     if (bestIdx != kNoObjectSelection) {
                         state.objectDragActive =
@@ -8039,8 +8075,14 @@ void DrawPreview3DContent(EditorState& state) {
     for (std::size_t li = 0; li < state.textureStack.LayerCount(); ++li) {
         state.renderer.SetLayerVisible(static_cast<int>(li), li >= state.layerHidden.size() || state.layerHidden[li] == 0);
     }
-    state.objectMarkerRenderer.RebuildInstances(state.placementSet, state.selectedObject,
-        [&state](std::size_t i) { return !state.showObjectMarkers || IsObjectHidden(state, i) || state.nifMeshRenderer.HasRealMesh(i); });
+    state.objectMarkerRenderer.RebuildInstances(state.placementSet, state.selectedObjects,
+        [&state](std::size_t i) {
+            const bool selected = std::find(state.selectedObjects.begin(), state.selectedObjects.end(),
+                                            static_cast<int>(i)) != state.selectedObjects.end();
+            return IsObjectHidden(state, i) ||
+                   (!state.showObjectMarkers && !selected) ||
+                   (state.nifMeshRenderer.HasRealMesh(i) && !selected);
+        });
     state.objectMarkerRenderer.Draw(state.camera, w, h);
     if (state.editMode == EditMode::Portals) {
         // Portal-Ziele als grosse Marker (wie die Objekt-Platzhalter, aber 3-4x so gross): TownPortal
