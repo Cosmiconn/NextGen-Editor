@@ -2171,79 +2171,80 @@ bool DrawEditorCard(const char* id, ImVec2 size, ImU32 bodyColor, ImU32 headerCo
 // tabs==nullptr blendet die linken Tabs aus (Detail-Bildschirme zeigen stattdessen NUR den
 // aktuellen Titel als "Breadcrumb", siehe Mockup rechtes/zweites Bild).
 void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(14.0f, 8.0f));
-    if (breadcrumbTitle != nullptr) {
-        ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(55, 125, 195, 255));
-        UI::Button(breadcrumbTitle);
-        ImGui::PopStyleColor();
-    } else {
-        struct TabEntry { const char* key; AppScreen target; };
-        const TabEntry tabs[] = {
-            {"nav.project", AppScreen::ProjectHub},
-            {"nav.new", AppScreen::NewProjectConfig},
-            {"nav.open", AppScreen::ProjectHub},
-            {"nav.edit", AppScreen::NewProjectConfig},
-            {"nav.save", AppScreen::ProjectHub},
-        };
-        for (const auto& tab : tabs) {
-            const bool active = (state.screen == tab.target) &&
-                                 (std::strcmp(tab.key, "nav.project") == 0) == (state.screen == AppScreen::ProjectHub);
-            ImGui::PushStyleColor(ImGuiCol_Button, active ? IM_COL32(55, 125, 195, 255) : IM_COL32(55, 125, 195, 255));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(75, 150, 225, 255));
-            if (UI::Button(T(tab.key))) {
-                if (std::strcmp(tab.key, "nav.new") == 0) {
-                    state.project = ProjectConfig{};
-                    state.screen = AppScreen::NewProjectConfig;
-                } else if (std::strcmp(tab.key, "nav.open") == 0) {
-#ifdef _WIN32
-                    if (auto picked = BrowseForFolderWindows("Projekt-Ordner w\u00e4hlen")) {
-                        std::snprintf(state.project.projectFolder, sizeof(state.project.projectFolder), "%s", picked->c_str());
-                        TryLoadProjectConfig(state.project);
-                        state.project.hasProject = true;
-                        state.statusMessage = "Projekt geladen: " + std::string(state.project.projectFolder);
-                    }
-#endif
-                } else if (std::strcmp(tab.key, "nav.edit") == 0) {
-                    if (state.project.hasProject) {
-                        state.screen = AppScreen::NewProjectConfig;
-                    } else {
-                        state.statusMessage = "Kein Projekt aktiv - zuerst unter 'Neu' oder 'Öffnen' eines wählen.";
-                    }
-                } else if (std::strcmp(tab.key, "nav.save") == 0) {
-                    if (state.project.hasProject) {
-                        std::string err;
-                        state.statusMessage = SaveProjectConfig(state.project, &err) ? T("newproject.saved")
-                                                                                      : (T("newproject.savefailed") + err);
-                    } else {
-                        state.statusMessage = "Kein Projekt aktiv.";
-                    }
-                } else {
-                    state.screen = tab.target;
-                }
-            }
-            ImGui::PopStyleColor(2);
-            ImGui::SameLine();
-        }
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(11.0f, 7.0f));
+
+    ImGui::TextColored(ImVec4(0.20f, 0.72f, 1.0f, 1.0f), "NG");
+    ImGui::SameLine();
+    ImGui::TextUnformatted("NextGen-Editor");
+    if (breadcrumbTitle && breadcrumbTitle[0]) {
+        ImGui::SameLine();
+        ImGui::TextDisabled("/ %s", breadcrumbTitle);
+    }
+    ImGui::SameLine(205.0f);
+
+    struct PrimaryNav { const char* key; AppScreen target; };
+    const PrimaryNav primary[] = {
+        {"nav.map", AppScreen::MapEditorLauncher},
+        {"nav.data", AppScreen::ShnEditor},
+        {"nav.animations", AppScreen::KfmBrowser},
+        {"nav.project", AppScreen::ProjectHub},
+    };
+    for (const auto& item : primary) {
+        const bool active =
+            (item.target == AppScreen::MapEditorLauncher &&
+             (state.screen == AppScreen::MapEditorLauncher || state.screen == AppScreen::MapEditorWorkspace)) ||
+            (item.target == AppScreen::ProjectHub &&
+             (state.screen == AppScreen::ProjectHub || state.screen == AppScreen::NewProjectConfig)) ||
+            state.screen == item.target;
+        ImGui::PushStyleColor(ImGuiCol_Button, active ? IM_COL32(10, 91, 151, 255) : IM_COL32(8, 25, 38, 255));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(20, 78, 118, 255));
+        if (UI::Button(T(item.key))) state.screen = item.target;
+        ImGui::PopStyleColor(2);
+        ImGui::SameLine();
     }
 
-    // Rechtsbündig: Credits / Donate / ? / Sprache
-    const float rightWidth = 340.0f;
+    ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
+    ImGui::SameLine();
+
+    if (UI::Button(T("nav.new"))) {
+        state.project = ProjectConfig{};
+        state.screen = AppScreen::NewProjectConfig;
+    }
+    ImGui::SameLine();
+    if (UI::Button(T("nav.open"))) {
+#ifdef _WIN32
+        if (auto picked = BrowseForFolderWindows("Projekt-Ordner wählen")) {
+            std::snprintf(state.project.projectFolder, sizeof(state.project.projectFolder), "%s", picked->c_str());
+            TryLoadProjectConfig(state.project);
+            state.project.hasProject = true;
+            state.statusMessage = "Projekt geladen: " + std::string(state.project.projectFolder);
+            state.screen = AppScreen::ProjectHub;
+        }
+#endif
+    }
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!state.project.hasProject);
+    if (UI::Button(T("nav.save"))) {
+        std::string err;
+        state.statusMessage = SaveProjectConfig(state.project, &err) ? T("newproject.saved")
+                                                                      : (T("newproject.savefailed") + err);
+    }
+    ImGui::EndDisabled();
+
+    const float rightWidth = 130.0f;
     ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - rightWidth);
-    ImGui::TextDisabled("%s", T("nav.credits"));
+    if (UI::Button("?##manual")) state.manualOpen = !state.manualOpen;
     ImGui::SameLine();
-    ImGui::TextDisabled("%s", T("nav.donate"));
-    ImGui::SameLine();
-    ImGui::TextDisabled("%s", T("nav.help"));
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(90.0f);
+    ImGui::SetNextItemWidth(64.0f);
     int langIdx = app::CurrentLanguage() == app::Language::German ? 0 : 1;
     const char* langItems[] = {"DE", "EN"};
-    if (UI::Combo("##lang", &langIdx, langItems, 2)) {
+    if (UI::Combo("##lang", &langIdx, langItems, 2))
         app::SetLanguage(langIdx == 0 ? app::Language::German : app::Language::English);
-    }
+
     ImGui::PopStyleVar();
     ImGui::Separator();
 }
+
 
 
 std::string ShnShortValue(const core::legacy::ShnValue& value) {
@@ -3035,11 +3036,12 @@ void DrawShnEditor(EditorState& state) {
             if (!state.shnServerRoot.empty()) ScanShnFolder(state, state.shnServerRoot, EditorState::ShnSource::Server);
         }
     }
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(24, 30, 38, 255));
+    DrawTopNav(state, "Spieldaten");
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(8, 20, 31, 255));
     ImGui::BeginChild("##shnEditor", ImVec2(0,0), false);
-    ImGui::TextColored(ImVec4(0.40f,0.72f,0.96f,1.0f), "SHN Editor"); ImGui::SameLine(); ImGui::TextDisabled("— Fiesta SHN Tabellen");
-    if (UI::Button("← Zurück")) state.screen = AppScreen::ProjectHub;
-    ImGui::SameLine(); ImGui::Separator();
+    ImGui::TextColored(ImVec4(0.40f,0.72f,0.96f,1.0f), "Spieldaten");
+    ImGui::SameLine(); ImGui::TextDisabled("SHN · Quest · Portale · Custom NPC/Mob · Skills");
+    ImGui::Separator();
     const char* tabs[] = {"Single SHN Editor", "Multi SHN Editor", "XP Rate Editor", "Buy & Sell Editor", "Quest Editor", "Portale", "Custom NPC/Mob", "Skill Editor"};
     for (int i=0;i<8;++i) { if(i) ImGui::SameLine(); bool active=state.shnSubTab==i; ImGui::PushStyleColor(ImGuiCol_Button, active?IM_COL32(55,125,195,255):IM_COL32(48,56,68,255)); if(UI::Button(tabs[i])) state.shnSubTab=i; ImGui::PopStyleColor(); }
     ImGui::Separator();
@@ -3100,53 +3102,67 @@ void DrawShnEditor(EditorState& state) {
 }
 
 void DrawProjectHub(EditorState& state) {
-    DrawTopNav(state, nullptr);
-    if (UI::Button(T("card.kfm.title"))) state.screen = AppScreen::KfmBrowser;
+    DrawTopNav(state, "Übersicht");
+
+    ImGui::TextColored(ImVec4(0.74f, 0.86f, 0.96f, 1.0f), "Workspaces");
+    ImGui::SameLine();
+    ImGui::TextDisabled("Vorhandene Editoren und klar getrennte Erweiterungspunkte");
 
     const ImVec2 avail = ImGui::GetContentRegionAvail();
     const float gap = 10.0f;
-    const float cardW = (avail.x - gap * 5.0f) / 6.0f;
-    const float cardH = avail.y - 20.0f;
-    const ImVec2 cardSize(cardW, cardH);
+    const float cardW = std::max(260.0f, (avail.x - gap * 2.0f) / 3.0f);
+    const float cardH = std::max(205.0f, (avail.y - gap) * 0.5f);
 
+    enum class HubAction { Map, Data, Quest, Skill, Kfm, Extensions };
     struct CardDef {
-        const char* titleKey; std::vector<const char*> featureKeys;
-        ImU32 body; ImU32 header; IconDrawFn icon; bool enabled;
+        const char* id;
+        const char* title;
+        std::vector<std::string> features;
+        IconDrawFn icon;
+        HubAction action;
+        bool enabled;
     };
     const CardDef cards[] = {
-        {"card.mapeditor.title",
-         {"card.mapeditor.f1","card.mapeditor.f2","card.mapeditor.f3","card.mapeditor.f4",
-          "card.mapeditor.f5","card.mapeditor.f6","card.mapeditor.f7","card.mapeditor.f8"},
-         IM_COL32(28, 48, 72, 255), IM_COL32(20, 36, 56, 255), DrawIconGlobe, true},
-        {"card.shn.title", {"card.shn.f1","card.shn.f2","card.shn.f3","card.shn.f4"},
-         IM_COL32(40, 48, 58, 255), IM_COL32(30, 37, 46, 255), DrawIconPencilPaper, true},
-        {"card.quest.title", {"card.quest.f1","card.quest.f2"},
-         IM_COL32(46, 50, 56, 255), IM_COL32(36, 40, 46, 255), DrawIconBook, true},
-        {"card.interface.title", {"card.interface.f1","card.interface.f2"},
-         IM_COL32(34, 44, 56, 255), IM_COL32(26, 34, 44, 255), DrawIconMonitorEye, true},
-        {"card.droptable.title", {"card.droptable.f1","card.droptable.f2"},
-         IM_COL32(50, 54, 60, 255), IM_COL32(40, 44, 50, 255), DrawIconAtom, true},
-        {"card.skill.title", {"card.skill.f1","card.skill.f2","card.skill.f3"},
-         IM_COL32(24, 34, 50, 255), IM_COL32(16, 24, 38, 255), DrawIconClapper, true},
+        {"hub.map", "Karte",
+         {"Heightmap & Texturen", "Walk & Block", "Objekte + Sky/Water/GroundObject", "NPCs, Mobs & Portale"},
+         DrawIconTerrain, HubAction::Map, true},
+        {"hub.data", "Spieldaten",
+         {"Single & Multi SHN", "XP Rate / Buy & Sell", "Custom NPC/Mob", "Client + Server Tabellen"},
+         DrawIconTable, HubAction::Data, true},
+        {"hub.quest", "Quest Editor",
+         {"QuestData + QuestDialog", "Ziele & Drops", "Start/Action/Finish Skripte", "Text-ID Auflösung"},
+         DrawIconBook, HubAction::Quest, true},
+        {"hub.skill", "Skill Editor",
+         {"Skills bearbeiten/klonen", "Skill-Stufen", "Animation/Effekt-Auswahl", "Serien skalieren"},
+         DrawIconBolt, HubAction::Skill, true},
+        {"hub.kfm", "Animationen / KFM",
+         {"KFM-Katalog", "Übergänge", "Dateiverweise prüfen", "verlustfreie Kopie exportieren"},
+         DrawIconClapper, HubAction::Kfm, true},
+        {"hub.extensions", "Erweiterungen",
+         {"Interface Editor", "Drop Table Editor", "AI Workspace", "NIF / Material Editing"},
+         DrawIconAtom, HubAction::Extensions, false},
     };
 
-    for (std::size_t i = 0; i < std::size(cards); ++i) {
+    for (int i = 0; i < static_cast<int>(std::size(cards)); ++i) {
         const auto& card = cards[i];
-        std::vector<std::string> features;
-        for (const char* fk : card.featureKeys) features.emplace_back(std::string("\u2022 ") + T(fk));
-        const bool clicked = DrawEditorCard(card.titleKey, cardSize, card.body, card.header, card.icon,
-                                             T(card.titleKey), features, card.enabled);
+        const bool clicked = DrawEditorCard(card.id, ImVec2(cardW, cardH),
+            IM_COL32(8, 24, 36, 255), IM_COL32(9, 42, 63, 255),
+            card.icon, card.title, card.features, card.enabled);
         if (clicked) {
-            if (std::strcmp(card.titleKey, "card.mapeditor.title") == 0) {
-                state.screen = AppScreen::MapEditorLauncher;
-            } else if (std::strcmp(card.titleKey, "card.shn.title") == 0) {
-                state.screen = AppScreen::ShnEditor;
-            } else {
-                state.comingSoonTitle = T(card.titleKey);
-                state.screen = AppScreen::ComingSoon;
+            switch (card.action) {
+                case HubAction::Map: state.screen = AppScreen::MapEditorLauncher; break;
+                case HubAction::Data: state.shnSubTab = 0; state.screen = AppScreen::ShnEditor; break;
+                case HubAction::Quest: state.shnSubTab = 4; state.screen = AppScreen::ShnEditor; break;
+                case HubAction::Skill: state.shnSubTab = 7; state.screen = AppScreen::ShnEditor; break;
+                case HubAction::Kfm: state.screen = AppScreen::KfmBrowser; break;
+                case HubAction::Extensions:
+                    state.comingSoonTitle = "Erweiterungen";
+                    state.screen = AppScreen::ComingSoon;
+                    break;
             }
         }
-        if (i + 1 < std::size(cards)) ImGui::SameLine(0.0f, gap);
+        if (i % 3 != 2) ImGui::SameLine(0.0f, gap);
+        else if (i == 2) ImGui::Dummy(ImVec2(0.0f, gap));
     }
 
     if (!state.statusMessage.empty()) {
@@ -3154,6 +3170,8 @@ void DrawProjectHub(EditorState& state) {
         ImGui::TextWrapped("%s", state.statusMessage.c_str());
     }
 }
+
+
 
 // (Hinweis: die gelben Klebezettel aus den Mockups waren Umsetzungs-Hinweise, keine
 // echten UI-Elemente - daher gibt es hier bewusst keine "Sticky Note"-Komponente mehr.)
