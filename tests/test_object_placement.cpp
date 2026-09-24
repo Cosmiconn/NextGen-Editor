@@ -75,6 +75,53 @@ void TestShmdRoundtrip() {
     std::filesystem::remove(path);
 }
 
+void TestShmdCategoryEditing() {
+    ObjectPlacementSet set;
+
+    ObjectCategoryList sky;
+    sky.name = "Sky";
+    sky.modelPaths = {
+        "resmap\\nifs\\Common\\field_sky_01.nif",
+        "resmap\\field\\Test\\sky_alt.nif"
+    };
+    ObjectCategoryList water;
+    water.name = "Water";
+    water.modelPaths = {"resmap\\field\\Test\\water.nif"};
+    ObjectCategoryList ground;
+    ground.name = "GroundObject";
+    ground.modelPaths = {
+        "resmap\\field\\Test\\ground_a.nif",
+        "resmap\\field\\Test\\ground_b.nif"
+    };
+    set.categories = {sky, water, ground};
+
+    // Entspricht den nativen Editor-Operationen für SHMD-Szenenmodelle:
+    // Modellpfad austauschen und einen Eintrag löschen.
+    set.categories[0].modelPaths[0] = "resmap\\field\\Test\\sky_replaced.nif";
+    set.categories[1].modelPaths[0] = "resmap\\field\\Test\\water_replaced.nif";
+    set.categories[2].modelPaths.erase(set.categories[2].modelPaths.begin());
+
+    const auto path = std::filesystem::temp_directory_path() / "nextgen-shmd-category-edit.shmd";
+    Check(legacy::SerializeLegacyShmd(set, path).has_value(), "SHMD-Kategorieänderung schreiben");
+
+    const auto loaded = legacy::ParseLegacyShmd(path);
+    Check(loaded.has_value(), "SHMD-Kategorieänderung lesen");
+    if (loaded) {
+        Check(loaded->categories.size() == 3, "Sky/Water/GroundObject nach Bearbeitung erhalten");
+        Check(loaded->categories[0].modelPaths.size() == 2 &&
+              loaded->categories[0].modelPaths[0] == "resmap\\field\\Test\\sky_replaced.nif",
+              "Sky-Modellpfad nach Bearbeitung erhalten");
+        Check(loaded->categories[1].modelPaths.size() == 1 &&
+              loaded->categories[1].modelPaths[0] == "resmap\\field\\Test\\water_replaced.nif",
+              "Water-Modellpfad nach Bearbeitung erhalten");
+        Check(loaded->categories[2].modelPaths.size() == 1 &&
+              loaded->categories[2].modelPaths[0] == "resmap\\field\\Test\\ground_b.nif",
+              "GroundObject-Löschung nach Bearbeitung erhalten");
+    }
+
+    std::filesystem::remove(path);
+}
+
 void TestLegacyShmdByteExactRoundtrip(const std::filesystem::path& shmdPath) {
     auto parsed = legacy::ParseLegacyShmd(shmdPath);
     Check(parsed.has_value(), "ParseLegacyShmd(Rou.shmd) erfolgreich");
@@ -230,6 +277,7 @@ int main(int argc, char** argv) {
     std::printf("== ObjectPlacement Core Tests ==\n");
     TestBasicObjectPlacement();
     TestShmdRoundtrip();
+    TestShmdCategoryEditing();
     TestMultipleAidAreasAndInvalidInput();
 
     if (argc >= 4) {

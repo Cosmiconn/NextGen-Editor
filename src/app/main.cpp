@@ -301,9 +301,14 @@ struct EditorState {
     int walkLegacyHeight = 512;
 
     core::ObjectPlacementSet placementSet;
+    // Auswahl-IDs: >=0 = normales Placement, -1 = keine Auswahl, <=-2 = SHMD-
+    // Szenenmodell (Index = -2-id). So kann dieselbe Mehrfachauswahl beide Welten enthalten.
     int selectedObject = -1;
-    std::vector<int> selectedObjects; // Mehrfachauswahl im Objekt-Placement
+    std::vector<int> selectedObjects;
     bool objectDragActive = false;
+    char selectedObjectModelPath[512] = "";
+    int selectedObjectModelPathFor = -1;
+    bool selectedObjectModelPathDirty = false;
     int objectPlaceMode = 1; // 1 = Platzieren, 0 = Auswählen (ImGui::RadioButton braucht int*)
     char newObjectModelPath[512] = "resmap\\field\\Rou\\GuildHall.nif";
     float newObjectScale = 1.0f;
@@ -336,6 +341,9 @@ struct EditorState {
     app::NifMeshRenderer shmdCategoryMeshRenderer;
     core::ObjectPlacementSet shmdCategoryRenderSet;
     std::vector<int> shmdCategoryRenderKind; // 0=Sky, 1=Water, 2=GroundObject, -1=sonstige Kategorie
+    // Je Render-Eintrag: (Index in placementSet.categories, Index in modelPaths).
+    // Wird gebraucht, um dieselben Einträge im Objekt-Editor direkt bearbeiten zu können.
+    std::vector<std::pair<std::size_t, std::size_t>> shmdCategorySource;
     std::vector<char> shmdCategoryHidden;
     // Eigenständiger, zweiter NifMeshRenderer NUR für die 3D-Darstellung von NPCs (siehe
     // CHANGELOG [0.44.17]) - getrennt von nifMeshRenderer/placementSet, da LoadModelsForSet
@@ -903,23 +911,233 @@ int ShmdCategoryKind(const std::string& name) {
 void RebuildShmdCategoryRenderSet(EditorState& state, const std::filesystem::path& mapDir) {
     state.shmdCategoryRenderSet = core::ObjectPlacementSet{};
     state.shmdCategoryRenderKind.clear();
+    state.shmdCategorySource.clear();
 
     // Kategorieeinträge haben absichtlich keinen Placement-Transform. Die zugehörigen NIFs
     // tragen ihre Szenengeometrie selbst; für die Vorschau werden sie deshalb einmal mit
     // Identity-Transform gerendert. Das Original-ObjectPlacementSet bleibt unverändert.
-    for (const auto& category : state.placementSet.categories) {
+    for (std::size_t categoryIndex = 0; categoryIndex < state.placementSet.categories.size(); ++categoryIndex) {
+        const auto& category = state.placementSet.categories[categoryIndex];
         const int kind = ShmdCategoryKind(category.name);
-        for (const auto& modelPath : category.modelPaths) {
+        for (std::size_t pathIndex = 0; pathIndex < category.modelPaths.size(); ++pathIndex) {
+            const auto& modelPath = category.modelPaths[pathIndex];
             if (modelPath.empty()) continue;
             core::PlacedObject obj;
             obj.modelPath = modelPath;
             state.shmdCategoryRenderSet.AddObject(std::move(obj));
             state.shmdCategoryRenderKind.push_back(kind);
+            state.shmdCategorySource.emplace_back(categoryIndex, pathIndex);
         }
     }
 
     state.shmdCategoryHidden.assign(state.shmdCategoryRenderSet.Count(), 0);
     state.shmdCategoryMeshRenderer.LoadModelsForSet(state.shmdCategoryRenderSet, mapDir);
+}
+
+constexpr int kNoObjectSelection = -1;
+
+int ShmdSelectionId(std::size_t renderIndex) {
+    return -2 - static_cast<int>(renderIndex);
+}
+
+bool IsShmdSelection(int selectionId) {
+    return selectionId <= -2;
+}
+
+std::optional<std::size_t> ShmdRenderIndex(int selectionId) {
+    if (!IsShmdSelection(selectionId)) return std::nullopt;
+    return static_cast<std::size_t>(-2 - selectionId);
+}
+
+std::filesystem::path CurrentObjectAssetMapDir(const EditorState& state) {
+    if (state.legacyMapIniPath[0] != '\0') return std::filesystem::path(state.legacyMapIniPath).parent_path();
+    if (state.legacyShmdPath[0] != '\0') return std::filesystem::path(state.legacyShmdPath).parent_path();
+    if (state.legacySaveDir[0] != '\0') return std::filesystem::path(state.legacySaveDir);
+    return {};
+}
+
+core::PlacedObject* EditableObject(EditorState& state, int selectionId) {
+    if (selectionId >= 0) {
+        const auto index = static_cast<std::size_t>(selectionId);
+        return index < state.placementSet.Count() ? &state.placementSet.At(index) : nullptr;
+    }
+    const auto renderIndex = ShmdRenderIndex(selectionId);
+    if (!renderIndex || *renderIndex >= state.shmdCategoryRenderSet.Count()) return nullptr;
+    return &state.shmdCategoryRenderSet.At(*renderIndex);
+}
+
+const core::PlacedObject* EditableObject(const EditorState& state, int selectionId) {
+    if (selectionId >= 0) {
+        const auto index = static_cast<std::size_t>(selectionId);
+        return index < state.placementSet.Count() ? &state.placementSet.At(index) : nullptr;
+    }
+    const auto renderIndex = ShmdRenderIndex(selectionId);
+    if (!renderIndex || *renderIndex >= state.shmdCategoryRenderSet.Count()) return nullptr;
+    return &state.shmdCategoryRenderSet.At(*renderIndex);
+}
+
+std::string ShmdSelectionCategoryName(const EditorState& state, int selectionId) {
+    const auto renderIndex = ShmdRenderIndex(selectionId);
+    if (!renderIndex || *renderIndex >= state.shmdCategorySource.size()) return {};
+    const auto [categoryIndex, pathIndex] = state.shmdCategorySource[*renderIndex];
+    (void)pathIndex;
+    if (categoryIndex >= state.placementSet.categories.size()) return {};
+    return state.placementSet.categories[categoryIndex].name;
+}
+
+void ReloadObjectRenderers(EditorState& state) {
+    const auto mapDir = CurrentObjectAssetMapDir(state);
+    state.nifMeshRenderer.LoadModelsForSet(state.placementSet, mapDir);
+    RebuildShmdCategoryRenderSet(state, mapDir);
+    state.objectVisKey.clear();
+}
+
+void SelectObjectId(EditorState& state, int id, bool ctrl) {
+    if (ctrl) {
+        auto it = std::find(state.selectedObjects.begin(), state.selectedObjects.end(), id);
+        if (it == state.selectedObjects.end()) state.selectedObjects.push_back(id);
+        else state.selectedObjects.erase(it);
+    } else {
+        state.selectedObjects = {id};
+    }
+    state.selectedObject = state.selectedObjects.empty() ? kNoObjectSelection : state.selectedObjects.back();
+    state.selectedObjectModelPathFor = kNoObjectSelection;
+    state.selectedObjectModelPathDirty = false;
+}
+
+void EraseShmdCategorySources(EditorState& state,
+                              std::vector<std::pair<std::size_t, std::size_t>> sources) {
+    std::sort(sources.begin(), sources.end(), [](const auto& a, const auto& b) {
+        if (a.first != b.first) return a.first > b.first;
+        return a.second > b.second;
+    });
+    sources.erase(std::unique(sources.begin(), sources.end()), sources.end());
+    for (const auto [categoryIndex, pathIndex] : sources) {
+        if (categoryIndex >= state.placementSet.categories.size()) continue;
+        auto& paths = state.placementSet.categories[categoryIndex].modelPaths;
+        if (pathIndex < paths.size()) paths.erase(paths.begin() + static_cast<std::ptrdiff_t>(pathIndex));
+    }
+}
+
+void DeleteSelectedObjects(EditorState& state) {
+    std::vector<int> placementIndices;
+    std::vector<std::pair<std::size_t, std::size_t>> categorySources;
+    for (const int id : state.selectedObjects) {
+        if (id >= 0) {
+            if (static_cast<std::size_t>(id) < state.placementSet.Count()) placementIndices.push_back(id);
+            continue;
+        }
+        const auto renderIndex = ShmdRenderIndex(id);
+        if (renderIndex && *renderIndex < state.shmdCategorySource.size()) {
+            categorySources.push_back(state.shmdCategorySource[*renderIndex]);
+        }
+    }
+
+    std::sort(placementIndices.begin(), placementIndices.end(), std::greater<int>());
+    placementIndices.erase(std::unique(placementIndices.begin(), placementIndices.end()), placementIndices.end());
+    for (const int index : placementIndices) {
+        if (index >= 0 && static_cast<std::size_t>(index) < state.placementSet.Count()) {
+            state.placementSet.RemoveObject(static_cast<std::size_t>(index));
+        }
+    }
+    EraseShmdCategorySources(state, std::move(categorySources));
+
+    state.selectedObjects.clear();
+    state.selectedObject = kNoObjectSelection;
+    state.selectedObjectModelPathFor = kNoObjectSelection;
+    state.selectedObjectModelPathDirty = false;
+    ReloadObjectRenderers(state);
+}
+
+// SHMD-Kategorieeinträge besitzen im Dateiformat KEINEN Transform. Sobald der Benutzer einen
+// solchen Eintrag verschiebt/dreht/skaliert, wird er deshalb automatisch aus der Kategorie-
+// Pfadliste entfernt und als normales Placement mit exakt diesem Transform gespeichert.
+bool PromoteSelectedShmdObjectsToPlacements(EditorState& state, std::optional<int> onlySelection = std::nullopt) {
+    struct Promotion {
+        int oldId = kNoObjectSelection;
+        core::PlacedObject object;
+        std::pair<std::size_t, std::size_t> source{};
+    };
+    std::vector<Promotion> promotions;
+    for (const int id : state.selectedObjects) {
+        if (onlySelection && id != *onlySelection) continue;
+        const auto renderIndex = ShmdRenderIndex(id);
+        if (!renderIndex || *renderIndex >= state.shmdCategorySource.size() ||
+            *renderIndex >= state.shmdCategoryRenderSet.Count()) continue;
+        promotions.push_back({id, state.shmdCategoryRenderSet.At(*renderIndex),
+                              state.shmdCategorySource[*renderIndex]});
+    }
+    if (promotions.empty()) return false;
+
+    std::unordered_map<int, int> replacement;
+    std::vector<std::pair<std::size_t, std::size_t>> sources;
+    for (auto& promotion : promotions) {
+        const int newId = static_cast<int>(state.placementSet.AddObject(std::move(promotion.object)));
+        replacement[promotion.oldId] = newId;
+        sources.push_back(promotion.source);
+    }
+    EraseShmdCategorySources(state, std::move(sources));
+
+    for (int& id : state.selectedObjects) {
+        if (const auto it = replacement.find(id); it != replacement.end()) id = it->second;
+    }
+    if (const auto it = replacement.find(state.selectedObject); it != replacement.end()) {
+        state.selectedObject = it->second;
+    }
+    // Bei einer Einzel-Transformbearbeitung kann das Entfernen eines Kategoriepfads die
+    // negativen Render-IDs anderer, weiterhin ausgewählter SHMD-Einträge verschieben.
+    // Diese anderen Einträge wurden durch den Regler ohnehin nicht verändert; daher bleibt
+    // danach nur das tatsächlich bearbeitete/konvertierte Objekt ausgewählt. Beim Gruppen-
+    // Drag (onlySelection==nullopt) werden dagegen alle ausgewählten SHMD-Einträge gemeinsam
+    // promoted und die gemischte Mehrfachauswahl bleibt vollständig erhalten.
+    if (onlySelection) {
+        if (const auto it = replacement.find(*onlySelection); it != replacement.end()) {
+            state.selectedObjects = {it->second};
+            state.selectedObject = it->second;
+        }
+    }
+    state.selectedObjectModelPathFor = kNoObjectSelection;
+    state.selectedObjectModelPathDirty = false;
+    ReloadObjectRenderers(state);
+    state.statusMessage =
+        "SHMD-Szenenmodell in normales Placement umgewandelt: Sky/Water/GroundObject speichern "
+        "keine eigenen Transform-Daten; Position/Rotation/Skalierung bleiben so verlustfrei erhalten.";
+    return true;
+}
+
+void SyncSelectedObjectModelPath(EditorState& state) {
+    if (state.selectedObject == kNoObjectSelection) {
+        state.selectedObjectModelPath[0] = '\0';
+        state.selectedObjectModelPathFor = kNoObjectSelection;
+        state.selectedObjectModelPathDirty = false;
+        return;
+    }
+    if (state.selectedObjectModelPathFor == state.selectedObject) return;
+    const auto* object = EditableObject(state, state.selectedObject);
+    if (!object) return;
+    std::snprintf(state.selectedObjectModelPath, sizeof(state.selectedObjectModelPath), "%s", object->modelPath.c_str());
+    state.selectedObjectModelPathFor = state.selectedObject;
+    state.selectedObjectModelPathDirty = false;
+}
+
+void ApplySelectedObjectModelPath(EditorState& state, const std::string& modelPath) {
+    if (modelPath.empty() || state.selectedObject == kNoObjectSelection) return;
+    if (state.selectedObject >= 0) {
+        if (auto* object = EditableObject(state, state.selectedObject)) object->modelPath = modelPath;
+        state.nifMeshRenderer.LoadModelsForSet(state.placementSet, CurrentObjectAssetMapDir(state));
+    } else {
+        const auto renderIndex = ShmdRenderIndex(state.selectedObject);
+        if (!renderIndex || *renderIndex >= state.shmdCategorySource.size()) return;
+        const auto [categoryIndex, pathIndex] = state.shmdCategorySource[*renderIndex];
+        if (categoryIndex >= state.placementSet.categories.size()) return;
+        auto& paths = state.placementSet.categories[categoryIndex].modelPaths;
+        if (pathIndex >= paths.size()) return;
+        paths[pathIndex] = modelPath;
+        RebuildShmdCategoryRenderSet(state, CurrentObjectAssetMapDir(state));
+    }
+    state.footprintCache.erase(modelPath);
+    state.selectedObjectModelPathFor = kNoObjectSelection;
+    SyncSelectedObjectModelPath(state);
 }
 
 void RefreshShmdCategoryVisibility(EditorState& state) {
@@ -972,8 +1190,10 @@ void ApplyProjectToState(EditorState& state, core::legacy::LegacyMapProject&& pr
     state.walkPreviewDirty = true;
 
     state.placementSet = std::move(project.objects);
-    state.selectedObject = -1;
+    state.selectedObject = kNoObjectSelection;
     state.selectedObjects.clear();
+    state.selectedObjectModelPathFor = kNoObjectSelection;
+    state.selectedObjectModelPathDirty = false;
     // Versucht, für alle Objekte echte .nif-Meshes zu laden (aktuell nur untexturierte Meshes
     // erfolgreich, siehe docs/MAP_FORMAT.md) - für den Rest bleibt der Platzhalter-Marker.
     state.nifMeshRenderer.LoadModelsForSet(state.placementSet, mapDir);
@@ -1398,7 +1618,8 @@ void DrawAdvancedFileOps(EditorState& state) {
                 std::snprintf(state.legacySaveDir, sizeof(state.legacySaveDir), "%s", iniPath.parent_path().string().c_str());
                 std::snprintf(state.legacySaveStem, sizeof(state.legacySaveStem), "%s", iniPath.stem().string().c_str());
                 state.statusMessage = "Karte ge\u00f6ffnet (" + std::to_string(report.issues.size()) + " Hinweis(e)) - " +
-                                       std::to_string(state.placementSet.Count()) + " Objekte, " +
+                                       std::to_string(state.placementSet.Count() + state.shmdCategoryRenderSet.Count()) +
+                                       " Objekte (" + std::to_string(state.shmdCategoryRenderSet.Count()) + " SHMD-Szenenmodelle), " +
                                        std::to_string(state.textureStack.LayerCount()) + " Textur-Layer.";
                 for (const auto& issue : report.issues) {
                     state.statusMessage += "\n- " + issue;
@@ -1543,8 +1764,10 @@ void DrawAdvancedFileOps(EditorState& state) {
             auto result = core::legacy::ParseLegacyShmd(state.legacyShmdPath);
             if (result) {
                 state.placementSet = std::move(*result);
-                state.selectedObject = -1;
+                state.selectedObject = kNoObjectSelection;
                 state.selectedObjects.clear();
+                state.selectedObjectModelPathFor = kNoObjectSelection;
+                state.selectedObjectModelPathDirty = false;
                 const std::filesystem::path shmdMapDir = std::filesystem::path(state.legacyShmdPath).parent_path();
                 state.nifMeshRenderer.LoadModelsForSet(state.placementSet, shmdMapDir);
                 RebuildShmdCategoryRenderSet(state, shmdMapDir);
@@ -6558,52 +6781,108 @@ void DrawToolsContent(EditorState& state) {
         }
 
         ImGui::Separator();
-        ImGui::Text("Objekte (%zu)", state.placementSet.Count());
-        ImGui::TextDisabled("  davon %zu mit echtem Mesh (Rest: Platzhalter)", state.nifMeshRenderer.RealMeshCount());
-        ImGui::BeginChild("ObjectList", ImVec2(0, 150), true);
-        for (std::size_t i = 0; i < state.placementSet.Count(); ++i) {
+        const std::size_t shmdSceneCount = state.shmdCategoryRenderSet.Count();
+        ImGui::Text("Objekte (%zu)", state.placementSet.Count() + shmdSceneCount);
+        ImGui::TextDisabled("  %zu Placement + %zu SHMD-Szenenmodelle; %zu mit echtem Mesh",
+                            state.placementSet.Count(), shmdSceneCount,
+                            state.nifMeshRenderer.RealMeshCount() + state.shmdCategoryMeshRenderer.RealMeshCount());
+        ImGui::BeginChild("ObjectList", ImVec2(0, 170), true);
+
+        for (std::size_t i = 0; i < shmdSceneCount; ++i) {
+            const int id = ShmdSelectionId(i);
+            const bool selected = std::find(state.selectedObjects.begin(), state.selectedObjects.end(), id) != state.selectedObjects.end();
+            const std::string categoryName = ShmdSelectionCategoryName(state, id);
+            const std::string label = "[" + (categoryName.empty() ? std::string("SHMD") : categoryName) + "] " +
+                                      state.shmdCategoryRenderSet.At(i).modelPath;
+            ImGui::PushID("shmd-scene");
             ImGui::PushID(static_cast<int>(i));
-            const bool selected = std::find(state.selectedObjects.begin(), state.selectedObjects.end(), static_cast<int>(i)) != state.selectedObjects.end();
-            char label[600];
-            std::snprintf(label, sizeof(label), "%s", state.placementSet.At(i).modelPath.c_str());
-            if (UI::Selectable(label, selected)) {
-                const int idx = static_cast<int>(i);
-                if (ImGui::GetIO().KeyCtrl) {
-                    auto it = std::find(state.selectedObjects.begin(), state.selectedObjects.end(), idx);
-                    if (it == state.selectedObjects.end()) state.selectedObjects.push_back(idx);
-                    else state.selectedObjects.erase(it);
-                } else {
-                    state.selectedObjects = {idx};
-                }
-                state.selectedObject = state.selectedObjects.empty() ? -1 : state.selectedObjects.back();
-            }
+            if (UI::Selectable(label.c_str(), selected)) SelectObjectId(state, id, ImGui::GetIO().KeyCtrl);
+            ImGui::PopID();
+            ImGui::PopID();
+        }
+        for (std::size_t i = 0; i < state.placementSet.Count(); ++i) {
+            const int id = static_cast<int>(i);
+            const bool selected = std::find(state.selectedObjects.begin(), state.selectedObjects.end(), id) != state.selectedObjects.end();
+            const std::string label = "[Placement] " + state.placementSet.At(i).modelPath;
+            ImGui::PushID("placement");
+            ImGui::PushID(id);
+            if (UI::Selectable(label.c_str(), selected)) SelectObjectId(state, id, ImGui::GetIO().KeyCtrl);
+            ImGui::PopID();
             ImGui::PopID();
         }
         ImGui::EndChild();
 
-        if (state.selectedObject >= 0 && static_cast<std::size_t>(state.selectedObject) < state.placementSet.Count()) {
-            auto& obj = state.placementSet.At(static_cast<std::size_t>(state.selectedObject));
+        SyncSelectedObjectModelPath(state);
+        if (auto* obj = EditableObject(state, state.selectedObject)) {
             ImGui::Separator();
-            ImGui::Text("Position: %.1f, %.1f, %.1f", obj.posX, obj.posY, obj.posZ);
-
-            float rotDeg = std::atan2(obj.rotY, obj.rotW) * 2.0f * 180.0f / 3.14159265f;
-            if (UI::SliderFloat("Rotation um Hochachse (°)", &rotDeg, -180.0f, 180.0f)) {
-                const float rad = rotDeg * 3.14159265f / 180.0f / 2.0f;
-                obj.rotX = 0.0f; obj.rotZ = 0.0f;
-                obj.rotY = std::sin(rad);
-                obj.rotW = std::cos(rad);
+            const bool shmdScene = IsShmdSelection(state.selectedObject);
+            if (shmdScene) {
+                const std::string categoryName = ShmdSelectionCategoryName(state, state.selectedObject);
+                ImGui::Text("SHMD-Kategorie: %s", categoryName.empty() ? "Szenenmodell" : categoryName.c_str());
+                ImGui::TextWrapped("Modellpfad und Löschen bleiben in der Kategorie. "
+                                   "Position/Rotation/Skalierung wandeln den Eintrag automatisch in ein normales Placement um, "
+                                   "weil das SHMD-Kategoriefeld selbst keine Transform-Daten besitzt.");
             }
-            UI::SliderFloat("Skalierung", &obj.scale, 0.1f, 5.0f);
 
-            if (UI::Button("Ausgewählte Objekte löschen")) {
-                std::sort(state.selectedObjects.begin(), state.selectedObjects.end(), std::greater<int>());
-                for (int idx : state.selectedObjects) {
-                    if (idx >= 0 && static_cast<std::size_t>(idx) < state.placementSet.Count())
-                        state.placementSet.RemoveObject(static_cast<std::size_t>(idx));
+            if (UI::InputText("Modellpfad##selected", state.selectedObjectModelPath, sizeof(state.selectedObjectModelPath))) {
+                state.selectedObjectModelPathDirty = true;
+            }
+            if (state.selectedObjectModelPathDirty && ImGui::IsItemDeactivatedAfterEdit()) {
+                ApplySelectedObjectModelPath(state, state.selectedObjectModelPath);
+                state.selectedObjectModelPathDirty = false;
+                obj = EditableObject(state, state.selectedObject);
+            }
+            ImGui::SameLine();
+            if (UI::Button("Durchsuchen...##selectedNif")) {
+                if (const auto resmapRoot = FindResmapRootForAssets(state.project.clientFolder)) {
+                    state.availableNifFiles = ListFilesByExtension(*resmapRoot, {".nif"});
+                    state.nifAssetRoot = *resmapRoot;
+                    state.resmapRootForThumbnails = *resmapRoot;
+                    state.assetPickerFilter.clear();
+                    if (!state.availableNifFiles.empty()) ImGui::OpenPopup("##selectedNifPicker");
                 }
-                state.selectedObjects.clear();
-                state.selectedObject = -1;
             }
+            {
+                std::string picked;
+                if (DrawAssetPickerPopup("##selectedNifPicker", state.availableNifFiles, state.assetPickerFilter, picked,
+                                         state, state.nifAssetRoot, true, state.resmapRootForThumbnails)) {
+                    const std::string legacyModelPath = ToLegacyResmapModelPath(picked);
+                    ApplySelectedObjectModelPath(state, legacyModelPath);
+                    obj = EditableObject(state, state.selectedObject);
+                }
+            }
+
+            if (obj) {
+                float position[3] = {obj->posX, obj->posY, obj->posZ};
+                if (ImGui::InputFloat3("Position", position, "%.1f")) {
+                    obj->posX = position[0]; obj->posY = position[1]; obj->posZ = position[2];
+                    if (shmdScene) {
+                        PromoteSelectedShmdObjectsToPlacements(state, state.selectedObject);
+                        obj = EditableObject(state, state.selectedObject);
+                    }
+                }
+
+                if (obj) {
+                    float rotDeg = std::atan2(obj->rotY, obj->rotW) * 2.0f * 180.0f / 3.14159265f;
+                    if (UI::SliderFloat("Rotation um Hochachse (°)", &rotDeg, -180.0f, 180.0f)) {
+                        const float rad = rotDeg * 3.14159265f / 180.0f / 2.0f;
+                        obj->rotX = 0.0f; obj->rotZ = 0.0f;
+                        obj->rotY = std::sin(rad);
+                        obj->rotW = std::cos(rad);
+                        if (shmdScene) {
+                            PromoteSelectedShmdObjectsToPlacements(state, state.selectedObject);
+                            obj = EditableObject(state, state.selectedObject);
+                        }
+                    }
+                }
+
+                if (obj && UI::SliderFloat("Skalierung", &obj->scale, 0.1f, 5.0f) && shmdScene) {
+                    PromoteSelectedShmdObjectsToPlacements(state, state.selectedObject);
+                    obj = EditableObject(state, state.selectedObject);
+                }
+            }
+
+            if (UI::Button("Ausgewählte Objekte löschen")) DeleteSelectedObjects(state);
         }
     } else if (state.editMode == EditMode::Npcs) {
         if (state.shineTextRoot.empty()) {
@@ -7015,8 +7294,9 @@ const EditorState::ObjectFootprint& GetOrComputeFootprint(EditorState& state, co
     if (it != state.footprintCache.end()) return it->second;
 
     EditorState::ObjectFootprint fp;
-    if (state.legacySaveDir[0] != '\0') {
-        auto resolved = core::legacy::ResolveLegacyAssetPath(state.legacySaveDir, modelPath);
+    const auto mapDir = CurrentObjectAssetMapDir(state);
+    if (!mapDir.empty()) {
+        auto resolved = core::legacy::ResolveLegacyAssetPath(mapDir, modelPath);
         if (resolved) {
             auto model = core::LoadNifMesh(*resolved);
             if (model) {
@@ -7055,6 +7335,14 @@ static void StampObjectFootprints(EditorState& state, bool blocked) {
     for (std::size_t i = 0; i < state.placementSet.Count(); ++i) {
         if (IsObjectHidden(state, i)) continue;
         const auto polygon = ObjectFootprintWorldPolygon(state, state.placementSet.At(i));
+        if (polygon.size() < 3) continue;
+        core::ApplyWalkConvexPolygon(state.walkGrid, polygon, blocked, patch, seen);
+        ++used;
+    }
+    RefreshShmdCategoryVisibility(state);
+    for (std::size_t i = 0; i < state.shmdCategoryRenderSet.Count(); ++i) {
+        if (i < state.shmdCategoryHidden.size() && state.shmdCategoryHidden[i]) continue;
+        const auto polygon = ObjectFootprintWorldPolygon(state, state.shmdCategoryRenderSet.At(i));
         if (polygon.size() < 3) continue;
         core::ApplyWalkConvexPolygon(state.walkGrid, polygon, blocked, patch, seen);
         ++used;
@@ -7111,13 +7399,7 @@ static std::vector<std::pair<float, float>> ObjectFootprintWorldPolygon(EditorSt
 
 void DrawEditor2DContent(EditorState& state) {
     if (state.editMode == EditMode::ObjectPlacement && ImGui::IsKeyPressed(ImGuiKey_Delete, false) && !ImGui::GetIO().WantTextInput) {
-        std::sort(state.selectedObjects.begin(), state.selectedObjects.end(), std::greater<int>());
-        for (int idx : state.selectedObjects) {
-            if (idx >= 0 && static_cast<std::size_t>(idx) < state.placementSet.Count())
-                state.placementSet.RemoveObject(static_cast<std::size_t>(idx));
-        }
-        state.selectedObjects.clear();
-        state.selectedObject = -1;
+        DeleteSelectedObjects(state);
     }
     const bool texMode = state.editMode == EditMode::TexturePaint;
     const bool walkMode = state.editMode == EditMode::BlockWalk;
@@ -7255,6 +7537,36 @@ void DrawEditor2DContent(EditorState& state) {
                                        selected ? IM_COL32(255, 255, 255, 200) : IM_COL32(70, 135, 210, 160), 1.5f);
             }
         }
+
+        // Sky/Water/GroundObject besitzen keinen SHMD-Transform, aber ihre NIF-Geometrie kann
+        // trotzdem bereits an Weltkoordinaten liegen. Deshalb werden ihre echten Grundflächen
+        // ebenfalls im 2D-Editor gezeichnet und können über die Liste ausgewählt werden.
+        RefreshShmdCategoryVisibility(state);
+        if (state.showObjects2D) {
+            for (std::size_t i = 0; i < state.shmdCategoryRenderSet.Count(); ++i) {
+                if (i < state.shmdCategoryHidden.size() && state.shmdCategoryHidden[i]) continue;
+                const auto& obj = state.shmdCategoryRenderSet.At(i);
+                const int id = ShmdSelectionId(i);
+                const bool selected = std::find(state.selectedObjects.begin(), state.selectedObjects.end(), id) != state.selectedObjects.end();
+                DrawObjectFootprint2D(state, obj, drawList, cursorScreenPos, imageSize, spanX, spanZ,
+                                      selected ? IM_COL32(255, 255, 255, 220) : IM_COL32(70, 190, 210, 170),
+                                      selected ? 2.5f : 1.5f);
+                const auto polygon = ObjectFootprintWorldPolygon(state, obj);
+                if (!polygon.empty()) {
+                    float cx = 0.0f, cz = 0.0f;
+                    for (const auto& p : polygon) { cx += p.first; cz += p.second; }
+                    cx /= static_cast<float>(polygon.size());
+                    cz /= static_cast<float>(polygon.size());
+                    const float ou = spanX > 0.0f ? cx / spanX : 0.0f;
+                    const float ov = 1.0f - (spanZ > 0.0f ? cz / spanZ : 0.0f);
+                    const ImVec2 center(cursorScreenPos.x + ou * imageSize.x, cursorScreenPos.y + ov * imageSize.y);
+                    const float radius = selected ? 5.0f : 3.5f;
+                    drawList->AddRectFilled(ImVec2(center.x - radius, center.y - radius),
+                                            ImVec2(center.x + radius, center.y + radius),
+                                            selected ? IM_COL32(255, 255, 255, 255) : IM_COL32(70, 190, 210, 230));
+                }
+            }
+        }
     }
     if (state.editMode == EditMode::Npcs && state.npcTextLoaded && state.legacySaveStem[0] != '\0') {
         // NPC-Marker als Quadrate (statt Kreise wie bei Objekten) - selbe Weiß/Blau-Logik,
@@ -7356,6 +7668,7 @@ void DrawEditor2DContent(EditorState& state) {
                 // Mehrfachauswahl gemeinsam bewegt werden kann.
                 if (!state.objectPlaceMode && state.objectDragActive && ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
                     ImGui::IsMouseDragging(ImGuiMouseButton_Left, 1.0f) && !state.selectedObjects.empty()) {
+                    PromoteSelectedShmdObjectsToPlacements(state);
                     const ImVec2 delta = ImGui::GetIO().MouseDelta;
                     const float dx = imageSize.x > 0.0f ? delta.x * spanX / imageSize.x : 0.0f;
                     const float dz = imageSize.y > 0.0f ? -delta.y * spanZ / imageSize.y : 0.0f;
@@ -7379,6 +7692,8 @@ void DrawEditor2DContent(EditorState& state) {
                     obj.scale = state.newObjectScale;
                     state.selectedObject = static_cast<int>(state.placementSet.AddObject(std::move(obj)));
                     state.selectedObjects = {state.selectedObject};
+                    state.selectedObjectModelPathFor = kNoObjectSelection;
+                    ReloadObjectRenderers(state);
                 } else if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
                     // Auswahl wird ausschließlich auf dem initialen Klick geändert. Danach darf
                     // der gehaltene Klick nur noch die bereits ausgewählten Objekte verschieben.
@@ -7397,20 +7712,32 @@ void DrawEditor2DContent(EditorState& state) {
                             bestIdx = static_cast<int>(i);
                         }
                     }
-                    if (bestIdx >= 0) {
-                        if (ImGui::GetIO().KeyCtrl) {
-                            auto it = std::find(state.selectedObjects.begin(), state.selectedObjects.end(), bestIdx);
-                            if (it == state.selectedObjects.end()) state.selectedObjects.push_back(bestIdx);
-                            else state.selectedObjects.erase(it);
-                        } else {
-                            state.selectedObjects = {bestIdx};
+                    RefreshShmdCategoryVisibility(state);
+                    for (std::size_t i = 0; i < state.shmdCategoryRenderSet.Count(); ++i) {
+                        if (i < state.shmdCategoryHidden.size() && state.shmdCategoryHidden[i]) continue;
+                        const auto polygon = ObjectFootprintWorldPolygon(state, state.shmdCategoryRenderSet.At(i));
+                        if (polygon.empty()) continue;
+                        float cx = 0.0f, cz = 0.0f;
+                        for (const auto& p : polygon) { cx += p.first; cz += p.second; }
+                        cx /= static_cast<float>(polygon.size());
+                        cz /= static_cast<float>(polygon.size());
+                        const float dx = cx - worldX, dz = cz - worldZ;
+                        const float dist = std::sqrt(dx * dx + dz * dz);
+                        if (dist < bestDist) {
+                            bestDist = dist;
+                            bestIdx = ShmdSelectionId(i);
                         }
+                    }
+                    if (bestIdx != kNoObjectSelection) {
+                        SelectObjectId(state, bestIdx, ImGui::GetIO().KeyCtrl);
                     } else if (!ImGui::GetIO().KeyCtrl) {
                         state.selectedObjects.clear();
+                        state.selectedObject = kNoObjectSelection;
+                        state.selectedObjectModelPathFor = kNoObjectSelection;
                     }
-                    state.selectedObject = state.selectedObjects.empty() ? -1 : state.selectedObjects.back();
-                    if (bestIdx >= 0) {
-                        state.objectDragActive = std::find(state.selectedObjects.begin(), state.selectedObjects.end(), bestIdx) != state.selectedObjects.end();
+                    if (bestIdx != kNoObjectSelection) {
+                        state.objectDragActive =
+                            std::find(state.selectedObjects.begin(), state.selectedObjects.end(), bestIdx) != state.selectedObjects.end();
                     }
                 }
             } else if (state.editMode == EditMode::Npcs && state.npcTextLoaded) {
