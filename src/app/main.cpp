@@ -305,6 +305,8 @@ struct EditorState {
     GLuint walkPreviewTex = 0;
     std::uint32_t walkPreviewCols = 0, walkPreviewRows = 0; // Zell-Aufloesung der Vorschau-Textur
     bool walkBlockMode = true;   // Stempel sperrt (true) oder gibt frei (false)
+    bool walkRectActive = false;
+    ImVec2 walkRectStart{};
     bool walkPreviewDirty = true;
     char walkLegacyPath[512] = "";
     int walkLegacyWidth = 512;
@@ -8264,6 +8266,45 @@ void DrawEditor2DContent(EditorState& state) {
         }
     }
 
+    bool suppressWalkClickForRect=false;
+    if (walkMode) {
+        const ImGuiIO& ioWalk=ImGui::GetIO();
+        if (hovered && ioWalk.KeyShift && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+            state.walkRectActive=true;
+            state.walkRectStart=ImGui::GetMousePos();
+        }
+        if (state.walkRectActive) {
+            suppressWalkClickForRect=true;
+            const ImVec2 cur=ImGui::GetMousePos();
+            const ImVec2 lo(std::min(state.walkRectStart.x,cur.x),std::min(state.walkRectStart.y,cur.y));
+            const ImVec2 hi(std::max(state.walkRectStart.x,cur.x),std::max(state.walkRectStart.y,cur.y));
+            ImDrawList* dl=ImGui::GetWindowDrawList();
+            const ImU32 col=state.walkBlockMode?IM_COL32(245,85,85,235):IM_COL32(80,220,145,235);
+            dl->AddRectFilled(lo,hi,state.walkBlockMode?IM_COL32(245,85,85,28):IM_COL32(80,220,145,28));
+            dl->AddRect(lo,hi,col,0.0f,0,1.5f);
+            if(!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+                auto toWorld=[&](const ImVec2& p) {
+                    const float u=std::clamp((p.x-cursorScreenPos.x)/imageSize.x,0.0f,1.0f);
+                    const float v=std::clamp((p.y-cursorScreenPos.y)/imageSize.y,0.0f,1.0f);
+                    return std::pair<float,float>{u*spanX,(1.0f-v)*spanZ};
+                };
+                const auto a=toWorld(lo), b=toWorld(hi);
+                const float x0=std::min(a.first,b.first), x1=std::max(a.first,b.first);
+                const float z0=std::min(a.second,b.second), z1=std::max(a.second,b.second);
+                std::vector<std::pair<float,float>> polygon={{x0,z0},{x1,z0},{x1,z1},{x0,z1}};
+                core::WalkUndoPatch patch;
+                std::vector<std::uint64_t> seenWords;
+                core::ApplyWalkConvexPolygon(state.walkGrid,polygon,state.walkBlockMode,patch,seenWords);
+                if(!patch.entries.empty()) {
+                    state.walkUndo.Push(std::move(patch));
+                    state.walkPreviewDirty=true;
+                }
+                state.walkRectActive=false;
+                state.statusMessage=state.walkBlockMode?"Walk-Rechteck gesperrt.":"Walk-Rechteck freigegeben.";
+            }
+        }
+    }
+
     // Object placement benötigt sowohl den initialen Klick als auch die folgenden
     // Mouse-Down-Frames für flüssiges Verschieben. Die übrigen Modi behalten ihr
     // bisheriges Klick-/Drag-Verhalten.
@@ -8275,7 +8316,7 @@ void DrawEditor2DContent(EditorState& state) {
                                    : ((state.editMode == EditMode::Npcs || state.editMode == EditMode::Mobs ||
                                        state.editMode == EditMode::Portals)
                                           ? ImGui::IsMouseClicked(ImGuiMouseButton_Left)
-                                          : ImGui::IsMouseDown(ImGuiMouseButton_Left));
+                                          : (!suppressWalkClickForRect && ImGui::IsMouseDown(ImGuiMouseButton_Left)));
     if (hovered && clickTrigger && imageSize.x > 0 && imageSize.y > 0) {
         const ImVec2 mouse = ImGui::GetMousePos();
         const float u = (mouse.x - cursorScreenPos.x) / imageSize.x;
