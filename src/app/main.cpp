@@ -3994,14 +3994,24 @@ void DrawQuestEditor(EditorState& state) {
         return;
     }
     auto& quests = state.questDataFile.records;
-    ImGui::Text("%zu Quests", quests.size());
-    if (!state.questDialogLoaded) {
-        ImGui::SameLine();
-        ImGui::TextDisabled("(QuestDialog.shn nicht gefunden - Texte fehlen)");
-    }
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "QUEST EDITOR");
     ImGui::SameLine();
-    ImGui::SetNextItemWidth(300.0f);
-    UI::InputTextWithHint("##questsearch", "Suche: Quest-ID oder Titeltext", state.questSearch, sizeof(state.questSearch));
+    ImGui::TextDisabled("%zu Quests%s", quests.size(),
+                        state.questDialogLoaded ? "" : " · QuestDialog fehlt");
+    const float questSaveW = 190.0f;
+    ImGui::SameLine(std::max(ImGui::GetCursorPosX() + 8.0f,
+                             ImGui::GetWindowContentRegionMax().x - questSaveW));
+    if (UI::Button("QuestData speichern", ImVec2(questSaveW, 0))) {
+        auto path = std::filesystem::path(state.shnServerRoot) / "QuestData.shn";
+        auto saved = core::legacy::SaveQuestData(state.questDataFile, path);
+        state.statusMessage = saved ? std::string("QuestData.shn gespeichert.") : "Fehler: " + saved.error();
+    }
+    ImGui::Separator();
+    ImGui::SetNextItemWidth(430.0f);
+    UI::InputTextWithHint("##questsearch", "Quest-ID oder Titeltext suchen...",
+                          state.questSearch, sizeof(state.questSearch));
+    ImGui::SameLine();
+    ImGui::TextDisabled("%zu Treffer", state.questVisible.size());
 
     // Listen-Beschriftungen und Filter nur bei Aenderung neu berechnen.
     const std::string key = std::string(state.questSearch) + "|" + std::to_string(quests.size()) + "|" +
@@ -4020,8 +4030,12 @@ void DrawQuestEditor(EditorState& state) {
         }
     }
 
-    const float listWidth = 340.0f;
+    const float listWidth = std::clamp(ImGui::GetContentRegionAvail().x * 0.30f, 310.0f, 430.0f);
     ImGui::BeginChild("QuestList", ImVec2(listWidth, 0.0f), true);
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "QUESTS");
+    ImGui::SameLine();
+    ImGui::TextDisabled("%zu sichtbar", state.questVisible.size());
+    ImGui::Separator();
     {
         ImGuiListClipper clipper;
         clipper.Begin(static_cast<int>(state.questVisible.size()));
@@ -4037,6 +4051,8 @@ void DrawQuestEditor(EditorState& state) {
     ImGui::EndChild();
     ImGui::SameLine();
     ImGui::BeginChild("QuestDetail", ImVec2(0.0f, 0.0f), true);
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "EIGENSCHAFTEN");
+    ImGui::Separator();
     if (state.selectedQuestIdx < 0 || static_cast<std::size_t>(state.selectedQuestIdx) >= quests.size()) {
         ImGui::TextDisabled("Quest links auswählen.");
         ImGui::EndChild();
@@ -4213,12 +4229,6 @@ void DrawQuestEditor(EditorState& state) {
             ImGui::TextWrapped("-> %s", t.empty() ? "(kein Text)" : t.c_str());
         }
     }
-    ImGui::Separator();
-    if (UI::Button("QuestData.shn speichern")) {
-        auto path = std::filesystem::path(state.shnServerRoot) / "QuestData.shn";
-        auto saved = core::legacy::SaveQuestData(state.questDataFile, path);
-        state.statusMessage = saved ? std::string("QuestData.shn gespeichert.") : "Fehler: " + saved.error();
-    }
     ImGui::EndChild();
 }
 
@@ -4284,8 +4294,10 @@ void DrawPortalEditor(EditorState& state) {
     EnsureTownPortalLoaded(state);
     EnsureRecallCoordLoaded(state);
 
-    ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), "TownPortal (Skill/Menü, auswählbares Ziel)");
-    ImGui::Separator();
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "PORTAL-DATEN");
+    ImGui::SameLine();
+    ImGui::TextDisabled("Client- und Server-Ziele");
+    ImGui::SeparatorText("TownPortal · Skill/Menü");
     if (!state.townPortalLoaded) {
         ImGui::TextWrapped("TownPortal.shn konnte nicht geladen werden (Client-ressystem-Ordner nötig).");
     } else if (ImGui::BeginTable("##townportal", static_cast<int>(state.townPortalShn.columns.size()),
@@ -4312,9 +4324,7 @@ void DrawPortalEditor(EditorState& state) {
         SaveTownPortalFiles(state);
     }
 
-    ImGui::Separator();
-    ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), "RecallCoord (Schriftrolle, festes Ziel pro Item)");
-    ImGui::Separator();
+    ImGui::SeparatorText("RecallCoord · Schriftrollen");
     if (!state.recallCoordLoaded) {
         ImGui::TextWrapped("RecallCoord.txt konnte nicht geladen werden (Server-World-Ordner nötig).");
         return;
@@ -5857,14 +5867,20 @@ static void UpdateAvatarPreview(EditorState& state) {
 void DrawCustomCreatureEditor(EditorState& state) {
     auto& w = state.wiz;
     EnsureItemLookup(state);
-    ImGui::TextColored(ImVec4(0.40f, 0.72f, 0.96f, 1.0f), "Custom NPC / Mob");
-    ImGui::TextWrapped("Klont eine Vorlage in alle zugehörigen Tabellen (MobInfo, MobInfoServer, MobViewInfo, MobSpecies, QuestSpecies, MobWeapon) mit einer neuen, überall freien ID. "
-                       "NPCs können als Spieler mit Rüstung aussehen (NPCViewInfo) und bekommen optional Dialog und Platz auf der Karte.");
-    ImGui::Separator();
-    int kind = w.isNpc ? 0 : 1;
-    if (UI::RadioButton("NPC##kind", &kind, 0)) w.isNpc = true;
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "CUSTOM NPC / MOB");
     ImGui::SameLine();
-    if (UI::RadioButton("Monster##kind", &kind, 1)) { w.isNpc = false; if (w.lookMode == 2) w.lookMode = 0; }
+    ImGui::TextDisabled("Vorlage klonen · Werte anpassen · Aussehen wählen · optional platzieren");
+    ImGui::Separator();
+    if (DrawIconButton("customNpc", "NPC", DrawIconPerson, w.isNpc, ImVec2(94,58)))
+        w.isNpc = true;
+    ImGui::SameLine();
+    if (DrawIconButton("customMob", "Monster", DrawIconSpawn, !w.isNpc, ImVec2(94,58))) {
+        w.isNpc = false;
+        if (w.lookMode == 2) w.lookMode = 0;
+    }
+    ImGui::SameLine();
+    ImGui::TextWrapped("Klont die Vorlage konsistent in die zugehörigen Client-/Server-Tabellen. "
+                       "Die neue ID wird auf Wunsch automatisch über alle beteiligten Tabellen hinweg gewählt.");
 
     // --- 1. Vorlage
     ImGui::SeparatorText("1. Vorlage");
@@ -6432,9 +6448,12 @@ void DrawSkillEditor(EditorState& state) {
     const bool de = app::CurrentLanguage() == app::Language::German;
     const ImVec4 dim(0.60f, 0.66f, 0.74f, 1.0f);
     const SkillDocs d = ResolveSkillDocs(state);
-    ImGui::TextColored(ImVec4(0.40f, 0.72f, 0.96f, 1.0f), "%s", L("Skill-Editor", "Skill editor"));
-    ImGui::TextWrapped("%s", L("Skills ändern oder neue aus vorhandenen Animationen/Effekten zusammenstellen. Eine Zeile = eine Stufe einer Skillreihe. Änderungen gelten für Client- UND Server-Dateien.",
-                               "Modify skills or assemble new ones from existing animations/effects. One row = one step of a skill series. Changes apply to client AND server files."));
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s", L("SKILL EDITOR", "SKILL EDITOR"));
+    ImGui::SameLine();
+    ImGui::TextDisabled("%s", L("Client + Server synchron bearbeiten", "Edit client + server in sync"));
+    ImGui::TextWrapped("%s", L("Vorhandene Skills bearbeiten, neue Skills aus Vorlagen klonen und vorhandene Animationen/Effekte zuweisen. Eine Zeile entspricht einer Stufe einer Skillreihe.",
+                               "Edit existing skills, clone new skills from templates and assign existing animations/effects. One row represents one step of a skill series."));
+    ImGui::Separator();
     if (d.skillC < 0 || d.viewC < 0 || d.server < 0) {
         ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.4f, 1.0f), "%s", L("ActiveSkill.shn / ActiveSkillView.shn / ActiveSkillInfoServer.shn nicht gefunden - Client-/Server-Ordner im Projekt prüfen.", "ActiveSkill.shn / ActiveSkillView.shn / ActiveSkillInfoServer.shn not found - check client/server folders in the project."));
         return;
@@ -6471,7 +6490,12 @@ void DrawSkillEditor(EditorState& state) {
             ed.visible.push_back(r);
         }
     }
-    ImGui::BeginChild("##skilllist", ImVec2(330.0f, 0.0f), true);
+    const float skillListW = std::clamp(ImGui::GetContentRegionAvail().x * 0.29f, 320.0f, 430.0f);
+    ImGui::BeginChild("##skilllist", ImVec2(skillListW, 0.0f), true);
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s", L("SKILLS", "SKILLS"));
+    ImGui::SameLine();
+    ImGui::TextDisabled("%zu / %zu", ed.visible.size(), asf.rows.size());
+    ImGui::Separator();
     {
         ImGuiListClipper clipper;
         clipper.Begin(static_cast<int>(ed.visible.size()));
@@ -6490,6 +6514,8 @@ void DrawSkillEditor(EditorState& state) {
     ImGui::EndChild();
     ImGui::SameLine();
     ImGui::BeginChild("##skilldetail", ImVec2(0.0f, 0.0f), true);
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s", L("EIGENSCHAFTEN", "PROPERTIES"));
+    ImGui::Separator();
     const long long sel = ed.selectedId;
     const long long selRow = sel >= 0 ? SkillRowIn(state, d.skillC, sel) : -1;
     if (selRow < 0) {
