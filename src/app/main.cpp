@@ -2992,39 +2992,105 @@ void AddRowWithPropagation(EditorState& state, int docIndex);
 
 void DrawShnGrid(EditorState& state) {
     if (state.shnSelectedFile < 0 || state.shnSelectedFile >= static_cast<int>(state.shnFiles.size())) {
-        ImGui::TextDisabled("Keine SHN-Datei geöffnet."); return;
+        ImGui::TextDisabled("Keine SHN-Datei geöffnet.");
+        return;
     }
+
     auto& doc = state.shnFiles[static_cast<std::size_t>(state.shnSelectedFile)];
     auto& file = doc.file;
+    EnsureCellStatusSize(doc);
+
     ImGui::TextColored(ShnSourceColor(doc.source), "%s", ShnSourceName(doc.source));
-    ImGui::SameLine(); ImGui::Text("%s", file.FileName().c_str());
-    ImGui::SameLine(); ImGui::TextDisabled("%zu Zeilen | %zu Spalten | V%u | %s%s", file.rows.size(), file.columns.size(), file.version,
-        file.encrypted ? "verschlüsselt" : "raw", doc.dirty ? " | GEÄNDERT" : "");
-    if (UI::Button("+ Neue Zeile (in Familie propagieren)")) {
-        AddRowWithPropagation(state, state.shnSelectedFile);
+    ImGui::SameLine();
+    ImGui::Text("%s", file.FileName().c_str());
+    if (doc.dirty) {
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.20f,0.75f,1.0f,1.0f), "● GEÄNDERT");
     }
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("Legt eine neue Zeile hier an und - falls gerade geladen - auch in allen\n"
-                           "erkannten Abhängigkeits-Dateien (siehe docs/SHN_DEPENDENCIES.md).\n"
-                           "Gleichnamige Spalten werden übernommen (grün), der Rest bleibt rot\n"
-                           "markiert, bis er manuell ausgefüllt wird.");
-    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("%zu Zeilen · %zu Spalten · V%u · %s",
+                        file.rows.size(), file.columns.size(), file.version,
+                        file.encrypted ? "verschlüsselt" : "raw");
+
+    if (UI::Button("+ Neue Zeile")) AddRowWithPropagation(state, state.shnSelectedFile);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Legt eine neue Zeile an und propagiert sie – soweit erkannt – in geladene Familienmitglieder.");
+    ImGui::SameLine();
+    ImGui::BeginDisabled(state.shnSelectedRow < 0 || state.shnSelectedColumn < 0);
+    if (UI::Button("Kopieren")) CopySelectedShnCell(state);
+    ImGui::SameLine();
+    if (UI::Button("Einfügen")) PasteSelectedShnCell(state);
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::BeginDisabled(state.shnUndo.empty());
+    if (UI::Button("Undo")) UndoShnCellEdit(state);
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::BeginDisabled(state.shnRedo.empty());
+    if (UI::Button("Redo")) RedoShnCellEdit(state);
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::TextDisabled("Doppelklick/F2: Inline · Rechtsklick: Optionen");
+
     ImGui::Separator();
     const std::string needle = LowerAscii(state.shnSearch);
     ImGui::BeginChild("##shnGrid", ImVec2(0, 0), true, ImGuiWindowFlags_HorizontalScrollbar);
+
+    if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && !ImGui::GetIO().WantTextInput) {
+        const bool ctrl = ImGui::GetIO().KeyCtrl;
+        if (ctrl && ImGui::IsKeyPressed(ImGuiKey_C, false)) CopySelectedShnCell(state);
+        if (ctrl && ImGui::IsKeyPressed(ImGuiKey_V, false)) PasteSelectedShnCell(state);
+        if (ctrl && ImGui::IsKeyPressed(ImGuiKey_Z, false)) UndoShnCellEdit(state);
+        if (ctrl && ImGui::IsKeyPressed(ImGuiKey_Y, false)) RedoShnCellEdit(state);
+        if ((ImGui::IsKeyPressed(ImGuiKey_F2, false) || ImGui::IsKeyPressed(ImGuiKey_Enter, false)) &&
+            state.shnSelectedRow >= 0 && state.shnSelectedColumn >= 0) {
+            const auto kind = file.columns[static_cast<std::size_t>(state.shnSelectedColumn)].kind;
+            if (kind == core::legacy::ShnValueKind::Raw || kind == core::legacy::ShnValueKind::PairUInt32) {
+                state.shnEditBuffer = core::legacy::ShnValueToString(
+                    file.rows[static_cast<std::size_t>(state.shnSelectedRow)]
+                        .values[static_cast<std::size_t>(state.shnSelectedColumn)]);
+                state.shnEditPopupOpen = true;
+            } else {
+                StartShnInlineEdit(state, state.shnSelectedRow, state.shnSelectedColumn);
+            }
+        }
+    }
+
     const int visibleCols = static_cast<int>(file.columns.size());
-    if (visibleCols > 0 && ImGui::BeginTable("##shnTable", visibleCols + 1, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollX | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingFixedFit, ImVec2(0,0))) {
-        ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed, 55.0f);
-        for (const auto& c : file.columns) ImGui::TableSetupColumn(c.name.c_str(), ImGuiTableColumnFlags_WidthFixed, std::max(100.0f, std::min(260.0f, 14.0f * static_cast<float>(c.name.size()+2))));
+    const ImGuiTableFlags flags =
+        ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollX |
+        ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingFixedFit |
+        ImGuiTableFlags_Sortable | ImGuiTableFlags_SortMulti;
+
+    if (visibleCols > 0 && ImGui::BeginTable("##shnTable", visibleCols + 1, flags, ImVec2(0,0))) {
+        ImGui::TableSetupScrollFreeze(1, 1);
+        ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoSort, 55.0f);
+        for (const auto& c : file.columns) {
+            ImGui::TableSetupColumn(c.name.c_str(),
+                                    ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_PreferSortAscending,
+                                    std::max(100.0f, std::min(260.0f, 14.0f * static_cast<float>(c.name.size()+2))));
+        }
         ImGui::TableHeadersRow();
-        // Sichtbare Zeilen (Filter) nur neu berechnen, wenn sich etwas geaendert hat - ohne diesen
-        // Cache wurde bei jedem Frame JEDE Zelle jeder Zeile in einen String umgewandelt und als
-        // Widget angelegt (ItemInfo.shn: 14999 x 57 = ~855.000 Zellen pro Frame). Die UI lief dadurch
-        // mit wenigen FPS, Doppelklicks (Zelle bearbeiten) wurden nicht mehr zuverlaessig erkannt.
-        const std::string visibleKey = std::to_string(state.shnSelectedFile) + "|" + needle + "|" +
-                                       (state.shnSearchColumns ? "c" : "-") + (state.shnSearchValues ? "v" : "-") +
-                                       (state.shnFilterActive ? "f" : "-") + "|" + std::to_string(file.rows.size()) + "|" +
-                                       std::to_string(state.shnEditCounter);
+
+        if (ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs(); specs && specs->SpecsCount > 0) {
+            const auto& spec = specs->Specs[0];
+            const int column = spec.ColumnIndex - 1;
+            if (column >= 0 && column < static_cast<int>(file.columns.size())) {
+                state.shnSortColumn = column;
+                state.shnSortAscending = spec.SortDirection != ImGuiSortDirection_Descending;
+            } else {
+                state.shnSortColumn = -1;
+            }
+            specs->SpecsDirty = false;
+        }
+
+        const std::string visibleKey =
+            std::to_string(state.shnSelectedFile) + "|" + needle + "|" +
+            (state.shnSearchColumns ? "c" : "-") + (state.shnSearchValues ? "v" : "-") +
+            (state.shnFilterActive ? "f" : "-") + "|" + std::to_string(file.rows.size()) + "|" +
+            std::to_string(state.shnEditCounter) + "|sort=" + std::to_string(state.shnSortColumn) +
+            (state.shnSortAscending ? "a" : "d");
+
         if (visibleKey != state.shnVisibleKey) {
             state.shnVisibleKey = visibleKey;
             state.shnVisibleRows.clear();
@@ -3033,47 +3099,149 @@ void DrawShnGrid(EditorState& state) {
                 if (!matches) {
                     const auto& row = file.rows[ri];
                     for (std::size_t ci = 0; ci < row.values.size(); ++ci) {
-                        if (state.shnSearchColumns && LowerAscii(file.columns[ci].name).find(needle) != std::string::npos) { matches = true; break; }
-                        if (state.shnSearchValues && LowerAscii(core::legacy::ShnValueToString(row.values[ci])).find(needle) != std::string::npos) { matches = true; break; }
+                        if (state.shnSearchColumns && LowerAscii(file.columns[ci].name).find(needle) != std::string::npos) {
+                            matches = true;
+                            break;
+                        }
+                        if (state.shnSearchValues &&
+                            LowerAscii(core::legacy::ShnValueToString(row.values[ci])).find(needle) != std::string::npos) {
+                            matches = true;
+                            break;
+                        }
                     }
                 }
                 if (state.shnFilterActive && !matches) continue;
                 state.shnVisibleRows.push_back(ri);
             }
+
+            if (state.shnSortColumn >= 0 &&
+                state.shnSortColumn < static_cast<int>(file.columns.size())) {
+                const std::size_t sortColumn = static_cast<std::size_t>(state.shnSortColumn);
+                std::stable_sort(state.shnVisibleRows.begin(), state.shnVisibleRows.end(),
+                    [&](std::size_t a, std::size_t b) {
+                        if (sortColumn >= file.rows[a].values.size() || sortColumn >= file.rows[b].values.size())
+                            return a < b;
+                        const int cmp = CompareShnValues(file.rows[a].values[sortColumn],
+                                                         file.rows[b].values[sortColumn]);
+                        if (cmp == 0) return a < b;
+                        return state.shnSortAscending ? cmp < 0 : cmp > 0;
+                    });
+            }
         }
+
         ImGuiListClipper clipper;
         clipper.Begin(static_cast<int>(state.shnVisibleRows.size()));
         while (clipper.Step()) {
             for (int vi = clipper.DisplayStart; vi < clipper.DisplayEnd; ++vi) {
                 const std::size_t ri = state.shnVisibleRows[static_cast<std::size_t>(vi)];
-                const auto& row = file.rows[ri];
-                ImGui::TableNextRow(); ImGui::TableSetColumnIndex(0); ImGui::Text("%zu", ri);
-                const bool hasStatusRow = ri < doc.cellStatus.size();
+                auto& row = file.rows[ri];
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                ImGui::Text("%zu", ri);
+
                 for (std::size_t ci = 0; ci < row.values.size(); ++ci) {
                     ImGui::TableSetColumnIndex(static_cast<int>(ci + 1));
-                    // Gruen/Rot-Zellmarkierung (Mockup-Wunsch, siehe CHANGELOG [0.44.14]) - rein
-                    // Editor-seitiger Zustand, siehe EditorState::ShnDocument::cellStatus.
-                    if (hasStatusRow && ci < doc.cellStatus[ri].size()) {
-                        const std::uint8_t st = doc.cellStatus[ri][ci];
-                        if (st == kShnCellAutoFilled) {
-                            ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, IM_COL32(30, 90, 40, 160));
-                        } else if (st == kShnCellNeedsInput) {
-                            ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, IM_COL32(110, 30, 30, 160));
+
+                    const std::uint8_t status = ri < doc.cellStatus.size() && ci < doc.cellStatus[ri].size()
+                        ? doc.cellStatus[ri][ci] : kShnCellNormal;
+                    const bool dirtyCell = ri < doc.cellDirty.size() && ci < doc.cellDirty[ri].size() &&
+                                           doc.cellDirty[ri][ci] != 0;
+                    if (status == kShnCellAutoFilled)
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, IM_COL32(30, 90, 40, 160));
+                    else if (status == kShnCellNeedsInput)
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, IM_COL32(110, 30, 30, 160));
+                    else if (dirtyCell)
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, IM_COL32(20, 92, 140, 125));
+
+                    const bool selected =
+                        state.shnSelectedRow == static_cast<int>(ri) &&
+                        state.shnSelectedColumn == static_cast<int>(ci);
+                    const bool inlineEditing = selected && state.shnInlineEditActive;
+
+                    ImGui::PushID(static_cast<int>(ri));
+                    ImGui::PushID(static_cast<int>(ci));
+
+                    if (inlineEditing) {
+                        std::vector<char> buf(state.shnEditBuffer.begin(), state.shnEditBuffer.end());
+                        buf.resize(std::max<std::size_t>(buf.size() + 1, 1024), '\0');
+                        if (state.shnInlineEditFocusPending) {
+                            ImGui::SetKeyboardFocusHere();
+                            state.shnInlineEditFocusPending = false;
+                        }
+                        ImGui::SetNextItemWidth(-1.0f);
+                        const bool enter = UI::InputText("##inlineShnCell", buf.data(), buf.size(),
+                                                         ImGuiInputTextFlags_EnterReturnsTrue |
+                                                         ImGuiInputTextFlags_AutoSelectAll);
+                        state.shnEditBuffer.assign(buf.data());
+
+                        const bool cancel = ImGui::IsKeyPressed(ImGuiKey_Escape, false);
+                        const bool commit = enter || ImGui::IsItemDeactivatedAfterEdit();
+                        if (cancel) {
+                            state.shnInlineEditActive = false;
+                            state.shnInlineEditFocusPending = false;
+                        } else if (commit) {
+                            if (ApplyShnCellText(state, state.shnSelectedFile,
+                                                 static_cast<int>(ri), static_cast<int>(ci),
+                                                 state.shnEditBuffer)) {
+                                state.shnInlineEditActive = false;
+                                state.shnInlineEditFocusPending = false;
+                            }
+                        }
+                    } else {
+                        const std::string label = ShnShortValue(row.values[ci]);
+                        if (UI::Selectable((label + "##value").c_str(), selected,
+                                           ImGuiSelectableFlags_AllowDoubleClick)) {
+                            state.shnSelectedRow = static_cast<int>(ri);
+                            state.shnSelectedColumn = static_cast<int>(ci);
+                            if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+                                const auto kind = file.columns[ci].kind;
+                                if (kind == core::legacy::ShnValueKind::Raw ||
+                                    kind == core::legacy::ShnValueKind::PairUInt32) {
+                                    state.shnEditBuffer = core::legacy::ShnValueToString(row.values[ci]);
+                                    state.shnEditPopupOpen = true;
+                                } else {
+                                    StartShnInlineEdit(state, static_cast<int>(ri), static_cast<int>(ci));
+                                }
+                            }
+                        }
+
+                        if (ImGui::BeginPopupContextItem("##shnCellContext")) {
+                            if (!selected) {
+                                state.shnSelectedRow = static_cast<int>(ri);
+                                state.shnSelectedColumn = static_cast<int>(ci);
+                            }
+                            ImGui::TextDisabled("%s · Zeile %zu", file.columns[ci].name.c_str(), ri);
+                            ImGui::Separator();
+                            if (ImGui::MenuItem("Inline bearbeiten", "F2")) {
+                                StartShnInlineEdit(state, static_cast<int>(ri), static_cast<int>(ci));
+                            }
+                            if (ImGui::MenuItem("Erweitert bearbeiten...")) {
+                                state.shnEditBuffer = core::legacy::ShnValueToString(row.values[ci]);
+                                state.shnEditPopupOpen = true;
+                            }
+                            ImGui::Separator();
+                            if (ImGui::MenuItem("Kopieren", "Strg+C")) CopySelectedShnCell(state);
+                            if (ImGui::MenuItem("Einfügen", "Strg+V")) PasteSelectedShnCell(state);
+                            ImGui::EndPopup();
+                        }
+
+                        if (ImGui::IsItemHovered()) {
+                            ImGui::SetTooltip("%s\nTyp: %s\nDoppelklick/F2 = Inline bearbeiten",
+                                              core::legacy::ShnValueToString(row.values[ci]).c_str(),
+                                              file.TypeName(file.columns[ci]).c_str());
                         }
                     }
-                    std::string label = ShnShortValue(row.values[ci]);
-                    const bool selected = state.shnSelectedRow == static_cast<int>(ri) && state.shnSelectedColumn == static_cast<int>(ci);
-                    if (UI::Selectable((label + "##shncell" + std::to_string(ri) + "_" + std::to_string(ci)).c_str(), selected, ImGuiSelectableFlags_AllowDoubleClick)) {
-                        state.shnSelectedRow = static_cast<int>(ri); state.shnSelectedColumn = static_cast<int>(ci);
-                        if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) { state.shnEditBuffer = core::legacy::ShnValueToString(row.values[ci]); state.shnEditPopupOpen = true; }
-                    }
-                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Doppelklick zum Bearbeiten\nTyp: %s", file.TypeName(file.columns[ci]).c_str());
+
+                    ImGui::PopID();
+                    ImGui::PopID();
                 }
             }
         }
         ImGui::EndTable();
     }
-    ImGui::EndChild(); DrawShnCellEditor(state);
+
+    ImGui::EndChild();
+    DrawShnCellEditor(state);
 }
 
 // Trennt bekannte Namens-Suffixe ab, um Datei-Familien zu erkennen (z.B. "ItemInfo",
