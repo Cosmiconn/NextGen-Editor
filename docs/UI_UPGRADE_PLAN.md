@@ -285,3 +285,85 @@ Noch offen innerhalb von Priorität 1/2:
 - noch tiefere NPC-/Mob-Rollenicons und permanente Route/Roam-Overlays.
 - belastbare Zielkarten-Verknüpfung für Portale erst, sobald die konkrete Outbound-Relation aus den Fiesta-Daten eindeutig belegt ist.
 
+
+
+## 9. Aktuelles Ziel
+
+Dieser Abschnitt ist der verbindliche Ausbau-Fahrplan für den laufenden Branch `ui-upgrade`.
+
+### Karten-/Level-Editor
+1. 3D Transform-Gizmo für Move / Rotate / Scale mit X/Y/Z-Achsen.
+2. Grid-, Winkel- und Scale-Snapping, World/Local, „Auf Boden setzen“ und „Auswahl fokussieren“.
+3. Drag & Drop von NIF-Assets direkt in 2D/3D.
+4. Copy / Paste / Duplizieren.
+5. Eye / Lock und einheitliche Kontextmenüs im Szene-Outliner.
+6. Rechteck-/Mehrfachauswahl und später optional Lasso.
+7. Objektgruppen/Ordner als reine Editor-Organisation, ohne das Fiesta-Dateiformat zu verändern.
+
+### Terrain
+- sichtbarer Brush-Kreis in 2D/3D;
+- Falloff-Vorschau und kompakte Radius-/Stärke-Presets;
+- klare Modi Anheben / Absenken / Glätten / Einebnen.
+
+### Texturen / Layer
+- Drag&Drop-Reihenfolge;
+- größere Thumbnails und aktive Layer-Hervorhebung;
+- Rename, Duplicate und Kontextmenüs;
+- DDS-Drag&Drop auf bestehenden oder neuen Layer.
+
+### Walk & Block
+- klare Farblegende;
+- Brush-Overlay;
+- Rechteckfüllung;
+- prominente Aktion aus sichtbaren Objektgrundflächen;
+- Undo/Redo-Zustand sichtbar.
+
+### Objekte / NPC / Mob / Portale
+- moderner Szene-Outliner mit Icons, Sichtbarkeit und Lock;
+- kontextuelle Properties statt langer Formularlisten;
+- NPC: Transform / Rolle / Dialog / Händler / AI-Lua / Route / Darstellung;
+- Mob: Zone / Monstergruppe / Spawnzeiten / MobRoam / Lua;
+- Portal: Typ-Icons, Zielkarte, Zielposition und direkte Ziel-Navigation.
+
+### SHN / Spieldaten
+- sortierbare, fixierte Tabellen;
+- Inline-Editing für einfache Zelltypen;
+- Dirty-Indikatoren pro Datei/Zelle;
+- Copy/Paste und Undo/Redo;
+- anschließend Spaltenfilter, Referenz-/Fehlermarkierung und Client-/Server-Vergleich.
+
+### Quest
+- Allgemein / Voraussetzungen / Ziele / Belohnungen / Dialoge / Scripts;
+- klickbare Referenzen auf Mob / Item / NPC;
+- später optional Quest-Flow/Graph.
+
+### Skill
+- Allgemein / Kosten-Cooldown / Schaden / Voraussetzungen / Zustände / Animation-VFX / Serverwerte;
+- Picker für Animationen/Effekte;
+- Skill-Reihen gruppiert nach Stufen.
+
+### Custom NPC / Mob
+- echter 5-Schritt-Assistent:
+  1. Vorlage
+  2. Identität/Werte
+  3. Aussehen
+  4. Rolle/Platzierung
+  5. Zusammenfassung
+- permanente Modell-/Avatar-Vorschau.
+
+### KFM / Animation
+- echtes Playback mit Preview-Viewport und Timeline;
+- erst danach schreibende Transition-/KFM-Feldbearbeitung, wenn der Codec dafür ausreichend verifiziert ist.
+
+### Globales UX
+- gespeicherte Workspace-Layouts;
+- Unsaved-Changes-Anzeige;
+- Recent Projects / Recent Maps;
+- Toasts;
+- globale Command-Palette;
+- konfigurierbare Shortcuts;
+- vollständiger konsistenter Icon-Satz in 16–20 px für Panel-Aktionen.
+
+### Priorität
+Die unmittelbare Reihenfolge ist:
+**Level-Editor-Interaktion → SHN → Quest/Skill → Custom NPC/Mob → KFM → globale UX-Politur.**
