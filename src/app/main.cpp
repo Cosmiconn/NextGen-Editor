@@ -6778,8 +6778,27 @@ void DrawCustomCreatureEditor(EditorState& state) {
     ImGui::TextWrapped("Klont die Vorlage konsistent in die zugehörigen Client-/Server-Tabellen. "
                        "Die neue ID wird auf Wunsch automatisch über alle beteiligten Tabellen hinweg gewählt.");
 
+    w.step = std::clamp(w.step, 0, 4);
+    ImGui::Separator();
+    struct WizardStep { const char* label; IconDrawFn icon; };
+    const WizardStep wizardSteps[] = {
+        {"1 Vorlage", DrawIconLayers},
+        {"2 Werte", DrawIconTable},
+        {"3 Aussehen", DrawIconCube},
+        {"4 Rolle / Ort", DrawIconPortal},
+        {"5 Anlegen", DrawIconSave},
+    };
+    for (int i = 0; i < 5; ++i) {
+        if (DrawIconButton((std::string("wizStep") + std::to_string(i)).c_str(),
+                           wizardSteps[i].label, wizardSteps[i].icon, w.step == i, ImVec2(112,58)))
+            w.step = i;
+        if (i < 4) ImGui::SameLine();
+    }
+    ImGui::TextDisabled("Schritt %d / 5", w.step + 1);
+
     // --- 1. Vorlage
-    ImGui::SeparatorText("1. Vorlage");
+    if (w.step == 0) {
+    ImGui::SeparatorText("Vorlage");
     const int mi = FindOrLoadShnDoc(state, "MobInfo.shn", EditorState::ShnSource::Client);
     if (mi < 0) { ImGui::TextWrapped("MobInfo.shn (Client) nicht geladen - Client-Ordner im Projekt prüfen."); return; }
     auto& mobInfo = state.shnFiles[static_cast<std::size_t>(mi)].file;
@@ -6816,9 +6835,11 @@ void DrawCustomCreatureEditor(EditorState& state) {
         }
     }
     ImGui::EndChild();
+    }
 
     // --- 2. Werte
-    ImGui::SeparatorText("2. Bezeichnung und Werte");
+    if (w.step == 1) {
+    ImGui::SeparatorText("Identität & Werte");
     ImGui::SetNextItemWidth(220.0f); UI::InputText("InxName (eindeutig)", w.newInx, sizeof(w.newInx));
     ImGui::SetNextItemWidth(220.0f); UI::InputText("Anzeigename", w.displayName, sizeof(w.displayName));
     UI::Checkbox("ID automatisch (erste freie im größten freien Block, in allen Tabellen frei)", &w.autoId);
@@ -6831,9 +6852,11 @@ void DrawCustomCreatureEditor(EditorState& state) {
         ImGui::SetNextItemWidth(160.0f); UI::InputInt("Größe", &w.size);
         ImGui::TextDisabled("Alle weiteren Werte (EXP, Widerstände, Waffen ...) stammen von der Vorlage und lassen sich danach im Single SHN Editor ändern.");
     }
+    }
 
     // --- 3. Aussehen
-    ImGui::SeparatorText("3. Aussehen");
+    if (w.step == 2) {
+    ImGui::SeparatorText("Aussehen");
     UI::RadioButton("Wie Vorlage", &w.lookMode, 0);
     ImGui::SameLine(); UI::RadioButton("Anderes Modell", &w.lookMode, 1);
     if (w.isNpc) { ImGui::SameLine(); UI::RadioButton("Spieler-Avatar mit Rüstung", &w.lookMode, 2); }
@@ -6915,10 +6938,12 @@ void DrawCustomCreatureEditor(EditorState& state) {
         }
         ImGui::EndGroup();
     }
+    }
 
     // --- 4. NPC-Extras
-    if (w.isNpc) {
-        ImGui::SeparatorText("4. Dialog und Platz auf der Karte");
+    if (w.step == 3) {
+        ImGui::SeparatorText("Rolle & Platzierung");
+        if (w.isNpc) {
         UI::Checkbox("Dialog der Vorlage kopieren (NpcDialogData)", &w.copyDialog);
         UI::Checkbox("Auf der offenen Karte platzieren (World/NPC.txt)", &w.placeOnMap);
         if (w.placeOnMap) {
@@ -6941,10 +6966,33 @@ void DrawCustomCreatureEditor(EditorState& state) {
                     ImGui::TextDisabled("Händler: danach im NPC-Tab 'Händler-Inventar bearbeiten' (legt NPCItemList/<InxName>.txt an).");
             }
         }
+        } else {
+            ImGui::TextWrapped("Monster werden über die SHN-Tabellen angelegt. Die eigentliche Spawn-Zone "
+                               "wird anschließend im Karteneditor unter 'Mobs' erstellt und positioniert.");
+        }
     }
 
     // --- Anlegen / Speichern
-    ImGui::SeparatorText("Anlegen");
+    if (w.step == 4) {
+    ImGui::SeparatorText("Zusammenfassung & Anlegen");
+    ImGui::TextDisabled("Typ");
+    ImGui::Text("%s", w.isNpc ? "NPC" : "Monster");
+    ImGui::TextDisabled("Vorlage");
+    ImGui::Text("%s%s%lld", w.templateInx.empty() ? "(keine)" : w.templateInx.c_str(),
+                w.templateId >= 0 ? "  ·  #" : "", w.templateId >= 0 ? w.templateId : 0);
+    ImGui::TextDisabled("Neue Identität");
+    ImGui::Text("%s  ·  %s", w.newInx[0] ? w.newInx : "(InxName fehlt)",
+                w.displayName[0] ? w.displayName : "(Name fehlt)");
+    ImGui::TextDisabled("ID");
+    ImGui::Text("%s", w.autoId ? "automatisch – erste konsistent freie ID" : std::to_string(w.manualId).c_str());
+    ImGui::TextDisabled("Aussehen");
+    ImGui::Text("%s", w.lookMode == 0 ? "wie Vorlage" : w.lookMode == 1 ? "anderes Modell" : "Spieler-Avatar");
+    if (w.isNpc) {
+        ImGui::TextDisabled("Kartenplatzierung");
+        ImGui::Text("%s", w.placeOnMap ? "wird angelegt" : "keine");
+        if (w.placeOnMap) ImGui::Text("X %d · Y %d · Richtung %d", w.placeX, w.placeY, w.placeDir);
+    }
+    ImGui::Separator();
     if (UI::Button("Anlegen", ImVec2(160.0f, 0.0f))) RunCreateCreature(state);
     ImGui::SameLine();
     if (UI::Button("Alle geänderten SHN speichern")) {
@@ -6962,6 +7010,23 @@ void DrawCustomCreatureEditor(EditorState& state) {
         w.report.push_back("Gespeichert: " + std::to_string(saved) + " Datei(en)" + (failed ? ", Fehler: " + std::to_string(failed) : std::string()));
     }
     for (const auto& line : w.report) ImGui::TextWrapped("%s", line.c_str());
+    }
+
+    ImGui::Separator();
+    const bool canAdvance =
+        !(w.step == 0 && w.templateId < 0) &&
+        !(w.step == 1 && (w.newInx[0] == '\0' || w.displayName[0] == '\0'));
+    if (w.step > 0 && UI::Button("← Zurück", ImVec2(120,0))) --w.step;
+    if (w.step > 0 && w.step < 4) ImGui::SameLine();
+    if (w.step < 4) {
+        ImGui::BeginDisabled(!canAdvance);
+        if (UI::Button("Weiter →", ImVec2(120,0))) ++w.step;
+        ImGui::EndDisabled();
+        if (!canAdvance) {
+            ImGui::SameLine();
+            ImGui::TextDisabled(w.step == 0 ? "Zuerst eine Vorlage wählen." : "InxName und Anzeigename angeben.");
+        }
+    }
 }
 
 // Sprachumschaltung fuer Texte ohne T()-Schluessel: liefert je nach eingestellter Sprache Deutsch oder Englisch.
