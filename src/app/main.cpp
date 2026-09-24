@@ -7533,7 +7533,8 @@ void DrawToolsContent(EditorState& state) {
                     auto& rec = table->records[static_cast<std::size_t>(state.selectedNpcRecordIdx)];
                     if (rec.values.size() >= 8) {
                         ImGui::Separator();
-                        ImGui::Text("%s", rec.values[0].c_str());
+                        ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f),"%s",rec.values[0].c_str());
+                        ImGui::SeparatorText("Transform");
                         int x = std::atoi(rec.values[2].c_str());
                         int y = std::atoi(rec.values[3].c_str());
                         bool changed = false;
@@ -7558,6 +7559,7 @@ void DrawToolsContent(EditorState& state) {
                             state.camera.SetTarget(nx, state.heightmap.SampleWorld(nx, nz) + 25.0f, nz);
                             state.camera.Zoom(-state.camera.Distance() + 220.0f);
                         }
+                        ImGui::SeparatorText("Darstellung & Blickrichtung");
                         {
                             bool orientChanged = false;
                             int signIdx = state.npcDirSign < 0 ? 1 : 0;
@@ -7580,6 +7582,7 @@ void DrawToolsContent(EditorState& state) {
                                 "(assumption: NPCs usually stand with their back to a wall). A rough estimate, not a substitute for checking the real game."));
                             if (!state.npcOrientEstimateStatus.empty()) ImGui::TextWrapped("%s", state.npcOrientEstimateStatus.c_str());
                         }
+                        ImGui::SeparatorText("Rolle");
                         {
                             // Rolle und Rollenargument (NPC.txt: Spalten Role/RoleArg0) - bearbeitbar.
                             // Bekannte Kombinationen aus NA2016: QuestNpc/Quest|GBDice, Guard/Quest,
@@ -7605,22 +7608,21 @@ void DrawToolsContent(EditorState& state) {
                                 }
                             }
                         }
-                        if (UI::Button("Dialog bearbeiten")) {
-                            OpenNpcDialogEditor(state, rec.values[0]);
-                        }
-                        ImGui::SameLine();
-                        if (UI::Button("KI-Skript (Lua) bearbeiten")) {
-                            OpenAiScriptEditor(state, rec.values[0]);
-                        }
-                        ImGui::SameLine();
-                        if (UI::Button("Patrouillenroute bearbeiten")) {
-                            OpenPatrolRouteEditor(state, rec.values[0]);
-                        }
+                        ImGui::SeparatorText("Dialog");
+                        if (UI::Button("Dialog bearbeiten",ImVec2(-1,0)))
+                            OpenNpcDialogEditor(state,rec.values[0]);
+
+                        ImGui::SeparatorText("AI / Lua & Route");
+                        if (UI::Button("KI-Skript (Lua) bearbeiten",ImVec2(-1,0)))
+                            OpenAiScriptEditor(state,rec.values[0]);
+                        if (UI::Button("Patrouillenroute bearbeiten",ImVec2(-1,0)))
+                            OpenPatrolRouteEditor(state,rec.values[0]);
+
                         if (rec.values[6] == "Merchant") {
-                            ImGui::SameLine();
-                            if (UI::Button("Händler-Inventar bearbeiten")) {
-                                EnsureShopTextLoaded(state, rec.values[0]);
-                                state.shopEditorOpen = true;
+                            ImGui::SeparatorText("Händler");
+                            if (UI::Button("Händler-Inventar bearbeiten",ImVec2(-1,0))) {
+                                EnsureShopTextLoaded(state,rec.values[0]);
+                                state.shopEditorOpen=true;
                             }
                         }
                     }
@@ -7663,6 +7665,7 @@ void DrawToolsContent(EditorState& state) {
                 } else {
                     ImGui::TextDisabled("%zu Spawn-Zonen auf '%s' · Auswahl links im Szene-Outliner",
                                         zoneTable->records.size(), state.legacySaveStem);
+                    ImGui::SeparatorText("Zonenverwaltung");
                     UI::Checkbox("Löschen freigeben", &state.mobDeleteArmed);
                     if (UI::Button("+ Zone (Kopie der gewählten)") && state.selectedMobZoneIdx >= 0 &&
                         static_cast<std::size_t>(state.selectedMobZoneIdx) < zoneTable->records.size()) {
@@ -7700,13 +7703,13 @@ void DrawToolsContent(EditorState& state) {
                     if (state.selectedMobZoneIdx >= 0 && static_cast<std::size_t>(state.selectedMobZoneIdx) < zoneTable->records.size()) {
                         auto& zone = zoneTable->records[static_cast<std::size_t>(state.selectedMobZoneIdx)];
                         if (zone.values.size() >= 7) {
-                            ImGui::Separator();
-                            ImGui::Text("Zone: %s", zone.values[0].c_str());
-                            ImGui::TextDisabled("Alle Spalten der Zone sind bearbeitbar (GroupIndex = Name, dient als Verknüpfung zu den Monstern).");
+                            ImGui::SeparatorText("Zone");
+                            ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f),"Zone: %s",zone.values[0].c_str());
+                            ImGui::TextDisabled("Position, Ausdehnung, Spawn-Radius und weitere Zonenwerte.");
                             DrawShineRecordFields(zone.values, zoneTable->columns, 1);
                             if (spawnTable) {
-                                ImGui::Separator();
-                                ImGui::TextDisabled("Monster in dieser Zone (KI=Lua-Skript, Route=Patrouille):");
+                                ImGui::SeparatorText("Monstergruppe");
+                                ImGui::TextDisabled("Monster, Anzahl, Spawnwerte sowie AI/Lua und Route je Eintrag.");
                                 int removeSpawn = -1;
                                 for (std::size_t si = 0; si < spawnTable->records.size(); ++si) {
                                     auto& sr = spawnTable->records[si];
