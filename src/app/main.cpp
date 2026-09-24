@@ -3041,6 +3041,19 @@ void DrawShnGrid(EditorState& state) {
     auto& file = doc.file;
     EnsureCellStatusSize(doc);
 
+    if (state.shnColumnFilterFile != state.shnSelectedFile ||
+        state.shnColumnFilters.size() != file.columns.size()) {
+        state.shnColumnFilterFile = state.shnSelectedFile;
+        state.shnColumnFilters.assign(file.columns.size(), {});
+        state.shnVisibleKey.clear();
+    }
+
+    const int counterpartIndex = FindShnCounterpart(state, state.shnSelectedFile);
+    const core::legacy::ShnFile* counterpart =
+        counterpartIndex >= 0 ? &state.shnFiles[static_cast<std::size_t>(counterpartIndex)].file : nullptr;
+    const std::vector<int> counterpartColumns =
+        counterpart ? MatchShnColumnsByName(file, *counterpart) : std::vector<int>(file.columns.size(), -1);
+
     ImGui::TextColored(ShnSourceColor(doc.source), "%s", ShnSourceName(doc.source));
     ImGui::SameLine();
     ImGui::Text("%s", file.FileName().c_str());
@@ -3072,6 +3085,12 @@ void DrawShnGrid(EditorState& state) {
     ImGui::EndDisabled();
     ImGui::SameLine();
     ImGui::TextDisabled("Doppelklick/F2: Inline · Rechtsklick: Optionen");
+    if (counterpart) {
+        ImGui::SameLine();
+        UI::Checkbox("Client/Server Unterschiede##shnDiff", &state.shnHighlightClientServerDiff);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Orange Schrift = gleicher Dateiname auf der Gegenseite, aber anderer Zellwert.");
+    }
 
     ImGui::Separator();
     const std::string needle = LowerAscii(state.shnSearch);
@@ -3104,7 +3123,7 @@ void DrawShnGrid(EditorState& state) {
         ImGuiTableFlags_Sortable | ImGuiTableFlags_SortMulti;
 
     if (visibleCols > 0 && ImGui::BeginTable("##shnTable", visibleCols + 1, flags, ImVec2(0,0))) {
-        ImGui::TableSetupScrollFreeze(1, 1);
+        ImGui::TableSetupScrollFreeze(1, 2);
         ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoSort, 55.0f);
         for (const auto& c : file.columns) {
             ImGui::TableSetupColumn(c.name.c_str(),
@@ -3112,6 +3131,23 @@ void DrawShnGrid(EditorState& state) {
                                     std::max(100.0f, std::min(260.0f, 14.0f * static_cast<float>(c.name.size()+2))));
         }
         ImGui::TableHeadersRow();
+
+        // Eine kompakte Filterzeile direkt unter den Headern: jeder nicht-leere Filter wird
+        // UND-verknüpft. Damit lassen sich große Tabellen ohne zusätzliche Dialoge eingrenzen.
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextDisabled("Filter");
+        for (std::size_t ci = 0; ci < file.columns.size(); ++ci) {
+            ImGui::TableSetColumnIndex(static_cast<int>(ci + 1));
+            ImGui::PushID(static_cast<int>(ci));
+            ImGui::SetNextItemWidth(-1.0f);
+            if (UI::InputTextWithHint("##columnFilter", "…",
+                                      state.shnColumnFilters[ci].data(),
+                                      state.shnColumnFilters[ci].size())) {
+                state.shnVisibleKey.clear();
+            }
+            ImGui::PopID();
+        }
 
         if (ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs(); specs && specs->SpecsCount > 0) {
             const auto& spec = specs->Specs[0];
@@ -3125,12 +3161,18 @@ void DrawShnGrid(EditorState& state) {
             specs->SpecsDirty = false;
         }
 
+        std::string columnFilterKey;
+        for (std::size_t ci = 0; ci < state.shnColumnFilters.size(); ++ci) {
+            if (state.shnColumnFilters[ci][0] == '\0') continue;
+            columnFilterKey += "|" + std::to_string(ci) + "=" + LowerAscii(state.shnColumnFilters[ci].data());
+        }
+
         const std::string visibleKey =
             std::to_string(state.shnSelectedFile) + "|" + needle + "|" +
             (state.shnSearchColumns ? "c" : "-") + (state.shnSearchValues ? "v" : "-") +
             (state.shnFilterActive ? "f" : "-") + "|" + std::to_string(file.rows.size()) + "|" +
             std::to_string(state.shnEditCounter) + "|sort=" + std::to_string(state.shnSortColumn) +
-            (state.shnSortAscending ? "a" : "d");
+            (state.shnSortAscending ? "a" : "d") + columnFilterKey;
 
         if (visibleKey != state.shnVisibleKey) {
             state.shnVisibleKey = visibleKey;
@@ -3152,6 +3194,16 @@ void DrawShnGrid(EditorState& state) {
                     }
                 }
                 if (state.shnFilterActive && !matches) continue;
+
+                bool columnFiltersMatch = true;
+                for (std::size_t ci = 0; ci < state.shnColumnFilters.size(); ++ci) {
+                    if (state.shnColumnFilters[ci][0] == '\0') continue;
+                    if (ci >= file.rows[ri].values.size()) { columnFiltersMatch = false; break; }
+                    const std::string cell = LowerAscii(core::legacy::ShnValueToString(file.rows[ri].values[ci]));
+                    const std::string filter = LowerAscii(state.shnColumnFilters[ci].data());
+                    if (cell.find(filter) == std::string::npos) { columnFiltersMatch = false; break; }
+                }
+                if (!columnFiltersMatch) continue;
                 state.shnVisibleRows.push_back(ri);
             }
 
@@ -3201,6 +3253,21 @@ void DrawShnGrid(EditorState& state) {
 
                     ImGui::PushID(static_cast<int>(ri));
                     ImGui::PushID(static_cast<int>(ci));
+
+                    bool counterpartDiff = false;
+                    std::string counterpartText;
+                    if (state.shnHighlightClientServerDiff && counterpart &&
+                        ci < counterpartColumns.size() && counterpartColumns[ci] >= 0 &&
+                        ri < counterpart->rows.size()) {
+                        const std::size_t peerColumn = static_cast<std::size_t>(counterpartColumns[ci]);
+                        if (peerColumn < counterpart->rows[ri].values.size()) {
+                            const auto& peerValue = counterpart->rows[ri].values[peerColumn];
+                            counterpartDiff = row.values[ci] != peerValue;
+                            if (counterpartDiff) counterpartText = core::legacy::ShnValueToString(peerValue);
+                        }
+                    }
+                    if (counterpartDiff)
+                        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f,0.70f,0.25f,1.0f));
 
                     if (inlineEditing) {
                         std::vector<char> buf(state.shnEditBuffer.begin(), state.shnEditBuffer.end());
@@ -3267,12 +3334,20 @@ void DrawShnGrid(EditorState& state) {
                         }
 
                         if (ImGui::IsItemHovered()) {
-                            ImGui::SetTooltip("%s\nTyp: %s\nDoppelklick/F2 = Inline bearbeiten",
-                                              core::legacy::ShnValueToString(row.values[ci]).c_str(),
-                                              file.TypeName(file.columns[ci]).c_str());
+                            if (counterpartDiff) {
+                                ImGui::SetTooltip("%s\nTyp: %s\nGegenstück: %s\nDoppelklick/F2 = Inline bearbeiten",
+                                                  core::legacy::ShnValueToString(row.values[ci]).c_str(),
+                                                  file.TypeName(file.columns[ci]).c_str(),
+                                                  counterpartText.c_str());
+                            } else {
+                                ImGui::SetTooltip("%s\nTyp: %s\nDoppelklick/F2 = Inline bearbeiten",
+                                                  core::legacy::ShnValueToString(row.values[ci]).c_str(),
+                                                  file.TypeName(file.columns[ci]).c_str());
+                            }
                         }
                     }
 
+                    if (counterpartDiff) ImGui::PopStyleColor();
                     ImGui::PopID();
                     ImGui::PopID();
                 }
