@@ -1327,7 +1327,8 @@ void DeleteSelectedObjects(EditorState& state) {
     std::vector<std::pair<std::size_t, std::size_t>> categorySources;
     for (const int id : state.selectedObjects) {
         if (id >= 0) {
-            if (static_cast<std::size_t>(id) < state.placementSet.Count()) placementIndices.push_back(id);
+            if (static_cast<std::size_t>(id) < state.placementSet.Count() && !IsObjectEditorLocked(state,id))
+                placementIndices.push_back(id);
             continue;
         }
         const auto renderIndex = ShmdRenderIndex(id);
@@ -7110,6 +7111,15 @@ void HandleGlobalShortcuts(EditorState& state) {
     ImGuiIO& io = ImGui::GetIO();
     if (ImGui::IsKeyPressed(ImGuiKey_F1, false)) state.manualOpen = !state.manualOpen;
     if (io.WantTextInput || state.screen != AppScreen::MapEditorWorkspace) return;
+    if (state.editMode == EditMode::ObjectPlacement) {
+        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_C, false)) CopySelectedObjects(state);
+        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_V, false)) PasteObjectClipboard(state);
+        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_D, false)) DuplicateSelectedObjects(state);
+        if (!io.KeyCtrl && !io.KeyAlt && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_F, false))
+            FocusSelectedObjects(state);
+        if (ImGui::IsKeyPressed(ImGuiKey_End, false)) GroundSelectedObjects(state);
+        if (ImGui::IsKeyPressed(ImGuiKey_Delete, false)) DeleteSelectedObjects(state);
+    }
     const bool undo = io.KeyCtrl && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z, false);
     const bool redo = io.KeyCtrl && ((ImGui::IsKeyPressed(ImGuiKey_Y, false)) || (io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z, false)));
     if (!undo && !redo) return;
@@ -7875,9 +7885,6 @@ static std::vector<std::pair<float, float>> ObjectFootprintWorldPolygon(EditorSt
 }
 
 void DrawEditor2DContent(EditorState& state) {
-    if (state.editMode == EditMode::ObjectPlacement && ImGui::IsKeyPressed(ImGuiKey_Delete, false) && !ImGui::GetIO().WantTextInput) {
-        DeleteSelectedObjects(state);
-    }
     const bool texMode = state.editMode == EditMode::TexturePaint;
     const bool walkMode = state.editMode == EditMode::BlockWalk;
     const bool objectMode = state.editMode == EditMode::ObjectPlacement;
@@ -8191,6 +8198,7 @@ void DrawEditor2DContent(EditorState& state) {
                     float bestDist = tolerance;
                     int bestIdx = -1;
                     for (std::size_t i = 0; i < state.placementSet.Count(); ++i) {
+                        if (IsObjectEditorLocked(state, static_cast<int>(i))) continue;
                         const auto& obj = state.placementSet.At(i);
                         const float dx = obj.posX - worldX;
                         const float dz = obj.posZ - worldZ;
