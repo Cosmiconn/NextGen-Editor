@@ -177,6 +177,11 @@ Zusätzlich in der laufenden zweiten Ausbaustufe umgesetzt:
 - Statusbar mit Auswahlkoordinaten und FPS;
 - Spieldaten-Workspace mit Icon-Toolbar für Single/Multi SHN, XP, Preise, Quest, Portale, NPC/Mob und Skills;
 - KFM-Katalog in Animation-Liste + Detail/Transitions-Bereich umgebaut.
+- spezialisierte Spieldaten-Editoren (Quest, Portale, Custom NPC/Mob, Skill) nutzen die volle Workspace-Breite statt zusätzlich die generische SHN-Dateileiste einzublenden;
+- Quest und Skill in klarer Liste/Eigenschaften-Struktur nachgezogen; Portal- und Custom-NPC/Mob-Kopfbereiche vereinheitlicht;
+- Projektkonfiguration sowie Neue-Karte/Karte-öffnen-Flows in die gleiche Dark/Cyan-Designsprache überführt;
+- doppelte schwebende Hilfe-/Sprachleiste entfernt; Hilfe und Sprache sitzen zentral in der Hauptnavigation;
+- NG-Icon auf native Windows-Größen 16/24/32/48/64/128/256 px erweitert.
 
 Noch offen für spätere Ausbaustufen:
 - spezialisierte NPC-/Mob-/Portal-Outliner statt nur der heutigen kontextuellen Listen;
