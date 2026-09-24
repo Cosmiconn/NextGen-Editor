@@ -6832,7 +6832,6 @@ void DrawToolsContent(EditorState& state) {
     } else if (state.editMode == EditMode::TexturePaint) {
         ImGui::TextDisabled("Layer-Auswahl und Layer-Verwaltung befinden sich im separaten Layer-Dock.");
         ImGui::Separator();
-        ImGui::Separator();
         ImGui::Text("Textur-Rasterauflösung");
         UI::InputInt("Breite##texResolution", &state.textureResolutionWidth);
         UI::InputInt("Höhe##texResolution", &state.textureResolutionHeight);
@@ -7322,8 +7321,6 @@ void DrawToolsContent(EditorState& state) {
     DrawAiScriptEditorPopup(state); // aus Npcs- UND Mobs-Tab erreichbar, siehe CHANGELOG [0.44.22]
     DrawPatrolRouteEditorPopup(state); // dito, siehe CHANGELOG [0.44.23]
 
-    ImGui::Separator();
-    DrawVisibilityPanel(state);
     ImGui::Separator();
     UI::Checkbox(T("workspace.wireframe"), &state.wireframe);
     if (UI::Button(T("workspace.centercamera"))) {
@@ -8204,11 +8201,14 @@ void DrawPreview3DContent(EditorState& state) {
 // im Werkzeuge-Panel gewählt wurde.
 void DrawWorkspaceTabBar(EditorState& state) {
     auto setMode = [&](EditMode mode) {
-        if (state.editMode == mode) return;
-        state.editMode = mode;
-        state.portalPickMode = false;
-        state.layerPreviewDirty = true;
-        state.walkPreviewDirty = true;
+        if (state.editMode != mode) {
+            state.editMode = mode;
+            state.portalPickMode = false;
+            state.layerPreviewDirty = true;
+            state.walkPreviewDirty = true;
+        }
+        if (mode == EditMode::TexturePaint) ImGui::SetWindowFocus("Layer##layerManager");
+        if (mode == EditMode::ObjectPlacement) ImGui::SetWindowFocus("Objekte##objectOutliner");
     };
     auto undoAvailable = [&]() {
         switch (state.editMode) {
@@ -8373,6 +8373,7 @@ void DrawObjectOutlinerPanel(EditorState& state) {
             ImGui::PushID(id);
             if (UI::Selectable(labels[static_cast<std::size_t>(row)].c_str(), selected)) {
                 state.editMode = EditMode::ObjectPlacement;
+                state.objectPlaceMode = 0;
                 SelectObjectFromList(state, id, row, visibleIds, ImGui::GetIO().KeyCtrl, ImGui::GetIO().KeyShift);
             }
             ImGui::PopID();
@@ -8558,8 +8559,9 @@ void DrawMapEditorWorkspace(EditorState& state) {
         const ImGuiID view3dId = center;
 
         ImGui::DockBuilderDockWindow("Navigator##mapNavigator", navigatorId);
-        ImGui::DockBuilderDockWindow("Objekte##objectOutliner", sceneId);
         ImGui::DockBuilderDockWindow("Layer##layerManager", sceneId);
+        ImGui::DockBuilderDockWindow("Sichtbarkeit##visibilityPanel", sceneId);
+        ImGui::DockBuilderDockWindow("Objekte##objectOutliner", sceneId);
         ImGui::DockBuilderDockWindow("Eigenschaften##fileToolsCol", inspectorId);
         ImGui::DockBuilderDockWindow("Asset Browser##assetBrowser", assetId);
         ImGui::DockBuilderDockWindow("2D-Ansicht##view2d", view2dId);
@@ -8619,6 +8621,14 @@ void DrawMapEditorWorkspace(EditorState& state) {
     ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(7, 18, 28, 255));
     ImGui::Begin("Layer##layerManager");
     DrawLayerManagerPanel(state);
+    ImGui::End();
+    ImGui::PopStyleColor();
+
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(7, 18, 28, 255));
+    ImGui::Begin("Sichtbarkeit##visibilityPanel");
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "SICHTBARKEIT");
+    ImGui::Separator();
+    DrawVisibilityPanel(state);
     ImGui::End();
     ImGui::PopStyleColor();
 
