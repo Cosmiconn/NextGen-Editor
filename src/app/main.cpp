@@ -327,6 +327,10 @@ struct EditorState {
     float objectMoveSnap = 50.0f;
     float objectRotateSnap = 15.0f;
     float objectScaleSnap = 0.10f;
+    std::array<float, 16> objectGizmoMatrix{};
+    bool objectGizmoMatrixValid = false;
+    bool objectGizmoWasUsing = false;
+    std::string objectGizmoSelectionKey;
     std::vector<core::PlacedObject> objectClipboard;
     std::vector<char> objectEditorHidden; // nur Editor-Sichtbarkeit, nicht SHMD-Export
     std::vector<char> objectEditorLocked; // nur Editor-Lock, nicht SHMD-Export
