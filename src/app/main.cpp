@@ -1034,13 +1034,17 @@ EditQuat NormalizeEditQuat(EditQuat q) {
     return {q.x/len, q.y/len, q.z/len, q.w/len};
 }
 
-EditQuat MulEditQuat(const EditQuat& a, const EditQuat& b) {
-    return NormalizeEditQuat({
+EditQuat MulEditQuatRaw(const EditQuat& a, const EditQuat& b) {
+    return {
         a.w*b.x + a.x*b.w + a.y*b.z - a.z*b.y,
         a.w*b.y - a.x*b.z + a.y*b.w + a.z*b.x,
         a.w*b.z + a.x*b.y - a.y*b.x + a.z*b.w,
         a.w*b.w - a.x*b.x - a.y*b.y - a.z*b.z
-    });
+    };
+}
+
+EditQuat MulEditQuat(const EditQuat& a, const EditQuat& b) {
+    return NormalizeEditQuat(MulEditQuatRaw(a,b));
 }
 
 EditQuat ConjugateEditQuat(const EditQuat& q) { return {-q.x,-q.y,-q.z,q.w}; }
@@ -1048,7 +1052,7 @@ EditQuat ConjugateEditQuat(const EditQuat& q) { return {-q.x,-q.y,-q.z,q.w}; }
 EditVec3 RotateEditVec(const EditQuat& qn, const EditVec3& v) {
     const EditQuat q = NormalizeEditQuat(qn);
     const EditQuat p{v.x,v.y,v.z,0.0f};
-    const EditQuat r = MulEditQuat(MulEditQuat(q,p), ConjugateEditQuat(q));
+    const EditQuat r = MulEditQuatRaw(MulEditQuatRaw(q,p), ConjugateEditQuat(q));
     return {r.x,r.y,r.z};
 }
 
@@ -1330,6 +1334,10 @@ void DeleteSelectedObjects(EditorState& state) {
     for (const int index : placementIndices) {
         if (index >= 0 && static_cast<std::size_t>(index) < state.placementSet.Count()) {
             state.placementSet.RemoveObject(static_cast<std::size_t>(index));
+            if (static_cast<std::size_t>(index) < state.objectEditorHidden.size())
+                state.objectEditorHidden.erase(state.objectEditorHidden.begin() + index);
+            if (static_cast<std::size_t>(index) < state.objectEditorLocked.size())
+                state.objectEditorLocked.erase(state.objectEditorLocked.begin() + index);
         }
     }
     EraseShmdCategorySources(state, std::move(categorySources));
@@ -1341,6 +1349,8 @@ void DeleteSelectedObjects(EditorState& state) {
 void DeleteAllNormalObjects(EditorState& state) {
     const std::size_t removed = state.placementSet.Count();
     state.placementSet.ClearObjects();
+    state.objectEditorHidden.clear();
+    state.objectEditorLocked.clear();
     ClearObjectSelection(state);
     ReloadObjectRenderers(state);
     state.statusMessage = std::to_string(removed) +
@@ -1371,6 +1381,8 @@ bool PromoteSelectedShmdObjectsToPlacements(EditorState& state, std::optional<in
     std::vector<std::pair<std::size_t, std::size_t>> sources;
     for (auto& promotion : promotions) {
         const int newId = static_cast<int>(state.placementSet.AddObject(std::move(promotion.object)));
+        state.objectEditorHidden.push_back(0);
+        state.objectEditorLocked.push_back(0);
         replacement[promotion.oldId] = newId;
         sources.push_back(promotion.source);
     }
@@ -1537,6 +1549,8 @@ void ApplyProjectToState(EditorState& state, core::legacy::LegacyMapProject&& pr
     state.selectedObjectModelPathFor = kNoObjectSelection;
     state.selectedObjectModelPathDirty = false;
     state.objectListRangeAnchor = -1;
+    state.objectEditorHidden.assign(state.placementSet.Count(), 0);
+    state.objectEditorLocked.assign(state.placementSet.Count(), 0);
     // Versucht, für alle Objekte echte .nif-Meshes zu laden (aktuell nur untexturierte Meshes
     // erfolgreich, siehe docs/MAP_FORMAT.md) - für den Rest bleibt der Platzhalter-Marker.
     state.nifMeshRenderer.LoadModelsForSet(state.placementSet, mapDir);
@@ -2112,6 +2126,8 @@ void DrawAdvancedFileOps(EditorState& state) {
                 state.selectedObjectModelPathFor = kNoObjectSelection;
                 state.selectedObjectModelPathDirty = false;
                 state.objectListRangeAnchor = -1;
+                state.objectEditorHidden.assign(state.placementSet.Count(), 0);
+                state.objectEditorLocked.assign(state.placementSet.Count(), 0);
                 const std::filesystem::path shmdMapDir = std::filesystem::path(state.legacyShmdPath).parent_path();
                 state.nifMeshRenderer.LoadModelsForSet(state.placementSet, shmdMapDir);
                 RebuildShmdCategoryRenderSet(state, shmdMapDir);
@@ -8093,6 +8109,8 @@ void DrawEditor2DContent(EditorState& state) {
                     obj.rotW = std::cos(rad);
                     obj.scale = state.newObjectScale;
                     state.selectedObject = static_cast<int>(state.placementSet.AddObject(std::move(obj)));
+                    state.objectEditorHidden.push_back(0);
+                    state.objectEditorLocked.push_back(0);
                     state.selectedObjects = {state.selectedObject};
                     state.selectedObjectModelPathFor = kNoObjectSelection;
                     state.objectListRangeAnchor = -1;
