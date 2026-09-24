@@ -7158,7 +7158,19 @@ void DrawToolsContent(EditorState& state) {
 
         ImGui::Separator();
         UI::SliderFloat("Radius", &state.brush.radius, 10.0f, 2000.0f);
+        ImGui::TextDisabled("Radius-Presets");
+        for (float preset : {50.0f,100.0f,250.0f,500.0f}) {
+            ImGui::SameLine();
+            const std::string label=std::to_string(static_cast<int>(preset))+"##terrainRadius";
+            if (UI::SmallButton(label.c_str())) state.brush.radius=preset;
+        }
         UI::SliderFloat("Stärke", &state.brush.strength, 0.1f, 100.0f);
+        ImGui::TextDisabled("Stärke-Presets");
+        for (float preset : {1.0f,5.0f,10.0f,25.0f}) {
+            ImGui::SameLine();
+            const std::string label=std::to_string(static_cast<int>(preset))+"##terrainStrength";
+            if (UI::SmallButton(label.c_str())) state.brush.strength=preset;
+        }
         if (state.brushMode == core::BrushMode::Flatten) {
             UI::InputFloat("Zielhöhe", &state.brush.flattenTarget);
         }
@@ -7209,7 +7221,19 @@ void DrawToolsContent(EditorState& state) {
         UI::RadioButton("Senken", &paintModeInt, static_cast<int>(core::PaintMode::Decrease));
         state.paintMode = static_cast<core::PaintMode>(paintModeInt);
         UI::SliderFloat("Radius##tex", &state.paintSettings.radius, 10.0f, 2000.0f);
+        ImGui::TextDisabled("Radius-Presets");
+        for (float preset : {50.0f,100.0f,250.0f,500.0f}) {
+            ImGui::SameLine();
+            const std::string label=std::to_string(static_cast<int>(preset))+"##textureRadius";
+            if (UI::SmallButton(label.c_str())) state.paintSettings.radius=preset;
+        }
         UI::SliderFloat("Stärke##tex", &state.paintSettings.strength, 0.01f, 1.0f);
+        ImGui::TextDisabled("Stärke-Presets");
+        for (float preset : {0.10f,0.25f,0.50f,1.00f}) {
+            ImGui::SameLine();
+            char label[32]; std::snprintf(label,sizeof(label),"%.2f##textureStrength",preset);
+            if (UI::SmallButton(label)) state.paintSettings.strength=preset;
+        }
 
         ImGui::Separator();
         ImGui::BeginDisabled(!state.textureUndo.CanUndo());
@@ -7237,12 +7261,20 @@ void DrawToolsContent(EditorState& state) {
     } else if (state.editMode == EditMode::BlockWalk) {
         ImGui::TextWrapped("Block & Walk: jede Zelle (6.25 Einheiten) ist blockiert (rot) oder begehbar. "
                            "Klick/Ziehen im 2D-View setzt Zellen im Kreis um den Mauszeiger.");
+        ImGui::TextColored(ImVec4(1.0f,0.38f,0.38f,1.0f),"● blockiert");
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.32f,0.90f,0.58f,1.0f),"● begehbar");
         int mode = state.walkBlockMode ? 0 : 1;
         if (UI::RadioButton("Sperren (blockiert)", &mode, 0)) state.walkBlockMode = true;
+        ImGui::SameLine();
         if (UI::RadioButton("Freigeben (begehbar)", &mode, 1)) state.walkBlockMode = false;
         UI::SliderFloat("Radius##walk", &state.walkSettings.radius, 1.0f, 1000.0f, "%.1f", ImGuiSliderFlags_Logarithmic);
-        ImGui::SameLine();
-        if (UI::Button("1 Zelle##walk")) state.walkSettings.radius = 1.0f; // trifft nur die Zelle unter dem Zeiger
+        ImGui::TextDisabled("Radius-Presets");
+        for (float preset : {6.25f,25.0f,50.0f,100.0f,250.0f}) {
+            ImGui::SameLine();
+            char label[32]; std::snprintf(label,sizeof(label),"%.0f##walkRadius",preset);
+            if (UI::SmallButton(label)) state.walkSettings.radius=preset;
+        }
         ImGui::SeparatorText("Aus Objekten");
         if (UI::Button("Grundflächen sichtbarer Objekte SPERREN")) StampObjectFootprints(state, true);
         if (UI::Button("Grundflächen sichtbarer Objekte FREIGEBEN")) StampObjectFootprints(state, false);
