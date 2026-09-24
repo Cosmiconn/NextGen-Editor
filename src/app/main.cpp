@@ -2709,6 +2709,36 @@ std::vector<int> ShnIndicesForSource(const EditorState& state, EditorState::ShnS
     return result;
 }
 
+int FindShnCounterpart(const EditorState& state, int document) {
+    if (document < 0 || document >= static_cast<int>(state.shnFiles.size())) return -1;
+    const auto& current = state.shnFiles[static_cast<std::size_t>(document)];
+    const auto otherSource = current.source == EditorState::ShnSource::Client
+        ? EditorState::ShnSource::Server : EditorState::ShnSource::Client;
+    const std::string filename = LowerAscii(current.file.FileName());
+    for (int i = 0; i < static_cast<int>(state.shnFiles.size()); ++i) {
+        if (i == document) continue;
+        const auto& candidate = state.shnFiles[static_cast<std::size_t>(i)];
+        if (candidate.source == otherSource && LowerAscii(candidate.file.FileName()) == filename)
+            return i;
+    }
+    return -1;
+}
+
+std::vector<int> MatchShnColumnsByName(const core::legacy::ShnFile& source,
+                                       const core::legacy::ShnFile& counterpart) {
+    std::vector<int> result(source.columns.size(), -1);
+    for (std::size_t i = 0; i < source.columns.size(); ++i) {
+        const std::string name = LowerAscii(source.columns[i].name);
+        for (std::size_t j = 0; j < counterpart.columns.size(); ++j) {
+            if (LowerAscii(counterpart.columns[j].name) == name) {
+                result[i] = static_cast<int>(j);
+                break;
+            }
+        }
+    }
+    return result;
+}
+
 bool ShnProfileMatch(const std::string& filename, int profile) {
     const std::string n = LowerAscii(filename);
     static const std::array<std::vector<std::string>, 7> tokens = {{
