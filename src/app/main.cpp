@@ -7624,8 +7624,10 @@ static int ClassifyObjectModel(const std::string& modelPath) {
 
 // Berechnet (bei Aenderung) Kategorie und "ausgeblendet" je Objekt neu.
 static void RefreshObjectVisibility(EditorState& state) {
+    SyncObjectEditorMetadata(state);
     std::string key = std::to_string(state.placementSet.Count());
     for (int c = 0; c < kCatCount; ++c) key += state.categoryVisible[c] ? '1' : '0';
+    for (char h : state.objectEditorHidden) key += h ? 'h' : '-';
     if (key == state.objectVisKey) return;
     state.objectVisKey = key;
     const std::size_t n = state.placementSet.Count();
@@ -7639,7 +7641,11 @@ static void RefreshObjectVisibility(EditorState& state) {
         }
     }
     state.objectHidden.assign(n, 0);
-    for (std::size_t i = 0; i < n; ++i) state.objectHidden[i] = state.categoryVisible[state.objectCategory[i]] ? 0 : 1;
+    for (std::size_t i = 0; i < n; ++i) {
+        const bool categoryHidden = !state.categoryVisible[state.objectCategory[i]];
+        const bool editorHidden = i < state.objectEditorHidden.size() && state.objectEditorHidden[i] != 0;
+        state.objectHidden[i] = (categoryHidden || editorHidden) ? 1 : 0;
+    }
 }
 static bool IsObjectHidden(const EditorState& state, std::size_t i) {
     return i < state.objectHidden.size() && state.objectHidden[i] != 0;
