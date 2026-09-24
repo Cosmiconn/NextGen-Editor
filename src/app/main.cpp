@@ -8303,81 +8303,69 @@ void DrawPreview3DContent(EditorState& state) {
 // Mob AI + Zurück, siehe Mockup) - steuert denselben EditMode, der früher über Radio-Buttons
 // im Werkzeuge-Panel gewählt wurde.
 void DrawWorkspaceTabBar(EditorState& state) {
-    struct TabDef { const char* key; EditMode mode; };
-    const TabDef tabs[] = {
-        {"workspace.tab.heightmap", EditMode::Heightmap},
-        {"workspace.tab.texturing", EditMode::TexturePaint},
-        {"workspace.tab.blockwalk", EditMode::BlockWalk},
-        {"workspace.tab.objects", EditMode::ObjectPlacement},
-        {"workspace.tab.npcs", EditMode::Npcs},
-        {"workspace.tab.npcai", EditMode::NpcAi},
-        {"workspace.tab.mobs", EditMode::Mobs},
-        {"workspace.tab.mobai", EditMode::MobAi},
-        {"workspace.tab.portals", EditMode::Portals},
+    auto setMode = [&](EditMode mode) {
+        if (state.editMode == mode) return;
+        state.editMode = mode;
+        state.portalPickMode = false;
+        state.layerPreviewDirty = true;
+        state.walkPreviewDirty = true;
     };
-    for (const auto& tab : tabs) {
-        const bool active = state.editMode == tab.mode;
-        ImGui::PushStyleColor(ImGuiCol_Button, active ? IM_COL32(55, 125, 195, 255) : IM_COL32(48, 56, 68, 255));
-        if (UI::Button(T(tab.key)) && !active) {
-            state.editMode = tab.mode;
-            state.portalPickMode = false; // Pick-Modus gilt nur solange der Portale-Tab aktiv ist
-            state.layerPreviewDirty = true;
-            state.walkPreviewDirty = true;
+    auto undoAvailable = [&]() {
+        switch (state.editMode) {
+            case EditMode::Heightmap: return state.undo.CanUndo();
+            case EditMode::TexturePaint: return state.textureUndo.CanUndo();
+            case EditMode::BlockWalk: return state.walkUndo.CanUndo();
+            default: return false;
         }
-        ImGui::PopStyleColor();
-        ImGui::SameLine();
-    }
-    // Lücke, damit "Zurück" wie im Mockup rechts absetzt statt direkt anzuschließen.
-    ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - 100.0f);
-    ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(55, 125, 195, 255));
-    if (UI::Button(T("nav.back"), ImVec2(90.0f, 0.0f))) {
-        state.screen = AppScreen::MapEditorLauncher;
-    }
-    ImGui::PopStyleColor();
-}
+    };
+    auto redoAvailable = [&]() {
+        switch (state.editMode) {
+            case EditMode::Heightmap: return state.undo.CanRedo();
+            case EditMode::TexturePaint: return state.textureUndo.CanRedo();
+            case EditMode::BlockWalk: return state.walkUndo.CanRedo();
+            default: return false;
+        }
+    };
+    auto doUndo = [&]() {
+        switch (state.editMode) {
+            case EditMode::Heightmap:
+                if (state.undo.Undo(state.heightmap)) state.meshDirty = true;
+                break;
+            case EditMode::TexturePaint:
+                if (state.textureUndo.Undo(state.textureStack)) {
+                    state.layerPreviewDirty = true;
+                    state.renderer.UpdateBlendTextures(state.textureStack);
+                }
+                break;
+            case EditMode::BlockWalk:
+                if (state.walkUndo.Undo(state.walkGrid)) state.walkPreviewDirty = true;
+                break;
+            default: break;
+        }
+    };
+    auto doRedo = [&]() {
+        switch (state.editMode) {
+            case EditMode::Heightmap:
+                if (state.undo.Redo(state.heightmap)) state.meshDirty = true;
+                break;
+            case EditMode::TexturePaint:
+                if (state.textureUndo.Redo(state.textureStack)) {
+                    state.layerPreviewDirty = true;
+                    state.renderer.UpdateBlendTextures(state.textureStack);
+                }
+                break;
+            case EditMode::BlockWalk:
+                if (state.walkUndo.Redo(state.walkGrid)) state.walkPreviewDirty = true;
+                break;
+            default: break;
+        }
+    };
 
-// Der eigentliche Arbeitsbereich (siehe Mockup, zweites/rechtes Bild): Tab-Leiste oben,
-// darunter drei Spalten - "Datei"+"Tools/etc" links, "2D View" Mitte, "3D View" rechts.
-void DrawMapEditorWorkspace(EditorState& state) {
-    DrawWorkspaceTabBar(state);
-    ImGui::Separator();
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(5.0f, 5.0f));
+    ImGui::BeginGroup();
 
-    // Echtes ImGui-DockSpace statt dreier fest breiter BeginChild-Spalten (siehe CHANGELOG
-    // [0.44.12]) - Tools/2D/3D sind jetzt eigenständige, andockbare Fenster: per Ziehen an den
-    // Rändern skalierbar UND per Ziehen am Tab verschiebbar/neu anordenbar/stapelbar, genau wie
-    // in jeder anderen docking-fähigen ImGui-App. Der Split wird nur EINMAL beim allerersten
-    // Betreten dieses Bildschirms in dieser Sitzung programmatisch angelegt (Tools 300px links,
-    // 2D/3D 50/50 im Rest - identisch zum bisherigen festen Layout); jede spätere Größen-
-    // /Positionsänderung des Nutzers bleibt für den Rest der Sitzung erhalten (ImGui verwaltet
-    // das intern über die Dock-Node-IDs, kein eigener State nötig). Nutzt bewusst
-    // imgui_internal.h (DockBuilder-API) - in Docking-Branch-Apps der übliche, akzeptierte
-    // Weg, ein Default-Layout programmatisch vorzugeben.
-    const ImGuiID dockspaceId = ImGui::GetID("##MapEditorDockspace");
-    if (!state.mapEditorDockspaceBuilt) {
-        ImGui::DockBuilderRemoveNode(dockspaceId);
-        ImGui::DockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags_DockSpace);
-        ImGui::DockBuilderSetNodeSize(dockspaceId, ImGui::GetContentRegionAvail());
-
-        ImGuiID mainId = dockspaceId;
-        ImGuiID toolsId = ImGui::DockBuilderSplitNode(mainId, ImGuiDir_Left, 0.22f, nullptr, &mainId);
-        ImGuiID view2dId = ImGui::DockBuilderSplitNode(mainId, ImGuiDir_Left, 0.5f, nullptr, &mainId);
-        ImGuiID view3dId = mainId;
-
-        ImGui::DockBuilderDockWindow("Werkzeuge##fileToolsCol", toolsId);
-        ImGui::DockBuilderDockWindow("2D-Ansicht##view2d", view2dId);
-        ImGui::DockBuilderDockWindow("3D-Ansicht##view3d", view3dId);
-        ImGui::DockBuilderFinish(dockspaceId);
-        state.mapEditorDockspaceBuilt = true;
-    }
-    ImGui::DockSpace(dockspaceId, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
-
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(22, 29, 38, 255));
-    ImGui::Begin("Werkzeuge##fileToolsCol");
-    ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(55, 125, 195, 255));
-    ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), "%s", T("workspace.file"));
-    ImGui::Separator();
-    ImGui::BeginDisabled(!state.hasLegacyIniMeta && state.legacySaveDir[0] == '\0');
-    if (UI::Button(T("workspace.save"), ImVec2(-1.0f, 0.0f))) {
+    const bool canSave = state.hasLegacyIniMeta || state.legacySaveDir[0] != '\0';
+    if (DrawIconButton("cmd.save", "Speichern", DrawIconSave, false, ImVec2(78,58), canSave)) {
         auto project = BuildProjectFromState(state);
         auto result = core::legacy::SaveLegacyMap(project, state.legacySaveDir, state.legacySaveStem);
         if (result) {
@@ -8387,68 +8375,176 @@ void DrawMapEditorWorkspace(EditorState& state) {
             state.statusMessage = "Fehler: " + result.error();
         }
     }
-    ImGui::EndDisabled();
-    if (UI::Button(T("workspace.saveas"), ImVec2(-1.0f, 0.0f))) {
-        ImGui::OpenPopup("##saveAsPopup");
-    }
-    if (ImGui::BeginPopup("##saveAsPopup")) {
-        UI::InputText("Ordner", state.legacySaveDir, sizeof(state.legacySaveDir));
-        UI::InputText("Name", state.legacySaveStem, sizeof(state.legacySaveStem));
-        if (UI::Button(T("workspace.save"))) {
-            auto project = BuildProjectFromState(state);
-            auto result = core::legacy::SaveLegacyMap(project, state.legacySaveDir, state.legacySaveStem);
-            state.statusMessage = result ? std::string(T("workspace.savedas")) + state.legacySaveDir
-                                          : "Fehler: " + result.error();
-            ImGui::CloseCurrentPopup();
-        }
-        ImGui::EndPopup();
-    }
-    ImGui::Dummy(ImVec2(0.0f, 4.0f));
-    const float leftW = ImGui::GetContentRegionAvail().x;
-    ImGui::BeginDisabled(!state.undo.CanUndo());
-    if (UI::Button(T("workspace.undo"), ImVec2((leftW - 8.0f) * 0.5f, 0.0f))) {
-        if (state.undo.Undo(state.heightmap)) state.meshDirty = true;
-    }
-    ImGui::EndDisabled();
     ImGui::SameLine();
-    ImGui::BeginDisabled(!state.undo.CanRedo());
-    if (UI::Button(T("workspace.redo"), ImVec2((leftW - 8.0f) * 0.5f, 0.0f))) {
-        if (state.undo.Redo(state.heightmap)) state.meshDirty = true;
+    if (DrawIconButton("cmd.undo", "Undo", DrawIconUndo, false, ImVec2(68,58), undoAvailable())) doUndo();
+    ImGui::SameLine();
+    if (DrawIconButton("cmd.redo", "Redo", DrawIconRedo, false, ImVec2(68,58), redoAvailable())) doRedo();
+
+    ImGui::SameLine(); ImGui::Dummy(ImVec2(8.0f, 1.0f)); ImGui::SameLine();
+
+    struct Tool { const char* id; const char* label; EditMode mode; IconDrawFn icon; };
+    const Tool tools[] = {
+        {"terrain","Terrain",EditMode::Heightmap,DrawIconTerrain},
+        {"texture","Textur",EditMode::TexturePaint,DrawIconBrush},
+        {"walk","Block & Walk",EditMode::BlockWalk,DrawIconGrid},
+        {"objects","Objekte",EditMode::ObjectPlacement,DrawIconCube},
+        {"npcs","NPCs",EditMode::Npcs,DrawIconPerson},
+        {"mobs","Mobs",EditMode::Mobs,DrawIconSpawn},
+        {"portals","Portale",EditMode::Portals,DrawIconPortal},
+    };
+    for (const auto& tool : tools) {
+        if (DrawIconButton(tool.id, tool.label, tool.icon, state.editMode == tool.mode))
+            setMode(tool.mode);
+        ImGui::SameLine();
     }
-    ImGui::EndDisabled();
+
+    ImGui::Dummy(ImVec2(8.0f, 1.0f)); ImGui::SameLine();
+    if (DrawIconButton("cmd.data","Spieldaten",DrawIconTable,false,ImVec2(86,58))) {
+        state.screen = AppScreen::ShnEditor;
+    }
+    ImGui::SameLine();
+    if (DrawIconButton("cmd.kfm","KFM",DrawIconClapper,false,ImVec2(70,58))) {
+        state.screen = AppScreen::KfmBrowser;
+    }
+    ImGui::SameLine();
+    if (DrawIconButton("cmd.back","Zurück",DrawIconUndo,false,ImVec2(70,58))) {
+        state.screen = AppScreen::MapEditorLauncher;
+    }
+
+    ImGui::EndGroup();
+    ImGui::PopStyleVar();
+}
+
+
+
+// Der eigentliche Arbeitsbereich (siehe Mockup, zweites/rechtes Bild): Tab-Leiste oben,
+// darunter drei Spalten - "Datei"+"Tools/etc" links, "2D View" Mitte, "3D View" rechts.
+void DrawMapEditorWorkspace(EditorState& state) {
+    DrawTopNav(state, "Karte");
+    DrawWorkspaceTabBar(state);
+    ImGui::Separator();
+
+    const ImGuiID dockspaceId = ImGui::GetID("##MapEditorDockspace");
+    if (!state.mapEditorDockspaceBuilt) {
+        ImGui::DockBuilderRemoveNode(dockspaceId);
+        ImGui::DockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags_DockSpace);
+        ImGui::DockBuilderSetNodeSize(dockspaceId, ImGui::GetContentRegionAvail());
+
+        ImGuiID center = dockspaceId;
+        ImGuiID navigatorId = 0, inspectorId = 0, view2dId = 0;
+        ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, 0.16f, &navigatorId, &center);
+        ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, 0.25f, &inspectorId, &center);
+        ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, 0.34f, &view2dId, &center);
+        const ImGuiID view3dId = center;
+
+        ImGui::DockBuilderDockWindow("Navigator##mapNavigator", navigatorId);
+        ImGui::DockBuilderDockWindow("Inspector##fileToolsCol", inspectorId);
+        ImGui::DockBuilderDockWindow("2D-Ansicht##view2d", view2dId);
+        ImGui::DockBuilderDockWindow("3D-Ansicht##view3d", view3dId);
+        ImGui::DockBuilderFinish(dockspaceId);
+        state.mapEditorDockspaceBuilt = true;
+    }
+
+    const float statusH = 28.0f;
+    const float dockH = std::max(120.0f, ImGui::GetContentRegionAvail().y - statusH);
+    ImGui::DockSpace(dockspaceId, ImVec2(0.0f, dockH), ImGuiDockNodeFlags_None);
+
+    auto modeName = [&]() -> const char* {
+        switch (state.editMode) {
+            case EditMode::Heightmap: return "Terrain / Heightmap";
+            case EditMode::TexturePaint: return "Textur-Layer";
+            case EditMode::BlockWalk: return "Block & Walk";
+            case EditMode::ObjectPlacement: return "Objekte";
+            case EditMode::Npcs: return "NPCs";
+            case EditMode::Mobs: return "Mobs / Spawn-Zonen";
+            case EditMode::Portals: return "Portale";
+            case EditMode::NpcAi: return "NPC AI";
+            case EditMode::MobAi: return "Mob AI";
+        }
+        return "Werkzeug";
+    };
+
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(7, 18, 28, 255));
+    ImGui::Begin("Navigator##mapNavigator");
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "KARTE");
+    ImGui::Separator();
+    ImGui::Text("%s", state.legacySaveStem[0] ? state.legacySaveStem : "(keine Karte)");
+    if (state.legacySaveDir[0]) ImGui::TextDisabled("%s", state.legacySaveDir);
+    ImGui::Dummy(ImVec2(0,4));
+    ImGui::TextDisabled("Größe");
+    ImGui::Text("%u × %u", state.heightmap.Width(), state.heightmap.Height());
+    ImGui::TextDisabled("Textur-Layer");
+    ImGui::Text("%zu", state.textureStack.LayerCount());
+    ImGui::TextDisabled("Objekte");
+    ImGui::Text("%zu", state.placementSet.Count() + state.shmdCategoryRenderSet.Count());
+    ImGui::Separator();
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "AKTIVES WERKZEUG");
+    ImGui::TextWrapped("%s", modeName());
+    ImGui::Dummy(ImVec2(0,6));
+    if (UI::Button("Karte wechseln", ImVec2(-1,0))) state.screen = AppScreen::MapEditorLauncher;
+    if (UI::Button("Spieldaten öffnen", ImVec2(-1,0))) state.screen = AppScreen::ShnEditor;
+    if (UI::Button("Animationen / KFM", ImVec2(-1,0))) state.screen = AppScreen::KfmBrowser;
+    ImGui::End();
     ImGui::PopStyleColor();
 
-    ImGui::Dummy(ImVec2(0.0f, 10.0f));
-    ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), "%s", T("workspace.tools"));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(8, 20, 31, 255));
+    ImGui::Begin("Inspector##fileToolsCol");
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "EIGENSCHAFTEN");
+    ImGui::SameLine(); ImGui::TextDisabled("%s", modeName());
     ImGui::Separator();
     DrawToolsContent(state);
 
-    if (UI::CollapsingHeader("Erweitert (Fiesta Import/Export)")) {
+    if (UI::CollapsingHeader("Datei & Fiesta Import/Export")) {
+        if (UI::Button(T("workspace.saveas"), ImVec2(-1.0f, 0.0f)))
+            ImGui::OpenPopup("##saveAsPopup");
+        if (ImGui::BeginPopup("##saveAsPopup")) {
+            UI::InputText("Ordner", state.legacySaveDir, sizeof(state.legacySaveDir));
+            UI::InputText("Name", state.legacySaveStem, sizeof(state.legacySaveStem));
+            if (UI::Button(T("workspace.save"))) {
+                auto project = BuildProjectFromState(state);
+                auto result = core::legacy::SaveLegacyMap(project, state.legacySaveDir, state.legacySaveStem);
+                state.statusMessage = result ? std::string(T("workspace.savedas")) + state.legacySaveDir
+                                             : "Fehler: " + result.error();
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
+        }
         DrawAdvancedFileOps(state);
     }
     ImGui::End();
     ImGui::PopStyleColor();
 
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(30, 48, 68, 255));
-    ImGui::Begin("2D-Ansicht##view2d");
-    ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), "%s", T("workspace.2dview"));
-    ImGui::Separator();
-    DrawEditor2DContent(state);
-    ImGui::End();
-    ImGui::PopStyleColor();
-
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(30, 48, 68, 255));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(7, 17, 27, 255));
     ImGui::Begin("3D-Ansicht##view3d");
-    ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), "%s", T("workspace.3dview"));
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "3D ANSICHT");
+    ImGui::SameLine(); ImGui::TextDisabled("%s", modeName());
     ImGui::Separator();
     DrawPreview3DContent(state);
     ImGui::End();
     ImGui::PopStyleColor();
 
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(7, 17, 27, 255));
+    ImGui::Begin("2D-Ansicht##view2d");
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "2D DRAUFSICHT");
+    ImGui::SameLine(); ImGui::TextDisabled("Nord oben");
+    ImGui::Separator();
+    DrawEditor2DContent(state);
+    ImGui::End();
+    ImGui::PopStyleColor();
+
+    ImGui::Separator();
+    ImGui::TextDisabled("Map: %s  |  Werkzeug: %s  |  Auswahl: %zu",
+                        state.legacySaveStem[0] ? state.legacySaveStem : "-",
+                        modeName(), state.selectedObjects.size());
     if (!state.statusMessage.empty()) {
+        ImGui::SameLine();
+        ImGui::TextDisabled(" | ");
+        ImGui::SameLine();
         ImGui::TextWrapped("%s", state.statusMessage.c_str());
     }
 }
+
+
 
 } // namespace
 
