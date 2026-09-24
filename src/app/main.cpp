@@ -2348,7 +2348,48 @@ void DrawIconBolt(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
     dl->AddConvexPolyFilled(p,6,col);
 }
 
+void DrawIconEye(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
+    dl->PathClear();
+    dl->PathLineTo(ImVec2(c.x-r,c.y));
+    dl->PathBezierCubicCurveTo(ImVec2(c.x-r*0.5f,c.y-r*0.7f),ImVec2(c.x+r*0.5f,c.y-r*0.7f),ImVec2(c.x+r,c.y));
+    dl->PathBezierCubicCurveTo(ImVec2(c.x+r*0.5f,c.y+r*0.7f),ImVec2(c.x-r*0.5f,c.y+r*0.7f),ImVec2(c.x-r,c.y));
+    dl->PathStroke(col,ImDrawFlags_Closed,1.8f);
+    dl->AddCircleFilled(c,r*0.28f,col);
+}
+void DrawIconLock(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
+    dl->AddRect(ImVec2(c.x-r*0.72f,c.y-r*0.05f),ImVec2(c.x+r*0.72f,c.y+r*0.85f),col,2.0f,0,1.8f);
+    dl->PathClear();
+    dl->PathArcTo(ImVec2(c.x,c.y-r*0.05f),r*0.48f,3.14159265f,6.2831853f,16);
+    dl->PathStroke(col,0,1.8f);
+}
+void DrawIconDuplicate(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
+    dl->AddRect(ImVec2(c.x-r,c.y-r*0.7f),ImVec2(c.x+r*0.55f,c.y+r*0.85f),col,1.5f,0,1.8f);
+    dl->AddRect(ImVec2(c.x-r*0.5f,c.y-r),ImVec2(c.x+r,c.y+r*0.55f),col,1.5f,0,1.8f);
+}
+void DrawIconDelete(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
+    dl->AddLine(ImVec2(c.x-r*0.7f,c.y-r*0.45f),ImVec2(c.x+r*0.7f,c.y-r*0.45f),col,2.0f);
+    dl->AddRect(ImVec2(c.x-r*0.52f,c.y-r*0.3f),ImVec2(c.x+r*0.52f,c.y+r*0.85f),col,1.0f,0,1.8f);
+    dl->AddLine(ImVec2(c.x-r*0.28f,c.y-r*0.7f),ImVec2(c.x+r*0.28f,c.y-r*0.7f),col,2.0f);
+}
+
 using IconDrawFn = void (*)(ImDrawList*, ImVec2, float, ImU32);
+
+bool DrawTinyIconButton(const char* id, IconDrawFn icon, bool active, const char* tooltip,
+                        ImVec2 size = ImVec2(22.0f,22.0f)) {
+    ImGui::PushID(id);
+    const ImVec2 p=ImGui::GetCursorScreenPos();
+    const bool clicked=ImGui::InvisibleButton("##tinyIcon",size);
+    const bool hovered=ImGui::IsItemHovered();
+    ImDrawList* dl=ImGui::GetWindowDrawList();
+    if(active || hovered)
+        dl->AddRectFilled(p,ImVec2(p.x+size.x,p.y+size.y),
+                          active?IM_COL32(12,92,150,210):IM_COL32(28,55,78,190),4.0f);
+    if(icon) icon(dl,ImVec2(p.x+size.x*0.5f,p.y+size.y*0.5f),7.0f,
+                  active?IM_COL32(125,220,255,255):IM_COL32(180,198,215,240));
+    if(hovered && tooltip) ImGui::SetTooltip("%s",tooltip);
+    ImGui::PopID();
+    return clicked;
+}
 
 bool DrawIconButton(const char* id, const char* label, IconDrawFn icon, bool active = false,
                     ImVec2 size = ImVec2(74.0f, 58.0f), bool enabled = true) {
