@@ -3289,32 +3289,27 @@ void StartNifThumbnailPrecache(EditorState& state, const std::filesystem::path& 
 void AdvanceNifPrecache(EditorState& state, int filesPerFrame);
 
 void DrawMapEditorLauncher(EditorState& state) {
-    DrawTopNav(state, T("mapeditor.title"));
-    ImGui::Dummy(ImVec2(0.0f, 4.0f));
+    DrawTopNav(state, "Karte");
 
-    // "New Map" / "Map Öffnen" wählen jetzt aktiv aus, welches der beiden Panels unten
-    // sichtbar ist (vorher taten die Knöpfe nichts - beide Panels waren immer zugleich zu
-    // sehen).
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "KARTEN");
+    ImGui::SameLine();
+    ImGui::TextDisabled("Neue Karte anlegen oder vorhandene Fiesta-Karte öffnen");
+    ImGui::Dummy(ImVec2(0,6));
+
     const bool onNewMap = state.mapLauncherView == EditorState::MapLauncherView::NewMap;
     const bool onBrowse = state.mapLauncherView == EditorState::MapLauncherView::Browse;
-    ImGui::PushStyleColor(ImGuiCol_Button, onNewMap ? IM_COL32(55, 125, 195, 255) : IM_COL32(55, 125, 195, 255));
-    if (UI::Button(T("mapeditor.newmap"))) state.mapLauncherView = EditorState::MapLauncherView::NewMap;
-    ImGui::PopStyleColor();
+    if (DrawIconButton("launcher.new", "Neue Karte", DrawIconTerrain, onNewMap, ImVec2(108,58)))
+        state.mapLauncherView = EditorState::MapLauncherView::NewMap;
     ImGui::SameLine();
-    ImGui::PushStyleColor(ImGuiCol_Button, onBrowse ? IM_COL32(55, 125, 195, 255) : IM_COL32(55, 125, 195, 255));
-    if (UI::Button(T("mapeditor.openmap"))) state.mapLauncherView = EditorState::MapLauncherView::Browse;
-    ImGui::PopStyleColor();
+    if (DrawIconButton("launcher.open", "Karte öffnen", DrawIconGlobe, onBrowse, ImVec2(108,58)))
+        state.mapLauncherView = EditorState::MapLauncherView::Browse;
     ImGui::SameLine();
-    ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(55, 125, 195, 255));
-    if (UI::Button(T("nav.back"))) state.screen = AppScreen::ProjectHub;
-    ImGui::PopStyleColor();
+    if (DrawIconButton("launcher.project", "Projekt", DrawIconPencilPaper, false, ImVec2(92,58)))
+        state.screen = AppScreen::ProjectHub;
     ImGui::Separator();
 
-    // Karten liegen laut Rückmeldung unter <Client Ordner>/resmap/... - es kann dabei
-    // MEHRERE gleichnamige "resmap"-Ordner geben (z.B. einen leeren/falschen an anderer
-    // Stelle) - ResolveMapSearchRootAndScan probiert JEDEN und nimmt den mit den meisten
-    // echten Karten, statt blind den ersten Treffer zu verwenden (siehe CHANGELOG). Neu
-    // gescannt wird nur, wenn sich der Client-Ordner ändert - NICHT bei jedem Frame.
+    // Kartenwurzel nur neu scannen, wenn sich der Client-Ordner geändert hat oder der Nutzer
+    // explizit einen Rescan anstößt.
     if (state.project.clientFolder[0] != '\0') {
         const std::string clientFolderStr = state.project.clientFolder;
         if (clientFolderStr != state.lastScannedMapRoot) {
@@ -3324,164 +3319,149 @@ void DrawMapEditorLauncher(EditorState& state) {
             state.lastResmapFound = resolution.root.has_value();
             state.lastResmapResolvedPath = resolution.root
                 ? (resolution.candidateCount > 1
-                       ? (resolution.root->string() + "  (" + std::to_string(resolution.candidateCount) + " 'resmap'-Ordner gefunden, dieser hatte die meisten Karten)")
+                       ? (resolution.root->string() + "  (" + std::to_string(resolution.candidateCount) +
+                          " resmap-Ordner gefunden; dieser enthält die meisten Karten)")
                        : resolution.root->string())
-                : ("(kein 'resmap'-Ordner unter " + clientFolderStr + " gefunden)");
+                : ("Kein resmap-Ordner unter " + clientFolderStr + " gefunden");
             state.lastScannedMapRoot = clientFolderStr;
             state.selectedMapIndex = -1;
-            // Einmalige NIF-Vorschaubild-Vorladung für die gesamte Asset-Bibliothek anstoßen
-            // (siehe StartNifThumbnailPrecache) - nutzt denselben, gerade schon ermittelten
-            // resmap-Ordner, kein zusätzlicher Scan nötig.
             if (resolution.root) StartNifThumbnailPrecache(state, *resolution.root);
         }
     }
+
     const std::string& resolvedRoot = state.lastResmapResolvedPath;
     const bool resmapFound = state.lastResmapFound;
 
     if (state.nifPrecacheActive) {
         AdvanceNifPrecache(state, 8);
-        ImGui::Dummy(ImVec2(0.0f, 60.0f));
-        ImGui::TextWrapped("%s", "Bereite Objekt-Bibliothek vor - lädt Vorschaubilder für den Asset-Picker (einmalig, danach nicht mehr nötig)...");
-        ImGui::Dummy(ImVec2(0.0f, 8.0f));
         const std::size_t totalQ = state.nifPrecacheQueue.size();
-        const float frac = totalQ == 0 ? 1.0f : static_cast<float>(state.nifPrecacheCursor) / static_cast<float>(totalQ);
-        ImGui::ProgressBar(frac, ImVec2(500.0f, 0.0f));
-        ImGui::Text("%zu / %zu", state.nifPrecacheCursor, totalQ);
+        const float frac = totalQ == 0 ? 1.0f
+            : static_cast<float>(state.nifPrecacheCursor) / static_cast<float>(totalQ);
+        ImGui::BeginChild("##assetPreparation", ImVec2(std::min(680.0f, ImGui::GetContentRegionAvail().x), 150.0f), true);
+        ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "ASSET-BIBLIOTHEK");
+        ImGui::TextWrapped("NIF-Vorschaubilder werden einmalig vorbereitet. Danach öffnet sich der Asset Browser ohne Erstlade-Ruckler.");
+        ImGui::ProgressBar(frac, ImVec2(-1.0f, 0.0f));
+        ImGui::TextDisabled("%zu / %zu Modelle", state.nifPrecacheCursor, totalQ);
+        ImGui::EndChild();
         return;
     }
 
-    if (onNewMap) {
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(55, 125, 195, 255));
-    ImGui::BeginChild("##createNewMap", ImVec2(420.0f, 420.0f), true);
-    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 255, 255));
-    ImGui::TextColored(ImVec4(0.90f, 0.94f, 1.0f, 1.0f), "%s", T("mapeditor.createnewmap"));
-    ImGui::Separator();
-    ImGui::Text("%s", T("mapeditor.name")); ImGui::SameLine(140.0f);
-    ImGui::SetNextItemWidth(220.0f);
-    UI::InputText("##newmapname", state.newMapName, sizeof(state.newMapName));
-    ImGui::Text("%s", T("mapeditor.xlength")); ImGui::SameLine(140.0f);
-    ImGui::SetNextItemWidth(220.0f);
-    UI::InputInt("##newmapx", &state.newMapWidth);
-    ImGui::Text("%s", T("mapeditor.ybreadth")); ImGui::SameLine(140.0f);
-    ImGui::SetNextItemWidth(220.0f);
-    UI::InputInt("##newmapy", &state.newMapHeight);
-    ImGui::Text("%s", T("mapeditor.texturelayer")); ImGui::SameLine(140.0f);
-    ImGui::SetNextItemWidth(220.0f);
-    UI::InputText("##newmaplayer", state.newMapTextureLayer, sizeof(state.newMapTextureLayer));
-    ImGui::Dummy(ImVec2(0.0f, 20.0f));
+    const float panelW = std::min(760.0f, std::max(520.0f, ImGui::GetContentRegionAvail().x * 0.66f));
 
-    ImGui::PopStyleColor();
-    ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(55, 125, 195, 255));
-    if (UI::Button(T("mapeditor.createmap"), ImVec2(180.0f, 32.0f))) {
-        const int w = std::max(2, state.newMapWidth);
-        const int h = std::max(2, state.newMapHeight);
-        state.heightmap = core::Heightmap(static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h), 50.0f, 50.0f);
-        state.undo.Clear();
-        state.meshDirty = true;
-        SyncWalkGridSize(state);
-        state.textureStack = core::TextureLayerStack(
-            1024u, 1024u);
-        state.selectedLayer = static_cast<int>(state.textureStack.AddLayer(
-            state.newMapTextureLayer[0] != '\0' ? state.newMapTextureLayer : "Base", "base.dds", 1.0f));
-        state.layerPreviewDirty = true;
-        std::snprintf(state.legacySaveStem, sizeof(state.legacySaveStem), "%s", state.newMapName);
-        if (state.project.projectFolder[0] != '\0') {
-            std::snprintf(state.legacySaveDir, sizeof(state.legacySaveDir), "%s", state.project.projectFolder);
+    if (onNewMap) {
+        ImGui::BeginChild("##createNewMap", ImVec2(panelW, 0), true);
+        ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "NEUE KARTE");
+        ImGui::SameLine();
+        ImGui::TextDisabled("Grunddaten festlegen");
+        ImGui::Separator();
+
+        ImGui::TextDisabled("KARTENNAME");
+        ImGui::SetNextItemWidth(-1.0f);
+        UI::InputText("##newmapname", state.newMapName, sizeof(state.newMapName));
+
+        ImGui::Dummy(ImVec2(0,4));
+        ImGui::TextDisabled("HÖHENRASTER");
+        ImGui::SetNextItemWidth((ImGui::GetContentRegionAvail().x - 8.0f) * 0.5f);
+        UI::InputInt("Breite##newmapx", &state.newMapWidth);
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(-1.0f);
+        UI::InputInt("Höhe##newmapy", &state.newMapHeight);
+        state.newMapWidth = std::clamp(state.newMapWidth, 2, 4096);
+        state.newMapHeight = std::clamp(state.newMapHeight, 2, 4096);
+
+        ImGui::Dummy(ImVec2(0,4));
+        ImGui::TextDisabled("BASIS-LAYER");
+        ImGui::SetNextItemWidth(-1.0f);
+        UI::InputText("##newmaplayer", state.newMapTextureLayer, sizeof(state.newMapTextureLayer));
+        ImGui::TextDisabled("Der Textur-Stack startet mit einem Basis-Layer; weitere Layer werden später im Layer-Dock angelegt.");
+
+        ImGui::Separator();
+        ImGui::BeginDisabled(state.newMapName[0] == '\0');
+        if (UI::Button("Karte erstellen", ImVec2(-1.0f, 40.0f))) {
+            const int w = std::max(2, state.newMapWidth);
+            const int h = std::max(2, state.newMapHeight);
+            state.heightmap = core::Heightmap(static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h), 50.0f, 50.0f);
+            state.undo.Clear();
+            state.meshDirty = true;
+            SyncWalkGridSize(state);
+            state.textureStack = core::TextureLayerStack(1024u, 1024u);
+            state.selectedLayer = static_cast<int>(state.textureStack.AddLayer(
+                state.newMapTextureLayer[0] != '\0' ? state.newMapTextureLayer : "Base", "base.dds", 1.0f));
+            state.layerPreviewDirty = true;
+            std::snprintf(state.legacySaveStem, sizeof(state.legacySaveStem), "%s", state.newMapName);
+            if (state.project.projectFolder[0] != '\0')
+                std::snprintf(state.legacySaveDir, sizeof(state.legacySaveDir), "%s", state.project.projectFolder);
+            state.statusMessage = "Neue Karte '" + std::string(state.newMapName) + "' angelegt (" +
+                                  std::to_string(w) + "x" + std::to_string(h) + ").";
+            state.screen = AppScreen::MapEditorWorkspace;
         }
-        state.statusMessage = "Neue Karte '" + std::string(state.newMapName) + "' angelegt (" +
-                               std::to_string(w) + "x" + std::to_string(h) + ").";
-        state.screen = AppScreen::MapEditorWorkspace;
+        ImGui::EndDisabled();
+        ImGui::EndChild();
     }
-    ImGui::SameLine();
-    if (UI::Button(T("mapeditor.cancel"), ImVec2(120.0f, 32.0f))) {
-        state.newMapName[0] = '\0';
-    }
-    ImGui::PopStyleColor();
-    ImGui::EndChild();
-    ImGui::PopStyleColor();
-    } // onNewMap
 
     if (onBrowse) {
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(55, 125, 195, 255));
-    ImGui::BeginChild("##browseMaps", ImVec2(420.0f, 420.0f), true);
-    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 255, 255));
-    ImGui::TextColored(ImVec4(0.90f, 0.94f, 1.0f, 1.0f), "%s", T("mapeditor.browsemaps"));
-    ImGui::Separator();
-    if (state.project.clientFolder[0] == '\0') {
-        ImGui::PushTextWrapPos(400.0f);
-        ImGui::TextWrapped("%s", T("mapeditor.noclientfolder"));
-        ImGui::PopTextWrapPos();
-    } else {
-        // Transparenz statt stillem Leerbleiben: zeigt genau, WO gesucht wurde und wie viele
-        // Karten gefunden wurden - damit sofort erkennbar ist, ob ein falscher Ordner gewählt
-        // wurde, statt nur eine rätselhaft leere Liste zu sehen.
-        ImGui::PushTextWrapPos(400.0f);
-        ImGui::TextWrapped("Suche in: %s", resolvedRoot.c_str());
-        ImGui::PopTextWrapPos();
-        if (resmapFound) {
-            ImGui::Text("%d Karte(n) gefunden.", static_cast<int>(state.discoveredMaps.size()));
-        }
+        ImGui::BeginChild("##browseMaps", ImVec2(panelW, 0), true);
+        ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "KARTE ÖFFNEN");
         ImGui::SameLine();
-        if (UI::SmallButton("Neu durchsuchen")) {
-            state.lastScannedMapRoot.clear(); // erzwingt erneutes vollständiges Scannen oben
-        }
-        ImGui::BeginChild("##mapList", ImVec2(0.0f, 230.0f), true);
-        if (state.discoveredMaps.empty()) {
-            ImGui::TextDisabled("%s", resmapFound
-                ? "Keine .ini-Kartendateien im gefundenen 'resmap'-Ordner."
-                : "'resmap' nicht gefunden - Client Ordner pruefen oder 'Neu durchsuchen' klicken.");
-        }
-        for (int i = 0; i < static_cast<int>(state.discoveredMaps.size()); ++i) {
-            const bool selected = state.selectedMapIndex == i;
-            if (UI::Selectable(state.discoveredMaps[static_cast<std::size_t>(i)].name.c_str(), selected)) {
-                state.selectedMapIndex = i;
-                std::snprintf(state.legacyMapIniPath, sizeof(state.legacyMapIniPath), "%s",
-                              state.discoveredMaps[static_cast<std::size_t>(i)].iniPath.c_str());
+        ImGui::TextDisabled("%zu gefunden", state.discoveredMaps.size());
+        ImGui::Separator();
+
+        if (state.project.clientFolder[0] == '\0') {
+            ImGui::TextWrapped("%s", T("mapeditor.noclientfolder"));
+            if (UI::Button("Projekt konfigurieren", ImVec2(-1,0)))
+                state.screen = AppScreen::NewProjectConfig;
+        } else {
+            ImGui::TextDisabled("SUCHWURZEL");
+            ImGui::TextWrapped("%s", resolvedRoot.empty() ? "(noch nicht gescannt)" : resolvedRoot.c_str());
+            if (UI::SmallButton("Neu durchsuchen")) state.lastScannedMapRoot.clear();
+
+            ImGui::Separator();
+            ImGui::BeginChild("##mapList", ImVec2(0.0f, std::max(230.0f, ImGui::GetContentRegionAvail().y - 84.0f)), true);
+            if (state.discoveredMaps.empty()) {
+                ImGui::TextDisabled("%s", resmapFound
+                    ? "Keine .ini-Kartendateien im gefundenen resmap-Ordner."
+                    : "resmap nicht gefunden – Client-Pfad im Projekt prüfen.");
             }
-            // Vollen Pfad beim Überfahren anzeigen - direkte Kontrolle, WAS genau gefunden
-            // wurde, ohne erst eine Karte öffnen zu müssen.
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("%s", state.discoveredMaps[static_cast<std::size_t>(i)].iniPath.c_str());
+            for (int i = 0; i < static_cast<int>(state.discoveredMaps.size()); ++i) {
+                const bool selected = state.selectedMapIndex == i;
+                const auto& map = state.discoveredMaps[static_cast<std::size_t>(i)];
+                if (UI::Selectable(map.name.c_str(), selected)) {
+                    state.selectedMapIndex = i;
+                    std::snprintf(state.legacyMapIniPath, sizeof(state.legacyMapIniPath), "%s", map.iniPath.c_str());
+                }
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", map.iniPath.c_str());
             }
+            ImGui::EndChild();
+
+            ImGui::BeginDisabled(state.selectedMapIndex < 0);
+            if (UI::Button("Ausgewählte Karte öffnen", ImVec2(-1.0f, 40.0f))) {
+                core::legacy::LegacyMapOpenReport report;
+                auto result = core::legacy::OpenLegacyMap(state.legacyMapIniPath, &report);
+                if (result) {
+                    const std::filesystem::path iniPath(state.legacyMapIniPath);
+                    ApplyProjectToState(state, std::move(*result), iniPath.parent_path());
+                    if (state.project.projectFolder[0] != '\0')
+                        std::snprintf(state.legacySaveDir, sizeof(state.legacySaveDir), "%s", state.project.projectFolder);
+                    else
+                        std::snprintf(state.legacySaveDir, sizeof(state.legacySaveDir), "%s", iniPath.parent_path().string().c_str());
+                    std::snprintf(state.legacySaveStem, sizeof(state.legacySaveStem), "%s", iniPath.stem().string().c_str());
+                    state.statusMessage = "Karte geöffnet (" + std::to_string(report.issues.size()) + " Hinweis(e)).";
+                    state.screen = AppScreen::MapEditorWorkspace;
+                } else {
+                    state.statusMessage = "Karte öffnen fehlgeschlagen: " + result.error();
+                }
+            }
+            ImGui::EndDisabled();
         }
         ImGui::EndChild();
     }
-    ImGui::PopStyleColor();
-    ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(55, 125, 195, 255));
-    ImGui::BeginDisabled(state.selectedMapIndex < 0);
-    if (UI::Button(T("mapeditor.open"), ImVec2(110.0f, 32.0f))) {
-        core::legacy::LegacyMapOpenReport report;
-        auto result = core::legacy::OpenLegacyMap(state.legacyMapIniPath, &report);
-        if (result) {
-            const std::filesystem::path iniPath(state.legacyMapIniPath);
-            ApplyProjectToState(state, std::move(*result), iniPath.parent_path());
-            if (state.project.projectFolder[0] != '\0') {
-                std::snprintf(state.legacySaveDir, sizeof(state.legacySaveDir), "%s", state.project.projectFolder);
-            } else {
-                std::snprintf(state.legacySaveDir, sizeof(state.legacySaveDir), "%s", iniPath.parent_path().string().c_str());
-            }
-            std::snprintf(state.legacySaveStem, sizeof(state.legacySaveStem), "%s", iniPath.stem().string().c_str());
-            state.statusMessage = "Karte ge\u00f6ffnet (" + std::to_string(report.issues.size()) + " Hinweis(e)).";
-            state.screen = AppScreen::MapEditorWorkspace;
-        } else {
-            state.statusMessage = "Karte \u00f6ffnen fehlgeschlagen: " + result.error();
-        }
-    }
-    ImGui::EndDisabled();
-    ImGui::SameLine();
-    if (UI::Button(T("mapeditor.cancel"), ImVec2(110.0f, 32.0f))) {
-        state.selectedMapIndex = -1;
-    }
-    ImGui::PopStyleColor();
-    ImGui::EndChild();
-    ImGui::PopStyleColor();
-    } // onBrowse
 
     if (!state.statusMessage.empty()) {
-        ImGui::Dummy(ImVec2(0.0f, 10.0f));
+        ImGui::Separator();
         ImGui::TextWrapped("%s", state.statusMessage.c_str());
     }
 }
+
 
 void DrawComingSoon(EditorState& state) {
     DrawTopNav(state, state.comingSoonTitle.c_str());
