@@ -214,6 +214,7 @@ Objects can be shown/hidden by category (trees, buildings, rocks ...) in the Vis
      "Bereich Sichtbarkeit", "Visibility area",
      R"MAN(Im Werkzeug-Panel steht der Bereich 'Sichtbarkeit'. Er ändert nur die Anzeige, nie die Daten.
 - Terrain, Objekt-Modelle, Objekt-Platzhalter, NPC-Modelle, Objekte im 2D-View: je ein Schalter.
+- SHMD-Szenenmodelle: Sky, Water und GroundObject lassen sich getrennt ein-/ausblenden. Diese Listen stehen separat vor den normalen Placement-Instanzen in der SHMD und werden nicht als bearbeitbare Placement-Objekte behandelt.
 - Terrain-Layer: jede Texturschicht einzeln ausblenden ('Alle Layer an' setzt alles zurück).
 - Objekt-Kategorien: Bäume & Büsche, Gras & Blumen, Felsen & Steine, Gebäude, Zäune/Mauern/Brücken, Dekoration & Möbel, Wasser & Schiffe, Tiere & Kreaturen, Effekte & Licht, Sonstiges. Mit der Anzahl je Kategorie; 'nur' zeigt allein diese Kategorie, 'Alle an'/'Alle aus' schalten alle.
 - Die Kategorie wird aus dem Modellnamen abgeleitet (Schlüsselwörter) und kann daher selten danebenliegen.
@@ -221,6 +222,7 @@ Objects can be shown/hidden by category (trees, buildings, rocks ...) in the Vis
 - Fehlt NPCs das Modell, werden sie hier namentlich aufgelistet.)MAN",
      R"MAN(The tool panel contains the 'Visibility' area. It only changes the display, never the data.
 - Terrain, object models, object placeholders, NPC models, objects in the 2D view: one switch each.
+- SHMD scene models: Sky, Water and GroundObject can be shown/hidden independently. These lists live separately before normal placement instances in SHMD and are not treated as editable placement objects.
 - Terrain layers: hide each texture layer individually ('All layers on' resets).
 - Object categories: trees & bushes, grass & flowers, rocks & stones, buildings, fences/walls/bridges, decoration & furniture, water & ships, animals & creatures, effects & light, other. With the count per category; 'only' shows just this category, 'All on'/'All off' switch all.
 - The category is derived from the model name (keywords) and can therefore rarely be off.
@@ -630,8 +632,11 @@ const TipRow kTips[] = {
     {"MobRegen speichern", "Schreibt die Spawn-Zonen in die MobRegen-Datei der Karte.", "Writes the spawn zones to the map's MobRegen file."},
     {"Sichtbarkeit", "Blendet Teile der Karte nur in der Anzeige ein/aus - die Daten bleiben unverändert.", "Shows/hides parts of the map in the display only - the data stays unchanged."},
     {"Terrain", "Blendet das Gelände ein/aus.", "Shows/hides the terrain."},
-    {"Objekt-Modelle (3D)", "Blendet die 3D-Modelle der Objekte ein/aus.", "Shows/hides the 3D models of objects."},
+    {"Objekt-Modelle (3D)", "Blendet alle 3D-Objektmodelle ein/aus, einschließlich der SHMD-Szenenmodelle.", "Shows/hides all 3D object models, including SHMD scene models."},
     {"Objekt-Platzhalter (3D)", "Blendet die Pyramiden für Objekte ohne ladbares Modell ein/aus.", "Shows/hides the pyramids for objects without a loadable model."},
+    {"Sky (SHMD)", "Blendet die Modelle aus der SHMD-Kategorie Sky ein/aus.", "Shows/hides models from the SHMD Sky category."},
+    {"Water (SHMD)", "Blendet die Modelle aus der SHMD-Kategorie Water ein/aus.", "Shows/hides models from the SHMD Water category."},
+    {"GroundObject (SHMD)", "Blendet die Modelle aus der SHMD-Kategorie GroundObject ein/aus.", "Shows/hides models from the SHMD GroundObject category."},
     {"NPC-Modelle (3D)", "Blendet die NPC-Modelle im 3D-Bild ein/aus.", "Shows/hides the NPC models in the 3D image."},
     {"NPC-Namen und Blickpfeile (3D, NPC-Modus)", "Zeigt Namen und Blickpfeile der NPCs im 3D-Bild (nur im NPC-Modus).", "Shows names and facing arrows of NPCs in the 3D image (NPC mode only)."},
     {"Objekte im 2D-View", "Blendet die Objektpunkte in der 2D-Ansicht ein/aus.", "Shows/hides the object dots in the 2D view."},

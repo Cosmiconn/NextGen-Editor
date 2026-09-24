@@ -329,6 +329,14 @@ struct EditorState {
     app::ObjectMarkerRenderer objectMarkerRenderer;
     app::ObjectMarkerRenderer portalMarkerRenderer; // Portale-Tab: TownPortal-/Schriftrollen-Ziele im 3D-View
     app::NifMeshRenderer nifMeshRenderer;
+    // SHMD enthält vor den normalen Placement-Instanzen eigenständige Modelllisten
+    // (Sky/Water/GroundObject) OHNE Transform. Diese Modelle dürfen nicht in placementSet
+    // eingefügt werden, weil sie sonst beim Export fälschlich als normale Instanzen
+    // serialisiert würden. Darum eigener synthetischer Render-Set + Renderer.
+    app::NifMeshRenderer shmdCategoryMeshRenderer;
+    core::ObjectPlacementSet shmdCategoryRenderSet;
+    std::vector<int> shmdCategoryRenderKind; // 0=Sky, 1=Water, 2=GroundObject, -1=sonstige Kategorie
+    std::vector<char> shmdCategoryHidden;
     // Eigenständiger, zweiter NifMeshRenderer NUR für die 3D-Darstellung von NPCs (siehe
     // CHANGELOG [0.44.17]) - getrennt von nifMeshRenderer/placementSet, da LoadModelsForSet
     // pro Aufruf immer sein GESAMTES internes Modell-Set neu aufbaut (ein gemeinsamer
@@ -362,6 +370,9 @@ struct EditorState {
     bool showTerrain = true;
     bool showObjectMeshes = true;    // echte Objekt-Modelle
     bool showObjectMarkers = true;   // Platzhalter-Pyramiden fuer Objekte ohne ladbares Modell
+    bool showShmdSky = true;          // SHMD-Kategorie "Sky"
+    bool showShmdWater = true;        // SHMD-Kategorie "Water"
+    bool showShmdGroundObject = true; // SHMD-Kategorie "GroundObject"
     bool showNpcModels = true;
     bool showObjects2D = true;       // Objektpunkte/Grundflaechen im 2D-View
     bool categoryVisible[10] = {true, true, true, true, true, true, true, true, true, true};
@@ -653,7 +664,9 @@ struct EditorState {
     // DrawAssetPickerPopup. Listen werden einmal beim Öffnen des Pickers gescannt und gecacht
     // (nicht pro Frame - bei tausenden .nif-Dateien spürbar teuer).
     std::vector<std::string> availableTextureFiles; // relativ zu "fieldTexture", z.B. "wall/stone01.dds"
-    std::vector<std::string> availableNifFiles;      // relativ zu "nif"/"nifs", z.B. "field/Rou/GuildHall.nif"
+    // Alle .nif unter resmap, nicht nur resmap/nif(s): echte SHMDs referenzieren auch
+    // field/, IDField/, KDField/ usw. Pfade sind relativ zu resmap.
+    std::vector<std::string> availableNifFiles;      // z.B. "field/Rou/GuildHall.nif"
     bool textureListScanned = false;
     bool nifListScanned = false;
     std::string assetPickerFilter;
@@ -718,6 +731,19 @@ std::vector<std::string> ListFilesByExtension(const std::filesystem::path& root,
     }
     std::sort(result.begin(), result.end());
     return result;
+}
+
+std::string ToLegacyResmapModelPath(std::string relativePath) {
+    for (char& c : relativePath) {
+        if (c == '/') c = '\\';
+    }
+    if (relativePath.empty()) return relativePath;
+    std::string lower = relativePath;
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    if (lower.rfind("resmap\\", 0) != 0) relativePath = "resmap\\" + relativePath;
+    return relativePath;
 }
 
 // Findet einen Unterordner unter resmapRoot, dessen Name (Groß-/Kleinschreibung egal) einem
@@ -863,6 +889,55 @@ core::legacy::LegacyMapProject BuildProjectFromState(const EditorState& state) {
     return project;
 }
 
+int ShmdCategoryKind(const std::string& name) {
+    std::string lower = name;
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    if (lower == "sky") return 0;
+    if (lower == "water") return 1;
+    if (lower == "groundobject") return 2;
+    return -1;
+}
+
+void RebuildShmdCategoryRenderSet(EditorState& state, const std::filesystem::path& mapDir) {
+    state.shmdCategoryRenderSet = core::ObjectPlacementSet{};
+    state.shmdCategoryRenderKind.clear();
+
+    // Kategorieeinträge haben absichtlich keinen Placement-Transform. Die zugehörigen NIFs
+    // tragen ihre Szenengeometrie selbst; für die Vorschau werden sie deshalb einmal mit
+    // Identity-Transform gerendert. Das Original-ObjectPlacementSet bleibt unverändert.
+    for (const auto& category : state.placementSet.categories) {
+        const int kind = ShmdCategoryKind(category.name);
+        for (const auto& modelPath : category.modelPaths) {
+            if (modelPath.empty()) continue;
+            core::PlacedObject obj;
+            obj.modelPath = modelPath;
+            state.shmdCategoryRenderSet.AddObject(std::move(obj));
+            state.shmdCategoryRenderKind.push_back(kind);
+        }
+    }
+
+    state.shmdCategoryHidden.assign(state.shmdCategoryRenderSet.Count(), 0);
+    state.shmdCategoryMeshRenderer.LoadModelsForSet(state.shmdCategoryRenderSet, mapDir);
+}
+
+void RefreshShmdCategoryVisibility(EditorState& state) {
+    state.shmdCategoryHidden.resize(state.shmdCategoryRenderSet.Count(), 0);
+    for (std::size_t i = 0; i < state.shmdCategoryRenderSet.Count(); ++i) {
+        bool visible = true;
+        if (i < state.shmdCategoryRenderKind.size()) {
+            switch (state.shmdCategoryRenderKind[i]) {
+                case 0: visible = state.showShmdSky; break;
+                case 1: visible = state.showShmdWater; break;
+                case 2: visible = state.showShmdGroundObject; break;
+                default: break; // unbekannte generische SHMD-Kategorie bleibt sichtbar
+            }
+        }
+        state.shmdCategoryHidden[i] = visible ? 0 : 1;
+    }
+}
+
 // Verteilt ein frisch geöffnetes LegacyMapProject auf die einzelnen Editor-Zustandsfelder -
 // setzt außerdem alle Undo-Stacks/Auswahl/Dirty-Flags zurück (neue Karte, alte Historie ungültig).
 void ApplyProjectToState(EditorState& state, core::legacy::LegacyMapProject&& project, const std::filesystem::path& mapDir) {
@@ -902,6 +977,7 @@ void ApplyProjectToState(EditorState& state, core::legacy::LegacyMapProject&& pr
     // Versucht, für alle Objekte echte .nif-Meshes zu laden (aktuell nur untexturierte Meshes
     // erfolgreich, siehe docs/MAP_FORMAT.md) - für den Rest bleibt der Platzhalter-Marker.
     state.nifMeshRenderer.LoadModelsForSet(state.placementSet, mapDir);
+    RebuildShmdCategoryRenderSet(state, mapDir);
 
     state.legacySpatialIndex = std::move(project.spatialIndex);
     state.hasLegacySpatialIndex = project.hasSpatialIndex;
@@ -1469,8 +1545,12 @@ void DrawAdvancedFileOps(EditorState& state) {
                 state.placementSet = std::move(*result);
                 state.selectedObject = -1;
                 state.selectedObjects.clear();
-                state.nifMeshRenderer.LoadModelsForSet(state.placementSet, std::filesystem::path(state.legacyShmdPath).parent_path());
-                state.statusMessage = "Legacy-shmd importiert (" + std::to_string(state.placementSet.Count()) + " Objekte): " + std::string(state.legacyShmdPath);
+                const std::filesystem::path shmdMapDir = std::filesystem::path(state.legacyShmdPath).parent_path();
+                state.nifMeshRenderer.LoadModelsForSet(state.placementSet, shmdMapDir);
+                RebuildShmdCategoryRenderSet(state, shmdMapDir);
+                state.statusMessage = "Legacy-shmd importiert (" + std::to_string(state.placementSet.Count()) +
+                                      " Placement-Objekte, " + std::to_string(state.shmdCategoryRenderSet.Count()) +
+                                      " SHMD-Szenenmodelle): " + std::string(state.legacyShmdPath);
             } else {
                 state.statusMessage = "Import fehlgeschlagen: " + result.error();
             }
@@ -3036,18 +3116,16 @@ EditorState::AssetThumbnail GetOrLoadAssetThumbnail(EditorState& state,
 
 // Startet die einmalige Vorlade-Sequenz aller NIF-Vorschaubilder der GESAMTEN Asset-
 // Bibliothek unter resmapRoot (nicht nur der auf einer Karte platzierten Objekte) - siehe
-// EditorState::nifPrecacheActive und DrawMapEditorLauncher. Macht bewusst nichts, wenn für
-// exakt diesen resmapRoot schon einmal komplett durchgelaufen (Vergleich als String, da
-// std::filesystem::path selbst keinen stabilen Hash für unordered-Vergleiche hat) - oder
-// wenn kein "nif"/"nifs"-Ordner existiert.
+// EditorState::nifPrecacheActive und DrawMapEditorLauncher. Erfasst bewusst ALLE .nif unter
+// resmap (field/IDField/KDField/nif(s)/...), weil echte SHMDs diese Quellen mischen.
+// Macht nichts, wenn exakt dieser resmapRoot schon einmal komplett durchgelaufen ist.
 void StartNifThumbnailPrecache(EditorState& state, const std::filesystem::path& resmapRoot) {
     if (state.nifPrecacheDoneForRoot == resmapRoot.string()) return;
-    const auto nifRoot = FindNamedSubfolder(resmapRoot, {"nif", "nifs"});
-    if (!nifRoot) return;
-    // Dieselben State-Felder wie der manuelle "Durchsuchen..."-Picker (siehe DrawToolsContent)
-    // - eine Vorladung hier erspart dem Picker später den eigenen Erst-Scan.
-    state.availableNifFiles = ListFilesByExtension(*nifRoot, {".nif"});
-    state.nifAssetRoot = *nifRoot;
+    // SHMD-Verweise liegen nicht nur unter resmap/nif(s), sondern u.a. auch unter field,
+    // IDField und KDField. Deshalb die komplette resmap-Hierarchie als Modellbibliothek
+    // inventarisieren. Die Vorschaubilder werden weiterhin stückweise pro Frame erzeugt.
+    state.availableNifFiles = ListFilesByExtension(resmapRoot, {".nif"});
+    state.nifAssetRoot = resmapRoot;
     state.resmapRootForThumbnails = resmapRoot;
     state.nifListScanned = true;
     state.nifPrecacheQueue = state.availableNifFiles;
@@ -6453,15 +6531,15 @@ void DrawToolsContent(EditorState& state) {
             ImGui::SameLine();
             if (UI::Button("Durchsuchen...##nif")) {
                 if (const auto resmapRoot = FindResmapRootForAssets(state.project.clientFolder)) {
-                    if (const auto nifRoot = FindNamedSubfolder(*resmapRoot, {"nif", "nifs"})) {
-                        state.availableNifFiles = ListFilesByExtension(*nifRoot, {".nif"});
-                        state.nifAssetRoot = *nifRoot;
-                        state.resmapRootForThumbnails = *resmapRoot;
-                        state.nifListScanned = true;
-                        state.assetPickerFilter.clear();
-                        ImGui::OpenPopup("##nifPicker");
+                    state.availableNifFiles = ListFilesByExtension(*resmapRoot, {".nif"});
+                    state.nifAssetRoot = *resmapRoot;
+                    state.resmapRootForThumbnails = *resmapRoot;
+                    state.nifListScanned = true;
+                    state.assetPickerFilter.clear();
+                    if (state.availableNifFiles.empty()) {
+                        state.statusMessage = "Keine .nif-Dateien unter " + resmapRoot->string() + " gefunden.";
                     } else {
-                        state.statusMessage = "Kein 'nif'/'nifs'-Ordner unter " + resmapRoot->string() + " gefunden.";
+                        ImGui::OpenPopup("##nifPicker");
                     }
                 } else {
                     state.statusMessage = "Kein Client-Ordner/'resmap' aktiv - unter 'Neu' ein Projekt mit Client Ordner anlegen.";
@@ -6471,7 +6549,8 @@ void DrawToolsContent(EditorState& state) {
                 std::string picked;
                 if (DrawAssetPickerPopup("##nifPicker", state.availableNifFiles, state.assetPickerFilter, picked,
                                           state, state.nifAssetRoot, true, state.resmapRootForThumbnails)) {
-                    std::snprintf(state.newObjectModelPath, sizeof(state.newObjectModelPath), "%s", picked.c_str());
+                    const std::string legacyModelPath = ToLegacyResmapModelPath(picked);
+                    std::snprintf(state.newObjectModelPath, sizeof(state.newObjectModelPath), "%s", legacyModelPath.c_str());
                 }
             }
             UI::SliderFloat("Rotation um Hochachse (°)##new", &state.newObjectRotDeg, -180.0f, 180.0f);
@@ -6870,6 +6949,21 @@ static void DrawVisibilityPanel(EditorState& state) {
     UI::Checkbox("Terrain", &state.showTerrain);
     UI::Checkbox("Objekt-Modelle (3D)", &state.showObjectMeshes);
     UI::Checkbox("Objekt-Platzhalter (3D)", &state.showObjectMarkers);
+
+    if (!state.shmdCategoryRenderKind.empty()) {
+        int shmdCounts[3] = {};
+        for (const int kind : state.shmdCategoryRenderKind) {
+            if (kind >= 0 && kind < 3) ++shmdCounts[kind];
+        }
+        ImGui::SeparatorText("SHMD-Szenenmodelle");
+        UI::Checkbox("Sky (SHMD)", &state.showShmdSky);
+        ImGui::SameLine(); ImGui::TextDisabled("%d Modell(e)", shmdCounts[0]);
+        UI::Checkbox("Water (SHMD)", &state.showShmdWater);
+        ImGui::SameLine(); ImGui::TextDisabled("%d Modell(e)", shmdCounts[1]);
+        UI::Checkbox("GroundObject (SHMD)", &state.showShmdGroundObject);
+        ImGui::SameLine(); ImGui::TextDisabled("%d Modell(e)", shmdCounts[2]);
+    }
+
     UI::Checkbox("NPC-Modelle (3D)", &state.showNpcModels);
     UI::Checkbox("NPC-Namen und Blickpfeile (3D, NPC-Modus)", &state.showNpcLabels);
     if (state.npcModelsMissing > 0) {
@@ -7537,6 +7631,10 @@ void DrawPreview3DContent(EditorState& state) {
         state.portalMarkerRenderer.Draw(state.camera, w, h);
     }
     if (state.showObjectMeshes) state.nifMeshRenderer.Draw(state.placementSet, state.camera, w, h, &state.objectHidden);
+    RefreshShmdCategoryVisibility(state);
+    if (state.showObjectMeshes && state.shmdCategoryRenderSet.Count() > 0) {
+        state.shmdCategoryMeshRenderer.Draw(state.shmdCategoryRenderSet, state.camera, w, h, &state.shmdCategoryHidden);
+    }
     EnsureNpcModelsLoaded(state);
     if (state.showNpcModels) state.npcMeshRenderer.Draw(state.npcRenderSet, state.camera, w, h);
     const GLuint tex = state.renderer.EndScene();
@@ -7808,6 +7906,7 @@ int main() {
     state.objectMarkerRenderer.Init();
     state.portalMarkerRenderer.Init();
     state.nifMeshRenderer.Init();
+    state.shmdCategoryMeshRenderer.Init();
     state.npcMeshRenderer.Init();
     UpdatePreviewTexture(state);
     state.selectedLayer = static_cast<int>(state.textureStack.AddLayer("Base", "base.dds", 1.0f));
@@ -7876,6 +7975,7 @@ int main() {
     state.objectMarkerRenderer.Shutdown();
     state.portalMarkerRenderer.Shutdown();
     state.nifMeshRenderer.Shutdown();
+    state.shmdCategoryMeshRenderer.Shutdown();
     state.npcMeshRenderer.Shutdown();
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
