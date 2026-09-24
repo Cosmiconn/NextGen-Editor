@@ -4010,8 +4010,6 @@ void DrawQuestEditor(EditorState& state) {
     ImGui::SetNextItemWidth(430.0f);
     UI::InputTextWithHint("##questsearch", "Quest-ID oder Titeltext suchen...",
                           state.questSearch, sizeof(state.questSearch));
-    ImGui::SameLine();
-    ImGui::TextDisabled("%zu Treffer", state.questVisible.size());
 
     // Listen-Beschriftungen und Filter nur bei Aenderung neu berechnen.
     const std::string key = std::string(state.questSearch) + "|" + std::to_string(quests.size()) + "|" +
@@ -8908,7 +8906,6 @@ int main() {
 
         HandleGlobalShortcuts(state);
         DrawManualWindow(state);
-        DrawGlobalHelpBar(state, io.DisplaySize);
 
         ImGui::Render();
         int displayW = 0, displayH = 0;
