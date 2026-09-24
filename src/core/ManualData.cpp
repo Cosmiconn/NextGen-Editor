@@ -199,15 +199,21 @@ Objects appear as a reference with their footprint; they cannot be clicked in th
      "Tab Objekt Platzierung", "Object placement tab",
      R"MAN(Objekte sind 3D-Modelle (Häuser, Bäume, Steine ...) mit Position, Drehung und Skalierung.
 - Platzieren: Modellpfad eintragen oder 'Durchsuchen...', Rotation und Skalierung einstellen, dann in die 2D-Ansicht klicken.
-- Auswählen: in der 2D-Ansicht auf ein Objekt klicken (nächstes innerhalb der Toleranz). Rotation, Skalierung und 'Objekt löschen' wirken auf das gewählte Objekt.
+- Mehrfachauswahl: Strg+Klick fügt einzelne Objekte hinzu/entfernt sie, Shift+Klick wählt einen Bereich in der Liste. 'Alle normalen auswählen' bzw. Strg+A markiert alle normalen Placements.
+- Bewegen: Ein bereits ausgewähltes Objekt in der 2D-Ansicht mit links ziehen. Bei Mehrfachauswahl bewegt sich die ganze Gruppe gemeinsam; relative Abstände und Y-Höhen bleiben erhalten.
+- Koordinaten: X/Y/Z des aktiven Objekts direkt ändern. Bei Mehrfachauswahl wird dieselbe Positionsdifferenz auf alle ausgewählten Objekte angewandt. Rotation und Skalierung wirken ebenfalls relativ auf die Gruppe.
+- 'Ausgewählte Objekte löschen' löscht die Auswahl. 'Alle normalen Objekte entfernen' entfernt nach Bestätigung alle normalen Placements, lässt Sky/Water/GroundObject aber bestehen.
 - Die Höhe wird beim Platzieren aus dem Gelände genommen.
-- Im 3D-Bild siehst Du die echten Modelle. Objekte, deren Modell nicht geladen werden kann, erscheinen als Platzhalter-Pyramide.
+- Im 3D-Bild siehst Du die echten Modelle. Ausgewählte normale Objekte erhalten zusätzlich einen weißen Auswahl-Marker.
 Objekte lassen sich nach Kategorien (Bäume, Gebäude, Felsen ...) ein- und ausblenden (Bereich Sichtbarkeit) - hilfreich bei dichten Karten.)MAN",
      R"MAN(Objects are 3D models (houses, trees, stones ...) with position, rotation and scale.
 - Place: enter a model path or 'Browse...', set rotation and scale, then click into the 2D view.
-- Select: click an object in the 2D view (nearest within the tolerance). Rotation, scale and 'Delete object' act on the selected object.
-- The height is taken from the terrain when placing.
-- In the 3D image you see the real models. Objects whose model cannot be loaded appear as a placeholder pyramid.
+- Multi-select: Ctrl+click adds/removes individual objects, Shift+click selects a range in the list. 'Select all normal' or Ctrl+A selects all normal placements.
+- Move: left-drag an already selected object in the 2D view. With multiple objects selected, the whole group moves together while relative spacing and Y heights are preserved.
+- Coordinates: edit X/Y/Z of the active object directly. With multiple objects selected, the same position delta is applied to every selected object. Rotation and scale are also applied relatively to the group.
+- 'Delete selected objects' deletes the selection. 'Remove all normal objects' removes all normal placements after confirmation while keeping Sky/Water/GroundObject.
+- Height is taken from the terrain when placing.
+- In the 3D image you see the real models. Selected normal objects also get a white selection marker.
 Objects can be shown/hidden by category (trees, buildings, rocks ...) in the Visibility area - helpful on dense maps.)MAN",
      "objekte platzieren modell nif rotation skalierung löschen"},
     {"map.visibility", "map",
@@ -601,7 +607,9 @@ const TipRow kTips[] = {
     {"Rückgängig (Walk)", "Nimmt die letzte Begehbarkeits-Änderung zurück.", "Reverts the last walkability change."},
     {"Wiederholen (Walk)", "Stellt die zurückgenommene Begehbarkeits-Änderung wieder her.", "Restores the reverted walkability change."},
     {"Platzieren", "Klick in die 2D-Ansicht setzt ein neues Objekt.", "Click in the 2D view places a new object."},
-    {"Auswählen", "Klick in die 2D-Ansicht wählt das nächste Objekt.", "Click in the 2D view selects the nearest object."},
+    {"Auswählen", "Klick wählt ein Objekt; Strg erweitert die Auswahl, Ziehen eines bereits ausgewählten Objekts bewegt die ganze Auswahl.", "Click selects an object; Ctrl extends the selection, dragging an already selected object moves the whole selection."},
+    {"Alle normalen auswählen", "Wählt alle normalen Placement-Objekte aus (Sky/Water/GroundObject ausgenommen).", "Selects all normal placement objects (excluding Sky/Water/GroundObject)."},
+    {"Auswahl aufheben", "Hebt die komplette Objektauswahl auf.", "Clears the complete object selection."},
     {"Modellpfad", "Pfad des Modells (NIF), das platziert wird.", "Path of the model (NIF) to place."},
     {"Modellpfad##selected", "Ändert das Modell des ausgewählten Placement- oder SHMD-Szenenobjekts.", "Changes the model of the selected placement or SHMD scene object."},
     {"Durchsuchen...##nif", "Modell aus der Bibliothek wählen.", "Choose a model from the library."},
@@ -612,6 +620,7 @@ const TipRow kTips[] = {
     {"Skalierung", "Größenfaktor des gewählten Objekts.", "Scale factor of the selected object."},
     {"Objekt löschen", "Löscht das gewählte Objekt.", "Deletes the selected object."},
     {"Ausgewählte Objekte löschen", "Löscht alle ausgewählten Placement- und SHMD-Szenenobjekte.", "Deletes all selected placement and SHMD scene objects."},
+    {"Alle normalen Objekte entfernen", "Entfernt nach Bestätigung alle normalen Placements; Sky/Water/GroundObject bleiben erhalten.", "After confirmation removes all normal placements; Sky/Water/GroundObject are kept."},
     {"Coord-X", "Welt-X-Position (Ost) des NPCs.", "World X position (east) of the NPC."},
     {"Coord-Y", "Welt-Z-Position (Nord) des NPCs (in NPC.txt 'Coord-Y').", "World Z position (north) of the NPC (called 'Coord-Y' in NPC.txt)."},
     {"-15", "Dreht die Blickrichtung um -15 Grad.", "Rotates the facing by -15 degrees."},
