@@ -1014,6 +1014,222 @@ void ReloadObjectRenderers(EditorState& state) {
     state.objectVisKey.clear();
 }
 
+
+void SyncObjectEditorMetadata(EditorState& state) {
+    state.objectEditorHidden.resize(state.placementSet.Count(), 0);
+    state.objectEditorLocked.resize(state.placementSet.Count(), 0);
+}
+
+bool IsObjectEditorLocked(const EditorState& state, int id) {
+    return id >= 0 && static_cast<std::size_t>(id) < state.objectEditorLocked.size() &&
+           state.objectEditorLocked[static_cast<std::size_t>(id)] != 0;
+}
+
+struct EditVec3 { float x = 0.0f, y = 0.0f, z = 0.0f; };
+struct EditQuat { float x = 0.0f, y = 0.0f, z = 0.0f, w = 1.0f; };
+
+EditQuat NormalizeEditQuat(EditQuat q) {
+    const float len = std::sqrt(q.x*q.x + q.y*q.y + q.z*q.z + q.w*q.w);
+    if (len < 1.0e-8f) return {};
+    return {q.x/len, q.y/len, q.z/len, q.w/len};
+}
+
+EditQuat MulEditQuat(const EditQuat& a, const EditQuat& b) {
+    return NormalizeEditQuat({
+        a.w*b.x + a.x*b.w + a.y*b.z - a.z*b.y,
+        a.w*b.y - a.x*b.z + a.y*b.w + a.z*b.x,
+        a.w*b.z + a.x*b.y - a.y*b.x + a.z*b.w,
+        a.w*b.w - a.x*b.x - a.y*b.y - a.z*b.z
+    });
+}
+
+EditQuat ConjugateEditQuat(const EditQuat& q) { return {-q.x,-q.y,-q.z,q.w}; }
+
+EditVec3 RotateEditVec(const EditQuat& qn, const EditVec3& v) {
+    const EditQuat q = NormalizeEditQuat(qn);
+    const EditQuat p{v.x,v.y,v.z,0.0f};
+    const EditQuat r = MulEditQuat(MulEditQuat(q,p), ConjugateEditQuat(q));
+    return {r.x,r.y,r.z};
+}
+
+app::Mat4 ObjectEditMatrix(const EditVec3& position, const EditQuat& qn, float scale) {
+    const EditQuat q = NormalizeEditQuat(qn);
+    app::Mat4 m = app::Mat4::Identity();
+    m.m[0] = (1.0f - 2.0f*(q.y*q.y + q.z*q.z)) * scale;
+    m.m[1] = (2.0f*(q.x*q.y + q.w*q.z)) * scale;
+    m.m[2] = (2.0f*(q.x*q.z - q.w*q.y)) * scale;
+    m.m[4] = (2.0f*(q.x*q.y - q.w*q.z)) * scale;
+    m.m[5] = (1.0f - 2.0f*(q.x*q.x + q.z*q.z)) * scale;
+    m.m[6] = (2.0f*(q.y*q.z + q.w*q.x)) * scale;
+    m.m[8] = (2.0f*(q.x*q.z + q.w*q.y)) * scale;
+    m.m[9] = (2.0f*(q.y*q.z - q.w*q.x)) * scale;
+    m.m[10] = (1.0f - 2.0f*(q.x*q.x + q.y*q.y)) * scale;
+    m.m[12] = position.x; m.m[13] = position.y; m.m[14] = position.z;
+    return m;
+}
+
+float MatrixUniformScale(const app::Mat4& m) {
+    const auto len = [&](int c) {
+        return std::sqrt(m.m[c*4+0]*m.m[c*4+0] + m.m[c*4+1]*m.m[c*4+1] + m.m[c*4+2]*m.m[c*4+2]);
+    };
+    return std::max(1.0e-6f, (len(0)+len(1)+len(2))/3.0f);
+}
+
+EditQuat MatrixRotationQuat(const app::Mat4& m) {
+    const float s = MatrixUniformScale(m);
+    const float r00=m.m[0]/s, r01=m.m[4]/s, r02=m.m[8]/s;
+    const float r10=m.m[1]/s, r11=m.m[5]/s, r12=m.m[9]/s;
+    const float r20=m.m[2]/s, r21=m.m[6]/s, r22=m.m[10]/s;
+    EditQuat q;
+    const float trace = r00+r11+r22;
+    if (trace > 0.0f) {
+        const float t = std::sqrt(trace+1.0f)*2.0f;
+        q.w=0.25f*t; q.x=(r21-r12)/t; q.y=(r02-r20)/t; q.z=(r10-r01)/t;
+    } else if (r00 > r11 && r00 > r22) {
+        const float t = std::sqrt(1.0f+r00-r11-r22)*2.0f;
+        q.w=(r21-r12)/t; q.x=0.25f*t; q.y=(r01+r10)/t; q.z=(r02+r20)/t;
+    } else if (r11 > r22) {
+        const float t = std::sqrt(1.0f+r11-r00-r22)*2.0f;
+        q.w=(r02-r20)/t; q.x=(r01+r10)/t; q.y=0.25f*t; q.z=(r12+r21)/t;
+    } else {
+        const float t = std::sqrt(1.0f+r22-r00-r11)*2.0f;
+        q.w=(r10-r01)/t; q.x=(r02+r20)/t; q.y=(r12+r21)/t; q.z=0.25f*t;
+    }
+    return NormalizeEditQuat(q);
+}
+
+struct ObjectSelectionPivot {
+    bool valid = false;
+    EditVec3 position{};
+    EditQuat rotation{};
+    float scale = 1.0f;
+    std::size_t editableCount = 0;
+};
+
+ObjectSelectionPivot ComputeObjectSelectionPivot(const EditorState& state) {
+    ObjectSelectionPivot p;
+    const core::PlacedObject* orientationSource = nullptr;
+    for (const int id : state.selectedObjects) {
+        if (IsObjectEditorLocked(state,id)) continue;
+        const auto* obj = EditableObject(state,id);
+        if (!obj) continue;
+        p.position.x += obj->posX; p.position.y += obj->posY; p.position.z += obj->posZ;
+        ++p.editableCount;
+        if (!orientationSource) orientationSource = obj;
+    }
+    if (p.editableCount == 0 || !orientationSource) return p;
+    const float inv = 1.0f/static_cast<float>(p.editableCount);
+    p.position.x*=inv; p.position.y*=inv; p.position.z*=inv;
+    p.rotation = NormalizeEditQuat({orientationSource->rotX,orientationSource->rotY,
+                                    orientationSource->rotZ,orientationSource->rotW});
+    p.scale = p.editableCount == 1 ? std::max(0.001f,orientationSource->scale) : 1.0f;
+    p.valid = true;
+    return p;
+}
+
+void RotateSelectedObjectsAroundPivot(EditorState& state, const EditVec3& pivot, const EditQuat& delta) {
+    PromoteSelectedShmdObjectsToPlacements(state);
+    SyncObjectEditorMetadata(state);
+    for (const int id : state.selectedObjects) {
+        if (id < 0 || static_cast<std::size_t>(id) >= state.placementSet.Count() || IsObjectEditorLocked(state,id)) continue;
+        auto& obj=state.placementSet.At(static_cast<std::size_t>(id));
+        const EditVec3 rel{obj.posX-pivot.x,obj.posY-pivot.y,obj.posZ-pivot.z};
+        const EditVec3 rr=RotateEditVec(delta,rel);
+        obj.posX=pivot.x+rr.x; obj.posY=pivot.y+rr.y; obj.posZ=pivot.z+rr.z;
+        const EditQuat oq{obj.rotX,obj.rotY,obj.rotZ,obj.rotW};
+        const EditQuat nq=MulEditQuat(delta,oq);
+        obj.rotX=nq.x; obj.rotY=nq.y; obj.rotZ=nq.z; obj.rotW=nq.w;
+    }
+}
+
+void ScaleSelectedObjectsAroundPivot(EditorState& state, const EditVec3& pivot, float factor) {
+    if (!std::isfinite(factor) || factor <= 0.0f) return;
+    PromoteSelectedShmdObjectsToPlacements(state);
+    SyncObjectEditorMetadata(state);
+    for (const int id : state.selectedObjects) {
+        if (id < 0 || static_cast<std::size_t>(id) >= state.placementSet.Count() || IsObjectEditorLocked(state,id)) continue;
+        auto& obj=state.placementSet.At(static_cast<std::size_t>(id));
+        obj.posX=pivot.x+(obj.posX-pivot.x)*factor;
+        obj.posY=pivot.y+(obj.posY-pivot.y)*factor;
+        obj.posZ=pivot.z+(obj.posZ-pivot.z)*factor;
+        obj.scale=std::clamp(obj.scale*factor,0.01f,100.0f);
+    }
+}
+
+void CopySelectedObjects(EditorState& state) {
+    state.objectClipboard.clear();
+    for (const int id : state.selectedObjects)
+        if (const auto* obj=EditableObject(state,id)) state.objectClipboard.push_back(*obj);
+    state.statusMessage=state.objectClipboard.empty()
+        ? "Keine Objekte kopiert."
+        : std::to_string(state.objectClipboard.size())+" Objekt(e) kopiert.";
+}
+
+void PasteObjectClipboard(EditorState& state) {
+    if (state.objectClipboard.empty()) return;
+    SyncObjectEditorMetadata(state);
+    const float offset=state.objectGizmoSnap ? std::max(1.0f,state.objectMoveSnap) : 50.0f;
+    std::vector<int> ids;
+    for (auto obj : state.objectClipboard) {
+        obj.posX+=offset; obj.posZ+=offset;
+        const int id=static_cast<int>(state.placementSet.AddObject(std::move(obj)));
+        ids.push_back(id);
+        state.objectEditorHidden.push_back(0); state.objectEditorLocked.push_back(0);
+    }
+    state.selectedObjects=std::move(ids);
+    state.selectedObject=state.selectedObjects.empty()?kNoObjectSelection:state.selectedObjects.back();
+    ReloadObjectRenderers(state);
+    state.statusMessage=std::to_string(state.selectedObjects.size())+" Objekt(e) eingefügt.";
+}
+
+void DuplicateSelectedObjects(EditorState& state) {
+    if (state.selectedObjects.empty()) return;
+    std::vector<core::PlacedObject> copies;
+    for (const int id : state.selectedObjects)
+        if (const auto* obj=EditableObject(state,id)) copies.push_back(*obj);
+    if (copies.empty()) return;
+    const float offset=state.objectGizmoSnap ? std::max(1.0f,state.objectMoveSnap) : 50.0f;
+    SyncObjectEditorMetadata(state);
+    std::vector<int> ids;
+    for (auto obj : copies) {
+        obj.posX+=offset; obj.posZ+=offset;
+        const int id=static_cast<int>(state.placementSet.AddObject(std::move(obj)));
+        ids.push_back(id);
+        state.objectEditorHidden.push_back(0); state.objectEditorLocked.push_back(0);
+    }
+    state.selectedObjects=std::move(ids);
+    state.selectedObject=state.selectedObjects.back();
+    ReloadObjectRenderers(state);
+    state.statusMessage=std::to_string(state.selectedObjects.size())+" Objekt(e) dupliziert.";
+}
+
+void GroundSelectedObjects(EditorState& state) {
+    if (state.selectedObjects.empty()) return;
+    PromoteSelectedShmdObjectsToPlacements(state);
+    SyncObjectEditorMetadata(state);
+    for (const int id : state.selectedObjects) {
+        if (id < 0 || static_cast<std::size_t>(id) >= state.placementSet.Count() || IsObjectEditorLocked(state,id)) continue;
+        auto& obj=state.placementSet.At(static_cast<std::size_t>(id));
+        obj.posY=state.heightmap.SampleWorld(obj.posX,obj.posZ);
+    }
+    state.statusMessage="Auswahl auf Terrain gesetzt.";
+}
+
+void FocusSelectedObjects(EditorState& state) {
+    const auto pivot=ComputeObjectSelectionPivot(state);
+    if (!pivot.valid) return;
+    float radius=150.0f;
+    for (const int id : state.selectedObjects) {
+        const auto* obj=EditableObject(state,id);
+        if (!obj) continue;
+        const float dx=obj->posX-pivot.position.x, dy=obj->posY-pivot.position.y, dz=obj->posZ-pivot.position.z;
+        radius=std::max(radius,std::sqrt(dx*dx+dy*dy+dz*dz)+100.0f*std::max(1.0f,obj->scale));
+    }
+    state.camera.SetTarget(pivot.position.x,pivot.position.y,pivot.position.z);
+    const float desired=std::clamp(radius*2.8f,120.0f,25000.0f);
+    state.camera.Zoom(desired-state.camera.Distance());
+}
+
 void SelectObjectId(EditorState& state, int id, bool ctrl) {
     if (ctrl) {
         auto it = std::find(state.selectedObjects.begin(), state.selectedObjects.end(), id);
