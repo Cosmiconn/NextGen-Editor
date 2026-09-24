@@ -7399,18 +7399,72 @@ void DrawSkillEditor(EditorState& state) {
     ImGui::TextDisabled("%zu / %zu", ed.visible.size(), asf.rows.size());
     ImGui::Separator();
     {
-        ImGuiListClipper clipper;
-        clipper.Begin(static_cast<int>(ed.visible.size()));
-        while (clipper.Step()) {
-            for (int vi = clipper.DisplayStart; vi < clipper.DisplayEnd; ++vi) {
-                const std::size_t r = ed.visible[static_cast<std::size_t>(vi)];
-                const long long id = std::atoll(ShnCellText(asf, r, "ID").c_str());
-                const std::string label = "#" + std::to_string(id) + "  " + ShnCellText(asf, r, "InxName") + "  " + ShnCellText(asf, r, "Name");
-                if (UI::Selectable((label + "##sk" + std::to_string(r)).c_str(), ed.selectedId == id)) {
-                    ed.selectedId = id;
-                    ed.report.clear();
-                }
+        struct SeriesGroup {
+            std::string key;
+            std::string displayName;
+            std::vector<std::size_t> rows;
+        };
+        std::vector<SeriesGroup> groups;
+        std::unordered_map<std::string, std::size_t> groupIndex;
+        groups.reserve(ed.visible.size());
+
+        auto seriesKeyOf = [&](std::size_t row) {
+            std::string key = ShnCellText(asf, row, "InxName");
+            while (!key.empty() && std::isdigit(static_cast<unsigned char>(key.back()))) key.pop_back();
+            return key.empty() ? ShnCellText(asf, row, "InxName") : key;
+        };
+
+        for (const std::size_t row : ed.visible) {
+            const std::string key = seriesKeyOf(row);
+            auto [it, inserted] = groupIndex.emplace(key, groups.size());
+            if (inserted) {
+                SeriesGroup group;
+                group.key = key;
+                group.displayName = ShnCellText(asf, row, "Name");
+                groups.push_back(std::move(group));
             }
+            groups[it->second].rows.push_back(row);
+        }
+
+        for (auto& group : groups) {
+            std::stable_sort(group.rows.begin(), group.rows.end(), [&](std::size_t a, std::size_t b) {
+                const int sa = std::atoi(ShnCellText(asf, a, "Step").c_str());
+                const int sb = std::atoi(ShnCellText(asf, b, "Step").c_str());
+                if (sa != sb) return sa < sb;
+                return a < b;
+            });
+
+            bool containsSelected = false;
+            for (const auto row : group.rows) {
+                const long long id = std::atoll(ShnCellText(asf, row, "ID").c_str());
+                if (id == ed.selectedId) { containsSelected = true; break; }
+            }
+
+            ImGui::PushID(group.key.c_str());
+            const std::string title = group.key + "  ·  " + std::to_string(group.rows.size()) +
+                                      (group.rows.size() == 1 ? " Stufe" : " Stufen");
+            const ImGuiTreeNodeFlags flags =
+                ImGuiTreeNodeFlags_SpanAvailWidth |
+                (containsSelected ? ImGuiTreeNodeFlags_DefaultOpen : 0);
+            if (ImGui::TreeNodeEx("##series", flags, "%s", title.c_str())) {
+                if (!group.displayName.empty()) {
+                    ImGui::TextDisabled("%s", group.displayName.c_str());
+                }
+                for (const std::size_t row : group.rows) {
+                    const long long id = std::atoll(ShnCellText(asf, row, "ID").c_str());
+                    const int step = std::atoi(ShnCellText(asf, row, "Step").c_str());
+                    const std::string name = ShnCellText(asf, row, "Name");
+                    const std::string label =
+                        std::string("Stufe ") + std::to_string(step) + "  ·  #" + std::to_string(id) +
+                        (name.empty() ? std::string() : "  " + name);
+                    if (UI::Selectable((label + "##skillStep" + std::to_string(row)).c_str(), ed.selectedId == id)) {
+                        ed.selectedId = id;
+                        ed.report.clear();
+                    }
+                }
+                ImGui::TreePop();
+            }
+            ImGui::PopID();
         }
     }
     ImGui::EndChild();
