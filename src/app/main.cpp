@@ -1011,6 +1011,9 @@ std::string ShmdSelectionCategoryName(const EditorState& state, int selectionId)
     return state.placementSet.categories[categoryIndex].name;
 }
 
+bool PromoteSelectedShmdObjectsToPlacements(EditorState& state,
+                                               std::optional<int> onlySelection = std::nullopt);
+
 void ReloadObjectRenderers(EditorState& state) {
     const auto mapDir = CurrentObjectAssetMapDir(state);
     state.nifMeshRenderer.LoadModelsForSet(state.placementSet, mapDir);
@@ -1364,7 +1367,7 @@ void DeleteAllNormalObjects(EditorState& state) {
 // SHMD-Kategorieeinträge besitzen im Dateiformat KEINEN Transform. Sobald der Benutzer einen
 // solchen Eintrag verschiebt/dreht/skaliert, wird er deshalb automatisch aus der Kategorie-
 // Pfadliste entfernt und als normales Placement mit exakt diesem Transform gespeichert.
-bool PromoteSelectedShmdObjectsToPlacements(EditorState& state, std::optional<int> onlySelection = std::nullopt) {
+bool PromoteSelectedShmdObjectsToPlacements(EditorState& state, std::optional<int> onlySelection) {
     struct Promotion {
         int oldId = kNoObjectSelection;
         core::PlacedObject object;
