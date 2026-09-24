@@ -254,3 +254,34 @@ Diese Roadmap ist ab jetzt die verbindliche Reihenfolge für den weiteren Ausbau
 - konsistente Kontextmenüs.
 - vollständiger 16–20px-In-App-Icon-Satz: Terrain, Brush, Layers, Walk, Cube, NPC, Mob, Portal, Eye, Lock, Duplicate, Delete, Transform, Grid/Snap, Quest, Item, Skill, Shop, Dialog, Lua, Route, KFM, Play/Pause, Project, Settings.
 
+### Umsetzungsstand – Level-Editor Meilenstein 1
+
+Bereits umgesetzt:
+- ImGuizmo als native Editor-Abhängigkeit eingebunden.
+- 3D-Gizmo: Move / Rotate / Scale, X/Y/Z, World/Local und einstellbares Snapping.
+- Mehrfachauswahl transformiert um einen gemeinsamen Pivot; Lock wird respektiert.
+- vollständige XYZ-Rotation auch numerisch im Eigenschaften-Inspector.
+- Auswahl fokussieren und Auswahl auf Terrain setzen.
+- 3D-Picking für sichtbare, entsperrte Objekte.
+- Rechteckauswahl in 2D mit Shift; Strg+Shift erweitert die bestehende Auswahl.
+- Copy / Paste / Duplicate inklusive Shortcuts.
+- Eye / Lock und Rechtsklick-Kontextmenüs im Szene-Outliner.
+- Eye / Lock gilt auch für Sky, Water und GroundObject.
+- NIF-Drag&Drop aus dem Asset Browser direkt in 2D und 3D.
+- Layer-Drag&Drop-Reihenfolge, größere Thumbnails, Duplizieren, Kontextmenü und Doppelklick-Umbenennen.
+- DDS-Drag&Drop auf bestehende Layer oder als neuer Layer.
+- Terrain-/Textur-/Walk-Brush-Overlay in 2D und 3D, inklusive Falloff-Anzeige und Presets.
+- Walk & Block: rot/grün-Legende und Shift-Drag-Rechteckfüllung als einzelner Undo-Schritt.
+- NPC- und Mob-Inspector in fachliche Bereiche gegliedert.
+- Mob-Spawn-Zonen zusätzlich als 3D-Overlay.
+- Portal-Inspector in Auswahl / Position / Bedingungen / Positionieren / Aktionen gegliedert.
+- TownPortal und RecallCoord zusätzlich mit unterschiedlichen 3D-Markern.
+- Regressionstests für Gruppenbewegung, Lock, Pivot-Rotation und Gruppenskalierung ergänzt.
+
+Noch offen innerhalb von Priorität 1/2:
+- freie Editor-Labels sowie Gruppen/Ordner im Objekt-Outliner.
+- Lasso-Auswahl zusätzlich zur Rechteckauswahl.
+- optional echtes Geometrie-Ray-Picking statt des derzeitigen projizierten Objektursprungs.
+- noch tiefere NPC-/Mob-Rollenicons und permanente Route/Roam-Overlays.
+- belastbare Zielkarten-Verknüpfung für Portale erst, sobald die konkrete Outbound-Relation aus den Fiesta-Daten eindeutig belegt ist.
+
