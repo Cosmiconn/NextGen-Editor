@@ -1159,6 +1159,7 @@ bool PromoteSelectedShmdObjectsToPlacements(EditorState& state, std::optional<in
     }
     state.selectedObjectModelPathFor = kNoObjectSelection;
     state.selectedObjectModelPathDirty = false;
+    state.objectListRangeAnchor = -1;
     ReloadObjectRenderers(state);
     state.statusMessage =
         "SHMD-Szenenmodell in normales Placement umgewandelt: Sky/Water/GroundObject speichern "
@@ -1298,6 +1299,7 @@ void ApplyProjectToState(EditorState& state, core::legacy::LegacyMapProject&& pr
     state.selectedObjects.clear();
     state.selectedObjectModelPathFor = kNoObjectSelection;
     state.selectedObjectModelPathDirty = false;
+    state.objectListRangeAnchor = -1;
     // Versucht, für alle Objekte echte .nif-Meshes zu laden (aktuell nur untexturierte Meshes
     // erfolgreich, siehe docs/MAP_FORMAT.md) - für den Rest bleibt der Platzhalter-Marker.
     state.nifMeshRenderer.LoadModelsForSet(state.placementSet, mapDir);
@@ -1872,6 +1874,7 @@ void DrawAdvancedFileOps(EditorState& state) {
                 state.selectedObjects.clear();
                 state.selectedObjectModelPathFor = kNoObjectSelection;
                 state.selectedObjectModelPathDirty = false;
+                state.objectListRangeAnchor = -1;
                 const std::filesystem::path shmdMapDir = std::filesystem::path(state.legacyShmdPath).parent_path();
                 state.nifMeshRenderer.LoadModelsForSet(state.placementSet, shmdMapDir);
                 RebuildShmdCategoryRenderSet(state, shmdMapDir);
