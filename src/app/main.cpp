@@ -7915,6 +7915,19 @@ void DrawEditor2DContent(EditorState& state) {
     // Legacy->Editor ist eine Spiegelung, ohne diese Umkehr waere die Karte im Bild kopfueber.
     ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(tex)), viewSize,
                  ImVec2(0, 0), ImVec2(1, 1));
+    if (objectMode && ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload* payload=ImGui::AcceptDragDropPayload("NEXTGEN_NIF_ASSET")) {
+            const char* model=static_cast<const char*>(payload->Data);
+            const ImVec2 mouse=ImGui::GetMousePos();
+            const float u=(mouse.x-cursorScreenPos.x)/imageSize.x;
+            const float v=(mouse.y-cursorScreenPos.y)/imageSize.y;
+            const float worldX=std::clamp(u,0.0f,1.0f)*spanX;
+            const float worldZ=(1.0f-std::clamp(v,0.0f,1.0f))*spanZ;
+            PlaceObjectAtWorld(state,model,worldX,state.heightmap.SampleWorld(worldX,worldZ),worldZ);
+            state.statusMessage=std::string("Objekt in 2D platziert: ")+model;
+        }
+        ImGui::EndDragDropTarget();
+    }
     const bool hoveredView = ImGui::IsItemHovered();
     {
         // Zoom (Mausrad, um den Mauszeiger) und Verschieben (mittlere/rechte Taste ziehen).
@@ -8342,6 +8355,92 @@ static void DrawNpcOverlay3D(EditorState& state, const ImVec2& imagePos, int w, 
 }
 
 
+
+bool InvertEditMat4(const app::Mat4& m, app::Mat4& out) {
+    const float* a=m.m; float inv[16];
+    inv[0]=a[5]*a[10]*a[15]-a[5]*a[11]*a[14]-a[9]*a[6]*a[15]+a[9]*a[7]*a[14]+a[13]*a[6]*a[11]-a[13]*a[7]*a[10];
+    inv[4]=-a[4]*a[10]*a[15]+a[4]*a[11]*a[14]+a[8]*a[6]*a[15]-a[8]*a[7]*a[14]-a[12]*a[6]*a[11]+a[12]*a[7]*a[10];
+    inv[8]=a[4]*a[9]*a[15]-a[4]*a[11]*a[13]-a[8]*a[5]*a[15]+a[8]*a[7]*a[13]+a[12]*a[5]*a[11]-a[12]*a[7]*a[9];
+    inv[12]=-a[4]*a[9]*a[14]+a[4]*a[10]*a[13]+a[8]*a[5]*a[14]-a[8]*a[6]*a[13]-a[12]*a[5]*a[10]+a[12]*a[6]*a[9];
+    inv[1]=-a[1]*a[10]*a[15]+a[1]*a[11]*a[14]+a[9]*a[2]*a[15]-a[9]*a[3]*a[14]-a[13]*a[2]*a[11]+a[13]*a[3]*a[10];
+    inv[5]=a[0]*a[10]*a[15]-a[0]*a[11]*a[14]-a[8]*a[2]*a[15]+a[8]*a[3]*a[14]+a[12]*a[2]*a[11]-a[12]*a[3]*a[10];
+    inv[9]=-a[0]*a[9]*a[15]+a[0]*a[11]*a[13]+a[8]*a[1]*a[15]-a[8]*a[3]*a[13]-a[12]*a[1]*a[11]+a[12]*a[3]*a[9];
+    inv[13]=a[0]*a[9]*a[14]-a[0]*a[10]*a[13]-a[8]*a[1]*a[14]+a[8]*a[2]*a[13]+a[12]*a[1]*a[10]-a[12]*a[2]*a[9];
+    inv[2]=a[1]*a[6]*a[15]-a[1]*a[7]*a[14]-a[5]*a[2]*a[15]+a[5]*a[3]*a[14]+a[13]*a[2]*a[7]-a[13]*a[3]*a[6];
+    inv[6]=-a[0]*a[6]*a[15]+a[0]*a[7]*a[14]+a[4]*a[2]*a[15]-a[4]*a[3]*a[14]-a[12]*a[2]*a[7]+a[12]*a[3]*a[6];
+    inv[10]=a[0]*a[5]*a[15]-a[0]*a[7]*a[13]-a[4]*a[1]*a[15]+a[4]*a[3]*a[13]+a[12]*a[1]*a[7]-a[12]*a[3]*a[5];
+    inv[14]=-a[0]*a[5]*a[14]+a[0]*a[6]*a[13]+a[4]*a[1]*a[14]-a[4]*a[2]*a[13]-a[12]*a[1]*a[6]+a[12]*a[2]*a[5];
+    inv[3]=-a[1]*a[6]*a[11]+a[1]*a[7]*a[10]+a[5]*a[2]*a[11]-a[5]*a[3]*a[10]-a[9]*a[2]*a[7]+a[9]*a[3]*a[6];
+    inv[7]=a[0]*a[6]*a[11]-a[0]*a[7]*a[10]-a[4]*a[2]*a[11]+a[4]*a[3]*a[10]+a[8]*a[2]*a[7]-a[8]*a[3]*a[6];
+    inv[11]=-a[0]*a[5]*a[11]+a[0]*a[7]*a[9]+a[4]*a[1]*a[11]-a[4]*a[3]*a[9]-a[8]*a[1]*a[7]+a[8]*a[3]*a[5];
+    inv[15]=a[0]*a[5]*a[10]-a[0]*a[6]*a[9]-a[4]*a[1]*a[10]+a[4]*a[2]*a[9]+a[8]*a[1]*a[6]-a[8]*a[2]*a[5];
+    float det=a[0]*inv[0]+a[1]*inv[4]+a[2]*inv[8]+a[3]*inv[12];
+    if (std::abs(det)<1.0e-8f) return false;
+    det=1.0f/det; for(int i=0;i<16;++i) out.m[i]=inv[i]*det; return true;
+}
+
+std::optional<EditVec3> Unproject3D(const EditorState& state, const ImVec2& imagePos,
+                                    int w, int h, const ImVec2& mouse, float ndcZ) {
+    const app::Mat4 view=state.camera.ViewMatrix();
+    const app::Mat4 proj=app::OrbitCamera::PerspectiveMatrix(
+        0.9f,static_cast<float>(std::max(1,w))/static_cast<float>(std::max(1,h)),
+        state.camera.NearPlane(),state.camera.FarPlane());
+    app::Mat4 inv{};
+    if(!InvertEditMat4(proj*view,inv)) return std::nullopt;
+    const float x=((mouse.x-imagePos.x)/static_cast<float>(std::max(1,w)))*2.0f-1.0f;
+    const float y=1.0f-((mouse.y-imagePos.y)/static_cast<float>(std::max(1,h)))*2.0f;
+    const float cx=x,cy=y,cz=ndcZ,cw=1.0f;
+    const float ox=inv.m[0]*cx+inv.m[4]*cy+inv.m[8]*cz+inv.m[12]*cw;
+    const float oy=inv.m[1]*cx+inv.m[5]*cy+inv.m[9]*cz+inv.m[13]*cw;
+    const float oz=inv.m[2]*cx+inv.m[6]*cy+inv.m[10]*cz+inv.m[14]*cw;
+    const float ow=inv.m[3]*cx+inv.m[7]*cy+inv.m[11]*cz+inv.m[15]*cw;
+    if(std::abs(ow)<1.0e-8f) return std::nullopt;
+    return EditVec3{ox/ow,oy/ow,oz/ow};
+}
+
+std::optional<EditVec3> PickTerrainFrom3D(EditorState& state, const ImVec2& imagePos,
+                                          int w, int h, const ImVec2& mouse) {
+    const auto nearP=Unproject3D(state,imagePos,w,h,mouse,-1.0f);
+    const auto farP=Unproject3D(state,imagePos,w,h,mouse,1.0f);
+    if(!nearP||!farP) return std::nullopt;
+    EditVec3 dir{farP->x-nearP->x,farP->y-nearP->y,farP->z-nearP->z};
+    const float len=std::sqrt(dir.x*dir.x+dir.y*dir.y+dir.z*dir.z);
+    if(len<1.0e-6f||std::abs(dir.y)<1.0e-6f) return std::nullopt;
+    dir.x/=len;dir.y/=len;dir.z/=len;
+
+    float planeY=state.camera.TargetY();
+    float t=(planeY-nearP->y)/dir.y;
+    if(t<0.0f) t=state.camera.Distance();
+    const float spanX=static_cast<float>(state.heightmap.Width()>1?state.heightmap.Width()-1:1)*state.heightmap.BlockWidth();
+    const float spanZ=static_cast<float>(state.heightmap.Height()>1?state.heightmap.Height()-1:1)*state.heightmap.BlockHeight();
+
+    EditVec3 p{};
+    for(int i=0;i<7;++i) {
+        p={nearP->x+dir.x*t,nearP->y+dir.y*t,nearP->z+dir.z*t};
+        if(p.x<0.0f||p.z<0.0f||p.x>spanX||p.z>spanZ) return std::nullopt;
+        const float terrainY=state.heightmap.SampleWorld(p.x,p.z);
+        t=(terrainY-nearP->y)/dir.y;
+        if(t<0.0f) return std::nullopt;
+    }
+    p={nearP->x+dir.x*t,nearP->y+dir.y*t,nearP->z+dir.z*t};
+    p.y=state.heightmap.SampleWorld(p.x,p.z);
+    return p;
+}
+
+int PlaceObjectAtWorld(EditorState& state, const std::string& modelPath, float x, float y, float z) {
+    if(modelPath.empty()) return kNoObjectSelection;
+    core::PlacedObject obj;
+    obj.modelPath=modelPath; obj.posX=x; obj.posY=y; obj.posZ=z; obj.scale=state.newObjectScale;
+    const float half=state.newObjectRotDeg*3.14159265f/180.0f*0.5f;
+    obj.rotY=std::sin(half); obj.rotW=std::cos(half);
+    const int id=static_cast<int>(state.placementSet.AddObject(std::move(obj)));
+    SyncObjectEditorMetadata(state);
+    state.selectedObjects={id}; state.selectedObject=id; state.objectPlaceMode=0;
+    state.objectGizmoMatrixValid=false;
+    ReloadObjectRenderers(state);
+    return id;
+}
+
 std::string CurrentGizmoSelectionKey(const EditorState& state) {
     std::string key = std::to_string(state.objectGizmoOperation) + "|" +
                       (state.objectGizmoLocal ? "L|" : "W|");
@@ -8525,6 +8624,16 @@ void DrawPreview3DContent(EditorState& state) {
     if (tex != 0) {
         ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(tex)), ImVec2(static_cast<float>(w), static_cast<float>(h)),
                      ImVec2(0, 1), ImVec2(1, 0)); // FBO-Textur ist vertikal gespiegelt -> UVs tauschen
+    }
+    if (state.editMode == EditMode::ObjectPlacement && ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload* payload=ImGui::AcceptDragDropPayload("NEXTGEN_NIF_ASSET")) {
+            const char* model=static_cast<const char*>(payload->Data);
+            if (const auto hit=PickTerrainFrom3D(state,imageScreenPos,w,h,ImGui::GetMousePos())) {
+                PlaceObjectAtWorld(state,model,hit->x,hit->y,hit->z);
+                state.statusMessage=std::string("Objekt im 3D-Viewport platziert: ")+model;
+            }
+        }
+        ImGui::EndDragDropTarget();
     }
     const bool viewImageHovered = ImGui::IsItemHovered();
     const bool gizmoCapturing = DrawObjectTransformGizmo(state, imageScreenPos, w, h);
@@ -8998,6 +9107,19 @@ void DrawWorkspaceAssetBrowser(EditorState& state) {
                     std::snprintf(state.newLayerDiffuse, sizeof(state.newLayerDiffuse), "%s", rel.c_str());
                     state.statusMessage = "Textur-Asset gewählt: " + rel;
                 }
+            }
+            if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
+                if (objectMode) {
+                    const std::string legacy=ToLegacyResmapModelPath(rel);
+                    ImGui::SetDragDropPayload("NEXTGEN_NIF_ASSET",legacy.c_str(),legacy.size()+1);
+                    ImGui::Text("NIF platzieren");
+                    ImGui::TextDisabled("%s",legacy.c_str());
+                } else {
+                    ImGui::SetDragDropPayload("NEXTGEN_DDS_ASSET",rel.c_str(),rel.size()+1);
+                    ImGui::Text("Textur zuweisen");
+                    ImGui::TextDisabled("%s",rel.c_str());
+                }
+                ImGui::EndDragDropSource();
             }
             ImGui::PopID();
         }
