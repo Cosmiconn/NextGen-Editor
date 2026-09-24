@@ -88,6 +88,7 @@
 #include <functional>
 #include <optional>
 #include <unordered_map>
+#include <unordered_set>
 #include <set>
 #include <sstream>
 #include <vector>
@@ -8078,10 +8079,10 @@ void DrawPreview3DContent(EditorState& state) {
     for (std::size_t li = 0; li < state.textureStack.LayerCount(); ++li) {
         state.renderer.SetLayerVisible(static_cast<int>(li), li >= state.layerHidden.size() || state.layerHidden[li] == 0);
     }
+    const std::unordered_set<int> selectedPlacementIds(state.selectedObjects.begin(), state.selectedObjects.end());
     state.objectMarkerRenderer.RebuildInstances(state.placementSet, state.selectedObjects,
-        [&state](std::size_t i) {
-            const bool selected = std::find(state.selectedObjects.begin(), state.selectedObjects.end(),
-                                            static_cast<int>(i)) != state.selectedObjects.end();
+        [&state, &selectedPlacementIds](std::size_t i) {
+            const bool selected = selectedPlacementIds.contains(static_cast<int>(i));
             return IsObjectHidden(state, i) ||
                    (!state.showObjectMarkers && !selected) ||
                    (state.nifMeshRenderer.HasRealMesh(i) && !selected);
