@@ -4597,20 +4597,9 @@ void DrawPortalsToolsPanel(EditorState& state) {
     if (!state.townPortalLoaded) ImGui::TextWrapped("TownPortal.shn konnte nicht geladen werden.");
     if (!state.recallCoordLoaded) ImGui::TextWrapped("World/RecallCoord.txt konnte nicht geladen werden.");
 
-    ImGui::Text("Teleport-Ziele auf '%s': %zu", state.legacySaveStem, markers.size());
-    ImGui::TextDisabled("Raute = TownPortal-Skill, Dreieck = Schriftrolle,");
-    ImGui::TextDisabled("Quadrat = Gate_Town-NPC, Ring = Wiederbelebungspunkt");
-    ImGui::BeginChild("PortalList", ImVec2(0, 130), true);
-    for (std::size_t i = 0; i < markers.size(); ++i) {
-        const auto& m = markers[i];
-        const bool selected = m.kind == state.selectedPortalKind && static_cast<int>(m.idx) == state.selectedPortalIdx;
-        const std::string label = (m.kind == kPortalKindTown ? m.label : "Schriftrolle " + m.label) + "##portal" + std::to_string(i);
-        if (UI::Selectable(label.c_str(), selected)) {
-            state.selectedPortalKind = m.kind;
-            state.selectedPortalIdx = static_cast<int>(m.idx);
-        }
-    }
-    ImGui::EndChild();
+    ImGui::TextDisabled("%zu Teleport-Ziele auf '%s' · Auswahl links im Szene-Outliner",
+                        markers.size(), state.legacySaveStem);
+    ImGui::TextDisabled("Raute = TownPortal · Dreieck = Schriftrolle · Quadrat = Gate_Town · Ring = Wiederbelebung");
 
     for (const auto& m : markers) {
         if (m.kind != state.selectedPortalKind || static_cast<int>(m.idx) != state.selectedPortalIdx) continue;
@@ -7070,18 +7059,8 @@ void DrawToolsContent(EditorState& state) {
             } else {
                 auto indices = NpcRecordsForCurrentMap(state);
                 auto* table = state.npcTextFile.FindTable("ShineNPC");
-                ImGui::Text("NPCs auf '%s': %zu", state.legacySaveStem, indices.size());
-                ImGui::BeginChild("NpcList", ImVec2(0, 150), true);
-                for (std::size_t idx : indices) {
-                    auto& rec = table->records[idx];
-                    if (rec.values.size() < 8) continue;
-                    const bool selected = state.selectedNpcRecordIdx == static_cast<int>(idx);
-                    const std::string label = rec.values[0] + " [" + rec.values[6] + "]";
-                    if (UI::Selectable((label + "##npc" + std::to_string(idx)).c_str(), selected)) {
-                        state.selectedNpcRecordIdx = static_cast<int>(idx);
-                    }
-                }
-                ImGui::EndChild();
+                ImGui::TextDisabled("%zu NPCs auf '%s' · Auswahl links im Szene-Outliner",
+                                    indices.size(), state.legacySaveStem);
                 if (state.selectedNpcRecordIdx >= 0 && static_cast<std::size_t>(state.selectedNpcRecordIdx) < table->records.size()) {
                     auto& rec = table->records[static_cast<std::size_t>(state.selectedNpcRecordIdx)];
                     if (rec.values.size() >= 8) {
@@ -7214,17 +7193,8 @@ void DrawToolsContent(EditorState& state) {
                 if (!zoneTable) {
                     ImGui::TextDisabled("Keine 'MobRegenGroup'-Tabelle gefunden.");
                 } else {
-                    ImGui::Text("Spawn-Zonen auf '%s': %zu", state.legacySaveStem, zoneTable->records.size());
-                    ImGui::BeginChild("ZoneList", ImVec2(0, 150), true);
-                    for (std::size_t i = 0; i < zoneTable->records.size(); ++i) {
-                        auto& rec = zoneTable->records[i];
-                        if (rec.values.empty()) continue;
-                        const bool selected = state.selectedMobZoneIdx == static_cast<int>(i);
-                        if (UI::Selectable((rec.values[0] + "##zone" + std::to_string(i)).c_str(), selected)) {
-                            state.selectedMobZoneIdx = static_cast<int>(i);
-                        }
-                    }
-                    ImGui::EndChild();
+                    ImGui::TextDisabled("%zu Spawn-Zonen auf '%s' · Auswahl links im Szene-Outliner",
+                                        zoneTable->records.size(), state.legacySaveStem);
                     UI::Checkbox("Löschen freigeben", &state.mobDeleteArmed);
                     if (UI::Button("+ Zone (Kopie der gewählten)") && state.selectedMobZoneIdx >= 0 &&
                         static_cast<std::size_t>(state.selectedMobZoneIdx) < zoneTable->records.size()) {
