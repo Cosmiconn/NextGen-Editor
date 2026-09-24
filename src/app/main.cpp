@@ -7091,12 +7091,12 @@ static const Field kView[] = {
     {Doc::View, "TargetChange", Kind::Bool, "Zielwechsel erlaubt", "Target change allowed", "1 = Ziel darf während des Einsatzes gewechselt werden (vermutet).", "1 = target may change during use (assumed)."},
 };
 static const Section kSections[] = {
-    {"Grunddaten", "Basics", kBasics, sizeof(kBasics) / sizeof(Field), true},
-    {"Kosten und Zeiten", "Costs and timing", kCosts, sizeof(kCosts) / sizeof(Field), false},
+    {"Allgemein & Voraussetzungen", "General & requirements", kBasics, sizeof(kBasics) / sizeof(Field), true},
+    {"Kosten & Cooldown", "Costs & cooldown", kCosts, sizeof(kCosts) / sizeof(Field), false},
     {"Schaden", "Damage", kDamage, sizeof(kDamage) / sizeof(Field), false},
-    {"Bewegung, Ziele, Sonstiges", "Movement, targets, misc", kMisc, sizeof(kMisc) / sizeof(Field), false},
-    {"Server-Werte (Treffer, Aggro, Zeiten)", "Server values (hit, aggro, timing)", kServer, sizeof(kServer) / sizeof(Field), false},
-    {"Darstellung: Animationen, Effekte, Sounds, Text", "Presentation: animations, effects, sounds, text", kView, sizeof(kView) / sizeof(Field), true},
+    {"Ziele & Bewegung", "Targets & movement", kMisc, sizeof(kMisc) / sizeof(Field), false},
+    {"Serverwerte", "Server values", kServer, sizeof(kServer) / sizeof(Field), false},
+    {"Animation / VFX / Darstellung", "Animation / VFX / presentation", kView, sizeof(kView) / sizeof(Field), true},
 };
 } // namespace skilled
 
