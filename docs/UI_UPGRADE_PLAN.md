@@ -127,8 +127,9 @@ Pflichtsymbole:
 - Objektliste als eigenes Dock mit Suche/Kategorie/Sichtbarkeit.
 - Properties als eigener Objekt-Inspector.
 - Layer-Liste als eigenes Dock.
-- Asset Browser dauerhaftes Dock statt ausschließlich Popup.
-- Statusbar mit Auswahl/Koordinaten/FPS.
+- **bereits vorgezogen:** permanenter, kontextsensitiver Asset Browser für NIF/DDS.
+- **bereits begonnen:** Statusbar mit Karte, aktivem Werkzeug, Auswahl und Statusmeldungen.
+- später ergänzen: Koordinaten/FPS und feinere Performance-Anzeigen in der Statusbar.
 
 ### Phase C – Dateneditoren angleichen
 - SHN/Quest/Skill/Custom NPC/Mob erhalten dieselbe Shell, Toolbar und Inspector-Sprache.
@@ -151,3 +152,24 @@ Pflichtsymbole:
 - Quest und Skill führen auf ihre bereits vorhandenen Editoren.
 - NPC AI/Mob AI werden nicht länger als leere Hauptwerkzeuge beworben; KI/Route bleiben kontextuell bei NPC/Mob.
 - NG-Icon ist im Windows-Binary eingebettet.
+
+
+## 8. Implementierungsstand im Branch `ui-upgrade`
+
+Bereits umgesetzt:
+- modernes Dark/Cyan-Theme;
+- primäre Navigation Karte / Spieldaten / Animationen / Projekt;
+- Project Hub nach realem Funktionsumfang;
+- Quest/Skill direkt auf vorhandene Editoren verdrahtet;
+- Icon-Command-Bar für Map-Werkzeuge;
+- Navigator / 3D / 2D / Inspector als neues Default-Docking;
+- kontextsensitiver Asset Browser für NIF-Modelle und DDS-Texturen;
+- Statuszeile;
+- NG-Icon als native Windows-EXE-Ressource;
+- Fenstertitel `NextGen-Editor`.
+
+Noch offen für die nächste visuelle Ausbaustufe:
+- Objektliste und Properties aus dem heutigen kombinierten Inspector in zwei spezialisierte Docks aufteilen;
+- Layer-Liste als permanentes eigenes Dock;
+- gleiche Icon-/Panel-Sprache für SHN, Quest, Skill und KFM bis in die Detailansichten;
+- optional gespeicherte Workspace-Presets.
