@@ -7151,6 +7151,8 @@ static void StampObjectFootprints(EditorState& state, bool blocked);
 static void RefreshObjectVisibility(EditorState& state);
 static bool IsObjectHidden(const EditorState& state, std::size_t i);
 int PlaceObjectAtWorld(EditorState& state, const std::string& modelPath, float x, float y, float z);
+float ActiveWorldBrushRadius(const EditorState& state);
+ImU32 ActiveBrushColor(const EditorState& state, int alpha = 235);
 
 void DrawToolsContent(EditorState& state) {
     if (state.editMode == EditMode::Heightmap) {
@@ -8686,7 +8688,7 @@ float ActiveWorldBrushRadius(const EditorState& state) {
     return 0.0f;
 }
 
-ImU32 ActiveBrushColor(const EditorState& state, int alpha=235) {
+ImU32 ActiveBrushColor(const EditorState& state, int alpha) {
     if(state.editMode==EditMode::BlockWalk)
         return state.walkBlockMode?IM_COL32(245,85,85,alpha):IM_COL32(80,220,145,alpha);
     if(state.editMode==EditMode::TexturePaint) return IM_COL32(90,190,255,alpha);
