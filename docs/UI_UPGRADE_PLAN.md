@@ -168,8 +168,18 @@ Bereits umgesetzt:
 - NG-Icon als native Windows-EXE-Ressource;
 - Fenstertitel `NextGen-Editor`.
 
-Noch offen für die nächste visuelle Ausbaustufe:
-- Objektliste und Properties aus dem heutigen kombinierten Inspector in zwei spezialisierte Docks aufteilen;
-- Layer-Liste als permanentes eigenes Dock;
-- gleiche Icon-/Panel-Sprache für SHN, Quest, Skill und KFM bis in die Detailansichten;
-- optional gespeicherte Workspace-Presets.
+Zusätzlich in der laufenden zweiten Ausbaustufe umgesetzt:
+- Objekt-Outliner als eigenes, filterbares Dock mit Mehrfachauswahl;
+- Layer-Manager als permanentes eigenes Dock;
+- Sichtbarkeit + Wireframe/Kamera als separates Dock;
+- Properties-Inspector dadurch von Listen- und View-Steuerung entlastet;
+- kontextuelles Fokussieren von Objekt- bzw. Layer-Dock beim Werkzeugwechsel;
+- Statusbar mit Auswahlkoordinaten und FPS;
+- Spieldaten-Workspace mit Icon-Toolbar für Single/Multi SHN, XP, Preise, Quest, Portale, NPC/Mob und Skills;
+- KFM-Katalog in Animation-Liste + Detail/Transitions-Bereich umgebaut.
+
+Noch offen für spätere Ausbaustufen:
+- spezialisierte NPC-/Mob-/Portal-Outliner statt nur der heutigen kontextuellen Listen;
+- gleiche Panel-Sprache in allen tiefen Quest-/Skill-/Custom-Dialog-Unteransichten;
+- optional gespeicherte Workspace-Presets;
+- zukünftige Interface/Drop-Table/AI/NIF-Material-Editoren.
