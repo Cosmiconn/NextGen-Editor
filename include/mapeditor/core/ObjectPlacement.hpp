@@ -46,6 +46,7 @@ public:
 
     std::size_t AddObject(PlacedObject object);
     void RemoveObject(std::size_t index);
+    void ClearObjects() noexcept { objects_.clear(); }
 
     [[nodiscard]] std::size_t Count() const noexcept { return objects_.size(); }
     [[nodiscard]] const PlacedObject& At(std::size_t index) const { return objects_.at(index); }
