@@ -3044,8 +3044,25 @@ void DrawShnEditor(EditorState& state) {
     ImGui::TextColored(ImVec4(0.40f,0.72f,0.96f,1.0f), "Spieldaten");
     ImGui::SameLine(); ImGui::TextDisabled("SHN · Quest · Portale · Custom NPC/Mob · Skills");
     ImGui::Separator();
-    const char* tabs[] = {"Single SHN Editor", "Multi SHN Editor", "XP Rate Editor", "Buy & Sell Editor", "Quest Editor", "Portale", "Custom NPC/Mob", "Skill Editor"};
-    for (int i=0;i<8;++i) { if(i) ImGui::SameLine(); bool active=state.shnSubTab==i; ImGui::PushStyleColor(ImGuiCol_Button, active?IM_COL32(55,125,195,255):IM_COL32(48,56,68,255)); if(UI::Button(tabs[i])) state.shnSubTab=i; ImGui::PopStyleColor(); }
+    struct DataTool { const char* id; const char* label; IconDrawFn icon; };
+    const DataTool dataTools[] = {
+        {"single","Single SHN",DrawIconTable},
+        {"multi","Multi SHN",DrawIconLayers},
+        {"xp","XP Rate",DrawIconBolt},
+        {"prices","Preise",DrawIconTable},
+        {"quest","Quest",DrawIconBook},
+        {"portals","Portale",DrawIconPortal},
+        {"creatures","NPC / Mob",DrawIconPerson},
+        {"skills","Skills",DrawIconBolt},
+    };
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(5.0f, 5.0f));
+    for (int i = 0; i < static_cast<int>(std::size(dataTools)); ++i) {
+        const auto& tool = dataTools[i];
+        if (DrawIconButton(tool.id, tool.label, tool.icon, state.shnSubTab == i, ImVec2(102.0f, 58.0f)))
+            state.shnSubTab = i;
+        if (i + 1 < static_cast<int>(std::size(dataTools))) ImGui::SameLine();
+    }
+    ImGui::PopStyleVar();
     ImGui::Separator();
 
     const float leftW=300.0f; const float gap=8.0f; const ImVec2 avail=ImGui::GetContentRegionAvail();
@@ -8749,13 +8766,20 @@ int main() {
             case AppScreen::MapEditorWorkspace: DrawMapEditorWorkspace(state); break;
             case AppScreen::ShnEditor: DrawShnEditor(state); break;
             case AppScreen::KfmBrowser:
-                DrawTopNav(state, "KFM");
-                if (UI::Button(T("nav.back"))) state.screen = AppScreen::ProjectHub;
+                DrawTopNav(state, "Animationen");
+                ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(8, 20, 31, 255));
+                ImGui::BeginChild("##kfmWorkspace", ImVec2(0,0), false);
+                ImGui::TextColored(ImVec4(0.40f,0.72f,0.96f,1.0f), "Animationen / KFM");
+                ImGui::SameLine();
+                ImGui::TextDisabled("Katalog · Übergänge · Dateiverweise · Kopie-Export");
+                ImGui::Separator();
 #ifdef _WIN32
                 state.kfmPanel.Draw([] { return BrowseForShnFileWindows("Fiesta KFM", true); });
 #else
                 state.kfmPanel.Draw({});
 #endif
+                ImGui::EndChild();
+                ImGui::PopStyleColor();
                 break;
             case AppScreen::ComingSoon: DrawComingSoon(state); break;
         }
