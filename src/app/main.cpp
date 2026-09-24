@@ -8789,6 +8789,74 @@ void Draw3DBrushOverlay(EditorState& state, const ImVec2& imagePos, int w, int h
     dl->PopClipRect();
 }
 
+void DrawMobZones3D(EditorState& state, const ImVec2& imagePos, int w, int h) {
+    if(state.editMode!=EditMode::Mobs || !state.mobRegenTextLoaded) return;
+    auto* zoneTable=state.mobRegenTextFile.FindTable("MobRegenGroup");
+    if(!zoneTable) return;
+
+    ImDrawList* dl=ImGui::GetWindowDrawList();
+    dl->PushClipRect(imagePos,ImVec2(imagePos.x+w,imagePos.y+h),true);
+    for(std::size_t i=0;i<zoneTable->records.size();++i) {
+        const auto& rec=zoneTable->records[i];
+        if(rec.values.size()<7) continue;
+        const float cx=static_cast<float>(std::atoi(rec.values[2].c_str()));
+        const float cz=static_cast<float>(std::atoi(rec.values[3].c_str()));
+        const float zw=static_cast<float>(std::atoi(rec.values[4].c_str()));
+        const float zh=static_cast<float>(std::atoi(rec.values[5].c_str()));
+        const float rangeVal=static_cast<float>(std::atoi(rec.values[6].c_str()));
+        const float radius=(zw>0.0f||zh>0.0f)?std::max(zw,zh)*0.5f:rangeVal;
+        if(radius<=0.0f) continue;
+
+        const bool selected=state.selectedMobZoneIdx==static_cast<int>(i);
+        const ImU32 col=selected?IM_COL32(255,255,255,235):IM_COL32(72,150,235,155);
+        std::array<ImVec2,49> pts{};
+        int count=0;
+        for(int k=0;k<=48;++k) {
+            const float a=static_cast<float>(k)*(2.0f*3.14159265f/48.0f);
+            const float x=cx+std::cos(a)*radius;
+            const float z=cz+std::sin(a)*radius;
+            const float y=state.heightmap.SampleWorld(x,z)+5.0f;
+            ImVec2 p;
+            if(ProjectWorldTo3DView(state,imagePos,w,h,{x,y,z},p)) pts[count++]=p;
+        }
+        if(count>=3) dl->AddPolyline(pts.data(),count,col,ImDrawFlags_None,selected?2.5f:1.25f);
+
+        ImVec2 center;
+        if(ProjectWorldTo3DView(state,imagePos,w,h,{cx,state.heightmap.SampleWorld(cx,cz)+8.0f,cz},center)) {
+            dl->AddCircleFilled(center,selected?5.0f:3.0f,col);
+            if(selected && !rec.values.empty())
+                dl->AddText(ImVec2(center.x+8.0f,center.y-8.0f),col,rec.values[0].c_str());
+        }
+    }
+    dl->PopClipRect();
+}
+
+void DrawPortals3D(EditorState& state, const ImVec2& imagePos, int w, int h) {
+    if(state.editMode!=EditMode::Portals || state.legacySaveStem[0]=='\0') return;
+    const auto markers=CollectPortalMarkers(state);
+    if(markers.empty()) return;
+    ImDrawList* dl=ImGui::GetWindowDrawList();
+    dl->PushClipRect(imagePos,ImVec2(imagePos.x+w,imagePos.y+h),true);
+    for(const auto& m:markers) {
+        ImVec2 p;
+        const float worldY=state.heightmap.SampleWorld(m.x,m.y)+12.0f;
+        if(!ProjectWorldTo3DView(state,imagePos,w,h,{m.x,worldY,m.y},p)) continue;
+        const bool selected=m.kind==state.selectedPortalKind && static_cast<int>(m.idx)==state.selectedPortalIdx;
+        const ImU32 col=selected?IM_COL32(255,255,255,245):IM_COL32(80,185,255,210);
+        const float r=selected?8.0f:6.0f;
+        if(m.kind==kPortalKindTown) {
+            const ImVec2 d[4]={ImVec2(p.x,p.y-r),ImVec2(p.x+r,p.y),ImVec2(p.x,p.y+r),ImVec2(p.x-r,p.y)};
+            dl->AddPolyline(d,4,col,ImDrawFlags_Closed,selected?2.5f:1.7f);
+        } else {
+            const ImVec2 t[3]={ImVec2(p.x,p.y-r),ImVec2(p.x+r,p.y+r),ImVec2(p.x-r,p.y+r)};
+            dl->AddPolyline(t,3,col,ImDrawFlags_Closed,selected?2.5f:1.7f);
+        }
+        if(selected) dl->AddText(ImVec2(p.x+r+5.0f,p.y-r),col,m.label.c_str());
+    }
+    dl->PopClipRect();
+}
+
+
 std::string CurrentGizmoSelectionKey(const EditorState& state) {
     std::string key = std::to_string(state.objectGizmoOperation) + "|" +
                       (state.objectGizmoLocal ? "L|" : "W|");
@@ -8985,6 +9053,8 @@ void DrawPreview3DContent(EditorState& state) {
         ImGui::EndDragDropTarget();
     }
     Draw3DBrushOverlay(state,imageScreenPos,w,h,viewImageHovered);
+    DrawMobZones3D(state,imageScreenPos,w,h);
+    DrawPortals3D(state,imageScreenPos,w,h);
     const bool gizmoCapturing = DrawObjectTransformGizmo(state, imageScreenPos, w, h);
     DrawObjectGizmoToolbar(state, imageScreenPos);
     DrawNpcOverlay3D(state, imageScreenPos, w, h);
