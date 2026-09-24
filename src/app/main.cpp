@@ -1052,7 +1052,7 @@ void DeleteSelectedObjects(EditorState& state) {
 // SHMD-Kategorieeinträge besitzen im Dateiformat KEINEN Transform. Sobald der Benutzer einen
 // solchen Eintrag verschiebt/dreht/skaliert, wird er deshalb automatisch aus der Kategorie-
 // Pfadliste entfernt und als normales Placement mit exakt diesem Transform gespeichert.
-bool PromoteSelectedShmdObjectsToPlacements(EditorState& state) {
+bool PromoteSelectedShmdObjectsToPlacements(EditorState& state, std::optional<int> onlySelection = std::nullopt) {
     struct Promotion {
         int oldId = kNoObjectSelection;
         core::PlacedObject object;
@@ -1060,6 +1060,7 @@ bool PromoteSelectedShmdObjectsToPlacements(EditorState& state) {
     };
     std::vector<Promotion> promotions;
     for (const int id : state.selectedObjects) {
+        if (onlySelection && id != *onlySelection) continue;
         const auto renderIndex = ShmdRenderIndex(id);
         if (!renderIndex || *renderIndex >= state.shmdCategorySource.size() ||
             *renderIndex >= state.shmdCategoryRenderSet.Count()) continue;
@@ -6843,7 +6844,7 @@ void DrawToolsContent(EditorState& state) {
                 if (ImGui::InputFloat3("Position", position, "%.1f")) {
                     obj->posX = position[0]; obj->posY = position[1]; obj->posZ = position[2];
                     if (shmdScene) {
-                        PromoteSelectedShmdObjectsToPlacements(state);
+                        PromoteSelectedShmdObjectsToPlacements(state, state.selectedObject);
                         obj = EditableObject(state, state.selectedObject);
                     }
                 }
@@ -6856,14 +6857,14 @@ void DrawToolsContent(EditorState& state) {
                         obj->rotY = std::sin(rad);
                         obj->rotW = std::cos(rad);
                         if (shmdScene) {
-                            PromoteSelectedShmdObjectsToPlacements(state);
+                            PromoteSelectedShmdObjectsToPlacements(state, state.selectedObject);
                             obj = EditableObject(state, state.selectedObject);
                         }
                     }
                 }
 
                 if (obj && UI::SliderFloat("Skalierung", &obj->scale, 0.1f, 5.0f) && shmdScene) {
-                    PromoteSelectedShmdObjectsToPlacements(state);
+                    PromoteSelectedShmdObjectsToPlacements(state, state.selectedObject);
                     obj = EditableObject(state, state.selectedObject);
                 }
             }
@@ -7320,6 +7321,14 @@ static void StampObjectFootprints(EditorState& state, bool blocked) {
     for (std::size_t i = 0; i < state.placementSet.Count(); ++i) {
         if (IsObjectHidden(state, i)) continue;
         const auto polygon = ObjectFootprintWorldPolygon(state, state.placementSet.At(i));
+        if (polygon.size() < 3) continue;
+        core::ApplyWalkConvexPolygon(state.walkGrid, polygon, blocked, patch, seen);
+        ++used;
+    }
+    RefreshShmdCategoryVisibility(state);
+    for (std::size_t i = 0; i < state.shmdCategoryRenderSet.Count(); ++i) {
+        if (i < state.shmdCategoryHidden.size() && state.shmdCategoryHidden[i]) continue;
+        const auto polygon = ObjectFootprintWorldPolygon(state, state.shmdCategoryRenderSet.At(i));
         if (polygon.size() < 3) continue;
         core::ApplyWalkConvexPolygon(state.walkGrid, polygon, blocked, patch, seen);
         ++used;
