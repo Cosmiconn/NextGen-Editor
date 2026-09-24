@@ -309,6 +309,7 @@ struct EditorState {
     char selectedObjectModelPath[512] = "";
     int selectedObjectModelPathFor = -1;
     bool selectedObjectModelPathDirty = false;
+    int objectListRangeAnchor = -1; // Shift-Bereichsauswahl in der Objektliste
     int objectPlaceMode = 1; // 1 = Platzieren, 0 = Auswählen (ImGui::RadioButton braucht int*)
     char newObjectModelPath[512] = "resmap\\field\\Rou\\GuildHall.nif";
     float newObjectScale = 1.0f;
@@ -1005,6 +1006,60 @@ void SelectObjectId(EditorState& state, int id, bool ctrl) {
     state.selectedObjectModelPathDirty = false;
 }
 
+void ClearObjectSelection(EditorState& state) {
+    state.selectedObjects.clear();
+    state.selectedObject = kNoObjectSelection;
+    state.selectedObjectModelPathFor = kNoObjectSelection;
+    state.selectedObjectModelPathDirty = false;
+    state.objectListRangeAnchor = -1;
+}
+
+void SelectAllNormalObjects(EditorState& state) {
+    state.selectedObjects.clear();
+    state.selectedObjects.reserve(state.placementSet.Count());
+    for (std::size_t i = 0; i < state.placementSet.Count(); ++i)
+        state.selectedObjects.push_back(static_cast<int>(i));
+    state.selectedObject = state.selectedObjects.empty() ? kNoObjectSelection : state.selectedObjects.back();
+    state.selectedObjectModelPathFor = kNoObjectSelection;
+    state.selectedObjectModelPathDirty = false;
+    state.objectListRangeAnchor = -1;
+}
+
+void SelectObjectFromList(EditorState& state, int id, int ordinal,
+                          const std::vector<int>& orderedIds, bool ctrl, bool shift) {
+    if (shift && state.objectListRangeAnchor >= 0 &&
+        state.objectListRangeAnchor < static_cast<int>(orderedIds.size())) {
+        if (!ctrl) state.selectedObjects.clear();
+        const int lo = std::min(state.objectListRangeAnchor, ordinal);
+        const int hi = std::max(state.objectListRangeAnchor, ordinal);
+        for (int i = lo; i <= hi; ++i) {
+            const int candidate = orderedIds[static_cast<std::size_t>(i)];
+            if (std::find(state.selectedObjects.begin(), state.selectedObjects.end(), candidate) == state.selectedObjects.end())
+                state.selectedObjects.push_back(candidate);
+        }
+        state.selectedObject = id;
+        state.selectedObjectModelPathFor = kNoObjectSelection;
+        state.selectedObjectModelPathDirty = false;
+    } else {
+        SelectObjectId(state, id, ctrl);
+    }
+    state.objectListRangeAnchor = ordinal;
+}
+
+// Auf der 2D-Karte darf ein normaler Klick auf EIN BEREITS ausgewähltes Objekt die bestehende
+// Mehrfachauswahl nicht zerstören: genau dieser Klick ist der Start eines Gruppen-Drags.
+void SelectObjectOnCanvas(EditorState& state, int id, bool ctrl) {
+    const auto it = std::find(state.selectedObjects.begin(), state.selectedObjects.end(), id);
+    const bool alreadySelected = it != state.selectedObjects.end();
+    if (!ctrl && alreadySelected && state.selectedObjects.size() > 1) {
+        state.selectedObject = id;
+        state.selectedObjectModelPathFor = kNoObjectSelection;
+        state.selectedObjectModelPathDirty = false;
+        return;
+    }
+    SelectObjectId(state, id, ctrl);
+}
+
 void EraseShmdCategorySources(EditorState& state,
                               std::vector<std::pair<std::size_t, std::size_t>> sources) {
     std::sort(sources.begin(), sources.end(), [](const auto& a, const auto& b) {
@@ -1042,11 +1097,17 @@ void DeleteSelectedObjects(EditorState& state) {
     }
     EraseShmdCategorySources(state, std::move(categorySources));
 
-    state.selectedObjects.clear();
-    state.selectedObject = kNoObjectSelection;
-    state.selectedObjectModelPathFor = kNoObjectSelection;
-    state.selectedObjectModelPathDirty = false;
+    ClearObjectSelection(state);
     ReloadObjectRenderers(state);
+}
+
+void DeleteAllNormalObjects(EditorState& state) {
+    const std::size_t removed = state.placementSet.Count();
+    state.placementSet.ClearObjects();
+    ClearObjectSelection(state);
+    ReloadObjectRenderers(state);
+    state.statusMessage = std::to_string(removed) +
+        " normale Placement-Objekte entfernt. Sky/Water/GroundObject bleiben unverändert.";
 }
 
 // SHMD-Kategorieeinträge besitzen im Dateiformat KEINEN Transform. Sobald der Benutzer einen
@@ -1103,6 +1164,49 @@ bool PromoteSelectedShmdObjectsToPlacements(EditorState& state, std::optional<in
         "SHMD-Szenenmodell in normales Placement umgewandelt: Sky/Water/GroundObject speichern "
         "keine eigenen Transform-Daten; Position/Rotation/Skalierung bleiben so verlustfrei erhalten.";
     return true;
+}
+
+void MoveSelectedObjectsBy(EditorState& state, float dx, float dy, float dz) {
+    if (state.selectedObjects.empty()) return;
+    PromoteSelectedShmdObjectsToPlacements(state);
+    for (const int id : state.selectedObjects) {
+        if (id < 0 || static_cast<std::size_t>(id) >= state.placementSet.Count()) continue;
+        auto& object = state.placementSet.At(static_cast<std::size_t>(id));
+        object.posX += dx;
+        object.posY += dy;
+        object.posZ += dz;
+    }
+}
+
+void RotateSelectedObjectsYawBy(EditorState& state, float deltaRadians) {
+    if (state.selectedObjects.empty() || std::abs(deltaRadians) < 1.0e-8f) return;
+    PromoteSelectedShmdObjectsToPlacements(state);
+    const float sy = std::sin(deltaRadians * 0.5f);
+    const float cy = std::cos(deltaRadians * 0.5f);
+    for (const int id : state.selectedObjects) {
+        if (id < 0 || static_cast<std::size_t>(id) >= state.placementSet.Count()) continue;
+        auto& object = state.placementSet.At(static_cast<std::size_t>(id));
+        const float x = object.rotX, y = object.rotY, z = object.rotZ, w = object.rotW;
+        object.rotX = cy * x + sy * z;
+        object.rotY = cy * y + sy * w;
+        object.rotZ = cy * z - sy * x;
+        object.rotW = cy * w - sy * y;
+        const float length = std::sqrt(object.rotX * object.rotX + object.rotY * object.rotY +
+                                       object.rotZ * object.rotZ + object.rotW * object.rotW);
+        if (length > 1.0e-8f) {
+            object.rotX /= length; object.rotY /= length; object.rotZ /= length; object.rotW /= length;
+        }
+    }
+}
+
+void ScaleSelectedObjectsBy(EditorState& state, float factor) {
+    if (state.selectedObjects.empty() || !std::isfinite(factor) || factor <= 0.0f) return;
+    PromoteSelectedShmdObjectsToPlacements(state);
+    for (const int id : state.selectedObjects) {
+        if (id < 0 || static_cast<std::size_t>(id) >= state.placementSet.Count()) continue;
+        auto& object = state.placementSet.At(static_cast<std::size_t>(id));
+        object.scale = std::clamp(object.scale * factor, 0.1f, 5.0f);
+    }
 }
 
 void SyncSelectedObjectModelPath(EditorState& state) {
