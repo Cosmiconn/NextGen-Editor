@@ -686,6 +686,7 @@ struct EditorState {
     bool textureListScanned = false;
     bool nifListScanned = false;
     std::string assetPickerFilter;
+    char workspaceAssetFilter[128] = "";
     // Basis-Ordner der beiden Listen oben - zum Auflösen relativer Picker-Einträge zu echten
     // Pfaden für Vorschaubilder (siehe GetOrLoadAssetThumbnail). Werden beim Scannen (Klick auf
     // "Durchsuchen...") zusammen mit der jeweiligen Liste gesetzt.
