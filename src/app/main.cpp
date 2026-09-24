@@ -1606,7 +1606,8 @@ void DrawAdvancedFileOps(EditorState& state) {
                 std::snprintf(state.legacySaveDir, sizeof(state.legacySaveDir), "%s", iniPath.parent_path().string().c_str());
                 std::snprintf(state.legacySaveStem, sizeof(state.legacySaveStem), "%s", iniPath.stem().string().c_str());
                 state.statusMessage = "Karte ge\u00f6ffnet (" + std::to_string(report.issues.size()) + " Hinweis(e)) - " +
-                                       std::to_string(state.placementSet.Count()) + " Objekte, " +
+                                       std::to_string(state.placementSet.Count() + state.shmdCategoryRenderSet.Count()) +
+                                       " Objekte (" + std::to_string(state.shmdCategoryRenderSet.Count()) + " SHMD-Szenenmodelle), " +
                                        std::to_string(state.textureStack.LayerCount()) + " Textur-Layer.";
                 for (const auto& issue : report.issues) {
                     state.statusMessage += "\n- " + issue;
@@ -7281,8 +7282,9 @@ const EditorState::ObjectFootprint& GetOrComputeFootprint(EditorState& state, co
     if (it != state.footprintCache.end()) return it->second;
 
     EditorState::ObjectFootprint fp;
-    if (state.legacySaveDir[0] != '\0') {
-        auto resolved = core::legacy::ResolveLegacyAssetPath(state.legacySaveDir, modelPath);
+    const auto mapDir = CurrentObjectAssetMapDir(state);
+    if (!mapDir.empty()) {
+        auto resolved = core::legacy::ResolveLegacyAssetPath(mapDir, modelPath);
         if (resolved) {
             auto model = core::LoadNifMesh(*resolved);
             if (model) {
@@ -7537,6 +7539,20 @@ void DrawEditor2DContent(EditorState& state) {
                 DrawObjectFootprint2D(state, obj, drawList, cursorScreenPos, imageSize, spanX, spanZ,
                                       selected ? IM_COL32(255, 255, 255, 220) : IM_COL32(70, 190, 210, 170),
                                       selected ? 2.5f : 1.5f);
+                const auto polygon = ObjectFootprintWorldPolygon(state, obj);
+                if (!polygon.empty()) {
+                    float cx = 0.0f, cz = 0.0f;
+                    for (const auto& p : polygon) { cx += p.first; cz += p.second; }
+                    cx /= static_cast<float>(polygon.size());
+                    cz /= static_cast<float>(polygon.size());
+                    const float ou = spanX > 0.0f ? cx / spanX : 0.0f;
+                    const float ov = 1.0f - (spanZ > 0.0f ? cz / spanZ : 0.0f);
+                    const ImVec2 center(cursorScreenPos.x + ou * imageSize.x, cursorScreenPos.y + ov * imageSize.y);
+                    const float radius = selected ? 5.0f : 3.5f;
+                    drawList->AddRectFilled(ImVec2(center.x - radius, center.y - radius),
+                                            ImVec2(center.x + radius, center.y + radius),
+                                            selected ? IM_COL32(255, 255, 255, 255) : IM_COL32(70, 190, 210, 230));
+                }
             }
         }
     }
