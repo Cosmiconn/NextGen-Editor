@@ -2633,6 +2633,10 @@ void SelectShnDocument(EditorState& state, int index) {
     state.shnSelectedFile = index;
     state.shnSelectedRow = -1;
     state.shnSelectedColumn = -1;
+    state.shnInlineEditActive = false;
+    state.shnInlineEditFocusPending = false;
+    state.shnEditPopupOpen = false;
+    state.shnVisibleKey.clear();
 }
 
 void OpenShnFile(EditorState& state, const std::filesystem::path& path,
@@ -3751,7 +3755,10 @@ void DrawShnEditor(EditorState& state) {
                 auto r=core::legacy::SaveShnFile(f,f.path);
                 state.shnStatus=r?(std::string(ShnSourceName(doc.source))+" gespeichert: "+f.FileName())
                                  :"Speichern fehlgeschlagen: "+r.error();
-                if(r) doc.dirty=false;
+                if(r) {
+                    doc.dirty=false;
+                    ClearShnDirtyCells(doc);
+                }
             }
             ImGui::Separator();
             UI::InputText("Suche",state.shnSearch,sizeof(state.shnSearch));
@@ -3766,13 +3773,10 @@ void DrawShnEditor(EditorState& state) {
                 ImGui::TextDisabled("%s",f.TypeName(f.columns[static_cast<std::size_t>(state.shnSelectedColumn)]).c_str());
                 if (state.shnSelectedRow < static_cast<int>(f.rows.size()) &&
                     state.shnSelectedColumn < static_cast<int>(f.rows[static_cast<std::size_t>(state.shnSelectedRow)].values.size())) {
-                    if (UI::Button("Zelle bearbeiten", ImVec2(-1,0))) {
-                        state.shnEditBuffer = core::legacy::ShnValueToString(
-                            f.rows[static_cast<std::size_t>(state.shnSelectedRow)]
-                             .values[static_cast<std::size_t>(state.shnSelectedColumn)]);
-                        state.shnEditPopupOpen = true;
+                    if (UI::Button("Inline bearbeiten", ImVec2(-1,0))) {
+                        StartShnInlineEdit(state, state.shnSelectedRow, state.shnSelectedColumn);
                     }
-                    ImGui::TextDisabled("(oder Doppelklick auf die Zelle)");
+                    ImGui::TextDisabled("Doppelklick/F2 = Inline · Rechtsklick = erweiterte Optionen");
                 }
             }
         }
@@ -7129,7 +7133,14 @@ void DrawSkillEditor(EditorState& state) {
         for (auto& doc : state.shnFiles) {
             if (!doc.dirty) continue;
             auto r = core::legacy::SaveShnFile(doc.file, doc.file.path);
-            if (r) { doc.dirty = false; ++saved; } else { ++failed; ed.report.push_back(L("Fehler beim Speichern: ", "Save error: ") + doc.file.FileName() + " " + r.error()); }
+            if (r) {
+                doc.dirty = false;
+                ClearShnDirtyCells(doc);
+                ++saved;
+            } else {
+                ++failed;
+                ed.report.push_back(L("Fehler beim Speichern: ", "Save error: ") + doc.file.FileName() + " " + r.error());
+            }
         }
         ed.report.push_back(std::string(L("Gespeichert: ", "Saved: ")) + std::to_string(saved) + (failed ? std::string(", ") + L("Fehler: ", "errors: ") + std::to_string(failed) : std::string()));
     }
