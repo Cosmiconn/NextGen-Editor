@@ -8976,28 +8976,110 @@ void DrawLayerManagerPanel(EditorState& state) {
         }
     }
 
-    ImGui::BeginChild("##layerManagerList", ImVec2(0, 185), true);
+    ImGui::BeginChild("##layerManagerList", ImVec2(0, 220), true);
     for (std::size_t i = 0; i < state.textureStack.LayerCount(); ++i) {
         ImGui::PushID(static_cast<int>(i));
         const bool selected = state.selectedLayer == static_cast<int>(i);
-        const auto& layer = state.textureStack.Layer(i);
+        auto& layer = state.textureStack.Layer(i);
         if (!layer.diffuseFileName.empty() && !state.textureAssetRoot.empty()) {
             const auto thumb = GetOrLoadAssetThumbnail(state, state.textureAssetRoot / layer.diffuseFileName, false);
-            if (thumb.tex) ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(thumb.tex)), ImVec2(28,28));
-            else ImGui::Dummy(ImVec2(28,28));
+            if (thumb.tex) ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(thumb.tex)), ImVec2(42,42));
+            else ImGui::Dummy(ImVec2(42,42));
         } else {
-            ImGui::Dummy(ImVec2(28,28));
+            ImGui::Dummy(ImVec2(42,42));
         }
         ImGui::SameLine();
         const std::string label = layer.name.empty() ? ("Layer " + std::to_string(i + 1)) : layer.name;
-        if (UI::Selectable(label.c_str(), selected, 0, ImVec2(0,28))) {
+        if (UI::Selectable(label.c_str(), selected, ImGuiSelectableFlags_AllowDoubleClick, ImVec2(0,42))) {
             state.selectedLayer = static_cast<int>(i);
             state.editMode = EditMode::TexturePaint;
             state.layerPreviewDirty = true;
         }
+
+        if (ImGui::BeginDragDropSource()) {
+            const int sourceIndex=static_cast<int>(i);
+            ImGui::SetDragDropPayload("NEXTGEN_LAYER_INDEX",&sourceIndex,sizeof(sourceIndex));
+            ImGui::Text("Layer verschieben");
+            ImGui::TextDisabled("%s",label.c_str());
+            ImGui::EndDragDropSource();
+        }
+        if (ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload* payload=ImGui::AcceptDragDropPayload("NEXTGEN_DDS_ASSET")) {
+                const char* rel=static_cast<const char*>(payload->Data);
+                layer.diffuseFileName=rel;
+                state.renderer.LoadTerrainTextures(state.textureStack,
+                    !state.textureAssetRoot.empty()?state.textureAssetRoot:CurrentObjectAssetMapDir(state));
+                state.layerPreviewDirty=true;
+                state.statusMessage="Layer-Textur ersetzt: "+std::string(rel);
+            }
+            if (const ImGuiPayload* payload=ImGui::AcceptDragDropPayload("NEXTGEN_LAYER_INDEX")) {
+                const int from=*static_cast<const int*>(payload->Data);
+                const int to=static_cast<int>(i);
+                if(from>=0 && from<static_cast<int>(state.textureStack.LayerCount()) && from!=to) {
+                    state.textureStack.MoveLayer(static_cast<std::size_t>(from),static_cast<std::size_t>(to));
+                    if (state.selectedLayer==from) state.selectedLayer=to;
+                    else if (from<state.selectedLayer && state.selectedLayer<=to) --state.selectedLayer;
+                    else if (to<=state.selectedLayer && state.selectedLayer<from) ++state.selectedLayer;
+                    state.layerHidden.assign(state.textureStack.LayerCount(),0);
+                    state.renderer.LoadTerrainTextures(state.textureStack,
+                        !state.textureAssetRoot.empty()?state.textureAssetRoot:CurrentObjectAssetMapDir(state));
+                    state.layerPreviewDirty=true;
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+
+        if (ImGui::BeginPopupContextItem("##layerContext")) {
+            if (ImGui::MenuItem("Duplizieren")) {
+                const auto copy=layer;
+                const std::size_t ni=state.textureStack.AddLayer(copy.name+" Kopie",copy.diffuseFileName,copy.uvScaleDiffuse);
+                state.textureStack.Layer(ni)=copy;
+                state.textureStack.Layer(ni).name=copy.name+" Kopie";
+                state.selectedLayer=static_cast<int>(ni);
+                state.layerHidden.resize(state.textureStack.LayerCount(),0);
+                state.renderer.LoadTerrainTextures(state.textureStack,
+                    !state.textureAssetRoot.empty()?state.textureAssetRoot:CurrentObjectAssetMapDir(state));
+                state.layerPreviewDirty=true;
+            }
+            if (ImGui::MenuItem("Entfernen",nullptr,false,state.textureStack.LayerCount()>1)) {
+                state.textureStack.RemoveLayer(i);
+                state.selectedLayer=state.textureStack.LayerCount()==0?-1:
+                    std::min(state.selectedLayer,static_cast<int>(state.textureStack.LayerCount())-1);
+                state.layerHidden.resize(state.textureStack.LayerCount(),0);
+                state.renderer.LoadTerrainTextures(state.textureStack,
+                    !state.textureAssetRoot.empty()?state.textureAssetRoot:CurrentObjectAssetMapDir(state));
+                state.layerPreviewDirty=true;
+                ImGui::EndPopup();
+                ImGui::PopID();
+                break;
+            }
+            ImGui::EndPopup();
+        }
         ImGui::PopID();
     }
     ImGui::EndChild();
+
+    ImGui::InvisibleButton("##ddsNewLayerDrop",ImVec2(-1,34));
+    const ImVec2 dropMin=ImGui::GetItemRectMin(), dropMax=ImGui::GetItemRectMax();
+    ImGui::GetWindowDrawList()->AddRect(dropMin,dropMax,IM_COL32(45,110,155,180),4.0f,0,1.2f);
+    const char* dropText="DDS hier ablegen = neuer Layer";
+    const ImVec2 ts=ImGui::CalcTextSize(dropText);
+    ImGui::GetWindowDrawList()->AddText(ImVec2((dropMin.x+dropMax.x-ts.x)*0.5f,(dropMin.y+dropMax.y-ts.y)*0.5f),
+                                        IM_COL32(150,200,230,230),dropText);
+    if (ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload* payload=ImGui::AcceptDragDropPayload("NEXTGEN_DDS_ASSET")) {
+            const char* rel=static_cast<const char*>(payload->Data);
+            std::filesystem::path rp(rel);
+            const std::size_t ni=state.textureStack.AddLayer(rp.stem().string(),rel,1.0f);
+            state.selectedLayer=static_cast<int>(ni);
+            state.layerHidden.resize(state.textureStack.LayerCount(),0);
+            state.renderer.LoadTerrainTextures(state.textureStack,
+                !state.textureAssetRoot.empty()?state.textureAssetRoot:CurrentObjectAssetMapDir(state));
+            state.layerPreviewDirty=true;
+            state.statusMessage="Neuer Layer aus DDS: "+std::string(rel);
+        }
+        ImGui::EndDragDropTarget();
+    }
 
     if (state.selectedLayer >= 0 && static_cast<std::size_t>(state.selectedLayer) < state.textureStack.LayerCount()) {
         const auto& layer = state.textureStack.Layer(static_cast<std::size_t>(state.selectedLayer));
@@ -9026,6 +9108,17 @@ void DrawLayerManagerPanel(EditorState& state) {
     ImGui::EndDisabled();
 
     ImGui::BeginDisabled(state.selectedLayer < 0);
+    if (UI::Button("Layer duplizieren##layerDock", ImVec2(-1,0))) {
+        const auto copy=state.textureStack.Layer(static_cast<std::size_t>(state.selectedLayer));
+        const std::size_t ni=state.textureStack.AddLayer(copy.name+" Kopie",copy.diffuseFileName,copy.uvScaleDiffuse);
+        state.textureStack.Layer(ni)=copy;
+        state.textureStack.Layer(ni).name=copy.name+" Kopie";
+        state.selectedLayer=static_cast<int>(ni);
+        state.layerHidden.resize(state.textureStack.LayerCount(),0);
+        state.renderer.LoadTerrainTextures(state.textureStack,
+            !state.textureAssetRoot.empty()?state.textureAssetRoot:CurrentObjectAssetMapDir(state));
+        state.layerPreviewDirty=true;
+    }
     if (UI::Button("Ausgewählten Layer entfernen##layerDock", ImVec2(-1,0))) {
         state.textureStack.RemoveLayer(static_cast<std::size_t>(state.selectedLayer));
         if (state.textureStack.LayerCount() == 0) state.selectedLayer = -1;
