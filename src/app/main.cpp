@@ -340,6 +340,8 @@ struct EditorState {
     std::vector<core::PlacedObject> objectClipboard;
     std::vector<char> objectEditorHidden; // nur Editor-Sichtbarkeit, nicht SHMD-Export
     std::vector<char> objectEditorLocked; // nur Editor-Lock, nicht SHMD-Export
+    std::unordered_set<std::string> shmdEditorHiddenKeys;
+    std::unordered_set<std::string> shmdEditorLockedKeys;
     char newObjectModelPath[512] = "resmap\\field\\Rou\\GuildHall.nif";
     float newObjectScale = 1.0f;
     float newObjectRotDeg = 0.0f;
@@ -1033,9 +1035,31 @@ void SyncObjectEditorMetadata(EditorState& state) {
     state.objectEditorLocked.resize(state.placementSet.Count(), 0);
 }
 
+std::string ShmdEditorObjectKey(const EditorState& state, int id) {
+    const auto renderIndex=ShmdRenderIndex(id);
+    if(!renderIndex || *renderIndex>=state.shmdCategorySource.size() ||
+       *renderIndex>=state.shmdCategoryRenderSet.Count()) return {};
+    const auto [categoryIndex,pathIndex]=state.shmdCategorySource[*renderIndex];
+    if(categoryIndex>=state.placementSet.categories.size()) return {};
+    const auto& category=state.placementSet.categories[categoryIndex];
+    if(pathIndex>=category.modelPaths.size()) return {};
+    return category.name+"|"+category.modelPaths[pathIndex];
+}
+
 bool IsObjectEditorLocked(const EditorState& state, int id) {
-    return id >= 0 && static_cast<std::size_t>(id) < state.objectEditorLocked.size() &&
-           state.objectEditorLocked[static_cast<std::size_t>(id)] != 0;
+    if(id>=0)
+        return static_cast<std::size_t>(id)<state.objectEditorLocked.size() &&
+               state.objectEditorLocked[static_cast<std::size_t>(id)]!=0;
+    const std::string key=ShmdEditorObjectKey(state,id);
+    return !key.empty() && state.shmdEditorLockedKeys.contains(key);
+}
+
+bool IsObjectEditorHidden(const EditorState& state, int id) {
+    if(id>=0)
+        return static_cast<std::size_t>(id)<state.objectEditorHidden.size() &&
+               state.objectEditorHidden[static_cast<std::size_t>(id)]!=0;
+    const std::string key=ShmdEditorObjectKey(state,id);
+    return !key.empty() && state.shmdEditorHiddenKeys.contains(key);
 }
 
 struct EditVec3 { float x = 0.0f, y = 0.0f, z = 0.0f; };
@@ -1337,6 +1361,7 @@ void DeleteSelectedObjects(EditorState& state) {
                 placementIndices.push_back(id);
             continue;
         }
+        if (IsObjectEditorLocked(state,id)) continue;
         const auto renderIndex = ShmdRenderIndex(id);
         if (renderIndex && *renderIndex < state.shmdCategorySource.size()) {
             categorySources.push_back(state.shmdCategorySource[*renderIndex]);
@@ -1383,6 +1408,7 @@ bool PromoteSelectedShmdObjectsToPlacements(EditorState& state, std::optional<in
     std::vector<Promotion> promotions;
     for (const int id : state.selectedObjects) {
         if (onlySelection && id != *onlySelection) continue;
+        if (IsObjectEditorLocked(state,id)) continue;
         const auto renderIndex = ShmdRenderIndex(id);
         if (!renderIndex || *renderIndex >= state.shmdCategorySource.size() ||
             *renderIndex >= state.shmdCategoryRenderSet.Count()) continue;
@@ -1565,6 +1591,8 @@ void ApplyProjectToState(EditorState& state, core::legacy::LegacyMapProject&& pr
     state.objectListRangeAnchor = -1;
     state.objectEditorHidden.assign(state.placementSet.Count(), 0);
     state.objectEditorLocked.assign(state.placementSet.Count(), 0);
+    state.shmdEditorHiddenKeys.clear();
+    state.shmdEditorLockedKeys.clear();
     // Versucht, für alle Objekte echte .nif-Meshes zu laden (aktuell nur untexturierte Meshes
     // erfolgreich, siehe docs/MAP_FORMAT.md) - für den Rest bleibt der Platzhalter-Marker.
     state.nifMeshRenderer.LoadModelsForSet(state.placementSet, mapDir);
@@ -2142,6 +2170,8 @@ void DrawAdvancedFileOps(EditorState& state) {
                 state.objectListRangeAnchor = -1;
                 state.objectEditorHidden.assign(state.placementSet.Count(), 0);
                 state.objectEditorLocked.assign(state.placementSet.Count(), 0);
+                state.shmdEditorHiddenKeys.clear();
+                state.shmdEditorLockedKeys.clear();
                 const std::filesystem::path shmdMapDir = std::filesystem::path(state.legacyShmdPath).parent_path();
                 state.nifMeshRenderer.LoadModelsForSet(state.placementSet, shmdMapDir);
                 RebuildShmdCategoryRenderSet(state, shmdMapDir);
