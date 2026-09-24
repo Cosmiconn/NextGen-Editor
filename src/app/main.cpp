@@ -3065,43 +3065,84 @@ void DrawShnEditor(EditorState& state) {
     ImGui::PopStyleVar();
     ImGui::Separator();
 
-    const float leftW=300.0f; const float gap=8.0f; const ImVec2 avail=ImGui::GetContentRegionAvail();
-    ImGui::BeginChild("##shnLeft", ImVec2(leftW, avail.y), true);
-    ImGui::TextColored(ImVec4(0.55f,0.82f,1.0f,1.0f), state.shnSubTab==0?"Single SHN Editor":"SHN Dateien"); ImGui::Separator();
+    const float leftW = 300.0f;
+    const float gap = 8.0f;
+    const ImVec2 avail = ImGui::GetContentRegionAvail();
+    const bool rawShnWorkspace = state.shnSubTab <= 3;
+
+    if (rawShnWorkspace) {
+        ImGui::BeginChild("##shnLeft", ImVec2(leftW, avail.y), true);
+        ImGui::TextColored(ImVec4(0.55f,0.82f,1.0f,1.0f),
+                           state.shnSubTab==0 ? "Single SHN Editor" : "SHN Dateien");
+        ImGui::Separator();
 #ifdef _WIN32
-    if (UI::Button("CLIENT: SHN-Ordner einlesen", ImVec2(-1,0))) if(auto p=BrowseForFolderWindows("CLIENT SHN Ordner wählen")) ScanShnFolder(state,*p,EditorState::ShnSource::Client);
-    if (UI::Button("SERVER: SHN-Ordner einlesen", ImVec2(-1,0))) if(auto p=BrowseForFolderWindows("SERVER SHN Ordner wählen")) ScanShnFolder(state,*p,EditorState::ShnSource::Server);
-    if (UI::Button("Einzelne SHN öffnen...", ImVec2(-1,0))) if(auto p=BrowseForShnFileWindows("Fiesta SHN Datei öffnen")) { std::snprintf(state.shnPath,sizeof(state.shnPath),"%s",p->c_str()); OpenShnFile(state,*p); }
+        if (UI::Button("CLIENT: SHN-Ordner einlesen", ImVec2(-1,0)))
+            if(auto p=BrowseForFolderWindows("CLIENT SHN Ordner wählen"))
+                ScanShnFolder(state,*p,EditorState::ShnSource::Client);
+        if (UI::Button("SERVER: SHN-Ordner einlesen", ImVec2(-1,0)))
+            if(auto p=BrowseForFolderWindows("SERVER SHN Ordner wählen"))
+                ScanShnFolder(state,*p,EditorState::ShnSource::Server);
+        if (UI::Button("Einzelne SHN öffnen...", ImVec2(-1,0)))
+            if(auto p=BrowseForShnFileWindows("Fiesta SHN Datei öffnen")) {
+                std::snprintf(state.shnPath,sizeof(state.shnPath),"%s",p->c_str());
+                OpenShnFile(state,*p);
+            }
 #endif
-    UI::InputText("Datei", state.shnPath, sizeof(state.shnPath));
-    if (UI::Button("Pfad öffnen", ImVec2(-1,0))) OpenShnFile(state, state.shnPath);
-    if (!state.shnClientRoot.empty()) ImGui::TextDisabled("Client: %s", state.shnClientRoot.c_str());
-    if (!state.shnServerRoot.empty()) ImGui::TextDisabled("Server: %s", state.shnServerRoot.c_str());
-    ImGui::Separator();
-    DrawShnSourceList(state, EditorState::ShnSource::Client, "##shnClientFiles");
-    DrawShnSourceList(state, EditorState::ShnSource::Server, "##shnServerFiles");
-    if (state.shnSelectedFile>=0 && state.shnSelectedFile<static_cast<int>(state.shnFiles.size())) {
-        auto& doc=state.shnFiles[static_cast<std::size_t>(state.shnSelectedFile)]; auto& f=doc.file;
-        if(UI::Button("Speichern",ImVec2(-1,0))) { auto r=core::legacy::SaveShnFile(f,f.path); state.shnStatus=r?(std::string(ShnSourceName(doc.source))+" gespeichert: "+f.FileName()):"Speichern fehlgeschlagen: "+r.error(); if(r) doc.dirty=false; }
+        UI::InputText("Datei", state.shnPath, sizeof(state.shnPath));
+        if (UI::Button("Pfad öffnen", ImVec2(-1,0))) OpenShnFile(state, state.shnPath);
+        if (!state.shnClientRoot.empty()) ImGui::TextDisabled("Client: %s", state.shnClientRoot.c_str());
+        if (!state.shnServerRoot.empty()) ImGui::TextDisabled("Server: %s", state.shnServerRoot.c_str());
         ImGui::Separator();
-        UI::InputText("Suche",state.shnSearch,sizeof(state.shnSearch));
-        UI::Checkbox("Spalten durchsuchen",&state.shnSearchColumns); UI::Checkbox("Werte durchsuchen",&state.shnSearchValues);
-        ImGui::TextDisabled("Filter wird %s angewendet.", state.shnFilterActive ? "automatisch" : "nicht");
-        ImGui::Separator();
-        if(state.shnSelectedRow>=0 && state.shnSelectedColumn>=0 && state.shnSelectedColumn<static_cast<int>(f.columns.size())) { ImGui::Text("Auswahl: Zeile %d",state.shnSelectedRow); ImGui::TextWrapped("%s",f.columns[static_cast<std::size_t>(state.shnSelectedColumn)].name.c_str()); ImGui::TextDisabled("%s",f.TypeName(f.columns[static_cast<std::size_t>(state.shnSelectedColumn)]).c_str());
-            if (state.shnSelectedRow < static_cast<int>(f.rows.size()) && state.shnSelectedColumn < static_cast<int>(f.rows[static_cast<std::size_t>(state.shnSelectedRow)].values.size())) {
-                if (UI::Button("Zelle bearbeiten", ImVec2(-1,0))) {
-                    state.shnEditBuffer = core::legacy::ShnValueToString(f.rows[static_cast<std::size_t>(state.shnSelectedRow)].values[static_cast<std::size_t>(state.shnSelectedColumn)]);
-                    state.shnEditPopupOpen = true;
+        DrawShnSourceList(state, EditorState::ShnSource::Client, "##shnClientFiles");
+        DrawShnSourceList(state, EditorState::ShnSource::Server, "##shnServerFiles");
+        if (state.shnSelectedFile>=0 && state.shnSelectedFile<static_cast<int>(state.shnFiles.size())) {
+            auto& doc=state.shnFiles[static_cast<std::size_t>(state.shnSelectedFile)];
+            auto& f=doc.file;
+            if(UI::Button("Speichern",ImVec2(-1,0))) {
+                auto r=core::legacy::SaveShnFile(f,f.path);
+                state.shnStatus=r?(std::string(ShnSourceName(doc.source))+" gespeichert: "+f.FileName())
+                                 :"Speichern fehlgeschlagen: "+r.error();
+                if(r) doc.dirty=false;
+            }
+            ImGui::Separator();
+            UI::InputText("Suche",state.shnSearch,sizeof(state.shnSearch));
+            UI::Checkbox("Spalten durchsuchen",&state.shnSearchColumns);
+            UI::Checkbox("Werte durchsuchen",&state.shnSearchValues);
+            ImGui::TextDisabled("Filter wird %s angewendet.", state.shnFilterActive ? "automatisch" : "nicht");
+            ImGui::Separator();
+            if(state.shnSelectedRow>=0 && state.shnSelectedColumn>=0 &&
+               state.shnSelectedColumn<static_cast<int>(f.columns.size())) {
+                ImGui::Text("Auswahl: Zeile %d",state.shnSelectedRow);
+                ImGui::TextWrapped("%s",f.columns[static_cast<std::size_t>(state.shnSelectedColumn)].name.c_str());
+                ImGui::TextDisabled("%s",f.TypeName(f.columns[static_cast<std::size_t>(state.shnSelectedColumn)]).c_str());
+                if (state.shnSelectedRow < static_cast<int>(f.rows.size()) &&
+                    state.shnSelectedColumn < static_cast<int>(f.rows[static_cast<std::size_t>(state.shnSelectedRow)].values.size())) {
+                    if (UI::Button("Zelle bearbeiten", ImVec2(-1,0))) {
+                        state.shnEditBuffer = core::legacy::ShnValueToString(
+                            f.rows[static_cast<std::size_t>(state.shnSelectedRow)]
+                             .values[static_cast<std::size_t>(state.shnSelectedColumn)]);
+                        state.shnEditPopupOpen = true;
+                    }
+                    ImGui::TextDisabled("(oder Doppelklick auf die Zelle)");
                 }
-                ImGui::TextDisabled("(oder Doppelklick auf die Zelle)");
             }
         }
+        if(!state.shnStatus.empty()) {
+            ImGui::Separator();
+            ImGui::TextWrapped("%s",state.shnStatus.c_str());
+        }
+        ImGui::EndChild();
+        ImGui::SameLine(0,gap);
+    } else {
+        ImGui::TextDisabled("Client: %s", state.shnClientRoot.empty() ? "(nicht gefunden)" : state.shnClientRoot.c_str());
+        ImGui::SameLine();
+        ImGui::TextDisabled("| Server: %s", state.shnServerRoot.empty() ? "(nicht gefunden)" : state.shnServerRoot.c_str());
     }
-    if(!state.shnStatus.empty()) { ImGui::Separator(); ImGui::TextWrapped("%s",state.shnStatus.c_str()); }
-    ImGui::EndChild();
-    ImGui::SameLine(0,gap);
-    ImGui::BeginChild("##shnMain", ImVec2(avail.x-leftW-gap, avail.y), true);
+
+    ImGui::BeginChild("##shnMain",
+                      ImVec2(rawShnWorkspace ? avail.x-leftW-gap : avail.x,
+                             rawShnWorkspace ? avail.y : std::max(120.0f, avail.y - ImGui::GetTextLineHeightWithSpacing())),
+                      true);
     if(state.shnSubTab==0) DrawShnGrid(state);
     else if(state.shnSubTab==1) DrawShnMultiProfiles(state);
     else if(state.shnSubTab==2) {
