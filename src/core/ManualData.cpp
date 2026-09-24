@@ -632,7 +632,7 @@ const TipRow kTips[] = {
     {"MobRegen speichern", "Schreibt die Spawn-Zonen in die MobRegen-Datei der Karte.", "Writes the spawn zones to the map's MobRegen file."},
     {"Sichtbarkeit", "Blendet Teile der Karte nur in der Anzeige ein/aus - die Daten bleiben unverändert.", "Shows/hides parts of the map in the display only - the data stays unchanged."},
     {"Terrain", "Blendet das Gelände ein/aus.", "Shows/hides the terrain."},
-    {"Objekt-Modelle (3D)", "Blendet die 3D-Modelle der Objekte ein/aus.", "Shows/hides the 3D models of objects."},
+    {"Objekt-Modelle (3D)", "Blendet alle 3D-Objektmodelle ein/aus, einschließlich der SHMD-Szenenmodelle.", "Shows/hides all 3D object models, including SHMD scene models."},
     {"Objekt-Platzhalter (3D)", "Blendet die Pyramiden für Objekte ohne ladbares Modell ein/aus.", "Shows/hides the pyramids for objects without a loadable model."},
     {"Sky (SHMD)", "Blendet die Modelle aus der SHMD-Kategorie Sky ein/aus.", "Shows/hides models from the SHMD Sky category."},
     {"Water (SHMD)", "Blendet die Modelle aus der SHMD-Kategorie Water ein/aus.", "Shows/hides models from the SHMD Water category."},
