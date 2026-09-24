@@ -1,0 +1,41 @@
+Test project <workspace>/build-v13
+      Start  1: process_runner
+ 1/18 Test  #1: process_runner ...................   Passed    1.90 sec
+      Start  2: heightmap_core
+ 2/18 Test  #2: heightmap_core ...................   Passed    0.22 sec
+      Start  3: texture_layers
+ 3/18 Test  #3: texture_layers ...................   Passed    0.14 sec
+      Start  4: legacy_texture_roundtrip
+ 4/18 Test  #4: legacy_texture_roundtrip .........   Passed    0.22 sec
+      Start  5: walk_grid
+ 5/18 Test  #5: walk_grid ........................   Passed    0.15 sec
+      Start  6: object_placement
+ 6/18 Test  #6: object_placement .................   Passed    1.68 sec
+      Start  7: legacy_map_project
+ 7/18 Test  #7: legacy_map_project ...............   Passed    2.97 sec
+      Start  8: shn_file
+ 8/18 Test  #8: shn_file .........................   Passed    0.12 sec
+      Start  9: shinetext
+ 9/18 Test  #9: shinetext ........................   Passed    0.33 sec
+      Start 10: questdata
+10/18 Test #10: questdata ........................   Passed    0.30 sec
+      Start 11: packed_images
+11/18 Test #11: packed_images ....................   Passed    0.18 sec
+      Start 12: nif_extensions
+12/18 Test #12: nif_extensions ...................   Passed    0.40 sec
+      Start 13: nif_model
+13/18 Test #13: nif_model ........................   Passed    0.14 sec
+      Start 14: nif_particles
+14/18 Test #14: nif_particles ....................   Passed    0.36 sec
+      Start 15: camera_handedness
+15/18 Test #15: camera_handedness ................   Passed    0.17 sec
+      Start 16: avatar_preview
+16/18 Test #16: avatar_preview ...................   Passed    0.10 sec
+      Start 17: manual
+17/18 Test #17: manual ...........................   Passed    0.15 sec
+      Start 18: npc_orientation
+18/18 Test #18: npc_orientation ..................   Passed    0.13 sec
+
+100% tests passed out of 18
+
+Total Test time (real) =  11.13 sec

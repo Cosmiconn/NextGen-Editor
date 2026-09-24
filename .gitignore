@@ -14,3 +14,13 @@ __pycache__/
 !docs/v12-results/ctest.log
 
 !docs/v13-results/*.log
+
+# Detailed local Client/Server inventories are shipped only in the local ZIP.
+/docs/v13-results/inventory.tsv
+/docs/v13-results/format-results.tsv
+/docs/v13-results/format-issues.tsv
+/docs/v13-results/height-recheck.tsv
+/docs/v13-results/nif-standard.tsv
+/docs/v13-results/nif-recovery.tsv
+/docs/v13-results/extensions.tsv
+/docs/v13-results/*.png

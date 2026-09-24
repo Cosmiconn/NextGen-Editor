@@ -87,7 +87,10 @@ Result probe(const fs::path& path,const fs::path& scratch,bool recovery=false) {
             if(lower(entry.path().extension().string())!=".ini")continue;
             const auto ini=legacy::ParseLegacyMapIni(entry.path()); if(!ini)continue;
             auto named=ini->heightFileName;std::replace(named.begin(),named.end(),'\\','/');
-            if(lower(fs::path(named).stem().string())!=lower(path.stem().string())&&lower(entry.path().stem().string())!=lower(path.stem().string()))continue;
+            // An INI may reference another map's heightmap (e.g. EventF -> DarkVally).
+            // Its dimensions must not be applied to a same-named, unreferenced sibling.
+            const auto expectedStem = named.empty() ? entry.path().stem().string() : fs::path(named).stem().string();
+            if(lower(expectedStem)!=lower(path.stem().string()))continue;
             core::LegacyHtdHeader header;std::vector<std::uint8_t> tail;
             auto height=core::ImportLegacyHtd(path,ini->heightmapWidth,ini->heightmapHeight,ini->oneBlockWidth,ini->oneBlockHeight,&header,&tail);
             return roundtrip(std::move(height),path,scratch,[&](const auto& h,const auto& out){return core::ExportLegacyHtd(h,out,header,tail);});

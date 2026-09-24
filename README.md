@@ -1,109 +1,69 @@
-# TheSeed Map-Editor — Standalone-Tool
+# NextGen-Editor
 
-**NextGen-Editor v0.44.35 / v12:** Der aktuelle NIF-Parser-, Build- und Teststand steht in
-[docs/V12_VALIDATION.md](docs/V12_VALIDATION.md). Die ZIP enthält vollständige Quellen,
-Fixtures, Prüfberichte und unter `bin/` den Windows-Release-Build samt GLFW-DLL.
-Der Emulator-Server wurde in diesem Stand nicht verändert.
+C++23-Editor für die Dateiformate von Fiesta Online. Aktueller Entwicklungsstand: **v0.44.35 / v13**.
+Der Emulator ist ein separates Projekt und wurde in diesem Editor-Release nicht geändert.
 
-Eigenständiges Editor-Tool (nicht ins TheSeed-Editor-Modul integriert), Kernlogik aber als
-eigenständige, GUI-freie Bibliothek (`mapeditor_core`) gebaut — spätere Integration ins
-Haupt-Editor-Modul bleibt dadurch ohne Rewrite möglich.
+[Formatstatus und verbleibende Lücken](docs/FIESTA_FORMAT_STATUS.md) ·
+[Build, Tests, Massentest und OpenGL-Nachweise](docs/V13_VALIDATION.md) ·
+[v12-Referenzstand](docs/V12_VALIDATION.md)
 
-**Zielplattform: Windows UND Linux** (wie das TheSeed-Hauptprojekt). Der komplette Code ist auf
-reiner C++23-Standardbibliothek + `std::filesystem` aufgebaut, keine POSIX-spezifischen Aufrufe.
-Details und offene Punkte siehe Abschnitt "Windows" unten.
+## Bauen
 
-## Core-Bibliothek + Tests bauen (keine externen Abhängigkeiten, plattformunabhängig)
-
-```bash
-g++ -std=c++23 -Wall -Wextra -O2 -Iinclude \
-  src/core/Heightmap.cpp src/core/HeightmapIO.cpp src/core/EditOps.cpp \
-  tests/test_heightmap_core.cpp -o test_heightmap_core
-./test_heightmap_core /pfad/zu/Rou.HTD /pfad/zu/Rou.HTDG   # optional: Legacy-Test gegen echte Datei
-```
-
-Die vollständigen Testziele und ihre Quelldateien stehen in `CMakeLists.txt`.
-Der Windows-v12-Build besteht **13/13 CTest**, einschließlich echter NIF-Fixtures und
-des Scan-Harness mit hartem Prozess-Timeout. Prüfdetails stehen in `docs/V12_VALIDATION.md`;
-die Formatgeschichte dokumentieren `docs/MAP_FORMAT.md` und `CHANGELOG.md`.
-
-## Vollständige App bauen (vcpkg + CMake) — Linux
-
-```bash
-cmake -B build -S . -DNEXTGEN_EDITOR_BUILD_GUI=ON -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
-cmake --build build
-./build/map_editor
-```
-
-## Vollständige App bauen — Windows
+GUI-freier Kern und Prüfwerkzeuge, ohne externe Bibliotheken:
 
 ```powershell
-cmake -B build -S . -DNEXTGEN_EDITOR_BUILD_GUI=ON -DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake
+cmake -S . -B build -DNEXTGEN_EDITOR_BUILD_GUI=OFF
+cmake --build build --config Release
+ctest --test-dir build -C Release --output-on-failure
+```
+
+Vollständige Windows-App mit vcpkg:
+
+```powershell
+cmake -S . -B build -DNEXTGEN_EDITOR_BUILD_GUI=ON "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
 cmake --build build --config Release
 .\build\Release\map_editor.exe
 ```
 
-**Compiler-Anforderung:** `std::expected` (C++23) braucht Visual Studio 2022 **17.9 oder neuer**
-(älterer MSVC-Toolset bricht mit einem Fehler zu `std::expected` ab — falls das passiert, VS
-über den Visual Studio Installer aktualisieren, nicht den C++-Standard herunterstufen, da
-`std::expected` durchgängig für Fehlerbehandlung verwendet wird).
+C++23 einschließlich `std::expected` ist erforderlich. Lokal geprüft mit MSVC 19.51.
+Für Linux ist beispielsweise GCC 14 vorgesehen; die CI-Konfiguration enthält Windows- und
+Linux-Core-Builds. Ein vorhandener Workflow ist noch kein Nachweis eines erfolgreichen CI-Laufs.
+Der OS-Prozessstarter des Auditors nutzt unter Windows Job Objects, unter POSIX Prozessgruppen.
+Es gibt keine Python-Abhängigkeit für Build, App oder Tests.
 
-**UTF-8-Handling:** `CMakeLists.txt` setzt automatisch `/utf-8` für MSVC (`src/app/main.cpp`
-enthält direkt eingebettete deutsche Umlaute in ImGui-Labels; MSVC interpretiert Quelldateien
-sonst nach der System-Codepage statt UTF-8, was zu falsch dargestelltem Text zur Laufzeit führen
-würde). Sollte automatisch greifen, keine manuelle Einstellung nötig.
+## Prüfen
 
-**Windows-Kompatibilität** (v12 wurde unter Windows mit MSVC gebaut):
-- Kein `strnlen`/POSIX-Code mehr (durch reine Standardbibliotheks-Alternative ersetzt)
-- Alle Binärformat-Dateien öffnen konsequent mit `std::ios::binary` (verhindert die
-  automatische CRLF-Übersetzung des Windows-Textmodus, die Binärdaten korrumpieren würde)
-- Alle Pfade laufen über `std::filesystem::path` (kein manuelles String-Concat mit
-  hartkodierten `/`-Trennzeichen)
-- Case-insensitive Pfadauflösung (`ResolveCaseInsensitivePath` in `LegacyTextureSetIO.cpp`)
-  wurde ursprünglich für Linux gebraucht (Windows-authored Pfade auf case-sensitivem
-  Dateisystem) - unter Windows selbst harmlos, da dort ohnehin case-insensitiv aufgelöst wird
-  (die Fallback-Suche greift dort einfach nie)
-
-**Verifiziert in v12:** Core und vollständige GUI wurden gegen echte GLFW-/ImGui-/glad-
-Bibliotheken kompiliert. Der NIF-Renderer wurde separat mit fünf Modellen in einem echten
-OpenGL-Kontext auf einer RTX 3060 getestet. Ein vollständiger interaktiver GUI-Durchlauf,
-ein visueller Vergleich mit NifSkope und ein erneuter Linux-Build stehen noch aus.
-
-## Bedienung
-
-- **Datei-Menü, ganz oben:** "Asset-Ordner wählen..." öffnet einen Ordnerdialog (Windows) - das
-  Tool scannt automatisch nach Karten (`.ini`-Dateien) darunter und zeigt sie als anklickbare
-  Liste. Karte anklicken → "Karte öffnen" lädt alle vier Module auf einmal. "Karte speichern"
-  (Ausgabeverzeichnis + Kartenname, ebenfalls per Ordnerdialog wählbar) schreibt alles zurück.
-  Darunter folgen die granularen Einzel-Modul-Importe für fortgeschrittene/Teilaufgaben
-- **Werkzeuge-Panel**: Moduswahl (Heightmap/Textur malen/Block&Walk/Objekte), zugehörige
-  Werkzeuge, Undo/Redo je Modul
-- **Editor (2D)**: Linke Maustaste = malen (Heightmap/Textur/Walk) bzw. platzieren/auswählen
-  (Objekte)
-- **3D-Vorschau**: Linke Maustaste + ziehen = Kamera drehen, Mausrad = Zoom; zeigt Heightmap
-  UND platzierte Objekte (als Platzhalter-Marker, siehe unten) gemeinsam
-
-## Struktur
-
-```
-include/mapeditor/core/   Heightmap, Texturing, Block&Walk, Objekt-Placement (GUI-frei)
-  legacy/                 Legacy-Format-Parser (ini, BMP, idm, aid) - reiner Import/Export
-src/core/                 Implementierung dazu
-src/app/                  main.cpp, Renderer (Terrain), ObjectMarkerRenderer, Camera (Orbit)
-tests/                    GUI-freie Tests, direkt mit g++ baubar, je Modul eine Datei
-docs/MAP_FORMAT.md        native Formate + vollständige Legacy-Format-Referenzdokumentation
-CHANGELOG.md              laufendes Changelog
+```powershell
+.\build\Release\fiesta_audit.exe --root D:\Fiesta\Client --root D:\Fiesta\Server\9Data --out audit --jobs 4 --timeout-ms 5000
+.\build\Release\fiesta_audit.exe --root extracted-nifs --out nif-audit --nif-only
+.\build\Release\fiesta_audit.exe --root D:\Fiesta\Client --out kf-audit --extension .kf
+.\build\Release\nif_benchmark.exe tests\fixtures\nif-extensions 30
+.\build\Release\test_nif_opengl.exe tests\fixtures\nif-extensions gl-output
 ```
 
-## Aktueller Stand & nächste Ausbaustufen
+`fiesta_audit` inventarisiert entpackte Verzeichnisse. ZIP-Archive müssen vorher extrahiert werden.
+Für v13 wurde zusätzlich der vollständige, in v12 aus Archiven extrahierte und nach SHA-256
+deduplizierte NIF-Bestand erneut geprüft; Herkunftszuordnungen stehen im v12-Inventar.
+Das Ausgabeverzeichnis des Auditors muss außerhalb seiner Eingabeverzeichnisse liegen.
+Jede Datei läuft in einem eigenen Prozess mit hartem Zeitlimit. Nur NIF-Standardfehler erhalten
+einen getrennten Recovery-Versuch. TSV-Ergebnisse werden nach jeder Datei geschrieben.
+`UNRESEARCHED` im Inventar bedeutet: kein Codec im Auditor; dies ist keine Aussage über
+Windows-WIC oder sonstige separate Anzeigefunktionen des Editors.
 
-Die ursprünglichen Module Heightmap, Texturing, Block&Walk und Objekt-Placement besitzen
-Legacy-Import/-Export. Der Editor unterstützt inzwischen echtes NIF-Mesh-Rendering;
-v12 ergänzt strukturelle Particle-Parser und einen vollständigen NIF-Massentest.
-Die aktuellen Ergebnisse und Grenzen stehen in `docs/V12_VALIDATION.md`.
+## Umfang
 
-Offene Punkte, siehe Diskussion in `docs/MAP_FORMAT.md`:
-1. Vollständige interaktive GUI-Prüfung und visueller Vergleich mit NifSkope
-2. Verbleibende NIF-Blocktypen, eingebettete 16-Bit-Texturen und Partikelsimulation
-3. `Eld`/`.sbi`-Format (andere/neuere Formatgeneration, nicht untersucht)
-4. `.idm`-Zellzuordnung (welche der 1178 Gruppen zu welcher Rasterzelle gehört) bleibt Hypothese
+Karten: INI, HTD/HTDG, Blend-BMP, SHBD, SHMD, IDM und AID. Zusätzlich SHN,
+QuestData und Shine-Text-Tabellen. Modelle: NIF einschließlich eingebetteter Texturen,
+Materialien und unterstützter Texturanimationen. KF wird strukturell geprüft; vollständiges
+Skelettanimations-Playback ist damit nicht zugesagt. DDS/TGA und unter Windows WIC-Rasterbilder
+bleiben erhalten, weil Fiesta diese Formate selbst verwendet.
+
+Die eigenen Zwischenformate TSHM/TSTEX/TSWALK/TSOBJ wurden aus API und Oberfläche entfernt.
+Begleitdateien werden unverändert mitgeführt; der Formatbericht benennt, welche abgeleiteten
+Daten nach Änderungen noch nicht neu erzeugt werden. Vollständige Spiel- oder NifSkope-
+Darstellungsgleichheit, Partikelsimulation und ein NIF-Writer sind noch nicht nachgewiesen bzw. umgesetzt.
+
+Die ZIP im Verzeichnis `releases` enthält Quellen, Fixtures, Berichte und den Windows-Build in
+`bin/`. Historische Berichte sind ausdrücklich versionsgebunden; neue Ergebnisse stehen in
+`docs/v13-results`. Das Handbuch wird direkt in C++ gepflegt, siehe
+[MANUAL_MAINTENANCE.md](docs/MANUAL_MAINTENANCE.md).

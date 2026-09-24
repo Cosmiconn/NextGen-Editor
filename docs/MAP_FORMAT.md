@@ -1,3 +1,5 @@
+> Historisches Forschungsprotokoll. Für den aktuellen Stand einschließlich entfernter eigener Formate gilt [FIESTA_FORMAT_STATUS.md](FIESTA_FORMAT_STATUS.md). Frühere Vollständigkeitsangaben beziehen sich nur auf die damaligen Fixtures.
+
 # Kartenformate
 
 ## 0. Übersicht — alle Dateiformate auf einen Blick
