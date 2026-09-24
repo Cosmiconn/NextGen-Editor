@@ -660,7 +660,19 @@ struct EditorState {
         // Sitzung - wird NICHT in die .shn-Datei selbst geschrieben (das Format hat dafür
         // keinen Platz) und geht beim Neuladen verloren. Zeilen-Index -> Spalten-Index -> Status.
         std::vector<std::vector<std::uint8_t>> cellStatus;
+        // Manuell geänderte Zellen bekommen im Grid einen eigenen Dirty-Indikator.
+        // Wie cellStatus ist das reiner Editor-Sitzungszustand und wird nicht ins SHN geschrieben.
+        std::vector<std::vector<std::uint8_t>> cellDirty;
     };
+    struct ShnCellEdit {
+        int document = -1;
+        int row = -1;
+        int column = -1;
+        core::legacy::ShnValue before;
+        core::legacy::ShnValue after;
+    };
+    std::vector<ShnCellEdit> shnUndo;
+    std::vector<ShnCellEdit> shnRedo;
     std::vector<ShnDocument> shnFiles;
     std::string shnClientRoot;
     std::string shnServerRoot;
@@ -675,7 +687,11 @@ struct EditorState {
     bool shnSearchValues = true;
     bool shnFilterActive = false;
     bool shnEditPopupOpen = false;
+    bool shnInlineEditActive = false;
+    bool shnInlineEditFocusPending = false;
     std::string shnEditBuffer;
+    int shnSortColumn = -1;
+    bool shnSortAscending = true;
     std::string shnStatus;
 
     std::string statusMessage;
