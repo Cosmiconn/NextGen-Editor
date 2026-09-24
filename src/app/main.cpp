@@ -3702,6 +3702,39 @@ int FindOrLoadShnDoc(EditorState& state, const std::string& fileName, EditorStat
     return -1;
 }
 
+bool OpenShnRecordById(EditorState& state, const std::vector<std::string>& fileNames,
+                       EditorState::ShnSource preferredSource, long long id) {
+    const std::array<EditorState::ShnSource,2> sources = {
+        preferredSource,
+        preferredSource == EditorState::ShnSource::Client
+            ? EditorState::ShnSource::Server : EditorState::ShnSource::Client
+    };
+    for (const auto source : sources) {
+        for (const auto& fileName : fileNames) {
+            const int docIndex = FindOrLoadShnDoc(state, fileName, source);
+            if (docIndex < 0) continue;
+            auto& file = state.shnFiles[static_cast<std::size_t>(docIndex)].file;
+            int idColumn = ShnColumnIndexByName(file, "ID");
+            if (idColumn < 0 && !file.columns.empty()) idColumn = 0;
+            if (idColumn < 0) continue;
+            for (std::size_t row = 0; row < file.rows.size(); ++row) {
+                if (static_cast<std::size_t>(idColumn) >= file.rows[row].values.size()) continue;
+                long long candidate = 0;
+                if (!ShnValueAsInt(file.rows[row].values[static_cast<std::size_t>(idColumn)], candidate) ||
+                    candidate != id) continue;
+                state.shnSubTab = 0;
+                SelectShnDocument(state, docIndex);
+                state.shnSelectedRow = static_cast<int>(row);
+                state.shnSelectedColumn = idColumn;
+                state.shnStatus = file.FileName() + ": Datensatz #" + std::to_string(id) + " geöffnet.";
+                return true;
+            }
+        }
+    }
+    state.shnStatus = "Referenz #" + std::to_string(id) + " konnte in den passenden SHN-Dateien nicht gefunden werden.";
+    return false;
+}
+
 // Gemeinsame Tabelle für XP-Rate- und Preis-Editor: zeigt ID+Name+die relevanten numerischen
 // Spalten kompakt, mit Skalier-Aktion (z.B. "alle EXP-Werte um 10% erhöhen") - genau der
 // Zweck eines "Rate"-Editors, statt nur ein Verweis auf die generische Tabelle. Zelle
@@ -4869,21 +4902,49 @@ void DrawQuestEditor(EditorState& state) {
         rowLabel("Maximal-Level");
         { int v = q.maxLevel; if (UI::InputInt("##maxlv", &v, 0, 0)) q.maxLevel = static_cast<std::uint8_t>(std::clamp(v, 0, 255)); }
         u16Row("Start-NPC (Mob-ID)", "##startnpc", q.startingNpc);
-        { auto r = ResolveMobNameForQuest(state, q.startingNpc); infoText(r.first == "-" ? std::string() : r.first, r.second); }
+        {
+            auto r = ResolveMobNameForQuest(state, q.startingNpc);
+            infoText(r.first == "-" ? std::string() : r.first, r.second);
+            if (r.second && q.startingNpc != 0) {
+                ImGui::SameLine();
+                if (UI::SmallButton("Öffnen##startNpcRef"))
+                    OpenShnRecordById(state, {"MobInfo.shn","MobViewInfo.shn"},
+                                      EditorState::ShnSource::Client, q.startingNpc);
+            }
+        }
         rowLabel("Aktiviert");
         { bool enable = q.enableQuest != 0; if (UI::Checkbox("##enable", &enable)) q.enableQuest = enable ? 1 : 0; }
         rowLabel("Tägliche Quest");
         { bool daily = q.dailyQuest != 0; if (UI::Checkbox("##daily", &daily)) q.dailyQuest = daily ? 1 : 0; }
         if (q.needItem != 0) {
             u16Row("Benötigtes Item (ID)", "##reqitem", q.itemId);
-            auto r = ResolveItemNameForQuest(state, q.itemId); infoText(r.first == "-" ? std::string() : r.first, r.second);
+            auto r = ResolveItemNameForQuest(state, q.itemId);
+            infoText(r.first == "-" ? std::string() : r.first, r.second);
+            if (r.second && q.itemId != 0) {
+                ImGui::SameLine();
+                if (UI::SmallButton("Öffnen##requiredItemRef"))
+                    OpenShnRecordById(state, {"ItemInfo.shn"}, EditorState::ShnSource::Server, q.itemId);
+            }
         }
         if (q.needPred != 0) {
             u16Row("Vorgänger-Quest (ID)", "##pred", q.predecessor);
             bool found = false;
+            std::size_t predecessorIndex = 0;
             std::string predTitle;
-            for (std::size_t oi = 0; oi < quests.size(); ++oi) if (quests[oi].id == q.predecessor) { found = true; predTitle = QuestTextOf(state, quests[oi].title); break; }
-            infoText(found ? (predTitle.empty() ? std::string("gefunden") : predTitle) : std::string("Quest-ID nicht gefunden"), found);
+            for (std::size_t oi = 0; oi < quests.size(); ++oi) {
+                if (quests[oi].id != q.predecessor) continue;
+                found = true;
+                predecessorIndex = oi;
+                predTitle = QuestTextOf(state, quests[oi].title);
+                break;
+            }
+            infoText(found ? (predTitle.empty() ? std::string("gefunden") : predTitle)
+                           : std::string("Quest-ID nicht gefunden"), found);
+            if (found) {
+                ImGui::SameLine();
+                if (UI::SmallButton("Öffnen##predecessorQuestRef"))
+                    state.selectedQuestIdx = static_cast<int>(predecessorIndex);
+            }
         }
         ImGui::EndTable();
     }
@@ -4905,7 +4966,16 @@ void DrawQuestEditor(EditorState& state) {
                 ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(80.0f); int mid = m.id; if (UI::InputInt("##id", &mid, 0, 0)) m.id = static_cast<std::uint16_t>(std::clamp(mid, 0, 65535));
                 ImGui::TableSetColumnIndex(2); ImGui::SetNextItemWidth(70.0f); int amt = m.amount; if (UI::InputInt("##n", &amt, 0, 0)) m.amount = static_cast<std::uint8_t>(std::clamp(amt, 0, 255));
                 ImGui::TableSetColumnIndex(3);
-                if (m.active != 0 || m.id != 0) { auto r = ResolveMobNameForQuest(state, m.id); ImGui::TextColored(r.second ? kOk : kBad, "%s", r.first.c_str()); }
+                if (m.active != 0 || m.id != 0) {
+                    auto r = ResolveMobNameForQuest(state, m.id);
+                    ImGui::TextColored(r.second ? kOk : kBad, "%s", r.first.c_str());
+                    if (r.second && m.id != 0) {
+                        ImGui::SameLine();
+                        if (UI::SmallButton("Öffnen##mobQuestRef"))
+                            OpenShnRecordById(state, {"MobInfo.shn","MobViewInfo.shn"},
+                                              EditorState::ShnSource::Client, m.id);
+                    }
+                }
                 ImGui::PopID();
             }
             ImGui::EndTable();
@@ -4927,7 +4997,15 @@ void DrawQuestEditor(EditorState& state) {
                 ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(80.0f); int itemId = it.id; if (UI::InputInt("##id", &itemId, 0, 0)) it.id = static_cast<std::uint16_t>(std::clamp(itemId, 0, 65535));
                 ImGui::TableSetColumnIndex(2); ImGui::SetNextItemWidth(70.0f); int amt = it.amount; if (UI::InputInt("##n", &amt, 0, 0)) it.amount = static_cast<std::uint16_t>(std::clamp(amt, 0, 65535));
                 ImGui::TableSetColumnIndex(3);
-                if (it.active != 0 || it.id != 0) { auto r = ResolveItemNameForQuest(state, it.id); ImGui::TextColored(r.second ? kOk : kBad, "%s", r.first.c_str()); }
+                if (it.active != 0 || it.id != 0) {
+                    auto r = ResolveItemNameForQuest(state, it.id);
+                    ImGui::TextColored(r.second ? kOk : kBad, "%s", r.first.c_str());
+                    if (r.second && it.id != 0) {
+                        ImGui::SameLine();
+                        if (UI::SmallButton("Öffnen##itemQuestRef"))
+                            OpenShnRecordById(state, {"ItemInfo.shn"}, EditorState::ShnSource::Server, it.id);
+                    }
+                }
                 ImGui::PopID();
             }
             ImGui::EndTable();
@@ -4955,8 +5033,21 @@ void DrawQuestEditor(EditorState& state) {
                 ImGui::TableSetColumnIndex(3); ImGui::SetNextItemWidth(66.0f); if (UI::InputInt("##r", &rate, 0, 0)) d.rate = static_cast<std::uint32_t>(std::max(0, rate));
                 auto mobName = ResolveMobNameForQuest(state, mobId);
                 auto itemName = ResolveItemNameForQuest(state, itemId);
-                ImGui::TableSetColumnIndex(4); ImGui::TextColored(mobName.second ? kOk : kBad, "%s", mobName.first.c_str());
-                ImGui::TableSetColumnIndex(5); ImGui::TextColored(itemName.second ? kOk : kBad, "%s", itemName.first.c_str());
+                ImGui::TableSetColumnIndex(4);
+                ImGui::TextColored(mobName.second ? kOk : kBad, "%s", mobName.first.c_str());
+                if (mobName.second && mobId != 0) {
+                    ImGui::SameLine();
+                    if (UI::SmallButton("Öffnen##dropMobRef"))
+                        OpenShnRecordById(state, {"MobInfo.shn","MobViewInfo.shn"},
+                                          EditorState::ShnSource::Client, mobId);
+                }
+                ImGui::TableSetColumnIndex(5);
+                ImGui::TextColored(itemName.second ? kOk : kBad, "%s", itemName.first.c_str());
+                if (itemName.second && itemId != 0) {
+                    ImGui::SameLine();
+                    if (UI::SmallButton("Öffnen##dropItemRef"))
+                        OpenShnRecordById(state, {"ItemInfo.shn"}, EditorState::ShnSource::Server, itemId);
+                }
                 ImGui::TableSetColumnIndex(6); if (UI::SmallButton("X")) removeIdx = static_cast<int>(di);
                 ImGui::PopID();
             }
