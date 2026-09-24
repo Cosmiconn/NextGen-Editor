@@ -1546,6 +1546,8 @@ void RefreshShmdCategoryVisibility(EditorState& state) {
                 default: break; // unbekannte generische SHMD-Kategorie bleibt sichtbar
             }
         }
+        const int id=ShmdSelectionId(i);
+        if (IsObjectEditorHidden(state,id)) visible=false;
         state.shmdCategoryHidden[i] = visible ? 0 : 1;
     }
 }
@@ -9336,29 +9338,44 @@ void DrawSceneOutlinerPanel(EditorState& state) {
             const bool selected = std::find(state.selectedObjects.begin(), state.selectedObjects.end(), id) != state.selectedObjects.end();
             ImGui::PushID(id);
 
-            if (id >= 0) {
-                const std::size_t index=static_cast<std::size_t>(id);
-                const bool hidden=index<state.objectEditorHidden.size() && state.objectEditorHidden[index]!=0;
-                const bool locked=index<state.objectEditorLocked.size() && state.objectEditorLocked[index]!=0;
-                if (DrawTinyIconButton("eye",DrawIconEye,!hidden,hidden?"Einblenden":"Ausblenden")) {
-                    state.objectEditorHidden[index]=hidden?0:1;
+            const bool hidden=IsObjectEditorHidden(state,id);
+            const bool locked=IsObjectEditorLocked(state,id);
+            if (DrawTinyIconButton("eye",DrawIconEye,!hidden,hidden?"Einblenden":"Ausblenden")) {
+                if(id>=0) {
+                    state.objectEditorHidden[static_cast<std::size_t>(id)]=hidden?0:1;
                     state.objectVisKey.clear();
+                } else {
+                    const std::string key=ShmdEditorObjectKey(state,id);
+                    if(!key.empty()) {
+                        if(hidden) state.shmdEditorHiddenKeys.erase(key);
+                        else state.shmdEditorHiddenKeys.insert(key);
+                    }
                 }
-                ImGui::SameLine(0,2);
-                if (DrawTinyIconButton("lock",DrawIconLock,locked,locked?"Entsperren":"Sperren")) {
-                    state.objectEditorLocked[index]=locked?0:1;
-                    if (!locked) state.objectDragActive=false;
+            }
+            ImGui::SameLine(0,2);
+            if (DrawTinyIconButton("lock",DrawIconLock,locked,locked?"Entsperren":"Sperren")) {
+                if(id>=0) state.objectEditorLocked[static_cast<std::size_t>(id)]=locked?0:1;
+                else {
+                    const std::string key=ShmdEditorObjectKey(state,id);
+                    if(!key.empty()) {
+                        if(locked) state.shmdEditorLockedKeys.erase(key);
+                        else state.shmdEditorLockedKeys.insert(key);
+                    }
                 }
-                ImGui::SameLine(0,5);
-                ImGui::BeginDisabled(locked);
-            } else {
-                ImGui::TextColored(ImVec4(0.30f,0.78f,0.95f,1.0f),"SHMD");
+                if(!locked) state.objectDragActive=false;
+            }
+            ImGui::SameLine(0,5);
+            if(id<0) {
+                const int kind=ShmdRenderIndex(id) && *ShmdRenderIndex(id)<state.shmdCategoryRenderKind.size()
+                    ? state.shmdCategoryRenderKind[*ShmdRenderIndex(id)] : -1;
+                const char* badge=kind==0?"SKY":kind==1?"WATER":kind==2?"GROUND":"SHMD";
+                ImGui::TextColored(ImVec4(0.30f,0.78f,0.95f,1.0f),"%s",badge);
                 ImGui::SameLine(0,5);
             }
-
+            ImGui::BeginDisabled(locked);
             const bool clicked=UI::Selectable(labels[static_cast<std::size_t>(row)].c_str(),selected,
                                                ImGuiSelectableFlags_AllowDoubleClick);
-            if (id>=0) ImGui::EndDisabled();
+            ImGui::EndDisabled();
             if (clicked) {
                 state.editMode=EditMode::ObjectPlacement;
                 state.objectPlaceMode=0;
@@ -9375,16 +9392,27 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                     GroundSelectedObjects(state);
                 if (ImGui::MenuItem("Kopieren","Strg+C")) CopySelectedObjects(state);
                 if (ImGui::MenuItem("Duplizieren","Strg+D")) DuplicateSelectedObjects(state);
-                if (id>=0) {
-                    const std::size_t index=static_cast<std::size_t>(id);
-                    const bool hidden=index<state.objectEditorHidden.size() && state.objectEditorHidden[index]!=0;
-                    const bool locked=index<state.objectEditorLocked.size() && state.objectEditorLocked[index]!=0;
-                    if (ImGui::MenuItem(hidden?"Einblenden":"Ausblenden")) {
-                        state.objectEditorHidden[index]=hidden?0:1;
-                        state.objectVisKey.clear();
+                {
+                    const bool menuHidden=IsObjectEditorHidden(state,id);
+                    const bool menuLocked=IsObjectEditorLocked(state,id);
+                    if (ImGui::MenuItem(menuHidden?"Einblenden":"Ausblenden")) {
+                        if(id>=0) {
+                            state.objectEditorHidden[static_cast<std::size_t>(id)]=menuHidden?0:1;
+                            state.objectVisKey.clear();
+                        } else {
+                            const std::string key=ShmdEditorObjectKey(state,id);
+                            if(menuHidden) state.shmdEditorHiddenKeys.erase(key);
+                            else if(!key.empty()) state.shmdEditorHiddenKeys.insert(key);
+                        }
                     }
-                    if (ImGui::MenuItem(locked?"Entsperren":"Sperren"))
-                        state.objectEditorLocked[index]=locked?0:1;
+                    if (ImGui::MenuItem(menuLocked?"Entsperren":"Sperren")) {
+                        if(id>=0) state.objectEditorLocked[static_cast<std::size_t>(id)]=menuLocked?0:1;
+                        else {
+                            const std::string key=ShmdEditorObjectKey(state,id);
+                            if(menuLocked) state.shmdEditorLockedKeys.erase(key);
+                            else if(!key.empty()) state.shmdEditorLockedKeys.insert(key);
+                        }
+                    }
                 }
                 ImGui::Separator();
                 if (ImGui::MenuItem("Löschen","Entf",false,id<0 || !IsObjectEditorLocked(state,id)))
