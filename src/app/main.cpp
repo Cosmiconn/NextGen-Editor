@@ -7144,6 +7144,7 @@ static void DrawVisibilityPanel(EditorState& state);
 static void StampObjectFootprints(EditorState& state, bool blocked);
 static void RefreshObjectVisibility(EditorState& state);
 static bool IsObjectHidden(const EditorState& state, std::size_t i);
+int PlaceObjectAtWorld(EditorState& state, const std::string& modelPath, float x, float y, float z);
 
 void DrawToolsContent(EditorState& state) {
     if (state.editMode == EditMode::Heightmap) {
