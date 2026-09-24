@@ -8300,6 +8300,142 @@ void DrawWorkspaceTabBar(EditorState& state) {
 
 
 
+
+void DrawObjectOutlinerPanel(EditorState& state) {
+    const std::size_t shmdSceneCount = state.shmdCategoryRenderSet.Count();
+    const std::size_t total = state.placementSet.Count() + shmdSceneCount;
+
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "OBJEKT-OUTLINER");
+    ImGui::SameLine();
+    ImGui::TextDisabled("%zu", total);
+    ImGui::Separator();
+
+    UI::InputTextWithHint("##objectOutlinerFilter", "Objekte filtern...",
+                          state.objectOutlinerFilter, sizeof(state.objectOutlinerFilter));
+
+    if (!ImGui::GetIO().WantTextInput && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+        ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_A, false)) {
+        SelectAllNormalObjects(state);
+    }
+
+    if (UI::SmallButton("Alle normalen")) SelectAllNormalObjects(state);
+    ImGui::SameLine();
+    if (UI::SmallButton("Auswahl aufheben")) ClearObjectSelection(state);
+    ImGui::SameLine();
+    ImGui::TextDisabled("%zu gewählt", state.selectedObjects.size());
+
+    const std::string needle = LowerAscii(state.objectOutlinerFilter);
+    std::vector<int> visibleIds;
+    std::vector<std::string> labels;
+    visibleIds.reserve(total);
+    labels.reserve(total);
+
+    auto appendIfMatch = [&](int id, std::string label) {
+        if (!needle.empty() && LowerAscii(label).find(needle) == std::string::npos) return;
+        visibleIds.push_back(id);
+        labels.push_back(std::move(label));
+    };
+
+    for (std::size_t i = 0; i < shmdSceneCount; ++i) {
+        const int id = ShmdSelectionId(i);
+        const std::string category = ShmdSelectionCategoryName(state, id);
+        appendIfMatch(id, "[" + (category.empty() ? std::string("SHMD") : category) + "] " +
+                          state.shmdCategoryRenderSet.At(i).modelPath);
+    }
+    for (std::size_t i = 0; i < state.placementSet.Count(); ++i) {
+        appendIfMatch(static_cast<int>(i), "[Placement] " + state.placementSet.At(i).modelPath);
+    }
+
+    ImGui::BeginChild("##objectOutlinerList", ImVec2(0,0), true);
+    ImGuiListClipper clipper;
+    clipper.Begin(static_cast<int>(visibleIds.size()));
+    while (clipper.Step()) {
+        for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row) {
+            const int id = visibleIds[static_cast<std::size_t>(row)];
+            const bool selected = std::find(state.selectedObjects.begin(), state.selectedObjects.end(), id) != state.selectedObjects.end();
+            ImGui::PushID(id);
+            if (UI::Selectable(labels[static_cast<std::size_t>(row)].c_str(), selected)) {
+                state.editMode = EditMode::ObjectPlacement;
+                SelectObjectFromList(state, id, row, visibleIds, ImGui::GetIO().KeyCtrl, ImGui::GetIO().KeyShift);
+            }
+            ImGui::PopID();
+        }
+    }
+    ImGui::EndChild();
+}
+
+void DrawLayerManagerPanel(EditorState& state) {
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "LAYER");
+    ImGui::SameLine();
+    ImGui::TextDisabled("%zu / %d", state.textureStack.LayerCount(), app::HeightmapRenderer::kMaxTextureLayers);
+    ImGui::Separator();
+
+    if (state.textureAssetRoot.empty()) {
+        if (const auto resmapRoot = FindResmapRootForAssets(state.project.clientFolder)) {
+            if (const auto texRoot = FindNamedSubfolder(*resmapRoot, {"fieldtexture"})) state.textureAssetRoot = *texRoot;
+        }
+    }
+
+    ImGui::BeginChild("##layerManagerList", ImVec2(0, 185), true);
+    for (std::size_t i = 0; i < state.textureStack.LayerCount(); ++i) {
+        ImGui::PushID(static_cast<int>(i));
+        const bool selected = state.selectedLayer == static_cast<int>(i);
+        const auto& layer = state.textureStack.Layer(i);
+        if (!layer.diffuseFileName.empty() && !state.textureAssetRoot.empty()) {
+            const auto thumb = GetOrLoadAssetThumbnail(state, state.textureAssetRoot / layer.diffuseFileName, false);
+            if (thumb.tex) ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(thumb.tex)), ImVec2(28,28));
+            else ImGui::Dummy(ImVec2(28,28));
+        } else {
+            ImGui::Dummy(ImVec2(28,28));
+        }
+        ImGui::SameLine();
+        const std::string label = layer.name.empty() ? ("Layer " + std::to_string(i + 1)) : layer.name;
+        if (UI::Selectable(label.c_str(), selected, 0, ImVec2(0,28))) {
+            state.selectedLayer = static_cast<int>(i);
+            state.editMode = EditMode::TexturePaint;
+            state.layerPreviewDirty = true;
+        }
+        ImGui::PopID();
+    }
+    ImGui::EndChild();
+
+    if (state.selectedLayer >= 0 && static_cast<std::size_t>(state.selectedLayer) < state.textureStack.LayerCount()) {
+        const auto& layer = state.textureStack.Layer(static_cast<std::size_t>(state.selectedLayer));
+        ImGui::TextDisabled("Ausgewählt");
+        ImGui::TextWrapped("%s", layer.name.c_str());
+        ImGui::TextDisabled("Diffuse: %s", layer.diffuseFileName.c_str());
+        ImGui::TextDisabled("UV Scale: %.3f", layer.uvScaleDiffuse);
+    }
+
+    ImGui::Separator();
+    ImGui::TextDisabled("Neuer Layer");
+    UI::InputText("Name##layerDock", state.newLayerName, sizeof(state.newLayerName));
+    UI::InputText("Diffuse##layerDock", state.newLayerDiffuse, sizeof(state.newLayerDiffuse));
+    ImGui::TextDisabled("Textur kann auch unten im Asset Browser gewählt werden.");
+    UI::InputFloat("UV-Scale##layerDock", &state.newLayerUvScale);
+
+    ImGui::BeginDisabled(state.textureStack.LayerCount() >= static_cast<std::size_t>(app::HeightmapRenderer::kMaxTextureLayers));
+    if (UI::Button("Layer hinzufügen##layerDock", ImVec2(-1,0))) {
+        if (state.textureStack.Width() == 0)
+            state.textureStack = core::TextureLayerStack(1024u, 1024u);
+        const auto newIndex = state.textureStack.AddLayer(state.newLayerName, state.newLayerDiffuse, state.newLayerUvScale);
+        state.selectedLayer = static_cast<int>(newIndex);
+        state.editMode = EditMode::TexturePaint;
+        state.layerPreviewDirty = true;
+    }
+    ImGui::EndDisabled();
+
+    ImGui::BeginDisabled(state.selectedLayer < 0);
+    if (UI::Button("Ausgewählten Layer entfernen##layerDock", ImVec2(-1,0))) {
+        state.textureStack.RemoveLayer(static_cast<std::size_t>(state.selectedLayer));
+        if (state.textureStack.LayerCount() == 0) state.selectedLayer = -1;
+        else state.selectedLayer = std::min(state.selectedLayer, static_cast<int>(state.textureStack.LayerCount()) - 1);
+        state.layerPreviewDirty = true;
+        state.renderer.UpdateBlendTextures(state.textureStack);
+    }
+    ImGui::EndDisabled();
+}
+
 void DrawWorkspaceAssetBrowser(EditorState& state) {
     const bool objectMode = state.editMode == EditMode::ObjectPlacement;
     const bool textureMode = state.editMode == EditMode::TexturePaint;
