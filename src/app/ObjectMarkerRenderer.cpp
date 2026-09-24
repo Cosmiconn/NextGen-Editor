@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <unordered_set>
 #include <vector>
 
 namespace theseed::mapeditor::app {
@@ -210,6 +211,15 @@ void ObjectMarkerRenderer::Shutdown() {
 
 void ObjectMarkerRenderer::RebuildInstances(const core::ObjectPlacementSet& set, int selectedIndex,
                                              const std::function<bool(std::size_t)>& skipIndex) {
+    std::vector<int> selected;
+    if (selectedIndex >= 0) selected.push_back(selectedIndex);
+    RebuildInstances(set, selected, skipIndex);
+}
+
+void ObjectMarkerRenderer::RebuildInstances(const core::ObjectPlacementSet& set,
+                                             const std::vector<int>& selectedIndices,
+                                             const std::function<bool(std::size_t)>& skipIndex) {
+    const std::unordered_set<int> selectedSet(selectedIndices.begin(), selectedIndices.end());
     std::vector<float> instances;
     instances.reserve(set.Count() * 17);
 
@@ -230,7 +240,7 @@ void ObjectMarkerRenderer::RebuildInstances(const core::ObjectPlacementSet& set,
         model.m[13] = obj.posY;
         model.m[14] = obj.posZ;
 
-        const float highlight = (static_cast<int>(i) == selectedIndex) ? 1.0f : 0.0f;
+        const float highlight = selectedSet.contains(static_cast<int>(i)) ? 1.0f : 0.0f;
         for (int v = 0; v < 16; ++v) instances.push_back(model.m[v]);
         instances.push_back(highlight);
         ++kept;
