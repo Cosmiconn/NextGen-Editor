@@ -692,6 +692,9 @@ struct EditorState {
     std::string shnEditBuffer;
     int shnSortColumn = -1;
     bool shnSortAscending = true;
+    int shnColumnFilterFile = -1;
+    std::vector<std::array<char, 64>> shnColumnFilters;
+    bool shnHighlightClientServerDiff = true;
     std::string shnStatus;
 
     std::string statusMessage;
@@ -2636,6 +2639,10 @@ void SelectShnDocument(EditorState& state, int index) {
     state.shnInlineEditActive = false;
     state.shnInlineEditFocusPending = false;
     state.shnEditPopupOpen = false;
+    state.shnSortColumn = -1;
+    state.shnSortAscending = true;
+    state.shnColumnFilterFile = -1;
+    state.shnColumnFilters.clear();
     state.shnVisibleKey.clear();
 }
 
