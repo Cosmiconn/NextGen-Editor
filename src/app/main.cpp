@@ -4973,16 +4973,29 @@ void DrawPortalsToolsPanel(EditorState& state) {
                         markers.size(), state.legacySaveStem);
     ImGui::TextDisabled("Raute = TownPortal · Dreieck = Schriftrolle · Quadrat = Gate_Town · Ring = Wiederbelebung");
 
+    ImGui::SeparatorText("Auswahl");
+    if (state.selectedPortalKind == kPortalKindNone)
+        ImGui::TextDisabled("Portal im Szene-Outliner oder in der 2D-Ansicht auswählen.");
+
     for (const auto& m : markers) {
         if (m.kind != state.selectedPortalKind || static_cast<int>(m.idx) != state.selectedPortalIdx) continue;
-        ImGui::Separator();
-        ImGui::Text("%s", m.kind == kPortalKindTown ? m.label.c_str() : ("Schriftrolle " + m.label).c_str());
+        ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s",
+                           m.kind == kPortalKindTown ? m.label.c_str() : ("Schriftrolle " + m.label).c_str());
+        ImGui::TextDisabled("%s", m.kind == kPortalKindTown ? "TownPortal · auswählbares Ziel" : "RecallCoord · festes Schriftrollen-Ziel");
+        ImGui::SeparatorText("Position");
         int x = static_cast<int>(m.x), y = static_cast<int>(m.y);
         bool changed = false;
         changed |= UI::InputInt("X", &x, 1, 50);
         changed |= UI::InputInt("Y", &y, 1, 50);
         if (changed) SetSelectedPortalPosition(state, x, y);
+        if (UI::Button("Kamera auf Portal", ImVec2(-1,0))) {
+            const float wx=static_cast<float>(x), wz=static_cast<float>(y);
+            state.camera.SetTarget(wx,state.heightmap.SampleWorld(wx,wz)+25.0f,wz);
+            state.camera.Zoom(260.0f-state.camera.Distance());
+        }
+
         if (m.kind == kPortalKindTown) {
+            ImGui::SeparatorText("Bedingungen");
             auto& f = state.townPortalShn;
             const int cLvl = FindShnColumnByName(f, "MinLevel");
             const int cGrp = FindShnColumnByName(f, "TP_GroupNo");
@@ -5001,9 +5014,12 @@ void DrawPortalsToolsPanel(EditorState& state) {
         }
         break;
     }
+    ImGui::SeparatorText("Positionieren");
     UI::Checkbox("Position per Klick im 2D-View setzen", &state.portalPickMode);
-    if (state.portalPickMode && state.selectedPortalKind == kPortalKindNone) ImGui::TextDisabled("Zuerst ein Ziel in der Liste oder im 2D-View wählen.");
+    if (state.portalPickMode && state.selectedPortalKind == kPortalKindNone)
+        ImGui::TextDisabled("Zuerst ein Ziel im Szene-Outliner oder in der 2D-Ansicht wählen.");
 
+    ImGui::SeparatorText("Aktionen");
     if (state.townPortalLoaded) {
         bool hasTown = false;
         for (const auto& m : markers) if (m.kind == kPortalKindTown) hasTown = true;
@@ -5014,14 +5030,13 @@ void DrawPortalsToolsPanel(EditorState& state) {
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Legt einen neuen Eintrag in TownPortal.shn an. Ob der Client dafür weitere Daten braucht, ist ungeprüft.");
     }
 
-    ImGui::Separator();
-    if (state.townPortalLoaded && UI::Button("TownPortal.shn speichern")) SaveTownPortalFiles(state);
-    if (state.recallCoordLoaded && UI::Button("RecallCoord.txt speichern")) {
+    if (state.townPortalLoaded && UI::Button("TownPortal.shn speichern", ImVec2(-1,0))) SaveTownPortalFiles(state);
+    if (state.recallCoordLoaded && UI::Button("RecallCoord.txt speichern", ImVec2(-1,0))) {
         auto path = std::filesystem::path(PortalServerRoot(state)) / "World" / "RecallCoord.txt";
         auto saved = core::legacy::SaveShineTextFile(state.recallCoordFile, path);
         state.statusMessage = saved ? std::string("RecallCoord.txt gespeichert.") : "Fehler: " + saved.error();
     }
-    if (UI::Button("Verwerfen und neu laden")) state.portalDataSig.clear();
+    if (UI::Button("Verwerfen und neu laden", ImVec2(-1,0))) state.portalDataSig.clear();
 }
 
 // Zeichnet die Portal-Marker in den 2D-View (Farben wie im restlichen Theme: Weiss = gewaehlt,
