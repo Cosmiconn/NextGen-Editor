@@ -7990,6 +7990,7 @@ void DrawEditor2DContent(EditorState& state) {
     // Legacy->Editor ist eine Spiegelung, ohne diese Umkehr waere die Karte im Bild kopfueber.
     ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(tex)), viewSize,
                  ImVec2(0, 0), ImVec2(1, 1));
+    const bool hoveredView = ImGui::IsItemHovered();
     if (objectMode && ImGui::BeginDragDropTarget()) {
         if (const ImGuiPayload* payload=ImGui::AcceptDragDropPayload("NEXTGEN_NIF_ASSET")) {
             const char* model=static_cast<const char*>(payload->Data);
@@ -8003,7 +8004,6 @@ void DrawEditor2DContent(EditorState& state) {
         }
         ImGui::EndDragDropTarget();
     }
-    const bool hoveredView = ImGui::IsItemHovered();
     {
         // Zoom (Mausrad, um den Mauszeiger) und Verschieben (mittlere/rechte Taste ziehen).
         ImGuiIO& io2 = ImGui::GetIO();
@@ -8026,6 +8026,18 @@ void DrawEditor2DContent(EditorState& state) {
     // Alles Folgende (Marker, Fussabdruecke, Pinsel) wird auf den Viewport beschnitten.
     ImGui::GetWindowDrawList()->PushClipRect(viewMin, ImVec2(viewMin.x + viewSize.x, viewMin.y + viewSize.y), true);
     struct ClipPop { ~ClipPop() { ImGui::GetWindowDrawList()->PopClipRect(); } } clipPop;
+
+    if (hoveredView && (state.editMode==EditMode::Heightmap || texMode || walkMode)) {
+        const float radius=ActiveWorldBrushRadius(state);
+        const ImVec2 mouse=ImGui::GetMousePos();
+        const float rx=spanX>0.0f ? radius/spanX*imageSize.x : 0.0f;
+        const float ry=spanZ>0.0f ? radius/spanZ*imageSize.y : rx;
+        const float rp=std::max(2.0f,(rx+ry)*0.5f);
+        ImDrawList* dl=ImGui::GetWindowDrawList();
+        dl->AddCircle(mouse,rp,ActiveBrushColor(state),64,2.0f);
+        if(!walkMode) dl->AddCircle(mouse,rp*0.5f,ActiveBrushColor(state,110),48,1.0f);
+        dl->AddCircleFilled(mouse,2.5f,ActiveBrushColor(state));
+    }
 
     if (objectMode || walkMode) {
         // Marker für alle platzierten Objekte einzeichnen - im Objekt-Modus normal (weiß =
@@ -8517,6 +8529,68 @@ int PlaceObjectAtWorld(EditorState& state, const std::string& modelPath, float x
     return id;
 }
 
+
+bool ProjectWorldTo3DView(const EditorState& state, const ImVec2& imagePos, int w, int h,
+                          const EditVec3& world, ImVec2& screen) {
+    const app::Mat4 vp=app::OrbitCamera::PerspectiveMatrix(
+        0.9f,static_cast<float>(std::max(1,w))/static_cast<float>(std::max(1,h)),
+        state.camera.NearPlane(),state.camera.FarPlane())*state.camera.ViewMatrix();
+    const float cx=vp.m[0]*world.x+vp.m[4]*world.y+vp.m[8]*world.z+vp.m[12];
+    const float cy=vp.m[1]*world.x+vp.m[5]*world.y+vp.m[9]*world.z+vp.m[13];
+    const float cw=vp.m[3]*world.x+vp.m[7]*world.y+vp.m[11]*world.z+vp.m[15];
+    if(cw<=1.0e-5f) return false;
+    const float nx=cx/cw, ny=cy/cw;
+    screen=ImVec2(imagePos.x+(nx*0.5f+0.5f)*w,
+                  imagePos.y+(1.0f-(ny*0.5f+0.5f))*h);
+    return true;
+}
+
+float ActiveWorldBrushRadius(const EditorState& state) {
+    if(state.editMode==EditMode::Heightmap) return state.brush.radius;
+    if(state.editMode==EditMode::TexturePaint) return state.paintSettings.radius;
+    if(state.editMode==EditMode::BlockWalk) return state.walkSettings.radius;
+    return 0.0f;
+}
+
+ImU32 ActiveBrushColor(const EditorState& state, int alpha=235) {
+    if(state.editMode==EditMode::BlockWalk)
+        return state.walkBlockMode?IM_COL32(245,85,85,alpha):IM_COL32(80,220,145,alpha);
+    if(state.editMode==EditMode::TexturePaint) return IM_COL32(90,190,255,alpha);
+    return IM_COL32(75,205,255,alpha);
+}
+
+void Draw3DBrushOverlay(EditorState& state, const ImVec2& imagePos, int w, int h, bool hovered) {
+    if(!hovered || (state.editMode!=EditMode::Heightmap &&
+                    state.editMode!=EditMode::TexturePaint &&
+                    state.editMode!=EditMode::BlockWalk)) return;
+    const auto hit=PickTerrainFrom3D(state,imagePos,w,h,ImGui::GetMousePos());
+    if(!hit) return;
+    const float radius=ActiveWorldBrushRadius(state);
+    if(radius<=0.0f) return;
+    ImDrawList* dl=ImGui::GetWindowDrawList();
+    dl->PushClipRect(imagePos,ImVec2(imagePos.x+w,imagePos.y+h),true);
+    auto ring=[&](float r,ImU32 col,float thickness) {
+        std::array<ImVec2,49> pts{};
+        int count=0;
+        for(int i=0;i<=48;++i) {
+            const float a=static_cast<float>(i)*(2.0f*3.14159265f/48.0f);
+            const float x=hit->x+std::cos(a)*r;
+            const float z=hit->z+std::sin(a)*r;
+            const float y=state.heightmap.SampleWorld(x,z)+3.0f;
+            ImVec2 p;
+            if(ProjectWorldTo3DView(state,imagePos,w,h,{x,y,z},p)) pts[count++]=p;
+        }
+        if(count>=3) dl->AddPolyline(pts.data(),count,col,ImDrawFlags_None,thickness);
+    };
+    ring(radius,ActiveBrushColor(state),2.0f);
+    if(state.editMode!=EditMode::BlockWalk)
+        ring(radius*0.5f,ActiveBrushColor(state,120),1.0f);
+    ImVec2 center;
+    if(ProjectWorldTo3DView(state,imagePos,w,h,*hit,center))
+        dl->AddCircleFilled(center,3.0f,ActiveBrushColor(state));
+    dl->PopClipRect();
+}
+
 std::string CurrentGizmoSelectionKey(const EditorState& state) {
     std::string key = std::to_string(state.objectGizmoOperation) + "|" +
                       (state.objectGizmoLocal ? "L|" : "W|");
@@ -8701,6 +8775,7 @@ void DrawPreview3DContent(EditorState& state) {
         ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(tex)), ImVec2(static_cast<float>(w), static_cast<float>(h)),
                      ImVec2(0, 1), ImVec2(1, 0)); // FBO-Textur ist vertikal gespiegelt -> UVs tauschen
     }
+    const bool viewImageHovered = ImGui::IsItemHovered();
     if (state.editMode == EditMode::ObjectPlacement && ImGui::BeginDragDropTarget()) {
         if (const ImGuiPayload* payload=ImGui::AcceptDragDropPayload("NEXTGEN_NIF_ASSET")) {
             const char* model=static_cast<const char*>(payload->Data);
@@ -8711,7 +8786,7 @@ void DrawPreview3DContent(EditorState& state) {
         }
         ImGui::EndDragDropTarget();
     }
-    const bool viewImageHovered = ImGui::IsItemHovered();
+    Draw3DBrushOverlay(state,imageScreenPos,w,h,viewImageHovered);
     const bool gizmoCapturing = DrawObjectTransformGizmo(state, imageScreenPos, w, h);
     DrawObjectGizmoToolbar(state, imageScreenPos);
     DrawNpcOverlay3D(state, imageScreenPos, w, h);
