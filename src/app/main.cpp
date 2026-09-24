@@ -2739,6 +2739,146 @@ constexpr std::uint8_t kShnCellNormal = 0;
 constexpr std::uint8_t kShnCellAutoFilled = 1;   // grün - aus einer anderen Datei übernommen
 constexpr std::uint8_t kShnCellNeedsInput = 2;   // rot - braucht noch manuelle Eingabe
 
+void EnsureCellStatusSize(EditorState::ShnDocument& doc);
+
+bool ShnValueAsNumber(const core::legacy::ShnValue& value, long double& out) {
+    return std::visit([&](auto&& x) -> bool {
+        using T = std::decay_t<decltype(x)>;
+        if constexpr (std::is_arithmetic_v<T>) {
+            out = static_cast<long double>(x);
+            return true;
+        }
+        return false;
+    }, value);
+}
+
+int CompareShnValues(const core::legacy::ShnValue& a, const core::legacy::ShnValue& b) {
+    long double na = 0.0L, nb = 0.0L;
+    if (ShnValueAsNumber(a, na) && ShnValueAsNumber(b, nb)) {
+        if (na < nb) return -1;
+        if (na > nb) return 1;
+        return 0;
+    }
+    const std::string sa = LowerAscii(core::legacy::ShnValueToString(a));
+    const std::string sb = LowerAscii(core::legacy::ShnValueToString(b));
+    if (sa < sb) return -1;
+    if (sa > sb) return 1;
+    return 0;
+}
+
+void ClearShnDirtyCells(EditorState::ShnDocument& doc) {
+    for (auto& row : doc.cellDirty) std::fill(row.begin(), row.end(), 0);
+}
+
+bool ApplyShnCellText(EditorState& state, int document, int row, int column,
+                      const std::string& text, bool recordUndo = true) {
+    if (document < 0 || document >= static_cast<int>(state.shnFiles.size())) return false;
+    auto& doc = state.shnFiles[static_cast<std::size_t>(document)];
+    auto& file = doc.file;
+    if (row < 0 || row >= static_cast<int>(file.rows.size()) ||
+        column < 0 || column >= static_cast<int>(file.columns.size()) ||
+        column >= static_cast<int>(file.rows[static_cast<std::size_t>(row)].values.size())) return false;
+
+    auto parsed = core::legacy::ParseShnValue(file.columns[static_cast<std::size_t>(column)], text);
+    if (!parsed) {
+        state.shnStatus = parsed.error();
+        return false;
+    }
+
+    auto& value = file.rows[static_cast<std::size_t>(row)].values[static_cast<std::size_t>(column)];
+    if (value == *parsed) return true;
+
+    if (recordUndo) {
+        state.shnUndo.push_back({document, row, column, value, *parsed});
+        if (state.shnUndo.size() > 512) state.shnUndo.erase(state.shnUndo.begin());
+        state.shnRedo.clear();
+    }
+
+    value = std::move(*parsed);
+    doc.dirty = true;
+    EnsureCellStatusSize(doc);
+    doc.cellStatus[static_cast<std::size_t>(row)][static_cast<std::size_t>(column)] = kShnCellNormal;
+    doc.cellDirty[static_cast<std::size_t>(row)][static_cast<std::size_t>(column)] = 1;
+    ++state.shnEditCounter;
+    state.shnVisibleKey.clear();
+    state.shnStatus = std::string(ShnSourceName(doc.source)) + ": Zelle geändert (noch nicht gespeichert).";
+    return true;
+}
+
+void UndoShnCellEdit(EditorState& state) {
+    if (state.shnUndo.empty()) return;
+    const auto edit = state.shnUndo.back();
+    state.shnUndo.pop_back();
+    if (edit.document < 0 || edit.document >= static_cast<int>(state.shnFiles.size())) return;
+    auto& doc = state.shnFiles[static_cast<std::size_t>(edit.document)];
+    if (edit.row < 0 || edit.row >= static_cast<int>(doc.file.rows.size()) ||
+        edit.column < 0 || edit.column >= static_cast<int>(doc.file.columns.size())) return;
+    doc.file.rows[static_cast<std::size_t>(edit.row)].values[static_cast<std::size_t>(edit.column)] = edit.before;
+    doc.dirty = true;
+    EnsureCellStatusSize(doc);
+    doc.cellDirty[static_cast<std::size_t>(edit.row)][static_cast<std::size_t>(edit.column)] = 1;
+    state.shnRedo.push_back(edit);
+    ++state.shnEditCounter;
+    state.shnVisibleKey.clear();
+    state.shnSelectedFile = edit.document;
+    state.shnSelectedRow = edit.row;
+    state.shnSelectedColumn = edit.column;
+    state.shnStatus = "SHN-Zelländerung rückgängig gemacht.";
+}
+
+void RedoShnCellEdit(EditorState& state) {
+    if (state.shnRedo.empty()) return;
+    const auto edit = state.shnRedo.back();
+    state.shnRedo.pop_back();
+    if (edit.document < 0 || edit.document >= static_cast<int>(state.shnFiles.size())) return;
+    auto& doc = state.shnFiles[static_cast<std::size_t>(edit.document)];
+    if (edit.row < 0 || edit.row >= static_cast<int>(doc.file.rows.size()) ||
+        edit.column < 0 || edit.column >= static_cast<int>(doc.file.columns.size())) return;
+    doc.file.rows[static_cast<std::size_t>(edit.row)].values[static_cast<std::size_t>(edit.column)] = edit.after;
+    doc.dirty = true;
+    EnsureCellStatusSize(doc);
+    doc.cellDirty[static_cast<std::size_t>(edit.row)][static_cast<std::size_t>(edit.column)] = 1;
+    state.shnUndo.push_back(edit);
+    ++state.shnEditCounter;
+    state.shnVisibleKey.clear();
+    state.shnSelectedFile = edit.document;
+    state.shnSelectedRow = edit.row;
+    state.shnSelectedColumn = edit.column;
+    state.shnStatus = "SHN-Zelländerung wiederhergestellt.";
+}
+
+void CopySelectedShnCell(EditorState& state) {
+    if (state.shnSelectedFile < 0 || state.shnSelectedFile >= static_cast<int>(state.shnFiles.size())) return;
+    const auto& file = state.shnFiles[static_cast<std::size_t>(state.shnSelectedFile)].file;
+    if (state.shnSelectedRow < 0 || state.shnSelectedRow >= static_cast<int>(file.rows.size()) ||
+        state.shnSelectedColumn < 0 || state.shnSelectedColumn >= static_cast<int>(file.columns.size())) return;
+    const auto& value = file.rows[static_cast<std::size_t>(state.shnSelectedRow)]
+                            .values[static_cast<std::size_t>(state.shnSelectedColumn)];
+    const std::string text = core::legacy::ShnValueToString(value);
+    ImGui::SetClipboardText(text.c_str());
+    state.shnStatus = "SHN-Zelle kopiert.";
+}
+
+void PasteSelectedShnCell(EditorState& state) {
+    const char* text = ImGui::GetClipboardText();
+    if (!text) return;
+    ApplyShnCellText(state, state.shnSelectedFile, state.shnSelectedRow, state.shnSelectedColumn, text);
+}
+
+void StartShnInlineEdit(EditorState& state, int row, int column) {
+    if (state.shnSelectedFile < 0 || state.shnSelectedFile >= static_cast<int>(state.shnFiles.size())) return;
+    auto& file = state.shnFiles[static_cast<std::size_t>(state.shnSelectedFile)].file;
+    if (row < 0 || row >= static_cast<int>(file.rows.size()) ||
+        column < 0 || column >= static_cast<int>(file.columns.size())) return;
+    state.shnSelectedRow = row;
+    state.shnSelectedColumn = column;
+    state.shnEditBuffer = core::legacy::ShnValueToString(
+        file.rows[static_cast<std::size_t>(row)].values[static_cast<std::size_t>(column)]);
+    state.shnInlineEditActive = true;
+    state.shnInlineEditFocusPending = true;
+    state.shnEditPopupOpen = false;
+}
+
 void DrawShnCellEditor(EditorState& state) {
     if (!state.shnEditPopupOpen || state.shnSelectedFile < 0 || state.shnSelectedFile >= static_cast<int>(state.shnFiles.size())) return;
     auto& doc = state.shnFiles[static_cast<std::size_t>(state.shnSelectedFile)];
@@ -2777,21 +2917,11 @@ void DrawShnCellEditor(EditorState& state) {
         // sich nur EINE Ziffer eingeben, bei jedem Wert nie ein laengerer als vorher (CHANGELOG
         // [0.44.28]). Das war auch die eigentliche Ursache von "SHN-Zellen nicht bearbeitbar".
         auto apply = [&]() {
-            auto parsed = core::legacy::ParseShnValue(column, state.shnEditBuffer);
-            if (parsed) {
-                file.rows[static_cast<std::size_t>(state.shnSelectedRow)].values[static_cast<std::size_t>(state.shnSelectedColumn)] = std::move(*parsed);
-                doc.dirty = true;
-                ++state.shnEditCounter;
-                // Grün/Rot-Markierung dieser Zelle aufheben - der Nutzer hat sie jetzt selbst
-                // bearbeitet, egal ob sie vorher "braucht Eingabe" oder "übernommen" war.
-                if (static_cast<std::size_t>(state.shnSelectedRow) < doc.cellStatus.size() &&
-                    static_cast<std::size_t>(state.shnSelectedColumn) < doc.cellStatus[static_cast<std::size_t>(state.shnSelectedRow)].size()) {
-                    doc.cellStatus[static_cast<std::size_t>(state.shnSelectedRow)][static_cast<std::size_t>(state.shnSelectedColumn)] = kShnCellNormal;
-                }
-                state.shnStatus = std::string(ShnSourceName(doc.source)) + ": Zelle geändert (noch nicht gespeichert).";
+            if (ApplyShnCellText(state, state.shnSelectedFile, state.shnSelectedRow,
+                                 state.shnSelectedColumn, state.shnEditBuffer)) {
                 state.shnEditPopupOpen = false;
                 ImGui::CloseCurrentPopup();
-            } else state.shnStatus = parsed.error();
+            }
         };
 
         if (!distinctValues.empty()) {
@@ -2826,7 +2956,11 @@ void DrawShnCellEditor(EditorState& state) {
 // Vergrößert cellStatus bei Bedarf auf die aktuelle Zeilen-/Spaltenzahl (neue Felder = normal).
 void EnsureCellStatusSize(EditorState::ShnDocument& doc) {
     doc.cellStatus.resize(doc.file.rows.size());
-    for (auto& rowStatus : doc.cellStatus) rowStatus.resize(doc.file.columns.size(), kShnCellNormal);
+    doc.cellDirty.resize(doc.file.rows.size());
+    for (std::size_t i = 0; i < doc.file.rows.size(); ++i) {
+        doc.cellStatus[i].resize(doc.file.columns.size(), kShnCellNormal);
+        doc.cellDirty[i].resize(doc.file.columns.size(), 0);
+    }
 }
 
 // Liefert einen sinnvollen Default-Text für ParseShnValue, passend zum Spaltentyp - für neu
