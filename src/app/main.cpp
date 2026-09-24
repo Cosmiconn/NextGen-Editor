@@ -7425,20 +7425,32 @@ void DrawToolsContent(EditorState& state) {
                 }
 
                 if (obj) {
-                    const float oldRotDeg = std::atan2(obj->rotY, obj->rotW) * 2.0f * 180.0f / 3.14159265f;
-                    float rotDeg = oldRotDeg;
-                    if (UI::SliderFloat("Rotation um Hochachse (°)", &rotDeg, -180.0f, 180.0f)) {
-                        RotateSelectedObjectsYawBy(state, (rotDeg - oldRotDeg) * 3.14159265f / 180.0f);
-                        obj = EditableObject(state, state.selectedObject);
+                    const EditQuat oldQ=NormalizeEditQuat({obj->rotX,obj->rotY,obj->rotZ,obj->rotW});
+                    app::Mat4 matrix=ObjectEditMatrix({obj->posX,obj->posY,obj->posZ},oldQ,std::max(0.001f,obj->scale));
+                    float tr[3]{}, rot[3]{}, sc[3]{};
+                    ImGuizmo::DecomposeMatrixToComponents(matrix.m,tr,rot,sc);
+                    float editedRot[3]={rot[0],rot[1],rot[2]};
+                    if (ImGui::InputFloat3("Rotation XYZ (°)",editedRot,"%.1f")) {
+                        float uniformScale[3]={std::max(0.001f,obj->scale),std::max(0.001f,obj->scale),std::max(0.001f,obj->scale)};
+                        app::Mat4 changed=app::Mat4::Identity();
+                        ImGuizmo::RecomposeMatrixFromComponents(tr,editedRot,uniformScale,changed.m);
+                        const EditQuat newQ=MatrixRotationQuat(changed);
+                        const EditQuat delta=MulEditQuat(newQ,ConjugateEditQuat(oldQ));
+                        const auto pivot=ComputeObjectSelectionPivot(state);
+                        if(pivot.valid) RotateSelectedObjectsAroundPivot(state,pivot.position,delta);
+                        state.objectGizmoMatrixValid=false;
+                        obj=EditableObject(state,state.selectedObject);
                     }
                 }
 
                 if (obj) {
                     const float oldScale = obj->scale;
                     float scale = oldScale;
-                    if (UI::SliderFloat("Skalierung", &scale, 0.1f, 5.0f)) {
+                    if (UI::SliderFloat("Skalierung", &scale, 0.01f, 100.0f, "%.3f",
+                                        ImGuiSliderFlags_Logarithmic)) {
                         const float factor = oldScale > 1.0e-6f ? scale / oldScale : 1.0f;
                         ScaleSelectedObjectsBy(state, factor);
+                        state.objectGizmoMatrixValid=false;
                         obj = EditableObject(state, state.selectedObject);
                     }
                 }
