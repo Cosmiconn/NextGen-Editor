@@ -8169,7 +8169,9 @@ void DrawWorkspaceTabBar(EditorState& state) {
             state.walkPreviewDirty = true;
         }
         if (mode == EditMode::TexturePaint) ImGui::SetWindowFocus("Layer##layerManager");
-        if (mode == EditMode::ObjectPlacement) ImGui::SetWindowFocus("Szene##sceneOutliner");
+        if (mode == EditMode::ObjectPlacement || mode == EditMode::Npcs ||
+            mode == EditMode::Mobs || mode == EditMode::Portals)
+            ImGui::SetWindowFocus("Szene##sceneOutliner");
     };
     auto undoAvailable = [&]() {
         switch (state.editMode) {
