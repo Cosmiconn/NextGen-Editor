@@ -3196,56 +3196,63 @@ void DrawProjectHub(EditorState& state) {
 // echten UI-Elemente - daher gibt es hier bewusst keine "Sticky Note"-Komponente mehr.)
 
 void DrawNewProjectConfig(EditorState& state) {
-    DrawTopNav(state, T("newproject.title"));
-    ImGui::Dummy(ImVec2(0.0f, 10.0f));
+    DrawTopNav(state, "Projekt");
 
-    ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(55, 125, 195, 255));
-    ImGui::SetNextItemWidth(500.0f);
-    ImGui::Text("%s", T("newproject.name")); ImGui::SameLine(180.0f);
-    ImGui::SetNextItemWidth(500.0f);
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "PROJEKT KONFIGURIEREN");
+    ImGui::SameLine();
+    ImGui::TextDisabled("Client, Server und Arbeitsordner einmal zentral festlegen");
+    ImGui::Dummy(ImVec2(0,8));
+
+    const float cardW = std::min(820.0f, std::max(560.0f, ImGui::GetContentRegionAvail().x * 0.68f));
+    ImGui::BeginChild("##projectConfigCard", ImVec2(cardW, 0), true);
+
+    ImGui::TextDisabled("PROJEKTNAME");
+    ImGui::SetNextItemWidth(-1.0f);
     UI::InputText("##projname", state.project.name, sizeof(state.project.name));
+    ImGui::TextDisabled("Interner Name des NextGen-Editor-Projekts.");
 
-    ImGui::Text("%s", T("newproject.projectfolder")); ImGui::SameLine(180.0f);
-    ImGui::SetNextItemWidth(460.0f);
+    ImGui::Dummy(ImVec2(0,6));
+    ImGui::TextDisabled("PROJEKTORDNER");
+    ImGui::SetNextItemWidth(-44.0f);
     UI::InputText("##projfolder", state.project.projectFolder, sizeof(state.project.projectFolder));
 #ifdef _WIN32
     ImGui::SameLine();
-    if (UI::Button(("...##pf"))) {
-        if (auto picked = BrowseForFolderWindows(T("newproject.projectfolder"))) {
+    if (UI::Button("...##pf", ImVec2(36,0))) {
+        if (auto picked = BrowseForFolderWindows(T("newproject.projectfolder")))
             std::snprintf(state.project.projectFolder, sizeof(state.project.projectFolder), "%s", picked->c_str());
-        }
     }
 #endif
+    ImGui::TextDisabled("Hier liegen Projektkonfiguration und später die bearbeiteten Ausgabedateien.");
 
-    ImGui::Text("%s", T("newproject.clientfolder")); ImGui::SameLine(180.0f);
-    ImGui::SetNextItemWidth(460.0f);
+    ImGui::Dummy(ImVec2(0,6));
+    ImGui::TextDisabled("CLIENT");
+    ImGui::SetNextItemWidth(-44.0f);
     UI::InputText("##clientfolder", state.project.clientFolder, sizeof(state.project.clientFolder));
 #ifdef _WIN32
     ImGui::SameLine();
-    if (UI::Button(("...##cf"))) {
-        if (auto picked = BrowseForFolderWindows(T("newproject.clientfolder"))) {
+    if (UI::Button("...##cf", ImVec2(36,0))) {
+        if (auto picked = BrowseForFolderWindows(T("newproject.clientfolder")))
             std::snprintf(state.project.clientFolder, sizeof(state.project.clientFolder), "%s", picked->c_str());
-        }
     }
 #endif
+    ImGui::TextDisabled("Quelle für resmap, ressystem, reschar, resitem und Client-SHN.");
 
-    ImGui::Text("%s", T("newproject.serverfolder")); ImGui::SameLine(180.0f);
-    ImGui::SetNextItemWidth(460.0f);
+    ImGui::Dummy(ImVec2(0,6));
+    ImGui::TextDisabled("SERVER");
+    ImGui::SetNextItemWidth(-44.0f);
     UI::InputText("##serverfolder", state.project.serverFolder, sizeof(state.project.serverFolder));
 #ifdef _WIN32
     ImGui::SameLine();
-    if (UI::Button(("...##sf"))) {
-        if (auto picked = BrowseForFolderWindows(T("newproject.serverfolder"))) {
+    if (UI::Button("...##sf", ImVec2(36,0))) {
+        if (auto picked = BrowseForFolderWindows(T("newproject.serverfolder")))
             std::snprintf(state.project.serverFolder, sizeof(state.project.serverFolder), "%s", picked->c_str());
-        }
     }
 #endif
-    ImGui::PopStyleColor();
+    ImGui::TextDisabled("Quelle für 9Data/Shine, World, MobRegen, Quest- und Serverdaten.");
 
-    ImGui::Dummy(ImVec2(0.0f, 12.0f));
-    ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(55, 125, 195, 255));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(70, 145, 220, 255));
-    if (UI::Button(T("newproject.createsave"), ImVec2(620.0f, 44.0f))) {
+    ImGui::Separator();
+    const float actionW = (ImGui::GetContentRegionAvail().x - 8.0f) * 0.5f;
+    if (UI::Button(T("newproject.createsave"), ImVec2(actionW, 38.0f))) {
         if (state.project.name[0] == '\0') {
             state.statusMessage = T("newproject.namemissing");
         } else if (state.project.projectFolder[0] == '\0') {
@@ -3261,13 +3268,18 @@ void DrawNewProjectConfig(EditorState& state) {
             }
         }
     }
-    ImGui::PopStyleColor(2);
+    ImGui::SameLine();
+    if (UI::Button(T("nav.back"), ImVec2(actionW, 38.0f)))
+        state.screen = AppScreen::ProjectHub;
 
     if (!state.statusMessage.empty()) {
-        ImGui::Dummy(ImVec2(0.0f, 10.0f));
+        ImGui::Separator();
         ImGui::TextWrapped("%s", state.statusMessage.c_str());
     }
+
+    ImGui::EndChild();
 }
+
 
 // Vorwärtsdeklarationen: Definitionen liegen weiter unten, nach GetOrLoadAssetThumbnail (dort
 // sind FindResmapRootForAssets & Co. bereits vorhanden) - einzige bewusste Ausnahme vom sonst
