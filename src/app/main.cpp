@@ -314,6 +314,8 @@ struct EditorState {
     int selectedObject = -1;
     std::vector<int> selectedObjects;
     bool objectDragActive = false;
+    bool objectBoxSelectActive = false;
+    ImVec2 objectBoxSelectStart{};
     char selectedObjectModelPath[512] = "";
     int selectedObjectModelPathFor = -1;
     bool selectedObjectModelPathDirty = false;
@@ -8172,14 +8174,70 @@ void DrawEditor2DContent(EditorState& state) {
 
     const bool hovered = hoveredView;
     if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) state.objectDragActive = false;
+
+    // Shift + Ziehen = Rechteckauswahl. Strg+Shift fügt zur bestehenden Auswahl hinzu.
+    bool suppressObjectClickForBox = false;
+    if (objectMode && !state.objectPlaceMode) {
+        const ImGuiIO& ioBox=ImGui::GetIO();
+        if (hovered && ioBox.KeyShift && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+            state.objectBoxSelectActive=true;
+            state.objectBoxSelectStart=ImGui::GetMousePos();
+            state.objectDragActive=false;
+        }
+        if (state.objectBoxSelectActive) {
+            suppressObjectClickForBox=true;
+            const ImVec2 cur=ImGui::GetMousePos();
+            const ImVec2 lo(std::min(state.objectBoxSelectStart.x,cur.x),std::min(state.objectBoxSelectStart.y,cur.y));
+            const ImVec2 hi(std::max(state.objectBoxSelectStart.x,cur.x),std::max(state.objectBoxSelectStart.y,cur.y));
+            ImDrawList* dl=ImGui::GetWindowDrawList();
+            dl->AddRectFilled(lo,hi,IM_COL32(40,150,225,30));
+            dl->AddRect(lo,hi,IM_COL32(80,190,255,235),0.0f,0,1.5f);
+
+            if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+                std::vector<int> hits;
+                RefreshObjectVisibility(state);
+                auto inside=[&](const ImVec2& p){return p.x>=lo.x&&p.x<=hi.x&&p.y>=lo.y&&p.y<=hi.y;};
+                for(std::size_t i=0;i<state.placementSet.Count();++i) {
+                    if(IsObjectHidden(state,i)||IsObjectEditorLocked(state,static_cast<int>(i))) continue;
+                    const auto& obj=state.placementSet.At(i);
+                    const float ou=spanX>0.0f?obj.posX/spanX:0.0f;
+                    const float ov=1.0f-(spanZ>0.0f?obj.posZ/spanZ:0.0f);
+                    const ImVec2 p(cursorScreenPos.x+ou*imageSize.x,cursorScreenPos.y+ov*imageSize.y);
+                    if(inside(p)) hits.push_back(static_cast<int>(i));
+                }
+                RefreshShmdCategoryVisibility(state);
+                for(std::size_t i=0;i<state.shmdCategoryRenderSet.Count();++i) {
+                    if(i<state.shmdCategoryHidden.size()&&state.shmdCategoryHidden[i]) continue;
+                    const auto poly=ObjectFootprintWorldPolygon(state,state.shmdCategoryRenderSet.At(i));
+                    if(poly.empty()) continue;
+                    float cx=0.0f,cz=0.0f;
+                    for(const auto& p:poly){cx+=p.first;cz+=p.second;}
+                    cx/=static_cast<float>(poly.size());cz/=static_cast<float>(poly.size());
+                    const ImVec2 p(cursorScreenPos.x+(cx/spanX)*imageSize.x,
+                                   cursorScreenPos.y+(1.0f-cz/spanZ)*imageSize.y);
+                    if(inside(p)) hits.push_back(ShmdSelectionId(i));
+                }
+                if(!ioBox.KeyCtrl) state.selectedObjects.clear();
+                for(const int id:hits)
+                    if(std::find(state.selectedObjects.begin(),state.selectedObjects.end(),id)==state.selectedObjects.end())
+                        state.selectedObjects.push_back(id);
+                state.selectedObject=state.selectedObjects.empty()?kNoObjectSelection:state.selectedObjects.back();
+                state.selectedObjectModelPathFor=kNoObjectSelection;
+                state.objectGizmoMatrixValid=false;
+                state.objectBoxSelectActive=false;
+                state.statusMessage=std::to_string(hits.size())+" Objekt(e) im Rechteck ausgewählt.";
+            }
+        }
+    }
+
     // Object placement benötigt sowohl den initialen Klick als auch die folgenden
     // Mouse-Down-Frames für flüssiges Verschieben. Die übrigen Modi behalten ihr
     // bisheriges Klick-/Drag-Verhalten.
     const bool clickTrigger = objectMode
-                                   ? (state.objectPlaceMode
+                                   ? (!suppressObjectClickForBox && (state.objectPlaceMode
                                           ? ImGui::IsMouseClicked(ImGuiMouseButton_Left)
                                           : (ImGui::IsMouseClicked(ImGuiMouseButton_Left) ||
-                                             ImGui::IsMouseDown(ImGuiMouseButton_Left)))
+                                             ImGui::IsMouseDown(ImGuiMouseButton_Left))))
                                    : ((state.editMode == EditMode::Npcs || state.editMode == EditMode::Mobs ||
                                        state.editMode == EditMode::Portals)
                                           ? ImGui::IsMouseClicked(ImGuiMouseButton_Left)
