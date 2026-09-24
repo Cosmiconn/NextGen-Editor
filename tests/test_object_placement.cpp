@@ -44,6 +44,17 @@ void TestBasicObjectPlacement() {
     Check(set.At(idx).modelPath == "test.nif", "At() liefert korrektes Objekt");
     set.RemoveObject(idx);
     Check(set.Count() == 0, "RemoveObject entfernt Objekt");
+
+    ObjectCategoryList sky;
+    sky.name = "Sky";
+    sky.modelPaths.push_back("sky.nif");
+    set.categories.push_back(sky);
+    set.AddObject(obj);
+    set.AddObject(obj);
+    set.ClearObjects();
+    Check(set.Count() == 0, "ClearObjects entfernt alle normalen Placements");
+    Check(set.categories.size() == 1 && set.categories[0].modelPaths.size() == 1,
+          "ClearObjects erhält SHMD-Kategorien");
 }
 
 void TestShmdRoundtrip() {
