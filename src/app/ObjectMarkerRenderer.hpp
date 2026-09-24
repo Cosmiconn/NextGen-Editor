@@ -13,6 +13,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <vector>
 
 namespace theseed::mapeditor::app {
 
@@ -32,6 +33,8 @@ public:
     // skipIndex(i) == true überspringt ein Objekt (z.B. weil dafür bereits ein echtes Mesh via
     // NifMeshRenderer gezeichnet wird, siehe main.cpp) - vermeidet doppelte Darstellung.
     void RebuildInstances(const core::ObjectPlacementSet& set, int selectedIndex,
+                          const std::function<bool(std::size_t)>& skipIndex = nullptr);
+    void RebuildInstances(const core::ObjectPlacementSet& set, const std::vector<int>& selectedIndices,
                           const std::function<bool(std::size_t)>& skipIndex = nullptr);
 
     // Zeichnet alle Instanzen in den AKTUELL GEBUNDENEN Framebuffer (siehe
