@@ -71,6 +71,7 @@ if(NOT TARGET glfw)
     FetchContent_MakeAvailable(glfw)
 endif()
 find_package(imgui CONFIG REQUIRED)
+find_package(imguizmo CONFIG REQUIRED)
 find_package(glad CONFIG REQUIRED)
 find_package(OpenGL REQUIRED)
 
@@ -90,6 +91,7 @@ target_link_libraries(map_editor PRIVATE
     mapeditor_core
     glfw
     imgui::imgui
+    imguizmo::imguizmo
     glad::glad
     OpenGL::GL
 )
@@ -200,6 +202,7 @@ target_link_libraries(test_npc_orientation PRIVATE
     mapeditor_core
     glfw
     imgui::imgui
+    imguizmo::imguizmo
     glad::glad
     OpenGL::GL
 )
