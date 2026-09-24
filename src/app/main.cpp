@@ -8341,6 +8341,128 @@ static void DrawNpcOverlay3D(EditorState& state, const ImVec2& imagePos, int w, 
     dl->PopClipRect();
 }
 
+
+std::string CurrentGizmoSelectionKey(const EditorState& state) {
+    std::string key = std::to_string(state.objectGizmoOperation) + "|" +
+                      (state.objectGizmoLocal ? "L|" : "W|");
+    for (const int id : state.selectedObjects) key += std::to_string(id) + ",";
+    return key;
+}
+
+bool DrawObjectTransformGizmo(EditorState& state, const ImVec2& imageScreenPos, int w, int h) {
+    if (state.editMode != EditMode::ObjectPlacement || state.selectedObjects.empty()) {
+        state.objectGizmoMatrixValid = false;
+        state.objectGizmoWasUsing = false;
+        return false;
+    }
+
+    const ObjectSelectionPivot pivot = ComputeObjectSelectionPivot(state);
+    if (!pivot.valid) return false;
+
+    const std::string selectionKey = CurrentGizmoSelectionKey(state);
+    if (!state.objectGizmoMatrixValid || state.objectGizmoSelectionKey != selectionKey ||
+        !state.objectGizmoWasUsing) {
+        const app::Mat4 start = ObjectEditMatrix(pivot.position, pivot.rotation, pivot.scale);
+        std::copy(std::begin(start.m), std::end(start.m), state.objectGizmoMatrix.begin());
+        state.objectGizmoMatrixValid = true;
+        state.objectGizmoSelectionKey = selectionKey;
+    }
+
+    app::Mat4 before{};
+    std::copy(state.objectGizmoMatrix.begin(), state.objectGizmoMatrix.end(), std::begin(before.m));
+
+    const app::Mat4 view = state.camera.ViewMatrix();
+    const app::Mat4 projection = app::OrbitCamera::PerspectiveMatrix(
+        0.9f, static_cast<float>(std::max(1,w)) / static_cast<float>(std::max(1,h)),
+        state.camera.NearPlane(), state.camera.FarPlane());
+
+    ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
+    ImGuizmo::SetOrthographic(false);
+    ImGuizmo::SetRect(imageScreenPos.x, imageScreenPos.y, static_cast<float>(w), static_cast<float>(h));
+    ImGuizmo::SetID(0x4E47);
+
+    ImGuizmo::OPERATION operation = ImGuizmo::TRANSLATE;
+    if (state.objectGizmoOperation == 1) operation = ImGuizmo::ROTATE;
+    else if (state.objectGizmoOperation == 2) operation = ImGuizmo::SCALE;
+
+    const ImGuizmo::MODE mode = state.objectGizmoLocal ? ImGuizmo::LOCAL : ImGuizmo::WORLD;
+    float snap3[3] = {state.objectMoveSnap, state.objectMoveSnap, state.objectMoveSnap};
+    float snap1 = state.objectGizmoOperation == 1 ? state.objectRotateSnap : state.objectScaleSnap;
+    const float* snap = nullptr;
+    if (state.objectGizmoSnap) snap = state.objectGizmoOperation == 0 ? snap3 : &snap1;
+
+    ImGuizmo::Manipulate(view.m, projection.m, operation, mode,
+                         state.objectGizmoMatrix.data(), nullptr, snap);
+
+    const bool usingGizmo = ImGuizmo::IsUsing();
+    const bool overGizmo = ImGuizmo::IsOver();
+
+    if (usingGizmo) {
+        app::Mat4 after{};
+        std::copy(state.objectGizmoMatrix.begin(), state.objectGizmoMatrix.end(), std::begin(after.m));
+        const EditVec3 oldPivot{before.m[12], before.m[13], before.m[14]};
+
+        if (state.objectGizmoOperation == 0) {
+            const float dx = after.m[12] - before.m[12];
+            const float dy = after.m[13] - before.m[13];
+            const float dz = after.m[14] - before.m[14];
+            if (std::abs(dx)+std::abs(dy)+std::abs(dz) > 1.0e-6f)
+                MoveSelectedObjectsBy(state, dx, dy, dz);
+        } else if (state.objectGizmoOperation == 1) {
+            const EditQuat beforeQ = MatrixRotationQuat(before);
+            const EditQuat afterQ = MatrixRotationQuat(after);
+            const EditQuat delta = MulEditQuat(afterQ, ConjugateEditQuat(beforeQ));
+            RotateSelectedObjectsAroundPivot(state, oldPivot, delta);
+        } else {
+            const float beforeScale = MatrixUniformScale(before);
+            const float afterScale = MatrixUniformScale(after);
+            const float factor = beforeScale > 1.0e-6f ? afterScale / beforeScale : 1.0f;
+            if (std::isfinite(factor) && std::abs(factor - 1.0f) > 1.0e-6f)
+                ScaleSelectedObjectsAroundPivot(state, oldPivot, factor);
+        }
+    }
+
+    if (state.objectGizmoWasUsing && !usingGizmo) state.objectGizmoMatrixValid = false;
+    state.objectGizmoWasUsing = usingGizmo;
+    return usingGizmo || overGizmo;
+}
+
+void DrawObjectGizmoToolbar(EditorState& state, const ImVec2& imageScreenPos) {
+    if (state.editMode != EditMode::ObjectPlacement) return;
+    const ImVec2 restore = ImGui::GetCursorScreenPos();
+    ImGui::SetCursorScreenPos(ImVec2(imageScreenPos.x + 10.0f, imageScreenPos.y + 10.0f));
+    ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(11, 27, 41, 235));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(18, 67, 104, 245));
+
+    auto opButton = [&](const char* label, int op) {
+        const bool active = state.objectGizmoOperation == op;
+        if (active) ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(12, 100, 165, 245));
+        if (UI::SmallButton(label)) {
+            state.objectGizmoOperation = op;
+            state.objectGizmoMatrixValid = false;
+        }
+        if (active) ImGui::PopStyleColor();
+        ImGui::SameLine();
+    };
+    opButton("Move",0);
+    opButton("Rotate",1);
+    opButton("Scale",2);
+
+    if (UI::SmallButton(state.objectGizmoLocal ? "Local" : "World")) {
+        state.objectGizmoLocal = !state.objectGizmoLocal;
+        state.objectGizmoMatrixValid = false;
+    }
+    ImGui::SameLine();
+    UI::Checkbox("Snap##gizmoOverlay", &state.objectGizmoSnap);
+    ImGui::SameLine();
+    if (UI::SmallButton("Fokus")) FocusSelectedObjects(state);
+    ImGui::SameLine();
+    if (UI::SmallButton("Boden")) GroundSelectedObjects(state);
+
+    ImGui::PopStyleColor(2);
+    ImGui::SetCursorScreenPos(restore);
+}
+
 void DrawPreview3DContent(EditorState& state) {
     const ImVec2 avail = ImGui::GetContentRegionAvail();
     const int w = std::max(1, static_cast<int>(avail.x));
@@ -8405,6 +8527,8 @@ void DrawPreview3DContent(EditorState& state) {
                      ImVec2(0, 1), ImVec2(1, 0)); // FBO-Textur ist vertikal gespiegelt -> UVs tauschen
     }
     const bool viewImageHovered = ImGui::IsItemHovered();
+    const bool gizmoCapturing = DrawObjectTransformGizmo(state, imageScreenPos, w, h);
+    DrawObjectGizmoToolbar(state, imageScreenPos);
     DrawNpcOverlay3D(state, imageScreenPos, w, h);
 
     // ---- Kamera-Steuerung (CHANGELOG [0.44.32]): Ego-Kamera wie in einem Level-Editor
@@ -8414,14 +8538,14 @@ void DrawPreview3DContent(EditorState& state) {
     {
         ImGuiIO& io = ImGui::GetIO();
         const bool hovered3d = viewImageHovered;
-        if (hovered3d && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) state.cameraLooking = true;
+        if (hovered3d && !gizmoCapturing && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) state.cameraLooking = true;
         if (!ImGui::IsMouseDown(ImGuiMouseButton_Right)) state.cameraLooking = false;
         if (state.cameraLooking) {
             const ImVec2 delta = io.MouseDelta;
             // Maus nach rechts = nach rechts drehen (Yaw sinkt), Maus nach oben = nach oben schauen (Pitch sinkt).
             state.camera.LookBy(-delta.x * 0.0045f, delta.y * 0.0045f);
         }
-        if (hovered3d) {
+        if (hovered3d && !gizmoCapturing) {
             if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
                 const ImVec2 delta = io.MouseDelta;
                 state.camera.OrbitBy(delta.x * 0.01f, -delta.y * 0.01f);
@@ -8433,7 +8557,7 @@ void DrawPreview3DContent(EditorState& state) {
             }
             if (io.MouseWheel != 0.0f) state.camera.ZoomSteps(io.MouseWheel);
         }
-        if ((hovered3d || state.cameraLooking) && !io.WantTextInput) {
+        if ((hovered3d || state.cameraLooking) && !gizmoCapturing && !io.WantTextInput) {
             float fwd = 0.0f, right = 0.0f, up = 0.0f;
             if (ImGui::IsKeyDown(ImGuiKey_W) || ImGui::IsKeyDown(ImGuiKey_UpArrow)) fwd += 1.0f;
             if (ImGui::IsKeyDown(ImGuiKey_S) || ImGui::IsKeyDown(ImGuiKey_DownArrow)) fwd -= 1.0f;
