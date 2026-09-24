@@ -687,6 +687,7 @@ struct EditorState {
     bool nifListScanned = false;
     std::string assetPickerFilter;
     char workspaceAssetFilter[128] = "";
+    char objectOutlinerFilter[128] = "";
     // Basis-Ordner der beiden Listen oben - zum Auflösen relativer Picker-Einträge zu echten
     // Pfaden für Vorschaubilder (siehe GetOrLoadAssetThumbnail). Werden beim Scannen (Klick auf
     // "Durchsuchen...") zusammen mit der jeweiligen Liste gesetzt.
@@ -6812,80 +6813,8 @@ void DrawToolsContent(EditorState& state) {
         ImGui::Text("Gitter: %u x %u", state.heightmap.Width(), state.heightmap.Height());
         ImGui::Text("Höhen-Range: [%.2f, %.2f]", lo, hi);
     } else if (state.editMode == EditMode::TexturePaint) {
-        ImGui::Text("Layer (%zu)", state.textureStack.LayerCount());
-        ImGui::BeginChild("LayerList", ImVec2(0, 120), true);
-        for (std::size_t i = 0; i < state.textureStack.LayerCount(); ++i) {
-            ImGui::PushID(static_cast<int>(i));
-            const bool selected = state.selectedLayer == static_cast<int>(i);
-            // Kleines Icon der Diffuse-Textur vor dem Layer-Namen - nur möglich, wenn der
-            // Textur-Picker in dieser Sitzung schon einmal geöffnet wurde (sonst ist
-            // textureAssetRoot leer und LoadDdsImage schlägt einfach fehl -> kein Icon, kein
-            // Crash). Höchstens 8 Layer (Hardware-Grenze, siehe HANDOFF.md) - kein Clipper nötig.
-            const std::string& diffuseFile = state.textureStack.Layer(i).diffuseFileName;
-            if (!diffuseFile.empty() && !state.textureAssetRoot.empty()) {
-                const std::filesystem::path resolvedPath = state.textureAssetRoot / diffuseFile;
-                const auto thumb = GetOrLoadAssetThumbnail(state, resolvedPath, false);
-                if (thumb.tex) {
-                    ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(thumb.tex)), ImVec2(20.0f, 20.0f));
-                } else {
-                    ImGui::Dummy(ImVec2(20.0f, 20.0f));
-                }
-            } else {
-                ImGui::Dummy(ImVec2(20.0f, 20.0f));
-            }
-            ImGui::SameLine();
-            if (UI::Selectable(state.textureStack.Layer(i).name.c_str(), selected, 0, ImVec2(0.0f, 20.0f))) {
-                state.selectedLayer = static_cast<int>(i);
-                state.layerPreviewDirty = true;
-            }
-            ImGui::PopID();
-        }
-        ImGui::EndChild();
-
-        UI::InputText("Name##newLayer", state.newLayerName, sizeof(state.newLayerName));
-        UI::InputText("Diffuse##newLayer", state.newLayerDiffuse, sizeof(state.newLayerDiffuse));
-        ImGui::SameLine();
-        if (UI::Button("Durchsuchen...##tex")) {
-            if (const auto resmapRoot = FindResmapRootForAssets(state.project.clientFolder)) {
-                if (const auto texRoot = FindNamedSubfolder(*resmapRoot, {"fieldtexture"})) {
-                    state.availableTextureFiles = ListFilesByExtension(*texRoot, {".dds"});
-                    state.textureAssetRoot = *texRoot;
-                    state.textureListScanned = true;
-                    state.assetPickerFilter.clear();
-                    ImGui::OpenPopup("##texPicker");
-                } else {
-                    state.statusMessage = "Kein 'fieldTexture'-Ordner unter " + resmapRoot->string() + " gefunden.";
-                }
-            } else {
-                state.statusMessage = "Kein Client-Ordner/'resmap' aktiv - unter 'Neu' ein Projekt mit Client Ordner anlegen.";
-            }
-        }
-        {
-            std::string picked;
-            if (DrawAssetPickerPopup("##texPicker", state.availableTextureFiles, state.assetPickerFilter, picked,
-                                      state, state.textureAssetRoot, false)) {
-                std::snprintf(state.newLayerDiffuse, sizeof(state.newLayerDiffuse), "%s", picked.c_str());
-            }
-        }
-        UI::InputFloat("UV-Scale##newLayer", &state.newLayerUvScale);
-        if (UI::Button("Layer hinzufügen")) {
-            if (state.textureStack.Width() == 0) {
-                state.textureStack = core::TextureLayerStack(
-                    1024u, 1024u); // feines unabhängiges Textur-Gitter
-            }
-            const auto idx = state.textureStack.AddLayer(state.newLayerName, state.newLayerDiffuse, state.newLayerUvScale);
-            state.selectedLayer = static_cast<int>(idx);
-            state.layerPreviewDirty = true;
-        }
-        ImGui::SameLine();
-        ImGui::BeginDisabled(state.selectedLayer < 0);
-        if (UI::Button("Layer entfernen")) {
-            state.textureStack.RemoveLayer(static_cast<std::size_t>(state.selectedLayer));
-            state.selectedLayer = -1;
-            state.layerPreviewDirty = true;
-        }
-        ImGui::EndDisabled();
-
+        ImGui::TextDisabled("Layer-Auswahl und Layer-Verwaltung befinden sich im separaten Layer-Dock.");
+        ImGui::Separator();
         ImGui::Separator();
         ImGui::Text("Textur-Rasterauflösung");
         UI::InputInt("Breite##texResolution", &state.textureResolutionWidth);
@@ -7004,54 +6933,7 @@ void DrawToolsContent(EditorState& state) {
         }
 
         ImGui::Separator();
-        const std::size_t shmdSceneCount = state.shmdCategoryRenderSet.Count();
-        ImGui::Text("Objekte (%zu)", state.placementSet.Count() + shmdSceneCount);
-        ImGui::TextDisabled("  %zu Placement + %zu SHMD-Szenenmodelle; %zu mit echtem Mesh",
-                            state.placementSet.Count(), shmdSceneCount,
-                            state.nifMeshRenderer.RealMeshCount() + state.shmdCategoryMeshRenderer.RealMeshCount());
-
-        if (!ImGui::GetIO().WantTextInput && ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_A, false))
-            SelectAllNormalObjects(state);
-
-        if (UI::SmallButton("Alle normalen auswählen")) SelectAllNormalObjects(state);
-        ImGui::SameLine();
-        if (UI::SmallButton("Auswahl aufheben")) ClearObjectSelection(state);
-        ImGui::TextDisabled("Strg+Klick: hinzufügen/entfernen · Shift+Klick: Bereich · Strg+A: alle normalen");
-
-        std::vector<int> objectListIds;
-        objectListIds.reserve(shmdSceneCount + state.placementSet.Count());
-        for (std::size_t i = 0; i < shmdSceneCount; ++i) objectListIds.push_back(ShmdSelectionId(i));
-        for (std::size_t i = 0; i < state.placementSet.Count(); ++i) objectListIds.push_back(static_cast<int>(i));
-
-        ImGui::BeginChild("ObjectList", ImVec2(0, 190), true);
-        int listOrdinal = 0;
-        for (std::size_t i = 0; i < shmdSceneCount; ++i, ++listOrdinal) {
-            const int id = ShmdSelectionId(i);
-            const bool selected = std::find(state.selectedObjects.begin(), state.selectedObjects.end(), id) != state.selectedObjects.end();
-            const std::string categoryName = ShmdSelectionCategoryName(state, id);
-            const std::string label = "[" + (categoryName.empty() ? std::string("SHMD") : categoryName) + "] " +
-                                      state.shmdCategoryRenderSet.At(i).modelPath;
-            ImGui::PushID("shmd-scene");
-            ImGui::PushID(static_cast<int>(i));
-            if (UI::Selectable(label.c_str(), selected))
-                SelectObjectFromList(state, id, listOrdinal, objectListIds,
-                                     ImGui::GetIO().KeyCtrl, ImGui::GetIO().KeyShift);
-            ImGui::PopID();
-            ImGui::PopID();
-        }
-        for (std::size_t i = 0; i < state.placementSet.Count(); ++i, ++listOrdinal) {
-            const int id = static_cast<int>(i);
-            const bool selected = std::find(state.selectedObjects.begin(), state.selectedObjects.end(), id) != state.selectedObjects.end();
-            const std::string label = "[Placement] " + state.placementSet.At(i).modelPath;
-            ImGui::PushID("placement");
-            ImGui::PushID(id);
-            if (UI::Selectable(label.c_str(), selected))
-                SelectObjectFromList(state, id, listOrdinal, objectListIds,
-                                     ImGui::GetIO().KeyCtrl, ImGui::GetIO().KeyShift);
-            ImGui::PopID();
-            ImGui::PopID();
-        }
-        ImGui::EndChild();
+        ImGui::TextDisabled("Auswahl erfolgt im separaten Objekt-Outliner oder direkt in 2D/3D.");
 
         const bool multipleSelection = state.selectedObjects.size() > 1;
         if (multipleSelection) {
