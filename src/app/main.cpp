@@ -7308,6 +7308,30 @@ void DrawToolsContent(EditorState& state) {
 
         SyncSelectedObjectModelPath(state);
         if (auto* obj = EditableObject(state, state.selectedObject)) {
+            ImGui::SeparatorText("Transform-Werkzeug");
+            if (UI::RadioButton("Move##gizmoProps",&state.objectGizmoOperation,0)) state.objectGizmoMatrixValid=false;
+            ImGui::SameLine();
+            if (UI::RadioButton("Rotate##gizmoProps",&state.objectGizmoOperation,1)) state.objectGizmoMatrixValid=false;
+            ImGui::SameLine();
+            if (UI::RadioButton("Scale##gizmoProps",&state.objectGizmoOperation,2)) state.objectGizmoMatrixValid=false;
+            if (UI::Checkbox("Local##gizmoProps",&state.objectGizmoLocal)) state.objectGizmoMatrixValid=false;
+            ImGui::SameLine();
+            UI::Checkbox("Snap##gizmoProps",&state.objectGizmoSnap);
+            if (state.objectGizmoSnap) {
+                if (state.objectGizmoOperation==0) {
+                    UI::InputFloat("Grid-Snap",&state.objectMoveSnap,10.0f,50.0f,"%.1f");
+                    state.objectMoveSnap=std::max(0.01f,state.objectMoveSnap);
+                } else if (state.objectGizmoOperation==1) {
+                    UI::InputFloat("Winkel-Snap (°)",&state.objectRotateSnap,1.0f,5.0f,"%.1f");
+                    state.objectRotateSnap=std::max(0.1f,state.objectRotateSnap);
+                } else {
+                    UI::InputFloat("Scale-Snap",&state.objectScaleSnap,0.01f,0.10f,"%.2f");
+                    state.objectScaleSnap=std::max(0.001f,state.objectScaleSnap);
+                }
+            }
+            if (UI::Button("Auswahl fokussieren (F)")) FocusSelectedObjects(state);
+            ImGui::SameLine();
+            if (UI::Button("Auf Terrain (Ende)")) GroundSelectedObjects(state);
             ImGui::Separator();
             const bool shmdScene = IsShmdSelection(state.selectedObject);
             if (shmdScene) {
