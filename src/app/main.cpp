@@ -1084,6 +1084,18 @@ bool PromoteSelectedShmdObjectsToPlacements(EditorState& state, std::optional<in
     if (const auto it = replacement.find(state.selectedObject); it != replacement.end()) {
         state.selectedObject = it->second;
     }
+    // Bei einer Einzel-Transformbearbeitung kann das Entfernen eines Kategoriepfads die
+    // negativen Render-IDs anderer, weiterhin ausgewählter SHMD-Einträge verschieben.
+    // Diese anderen Einträge wurden durch den Regler ohnehin nicht verändert; daher bleibt
+    // danach nur das tatsächlich bearbeitete/konvertierte Objekt ausgewählt. Beim Gruppen-
+    // Drag (onlySelection==nullopt) werden dagegen alle ausgewählten SHMD-Einträge gemeinsam
+    // promoted und die gemischte Mehrfachauswahl bleibt vollständig erhalten.
+    if (onlySelection) {
+        if (const auto it = replacement.find(*onlySelection); it != replacement.end()) {
+            state.selectedObjects = {it->second};
+            state.selectedObject = it->second;
+        }
+    }
     state.selectedObjectModelPathFor = kNoObjectSelection;
     state.selectedObjectModelPathDirty = false;
     ReloadObjectRenderers(state);
