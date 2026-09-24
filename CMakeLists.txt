@@ -82,6 +82,9 @@ add_executable(map_editor
     src/app/ObjectMarkerRenderer.cpp
     src/app/NifMeshRenderer.cpp
 )
+if (WIN32)
+    target_sources(map_editor PRIVATE src/app/resources/nextgen.rc)
+endif()
 target_include_directories(map_editor PRIVATE src/app)
 target_link_libraries(map_editor PRIVATE
     mapeditor_core
