@@ -8977,6 +8977,20 @@ void DrawSceneOutlinerPanel(EditorState& state) {
     ImGui::SameLine();
     ImGui::TextDisabled("%zu gewählt", state.selectedObjects.size());
 
+    if (!state.selectedObjects.empty()) {
+        if (DrawTinyIconButton("outlinerDuplicate",DrawIconDuplicate,false,"Duplizieren (Strg+D)"))
+            DuplicateSelectedObjects(state);
+        ImGui::SameLine();
+        if (DrawTinyIconButton("outlinerFocus",DrawIconCube,false,"Auswahl fokussieren (F)"))
+            FocusSelectedObjects(state);
+        ImGui::SameLine();
+        if (DrawTinyIconButton("outlinerDelete",DrawIconDelete,false,"Auswahl löschen (Entf)"))
+            DeleteSelectedObjects(state);
+        ImGui::SameLine();
+        ImGui::TextDisabled("Strg+C/V · F · Ende=Boden");
+    }
+
+    SyncObjectEditorMetadata(state);
     std::vector<int> visibleIds;
     std::vector<std::string> labels;
     visibleIds.reserve(total);
@@ -9005,10 +9019,61 @@ void DrawSceneOutlinerPanel(EditorState& state) {
             const int id = visibleIds[static_cast<std::size_t>(row)];
             const bool selected = std::find(state.selectedObjects.begin(), state.selectedObjects.end(), id) != state.selectedObjects.end();
             ImGui::PushID(id);
-            if (UI::Selectable(labels[static_cast<std::size_t>(row)].c_str(), selected)) {
-                state.editMode = EditMode::ObjectPlacement;
-                state.objectPlaceMode = 0;
-                SelectObjectFromList(state, id, row, visibleIds, ImGui::GetIO().KeyCtrl, ImGui::GetIO().KeyShift);
+
+            if (id >= 0) {
+                const std::size_t index=static_cast<std::size_t>(id);
+                const bool hidden=index<state.objectEditorHidden.size() && state.objectEditorHidden[index]!=0;
+                const bool locked=index<state.objectEditorLocked.size() && state.objectEditorLocked[index]!=0;
+                if (DrawTinyIconButton("eye",DrawIconEye,!hidden,hidden?"Einblenden":"Ausblenden")) {
+                    state.objectEditorHidden[index]=hidden?0:1;
+                    state.objectVisKey.clear();
+                }
+                ImGui::SameLine(0,2);
+                if (DrawTinyIconButton("lock",DrawIconLock,locked,locked?"Entsperren":"Sperren")) {
+                    state.objectEditorLocked[index]=locked?0:1;
+                    if (!locked) state.objectDragActive=false;
+                }
+                ImGui::SameLine(0,5);
+                ImGui::BeginDisabled(locked);
+            } else {
+                ImGui::TextColored(ImVec4(0.30f,0.78f,0.95f,1.0f),"SHMD");
+                ImGui::SameLine(0,5);
+            }
+
+            const bool clicked=UI::Selectable(labels[static_cast<std::size_t>(row)].c_str(),selected,
+                                               ImGuiSelectableFlags_AllowDoubleClick);
+            if (id>=0) ImGui::EndDisabled();
+            if (clicked) {
+                state.editMode=EditMode::ObjectPlacement;
+                state.objectPlaceMode=0;
+                SelectObjectFromList(state,id,row,visibleIds,ImGui::GetIO().KeyCtrl,ImGui::GetIO().KeyShift);
+                if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) FocusSelectedObjects(state);
+            }
+
+            if (ImGui::BeginPopupContextItem("##objectContext")) {
+                if (!selected) SelectObjectFromList(state,id,row,visibleIds,false,false);
+                ImGui::TextDisabled("%s",labels[static_cast<std::size_t>(row)].c_str());
+                ImGui::Separator();
+                if (ImGui::MenuItem("Fokussieren","F")) FocusSelectedObjects(state);
+                if (ImGui::MenuItem("Auf Terrain setzen","Ende",false,id<0 || !IsObjectEditorLocked(state,id)))
+                    GroundSelectedObjects(state);
+                if (ImGui::MenuItem("Kopieren","Strg+C")) CopySelectedObjects(state);
+                if (ImGui::MenuItem("Duplizieren","Strg+D")) DuplicateSelectedObjects(state);
+                if (id>=0) {
+                    const std::size_t index=static_cast<std::size_t>(id);
+                    const bool hidden=index<state.objectEditorHidden.size() && state.objectEditorHidden[index]!=0;
+                    const bool locked=index<state.objectEditorLocked.size() && state.objectEditorLocked[index]!=0;
+                    if (ImGui::MenuItem(hidden?"Einblenden":"Ausblenden")) {
+                        state.objectEditorHidden[index]=hidden?0:1;
+                        state.objectVisKey.clear();
+                    }
+                    if (ImGui::MenuItem(locked?"Entsperren":"Sperren"))
+                        state.objectEditorLocked[index]=locked?0:1;
+                }
+                ImGui::Separator();
+                if (ImGui::MenuItem("Löschen","Entf",false,id<0 || !IsObjectEditorLocked(state,id)))
+                    DeleteSelectedObjects(state);
+                ImGui::EndPopup();
             }
             ImGui::PopID();
         }
