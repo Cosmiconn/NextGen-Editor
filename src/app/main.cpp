@@ -8431,7 +8431,6 @@ void DrawLayerManagerPanel(EditorState& state) {
         if (state.textureStack.LayerCount() == 0) state.selectedLayer = -1;
         else state.selectedLayer = std::min(state.selectedLayer, static_cast<int>(state.textureStack.LayerCount()) - 1);
         state.layerPreviewDirty = true;
-        state.renderer.UpdateBlendTextures(state.textureStack);
     }
     ImGui::EndDisabled();
 }
@@ -8529,16 +8528,22 @@ void DrawMapEditorWorkspace(EditorState& state) {
         ImGui::DockBuilderSetNodeSize(dockspaceId, ImGui::GetContentRegionAvail());
 
         ImGuiID center = dockspaceId;
-        ImGuiID navigatorId = 0, inspectorId = 0, bottomId = 0;
-        ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, 0.16f, &navigatorId, &center);
+        ImGuiID leftId = 0, inspectorId = 0, bottomId = 0;
+        ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, 0.18f, &leftId, &center);
         ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, 0.25f, &inspectorId, &center);
         ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, 0.34f, &bottomId, &center);
+
+        ImGuiID navigatorId = 0, sceneId = leftId;
+        ImGui::DockBuilderSplitNode(leftId, ImGuiDir_Up, 0.34f, &navigatorId, &sceneId);
+
         ImGuiID assetId = 0, view2dId = bottomId;
         ImGui::DockBuilderSplitNode(bottomId, ImGuiDir_Left, 0.43f, &assetId, &view2dId);
         const ImGuiID view3dId = center;
 
         ImGui::DockBuilderDockWindow("Navigator##mapNavigator", navigatorId);
-        ImGui::DockBuilderDockWindow("Inspector##fileToolsCol", inspectorId);
+        ImGui::DockBuilderDockWindow("Objekte##objectOutliner", sceneId);
+        ImGui::DockBuilderDockWindow("Layer##layerManager", sceneId);
+        ImGui::DockBuilderDockWindow("Eigenschaften##fileToolsCol", inspectorId);
         ImGui::DockBuilderDockWindow("Asset Browser##assetBrowser", assetId);
         ImGui::DockBuilderDockWindow("2D-Ansicht##view2d", view2dId);
         ImGui::DockBuilderDockWindow("3D-Ansicht##view3d", view3dId);
@@ -8588,8 +8593,20 @@ void DrawMapEditorWorkspace(EditorState& state) {
     ImGui::End();
     ImGui::PopStyleColor();
 
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(7, 18, 28, 255));
+    ImGui::Begin("Objekte##objectOutliner");
+    DrawObjectOutlinerPanel(state);
+    ImGui::End();
+    ImGui::PopStyleColor();
+
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(7, 18, 28, 255));
+    ImGui::Begin("Layer##layerManager");
+    DrawLayerManagerPanel(state);
+    ImGui::End();
+    ImGui::PopStyleColor();
+
     ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(8, 20, 31, 255));
-    ImGui::Begin("Inspector##fileToolsCol");
+    ImGui::Begin("Eigenschaften##fileToolsCol");
     ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "EIGENSCHAFTEN");
     ImGui::SameLine(); ImGui::TextDisabled("%s", modeName());
     ImGui::Separator();
