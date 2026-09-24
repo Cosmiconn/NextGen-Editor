@@ -516,6 +516,7 @@ struct EditorState {
         std::vector<std::string> report;
     } skill;
     struct CreatureWizard {
+        int step = 0; // 0 Vorlage, 1 Identität/Werte, 2 Aussehen, 3 Rolle/Platzierung, 4 Zusammenfassung
         bool isNpc = true;
         char templateFilter[64] = "";
         long long templateId = -1;
