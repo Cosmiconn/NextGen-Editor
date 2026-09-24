@@ -4891,16 +4891,19 @@ void DrawQuestEditor(EditorState& state) {
     ImGui::TextColored(kDim, "%s", QuestTextOf(state, q.title).c_str());
     ImGui::Separator();
 
-    if (beginForm("##qmain")) {
+    if (UI::CollapsingHeader("Allgemein", ImGuiTreeNodeFlags_DefaultOpen) &&
+        beginForm("##qGeneral")) {
         u16Row("Quest-ID", "##id", q.id);
         u16Row("Titel-Text-ID", "##title", q.title);
-        { const std::string t = QuestTextOf(state, q.title); infoText(t.empty() ? "(kein Text)" : t, !t.empty()); }
+        {
+            const std::string t = QuestTextOf(state, q.title);
+            infoText(t.empty() ? "(kein Text)" : t, !t.empty());
+        }
         u16Row("Beschreibung-Text-ID", "##desc", q.description);
-        { const std::string t = QuestTextOf(state, q.description); infoText(t.empty() ? "(kein Text)" : t, !t.empty()); }
-        rowLabel("Mindest-Level");
-        { int v = q.minLevel; if (UI::InputInt("##minlv", &v, 0, 0)) q.minLevel = static_cast<std::uint8_t>(std::clamp(v, 0, 255)); }
-        rowLabel("Maximal-Level");
-        { int v = q.maxLevel; if (UI::InputInt("##maxlv", &v, 0, 0)) q.maxLevel = static_cast<std::uint8_t>(std::clamp(v, 0, 255)); }
+        {
+            const std::string t = QuestTextOf(state, q.description);
+            infoText(t.empty() ? "(kein Text)" : t, !t.empty());
+        }
         u16Row("Start-NPC (Mob-ID)", "##startnpc", q.startingNpc);
         {
             auto r = ResolveMobNameForQuest(state, q.startingNpc);
@@ -4916,6 +4919,16 @@ void DrawQuestEditor(EditorState& state) {
         { bool enable = q.enableQuest != 0; if (UI::Checkbox("##enable", &enable)) q.enableQuest = enable ? 1 : 0; }
         rowLabel("Tägliche Quest");
         { bool daily = q.dailyQuest != 0; if (UI::Checkbox("##daily", &daily)) q.dailyQuest = daily ? 1 : 0; }
+        ImGui::EndTable();
+    }
+
+    if (UI::CollapsingHeader("Voraussetzungen", ImGuiTreeNodeFlags_DefaultOpen) &&
+        beginForm("##qRequirements")) {
+        rowLabel("Mindest-Level");
+        { int v = q.minLevel; if (UI::InputInt("##minlv", &v, 0, 0)) q.minLevel = static_cast<std::uint8_t>(std::clamp(v, 0, 255)); }
+        rowLabel("Maximal-Level");
+        { int v = q.maxLevel; if (UI::InputInt("##maxlv", &v, 0, 0)) q.maxLevel = static_cast<std::uint8_t>(std::clamp(v, 0, 255)); }
+
         if (q.needItem != 0) {
             u16Row("Benötigtes Item (ID)", "##reqitem", q.itemId);
             auto r = ResolveItemNameForQuest(state, q.itemId);
@@ -4926,6 +4939,7 @@ void DrawQuestEditor(EditorState& state) {
                     OpenShnRecordById(state, {"ItemInfo.shn"}, EditorState::ShnSource::Server, q.itemId);
             }
         }
+
         if (q.needPred != 0) {
             u16Row("Vorgänger-Quest (ID)", "##pred", q.predecessor);
             bool found = false;
@@ -4950,7 +4964,7 @@ void DrawQuestEditor(EditorState& state) {
     }
 
     ImGui::Spacing();
-    if (UI::CollapsingHeader("Monster-Ziele", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (UI::CollapsingHeader("Ziele · Monster", ImGuiTreeNodeFlags_DefaultOpen)) {
         if (ImGui::BeginTable("##qmobs", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit)) {
             ImGui::TableSetupColumn("Aktiv", ImGuiTableColumnFlags_WidthFixed, 46.0f);
             ImGui::TableSetupColumn("Mob-ID", ImGuiTableColumnFlags_WidthFixed, 90.0f);
@@ -4981,7 +4995,7 @@ void DrawQuestEditor(EditorState& state) {
             ImGui::EndTable();
         }
     }
-    if (UI::CollapsingHeader("Item-Ziele", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (UI::CollapsingHeader("Ziele · Items", ImGuiTreeNodeFlags_DefaultOpen)) {
         if (ImGui::BeginTable("##qitems", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit)) {
             ImGui::TableSetupColumn("Aktiv", ImGuiTableColumnFlags_WidthFixed, 46.0f);
             ImGui::TableSetupColumn("Item-ID", ImGuiTableColumnFlags_WidthFixed, 90.0f);
@@ -5011,7 +5025,7 @@ void DrawQuestEditor(EditorState& state) {
             ImGui::EndTable();
         }
     }
-    if (UI::CollapsingHeader("Drops", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (UI::CollapsingHeader("Ziele · Drops", ImGuiTreeNodeFlags_DefaultOpen)) {
         int removeIdx = -1;
         if (ImGui::BeginTable("##qdrops", 7, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit)) {
             ImGui::TableSetupColumn("Mob-ID", ImGuiTableColumnFlags_WidthFixed, 86.0f);
@@ -5058,30 +5072,42 @@ void DrawQuestEditor(EditorState& state) {
     }
 
     ImGui::Spacing();
-    ImGui::TextDisabled("Belohnungen (144 Byte, Struktur noch nicht kartiert) - werden beim Speichern unverändert übernommen.");
-    ImGui::Separator();
-    ImGui::Text("Skripte (SAY / IF / GOTO / ACCEPT / CREATE_ITEM / ...)");
-    auto scriptEditor = [&](const char* label, core::legacy::QuestScript& script) {
-        ImGui::TextColored(kDim, "%s", label);
-        std::vector<char> buf(script.text.begin(), script.text.end());
-        buf.resize(std::max<std::size_t>(buf.size() + 1, 4096));
-        if (ImGui::InputTextMultiline((std::string("##script") + label).c_str(), buf.data(), buf.size(), ImVec2(-1.0f, 110.0f))) {
-            script.text.assign(buf.data());
-        }
-    };
-    scriptEditor("Start", q.start);
-    scriptEditor("Action", q.action);
-    scriptEditor("Finish", q.finish);
+    if (UI::CollapsingHeader("Belohnungen")) {
+        ImGui::TextDisabled("144 Byte Belohnungsdaten sind noch nicht semantisch kartiert.");
+        ImGui::TextWrapped("Der Editor bewahrt diesen Bereich beim Speichern unverändert auf, statt unbekannte Felder zu erraten.");
+    }
 
-    ImGui::Separator();
-    {
+    if (UI::CollapsingHeader("Dialoge")) {
+        const std::string titleText = QuestTextOf(state, q.title);
+        const std::string descriptionText = QuestTextOf(state, q.description);
+        ImGui::TextDisabled("Titel");
+        ImGui::TextWrapped("%s", titleText.empty() ? "(kein Text)" : titleText.c_str());
+        ImGui::TextDisabled("Beschreibung");
+        ImGui::TextWrapped("%s", descriptionText.empty() ? "(kein Text)" : descriptionText.c_str());
+        ImGui::Separator();
         static char lookupBuf[16] = "";
-        ImGui::SetNextItemWidth(90.0f);
-        UI::InputText("SAY-Text-ID nachschlagen", lookupBuf, sizeof(lookupBuf), ImGuiInputTextFlags_CharsDecimal);
+        ImGui::SetNextItemWidth(120.0f);
+        UI::InputText("SAY-Text-ID", lookupBuf, sizeof(lookupBuf), ImGuiInputTextFlags_CharsDecimal);
         if (lookupBuf[0] != '\0') {
             const std::string t = QuestTextOf(state, std::atoi(lookupBuf));
-            ImGui::TextWrapped("-> %s", t.empty() ? "(kein Text)" : t.c_str());
+            ImGui::TextWrapped("%s", t.empty() ? "(kein Text)" : t.c_str());
         }
+    }
+
+    if (UI::CollapsingHeader("Scripts", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::TextDisabled("SAY / IF / GOTO / ACCEPT / CREATE_ITEM / …");
+        auto scriptEditor = [&](const char* label, core::legacy::QuestScript& script) {
+            ImGui::TextColored(kDim, "%s", label);
+            std::vector<char> buf(script.text.begin(), script.text.end());
+            buf.resize(std::max<std::size_t>(buf.size() + 1, 4096));
+            if (ImGui::InputTextMultiline((std::string("##script") + label).c_str(), buf.data(), buf.size(),
+                                          ImVec2(-1.0f, 110.0f))) {
+                script.text.assign(buf.data());
+            }
+        };
+        scriptEditor("Start", q.start);
+        scriptEditor("Action", q.action);
+        scriptEditor("Finish", q.finish);
     }
     ImGui::EndChild();
 }
