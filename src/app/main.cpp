@@ -7321,14 +7321,6 @@ void DrawToolsContent(EditorState& state) {
     DrawAiScriptEditorPopup(state); // aus Npcs- UND Mobs-Tab erreichbar, siehe CHANGELOG [0.44.22]
     DrawPatrolRouteEditorPopup(state); // dito, siehe CHANGELOG [0.44.23]
 
-    ImGui::Separator();
-    UI::Checkbox(T("workspace.wireframe"), &state.wireframe);
-    if (UI::Button(T("workspace.centercamera"))) {
-        const float spanX = static_cast<float>(state.heightmap.Width() > 1 ? state.heightmap.Width() - 1 : 1) * state.heightmap.BlockWidth();
-        const float spanZ = static_cast<float>(state.heightmap.Height() > 1 ? state.heightmap.Height() - 1 : 1) * state.heightmap.BlockHeight();
-        const auto [lo, hi] = state.heightmap.MinMax();
-        state.camera.SetTarget(spanX * 0.5f, (lo + hi) * 0.5f, spanZ * 0.5f);
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -7384,7 +7376,6 @@ static bool IsObjectHidden(const EditorState& state, std::size_t i) {
 
 // Bereich "Sichtbarkeit" im Werkzeug-Panel des Map-Editors.
 static void DrawVisibilityPanel(EditorState& state) {
-    if (!UI::CollapsingHeader("Sichtbarkeit", ImGuiTreeNodeFlags_DefaultOpen)) return;
     RefreshObjectVisibility(state);
     UI::Checkbox("Terrain", &state.showTerrain);
     UI::Checkbox("Objekt-Modelle (3D)", &state.showObjectMeshes);
@@ -8629,6 +8620,14 @@ void DrawMapEditorWorkspace(EditorState& state) {
     ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "SICHTBARKEIT");
     ImGui::Separator();
     DrawVisibilityPanel(state);
+    ImGui::SeparatorText("Ansicht");
+    UI::Checkbox(T("workspace.wireframe"), &state.wireframe);
+    if (UI::Button(T("workspace.centercamera"), ImVec2(-1,0))) {
+        const float spanX = static_cast<float>(state.heightmap.Width() > 1 ? state.heightmap.Width() - 1 : 1) * state.heightmap.BlockWidth();
+        const float spanZ = static_cast<float>(state.heightmap.Height() > 1 ? state.heightmap.Height() - 1 : 1) * state.heightmap.BlockHeight();
+        const auto [lo, hi] = state.heightmap.MinMax();
+        state.camera.SetTarget(spanX * 0.5f, (lo + hi) * 0.5f, spanZ * 0.5f);
+    }
     ImGui::End();
     ImGui::PopStyleColor();
 
@@ -8684,9 +8683,15 @@ void DrawMapEditorWorkspace(EditorState& state) {
     ImGui::PopStyleColor();
 
     ImGui::Separator();
-    ImGui::TextDisabled("Map: %s  |  Werkzeug: %s  |  Auswahl: %zu",
+    ImGui::TextDisabled("Map: %s  |  Werkzeug: %s  |  Auswahl: %zu  |  %.0f FPS",
                         state.legacySaveStem[0] ? state.legacySaveStem : "-",
-                        modeName(), state.selectedObjects.size());
+                        modeName(), state.selectedObjects.size(), ImGui::GetIO().Framerate);
+    if (state.selectedObject != kNoObjectSelection) {
+        if (const auto* selected = EditableObject(state, state.selectedObject)) {
+            ImGui::SameLine();
+            ImGui::TextDisabled(" | XYZ %.1f / %.1f / %.1f", selected->posX, selected->posY, selected->posZ);
+        }
+    }
     if (!state.statusMessage.empty()) {
         ImGui::SameLine();
         ImGui::TextDisabled(" | ");
