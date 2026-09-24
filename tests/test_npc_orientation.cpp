@@ -88,6 +88,53 @@ int main() {
         Check(fx2 > 0.5f, "EstimateNpcOrientation findet auf dem Testfall ebenfalls 'nach Osten' (fx=" + std::to_string(fx2) + ")");
     }
 
+    std::printf("\n== Objekt-Transform: Mehrfachauswahl, Lock, Pivot ==\n");
+    {
+        EditorState st;
+        core::PlacedObject a; a.modelPath="a.nif"; a.posX=0.0f; a.scale=1.0f;
+        core::PlacedObject b; b.modelPath="b.nif"; b.posX=10.0f; b.scale=1.0f;
+        st.placementSet.AddObject(a);
+        st.placementSet.AddObject(b);
+        st.selectedObjects={0,1};
+        st.selectedObject=1;
+        SyncObjectEditorMetadata(st);
+
+        MoveSelectedObjectsBy(st,5.0f,2.0f,-3.0f);
+        Check(std::fabs(st.placementSet.At(0).posX-5.0f)<1e-4f &&
+              std::fabs(st.placementSet.At(1).posX-15.0f)<1e-4f,
+              "Gruppenbewegung wendet dasselbe Delta auf alle ausgewählten Objekte an");
+
+        st.objectEditorLocked[1]=1;
+        MoveSelectedObjectsBy(st,5.0f,0.0f,0.0f);
+        Check(std::fabs(st.placementSet.At(0).posX-10.0f)<1e-4f &&
+              std::fabs(st.placementSet.At(1).posX-15.0f)<1e-4f,
+              "Gesperrte Objekte werden bei Gruppenbewegung nicht verändert");
+        st.objectEditorLocked[1]=0;
+
+        const auto pivot=ComputeObjectSelectionPivot(st);
+        Check(pivot.valid && std::fabs(pivot.position.x-12.5f)<1e-4f,
+              "Gruppenpivot liegt im Mittelpunkt der Auswahl");
+
+        const float half=3.14159265f*0.25f;
+        const EditQuat quarterTurn{0.0f,std::sin(half),0.0f,std::cos(half)};
+        RotateSelectedObjectsAroundPivot(st,pivot.position,quarterTurn);
+        const float dx=st.placementSet.At(0).posX-st.placementSet.At(1).posX;
+        const float dz=st.placementSet.At(0).posZ-st.placementSet.At(1).posZ;
+        Check(std::fabs(dx)<1e-3f && std::fabs(std::fabs(dz)-5.0f)<1e-3f,
+              "90-Grad-Gruppenrotation dreht Positionen um den gemeinsamen Pivot");
+
+        const auto pivot2=ComputeObjectSelectionPivot(st);
+        const float beforeDist=std::hypot(st.placementSet.At(0).posX-pivot2.position.x,
+                                          st.placementSet.At(0).posZ-pivot2.position.z);
+        ScaleSelectedObjectsAroundPivot(st,pivot2.position,2.0f);
+        const float afterDist=std::hypot(st.placementSet.At(0).posX-pivot2.position.x,
+                                         st.placementSet.At(0).posZ-pivot2.position.z);
+        Check(std::fabs(afterDist-beforeDist*2.0f)<1e-3f &&
+              std::fabs(st.placementSet.At(0).scale-2.0f)<1e-4f &&
+              std::fabs(st.placementSet.At(1).scale-2.0f)<1e-4f,
+              "Gruppenskalierung skaliert Abstand zum Pivot und Objektmaß gemeinsam");
+    }
+
     std::printf("\n%d Fehler.\n", g_failures);
     return g_failures == 0 ? 0 : 1;
 }
