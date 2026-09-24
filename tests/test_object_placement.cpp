@@ -98,6 +98,7 @@ void TestShmdCategoryEditing() {
     // Entspricht den nativen Editor-Operationen für SHMD-Szenenmodelle:
     // Modellpfad austauschen und einen Eintrag löschen.
     set.categories[0].modelPaths[0] = "resmap\\field\\Test\\sky_replaced.nif";
+    set.categories[1].modelPaths[0] = "resmap\\field\\Test\\water_replaced.nif";
     set.categories[2].modelPaths.erase(set.categories[2].modelPaths.begin());
 
     const auto path = std::filesystem::temp_directory_path() / "nextgen-shmd-category-edit.shmd";
@@ -111,8 +112,8 @@ void TestShmdCategoryEditing() {
               loaded->categories[0].modelPaths[0] == "resmap\\field\\Test\\sky_replaced.nif",
               "Sky-Modellpfad nach Bearbeitung erhalten");
         Check(loaded->categories[1].modelPaths.size() == 1 &&
-              loaded->categories[1].modelPaths[0] == "resmap\\field\\Test\\water.nif",
-              "Water-Kategorie nach Bearbeitung erhalten");
+              loaded->categories[1].modelPaths[0] == "resmap\\field\\Test\\water_replaced.nif",
+              "Water-Modellpfad nach Bearbeitung erhalten");
         Check(loaded->categories[2].modelPaths.size() == 1 &&
               loaded->categories[2].modelPaths[0] == "resmap\\field\\Test\\ground_b.nif",
               "GroundObject-Löschung nach Bearbeitung erhalten");
