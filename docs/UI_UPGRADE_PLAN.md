@@ -188,3 +188,69 @@ Noch offen für spätere Ausbaustufen:
 - gleiche Panel-Sprache in allen tiefen Quest-/Skill-/Custom-Dialog-Unteransichten;
 - optional gespeicherte Workspace-Presets;
 - zukünftige Interface/Drop-Table/AI/NIF-Material-Editoren.
+
+## 9. Aktuelles Arbeitsziel
+
+Diese Roadmap ist ab jetzt die verbindliche Reihenfolge für den weiteren Ausbau des bestehenden Editors.
+
+### Priorität 1 – Karten-/Level-Editor
+1. **3D Transform-Gizmo**
+   - Move / Rotate / Scale direkt im 3D-Viewport.
+   - X/Y/Z-Achsen.
+   - World/Local.
+   - Grid-, Winkel- und Scale-Snapping.
+   - Mehrfachauswahl bewegt/rotiert/skaliert als Gruppe.
+   - Auswahl fokussieren und auf Terrain/Boden setzen.
+2. **Asset Drag & Drop**
+   - NIF aus dem Asset Browser direkt in 2D/3D platzieren.
+   - DDS auf Layer bzw. als neuen Layer ziehen.
+3. **Objekt-Produktivität**
+   - Duplicate, Copy/Paste.
+   - Rechteck-/Lasso-Auswahl.
+   - Eye/Lock pro Objekt.
+   - Rechtsklick-Kontextmenüs.
+   - Frame Selected.
+   - später Gruppen/Ordner und frei benennbare Editor-Labels.
+4. **Terrain UX**
+   - Brush-Kreis und Falloff-Vorschau im 2D-/3D-Viewport.
+   - Radius/Stärke-Presets.
+   - deutlicher aktiver Sculpt-Modus.
+5. **Textur/Layer UX**
+   - Drag&Drop-Reihenfolge.
+   - größere Thumbnails.
+   - Doppelklick-Umbenennen.
+   - Kontextmenü und Layer duplizieren.
+   - DDS-Drag&Drop.
+6. **Walk & Block**
+   - klare Legende.
+   - Brush-Overlay.
+   - Rechteckfüllung.
+   - Objekt-/Auswahlflächen als prominente Aktion.
+   - Undo/Redo-Zustand sichtbar.
+
+### Priorität 2 – Szeneobjekte
+- **NPC:** Inspector-Karten Transform / Rolle / Dialog / Händler / AI-Lua / Route / Darstellung; Rollen-/Quest-/Shop-Markierungen im Outliner.
+- **Mobs:** Zone / Monstergruppe / Spawn / MobRoam / Lua; Spawn-/Roam-Flächen in 2D/3D.
+- **Portale:** Typ-Icons, gruppierte Eigenschaften, Zielkarte öffnen bzw. Ziel anzeigen.
+
+### Priorität 3 – Spieldaten
+- **Single/Multi SHN:** Sortierung, eingefrorene Header/Spalten, Spaltenfilter, Dirty-Markierung, Inline-Editing, Validierung, Copy/Paste, Undo/Redo und Client/Server-Diff.
+- **Quest:** Allgemein / Voraussetzungen / Ziele / Belohnungen / Dialoge / Scripts; klickbare Mob/Item/NPC-Referenzen; später optional Quest-Flow.
+- **Skill:** Allgemein / Kosten-Cooldown / Schaden / Voraussetzungen / Zustände / Animation-VFX / Serverwerte; Such-Picker für Animationen/Effekte; Skill-Reihen gruppieren.
+- **Custom NPC/Mob:** echter 5-Schritt-Assistent mit permanenter Vorschau.
+
+### Priorität 4 – Animationen
+- echtes KFM-/KF-Playback.
+- Preview-Viewport und Timeline.
+- KFM-/Transition-Bearbeitung erst dort, wo der Codec nachweislich verlustfrei und sicher schreiben kann.
+
+### Priorität 5 – Globales UX
+- Workspace-Layouts speichern.
+- Unsaved-Changes-Anzeige.
+- Recent Projects / Recent Maps.
+- Toasts.
+- globale Suche / Command Palette.
+- konfigurierbare Shortcuts.
+- konsistente Kontextmenüs.
+- vollständiger 16–20px-In-App-Icon-Satz: Terrain, Brush, Layers, Walk, Cube, NPC, Mob, Portal, Eye, Lock, Duplicate, Delete, Transform, Grid/Snap, Quest, Item, Skill, Shop, Dialog, Lua, Route, KFM, Play/Pause, Project, Settings.
+
