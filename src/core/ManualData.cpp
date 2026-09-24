@@ -214,7 +214,7 @@ Objects can be shown/hidden by category (trees, buildings, rocks ...) in the Vis
      "Bereich Sichtbarkeit", "Visibility area",
      R"MAN(Im Werkzeug-Panel steht der Bereich 'Sichtbarkeit'. Er ändert nur die Anzeige, nie die Daten.
 - Terrain, Objekt-Modelle, Objekt-Platzhalter, NPC-Modelle, Objekte im 2D-View: je ein Schalter.
-- SHMD-Szenenmodelle: Sky, Water und GroundObject lassen sich getrennt ein-/ausblenden. Diese Listen stehen separat vor den normalen Placement-Instanzen in der SHMD und werden nicht als bearbeitbare Placement-Objekte behandelt.
+- SHMD-Szenenmodelle: Sky, Water und GroundObject lassen sich getrennt ein-/ausblenden und erscheinen zusätzlich in der normalen Objektliste. Modellpfad und Löschen bearbeiten den Kategorieeintrag direkt. Sobald Position, Rotation oder Skalierung geändert wird, wandelt der Editor den Eintrag automatisch in ein normales Placement um, weil das SHMD-Kategoriefeld selbst keine Transform-Daten besitzt.
 - Terrain-Layer: jede Texturschicht einzeln ausblenden ('Alle Layer an' setzt alles zurück).
 - Objekt-Kategorien: Bäume & Büsche, Gras & Blumen, Felsen & Steine, Gebäude, Zäune/Mauern/Brücken, Dekoration & Möbel, Wasser & Schiffe, Tiere & Kreaturen, Effekte & Licht, Sonstiges. Mit der Anzahl je Kategorie; 'nur' zeigt allein diese Kategorie, 'Alle an'/'Alle aus' schalten alle.
 - Die Kategorie wird aus dem Modellnamen abgeleitet (Schlüsselwörter) und kann daher selten danebenliegen.
@@ -222,7 +222,7 @@ Objects can be shown/hidden by category (trees, buildings, rocks ...) in the Vis
 - Fehlt NPCs das Modell, werden sie hier namentlich aufgelistet.)MAN",
      R"MAN(The tool panel contains the 'Visibility' area. It only changes the display, never the data.
 - Terrain, object models, object placeholders, NPC models, objects in the 2D view: one switch each.
-- SHMD scene models: Sky, Water and GroundObject can be shown/hidden independently. These lists live separately before normal placement instances in SHMD and are not treated as editable placement objects.
+- SHMD scene models: Sky, Water and GroundObject can be shown/hidden independently and also appear in the normal object list. Model-path changes and deletion edit the category entry directly. As soon as position, rotation or scale changes, the editor automatically converts the entry to a normal placement because the SHMD category field itself has no transform data.
 - Terrain layers: hide each texture layer individually ('All layers on' resets).
 - Object categories: trees & bushes, grass & flowers, rocks & stones, buildings, fences/walls/bridges, decoration & furniture, water & ships, animals & creatures, effects & light, other. With the count per category; 'only' shows just this category, 'All on'/'All off' switch all.
 - The category is derived from the model name (keywords) and can therefore rarely be off.
@@ -603,12 +603,15 @@ const TipRow kTips[] = {
     {"Platzieren", "Klick in die 2D-Ansicht setzt ein neues Objekt.", "Click in the 2D view places a new object."},
     {"Auswählen", "Klick in die 2D-Ansicht wählt das nächste Objekt.", "Click in the 2D view selects the nearest object."},
     {"Modellpfad", "Pfad des Modells (NIF), das platziert wird.", "Path of the model (NIF) to place."},
+    {"Modellpfad##selected", "Ändert das Modell des ausgewählten Placement- oder SHMD-Szenenobjekts.", "Changes the model of the selected placement or SHMD scene object."},
     {"Durchsuchen...##nif", "Modell aus der Bibliothek wählen.", "Choose a model from the library."},
+    {"Durchsuchen...##selectedNif", "Ersetzt das Modell des ausgewählten Objekts aus der NIF-Bibliothek.", "Replaces the selected object's model from the NIF library."},
     {"Rotation um Hochachse (°)##new", "Drehung neuer Objekte um die senkrechte Achse in Grad.", "Rotation of new objects around the vertical axis in degrees."},
     {"Skalierung##new", "Größenfaktor neuer Objekte.", "Scale factor of new objects."},
     {"Rotation um Hochachse (°)", "Drehung des gewählten Objekts um die senkrechte Achse in Grad.", "Rotation of the selected object around the vertical axis in degrees."},
     {"Skalierung", "Größenfaktor des gewählten Objekts.", "Scale factor of the selected object."},
     {"Objekt löschen", "Löscht das gewählte Objekt.", "Deletes the selected object."},
+    {"Ausgewählte Objekte löschen", "Löscht alle ausgewählten Placement- und SHMD-Szenenobjekte.", "Deletes all selected placement and SHMD scene objects."},
     {"Coord-X", "Welt-X-Position (Ost) des NPCs.", "World X position (east) of the NPC."},
     {"Coord-Y", "Welt-Z-Position (Nord) des NPCs (in NPC.txt 'Coord-Y').", "World Z position (north) of the NPC (called 'Coord-Y' in NPC.txt)."},
     {"-15", "Dreht die Blickrichtung um -15 Grad.", "Rotates the facing by -15 degrees."},
