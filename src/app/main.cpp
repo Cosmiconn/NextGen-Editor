@@ -6800,7 +6800,7 @@ void DrawPortalsToolsPanel(EditorState& state) {
     if (PortalServerRoot(state).empty()) {
         if (DrawPortalFolderField("Server-Ordner Server/9Data/Shine (enthält World/RecallCoord.txt, World/NPC.txt) noch nicht gewählt.", "portal_server", state.shineTextRoot)) state.portalDataSig.clear();
     }
-    if (state.legacySaveStem[0] == '\0') { ImGui::TextDisabled("Keine Karte offen."); return; }
+    if (state.legacySaveStem[0] == '\0') { ImGui::TextDisabled("%s",L("Keine Karte offen.","No map open.")); return; }
 
     const auto markers = CollectPortalMarkers(state);
     // Auswahl bereinigen (z.B. nach Kartenwechsel oder Neuladen).
@@ -10284,7 +10284,7 @@ void DrawToolsContent(EditorState& state) {
         }
     } else if (state.editMode == EditMode::Npcs) {
         if (state.shineTextRoot.empty()) {
-            ImGui::TextWrapped("Server-Textdaten-Ordner (Server/9Data/Shine, enthält World/NPC.txt) noch nicht gewählt.");
+            ImGui::TextWrapped("%s",L("Server-Textdaten-Ordner (Server/9Data/Shine, enthält World/NPC.txt) noch nicht gewählt.","Server text-data folder (Server/9Data/Shine, containing World/NPC.txt) has not been selected yet."));
             std::vector<char> rootBuf(state.shineTextRoot.begin(), state.shineTextRoot.end());
             rootBuf.resize(std::max<std::size_t>(rootBuf.size() + 1, 512));
             ImGui::SetNextItemWidth(-1.0f);
@@ -10292,20 +10292,20 @@ void DrawToolsContent(EditorState& state) {
                 state.shineTextRoot.assign(rootBuf.data()); state.npcTextLoaded = false;
             }
 #ifdef _WIN32
-            if (UI::Button("Ordner wählen...##shinetextnpc")) {
-                if (auto p = BrowseForFolderWindows("Server/9Data/Shine Ordner wählen")) { state.shineTextRoot = *p; state.npcTextLoaded = false; }
+            if (UI::Button(L("Ordner wählen...##shinetextnpc","Choose folder...##shinetextnpc"))) {
+                if (auto p = BrowseForFolderWindows(L("Server/9Data/Shine Ordner wählen","Choose Server/9Data/Shine folder"))) { state.shineTextRoot = *p; state.npcTextLoaded = false; }
             }
 #endif
         } else {
             EnsureNpcTextLoaded(state);
             if (!state.npcTextLoaded) {
-                ImGui::TextWrapped("World/NPC.txt konnte unter '%s' nicht geladen werden.", state.shineTextRoot.c_str());
+                ImGui::TextWrapped(L("World/NPC.txt konnte unter '%s' nicht geladen werden.","World/NPC.txt could not be loaded from '%s'."), state.shineTextRoot.c_str());
             } else if (state.legacySaveStem[0] == '\0') {
                 ImGui::TextDisabled("Keine Karte offen.");
             } else {
                 auto indices = NpcRecordsForCurrentMap(state);
                 auto* table = state.npcTextFile.FindTable("ShineNPC");
-                ImGui::TextDisabled("%zu NPCs auf '%s' · Auswahl links im Szene-Outliner",
+                ImGui::TextDisabled(L("%zu NPCs auf '%s' · Auswahl links im Szene-Outliner","%zu NPCs on '%s' · select in the Scene Outliner on the left"),
                                     indices.size(), state.legacySaveStem);
                 if (state.selectedNpcRecordIdx >= 0 && static_cast<std::size_t>(state.selectedNpcRecordIdx) < table->records.size()) {
                     auto& rec = table->records[static_cast<std::size_t>(state.selectedNpcRecordIdx)];
@@ -10323,7 +10323,7 @@ void DrawToolsContent(EditorState& state) {
                             RefreshNpcTransforms(state); // Modelle nur neu positionieren (nicht neu laden)
                         }
                         int direct = std::atoi(rec.values[4].c_str());
-                        if (UI::InputInt("Richtung", &direct)) { rec.values[4] = std::to_string(direct); RefreshNpcTransforms(state); }
+                        if (UI::InputInt(L("Richtung","Direction"), &direct)) { rec.values[4] = std::to_string(direct); RefreshNpcTransforms(state); }
                         // Schnell drehen (Blickrichtung im 3D-View pruefen) + Zuordnung Richtung -> Blickwinkel einstellbar
                         if (UI::SmallButton("-15")) { direct -= 15; rec.values[4] = std::to_string(direct); RefreshNpcTransforms(state); }
                         ImGui::SameLine();
@@ -10332,27 +10332,27 @@ void DrawToolsContent(EditorState& state) {
                         if (UI::SmallButton("+90")) { direct += 90; rec.values[4] = std::to_string(direct); RefreshNpcTransforms(state); }
                         ImGui::SameLine();
                         if (UI::SmallButton("180")) { direct += 180; rec.values[4] = std::to_string(direct); RefreshNpcTransforms(state); }
-                        if (UI::Button("Kamera zu diesem NPC")) {
+                        if (UI::Button(L("Kamera zu diesem NPC","Camera to this NPC"))) {
                             const float nx = static_cast<float>(x), nz = static_cast<float>(y);
                             state.camera.SetTarget(nx, state.heightmap.SampleWorld(nx, nz) + 25.0f, nz);
                             state.camera.Zoom(-state.camera.Distance() + 220.0f);
                         }
-                        ImGui::SeparatorText("Darstellung & Blickrichtung");
+                        ImGui::SeparatorText(L("Darstellung & Blickrichtung","Appearance & facing direction"));
                         {
                             bool orientChanged = false;
                             int signIdx = state.npcDirSign < 0 ? 1 : 0;
-                            const char* signItems[] = {"Richtung wie angegeben (+)", "Richtung gespiegelt (-)"};
+                            const char* signItems[] = {L("Richtung wie angegeben (+)","Direction as specified (+)"), L("Richtung gespiegelt (-)","Mirrored direction (-)")};
                             ImGui::SetNextItemWidth(220.0f);
-                            if (UI::Combo("Drehsinn", &signIdx, signItems, 2)) { state.npcDirSign = signIdx == 1 ? -1 : 1; orientChanged = true; }
+                            if (UI::Combo(L("Drehsinn","Rotation sense"), &signIdx, signItems, 2)) { state.npcDirSign = signIdx == 1 ? -1 : 1; orientChanged = true; }
                             ImGui::SetNextItemWidth(220.0f);
                             // Freier Versatz statt fester 90-Grad-Stufen - die Block&Walk-Analyse fand das beste
                             // Ergebnis nicht exakt auf einem 90-Grad-Vielfachen.
-                            if (UI::SliderInt("Versatz bei Richtung 0 (Grad)", &state.npcDirOffsetDeg, -180, 180, "%d Grad")) orientChanged = true;
+                            if (UI::SliderInt(L("Versatz bei Richtung 0 (Grad)","Offset at direction 0 (degrees)"), &state.npcDirOffsetDeg, -180, 180, L("%d Grad","%d deg"))) orientChanged = true;
                             ImGui::SameLine();
                             if (UI::SmallButton("0##offreset")) { state.npcDirOffsetDeg = 0; orientChanged = true; }
                             if (orientChanged) RefreshNpcTransforms(state);
-                            ImGui::TextDisabled("Der Pfeil zeigt die Blickrichtung des Modells. Stimmt er nicht mit dem Spiel ueberein,\nDrehsinn/Versatz hier einstellen (gilt fuer alle NPCs) oder unten schaetzen lassen.");
-                            if (UI::Button("Versatz aus dieser Karte schaetzen (Block&Walk)")) EstimateNpcOrientation(state);
+                            ImGui::TextDisabled("%s",L("Der Pfeil zeigt die Blickrichtung des Modells. Stimmt er nicht mit dem Spiel ueberein,\nDrehsinn/Versatz hier einstellen (gilt fuer alle NPCs) oder unten schaetzen lassen.","The arrow shows the model facing direction. If it does not match the game,\nadjust rotation sense/offset here (applies to all NPCs) or estimate it below."));
+                            if (UI::Button(L("Versatz aus dieser Karte schaetzen (Block&Walk)","Estimate offset from this map (Block & Walk)"))) EstimateNpcOrientation(state);
                             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) ImGui::SetTooltip("%s", L(
                                 "Testet fuer alle NPCs dieser Karte, welcher Versatz sie im Schnitt am ehesten von der naechsten Wand weg blicken laesst\n"
                                 "(Annahme: NPCs stehen normalerweise mit dem Ruecken zur Wand). Grobe Schaetzung, kein Ersatz fuer einen Blick ins echte Spiel.",
@@ -10360,7 +10360,7 @@ void DrawToolsContent(EditorState& state) {
                                 "(assumption: NPCs usually stand with their back to a wall). A rough estimate, not a substitute for checking the real game."));
                             if (!state.npcOrientEstimateStatus.empty()) ImGui::TextWrapped("%s", state.npcOrientEstimateStatus.c_str());
                         }
-                        ImGui::SeparatorText("Rolle");
+                        ImGui::SeparatorText(L("Rolle","Role"));
                         {
                             // Rolle und Rollenargument (NPC.txt: Spalten Role/RoleArg0) - bearbeitbar.
                             // Bekannte Kombinationen aus NA2016: QuestNpc/Quest|GBDice, Guard/Quest,
@@ -10368,7 +10368,7 @@ void DrawToolsContent(EditorState& state) {
                             // ExchangeCoin|RandomOption, StoreManager/-. Merchant mit Item/Weapon/
                             // WeaponTitle/Skill/Guild nutzt NPCItemList/<NPC>.txt (siehe Händler-Inventar).
                             ImGui::SetNextItemWidth(160.0f);
-                            if (ImGui::BeginCombo("Rolle", rec.values[6].empty() ? "(keine)" : rec.values[6].c_str())) {
+                            if (ImGui::BeginCombo(L("Rolle","Role"), rec.values[6].empty() ? L("(keine)","(none)") : rec.values[6].c_str())) {
                                 for (const char* role : kNpcRoles) {
                                     if (UI::Selectable(role, rec.values[6] == role)) rec.values[6] = role;
                                 }
@@ -10378,7 +10378,7 @@ void DrawToolsContent(EditorState& state) {
                             ImGui::SetNextItemWidth(160.0f);
                             {
                                 static const char* const kArgs[] = {"Quest", "GBDice", "Item", "Weapon", "WeaponTitle", "Skill", "SoulStone", "Guild", "ExchangeCoin", "RandomOption", "-"};
-                                if (ImGui::BeginCombo("Argument", rec.values[7].empty() ? "(keins)" : rec.values[7].c_str())) {
+                                if (ImGui::BeginCombo(L("Argument","Argument"), rec.values[7].empty() ? L("(keins)","(none)") : rec.values[7].c_str())) {
                                     for (const char* arg : kArgs) {
                                         if (UI::Selectable(arg, rec.values[7] == arg)) rec.values[7] = arg;
                                     }
@@ -10407,17 +10407,17 @@ void DrawToolsContent(EditorState& state) {
                 }
                 DrawDialogEditorPopup(state);
                 ImGui::Separator();
-                if (UI::Button("World/NPC.txt speichern")) {
+                if (UI::Button(L("World/NPC.txt speichern","Save World/NPC.txt"))) {
                     auto path = std::filesystem::path(state.shineTextRoot) / "World" / "NPC.txt";
                     auto saved = core::legacy::SaveShineTextFile(state.npcTextFile, path);
-                    state.statusMessage = saved ? std::string("NPC.txt gespeichert.") : "Fehler: " + saved.error();
+                    state.statusMessage = saved ? std::string(L("NPC.txt gespeichert.","NPC.txt saved.")) : L("Fehler: ","Error: ") + saved.error();
                 }
             }
         }
         DrawShopEditorPopup(state);
     } else if (state.editMode == EditMode::Mobs) {
         if (state.shineTextRoot.empty()) {
-            ImGui::TextWrapped("Server-Textdaten-Ordner (Server/9Data/Shine, enthält MobRegen/) noch nicht gewählt.");
+            ImGui::TextWrapped("%s",L("Server-Textdaten-Ordner (Server/9Data/Shine, enthält MobRegen/) noch nicht gewählt.","Server text-data folder (Server/9Data/Shine, containing MobRegen/) has not been selected yet."));
             std::vector<char> rootBuf(state.shineTextRoot.begin(), state.shineTextRoot.end());
             rootBuf.resize(std::max<std::size_t>(rootBuf.size() + 1, 512));
             ImGui::SetNextItemWidth(-1.0f);
@@ -10425,8 +10425,8 @@ void DrawToolsContent(EditorState& state) {
                 state.shineTextRoot.assign(rootBuf.data()); state.mobRegenTextLoaded = false;
             }
 #ifdef _WIN32
-            if (UI::Button("Ordner wählen...##shinetextmob")) {
-                if (auto p = BrowseForFolderWindows("Server/9Data/Shine Ordner wählen")) { state.shineTextRoot = *p; state.mobRegenTextLoaded = false; }
+            if (UI::Button(L("Ordner wählen...##shinetextmob","Choose folder...##shinetextmob"))) {
+                if (auto p = BrowseForFolderWindows(L("Server/9Data/Shine Ordner wählen","Choose Server/9Data/Shine folder"))) { state.shineTextRoot = *p; state.mobRegenTextLoaded = false; }
             }
 #endif
         } else if (state.legacySaveStem[0] == '\0') {
@@ -10434,18 +10434,18 @@ void DrawToolsContent(EditorState& state) {
         } else {
             EnsureMobRegenLoaded(state);
             if (!state.mobRegenTextLoaded) {
-                ImGui::TextWrapped("MobRegen/%s.txt konnte nicht geladen werden.", state.legacySaveStem);
+                ImGui::TextWrapped(L("MobRegen/%s.txt konnte nicht geladen werden.","MobRegen/%s.txt could not be loaded."), state.legacySaveStem);
             } else {
                 auto* zoneTable = state.mobRegenTextFile.FindTable("MobRegenGroup");
                 auto* spawnTable = state.mobRegenTextFile.FindTable("MobRegen");
                 if (!zoneTable) {
-                    ImGui::TextDisabled("Keine 'MobRegenGroup'-Tabelle gefunden.");
+                    ImGui::TextDisabled("%s",L("Keine 'MobRegenGroup'-Tabelle gefunden.","No 'MobRegenGroup' table found."));
                 } else {
-                    ImGui::TextDisabled("%zu Spawn-Zonen auf '%s' · Auswahl links im Szene-Outliner",
+                    ImGui::TextDisabled(L("%zu Spawn-Zonen auf '%s' · Auswahl links im Szene-Outliner","%zu spawn zones on '%s' · select in the Scene Outliner on the left"),
                                         zoneTable->records.size(), state.legacySaveStem);
-                    ImGui::SeparatorText("Zonenverwaltung");
-                    UI::Checkbox("Löschen freigeben", &state.mobDeleteArmed);
-                    if (UI::Button("+ Zone (Kopie der gewählten)") && state.selectedMobZoneIdx >= 0 &&
+                    ImGui::SeparatorText(L("Zonenverwaltung","Zone management"));
+                    UI::Checkbox(L("Löschen freigeben","Enable deletion"), &state.mobDeleteArmed);
+                    if (UI::Button(L("+ Zone (Kopie der gewählten)","+ Zone (copy selected)")) && state.selectedMobZoneIdx >= 0 &&
                         static_cast<std::size_t>(state.selectedMobZoneIdx) < zoneTable->records.size()) {
                         core::legacy::ShineRecord nz = zoneTable->records[static_cast<std::size_t>(state.selectedMobZoneIdx)];
                         nz.sourceLine = 0;
@@ -10461,12 +10461,12 @@ void DrawToolsContent(EditorState& state) {
                         if (!nz.values.empty()) nz.values[0] = name;
                         zoneTable->records.push_back(std::move(nz));
                         state.selectedMobZoneIdx = static_cast<int>(zoneTable->records.size()) - 1;
-                        state.statusMessage = "Neue Zone '" + name + "' angelegt (noch ohne Monster).";
+                        state.statusMessage = L("Neue Zone '","New zone '") + name + L("' angelegt (noch ohne Monster).","' created (no monsters yet).");
                     }
                     if (state.mobDeleteArmed && state.selectedMobZoneIdx >= 0 &&
                         static_cast<std::size_t>(state.selectedMobZoneIdx) < zoneTable->records.size()) {
                         ImGui::SameLine();
-                        if (UI::Button("Zone samt Monstern löschen")) {
+                        if (UI::Button(L("Zone samt Monstern löschen","Delete zone and monsters"))) {
                             const std::string gone = zoneTable->records[static_cast<std::size_t>(state.selectedMobZoneIdx)].values.empty()
                                 ? std::string() : zoneTable->records[static_cast<std::size_t>(state.selectedMobZoneIdx)].values[0];
                             zoneTable->records.erase(zoneTable->records.begin() + state.selectedMobZoneIdx);
@@ -10483,11 +10483,11 @@ void DrawToolsContent(EditorState& state) {
                         if (zone.values.size() >= 7) {
                             ImGui::SeparatorText("Zone");
                             ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f),"Zone: %s",zone.values[0].c_str());
-                            ImGui::TextDisabled("Position, Ausdehnung, Spawn-Radius und weitere Zonenwerte.");
+                            ImGui::TextDisabled("%s",L("Position, Ausdehnung, Spawn-Radius und weitere Zonenwerte.","Position, extent, spawn radius and other zone values."));
                             DrawShineRecordFields(zone.values, zoneTable->columns, 1);
                             if (spawnTable) {
-                                ImGui::SeparatorText("Monstergruppe");
-                                ImGui::TextDisabled("Monster, Anzahl, Spawnwerte sowie AI/Lua und Route je Eintrag.");
+                                ImGui::SeparatorText(L("Monstergruppe","Monster group"));
+                                ImGui::TextDisabled("%s",L("Monster, Anzahl, Spawnwerte sowie AI/Lua und Route je Eintrag.","Monster, amount, spawn values plus AI/Lua and route for each entry."));
                                 int removeSpawn = -1;
                                 for (std::size_t si = 0; si < spawnTable->records.size(); ++si) {
                                     auto& sr = spawnTable->records[si];
@@ -10496,22 +10496,22 @@ void DrawToolsContent(EditorState& state) {
                                     const std::string header = sr.values[1] + " x" + sr.values[2] + "##spawn";
                                     if (UI::CollapsingHeader(header.c_str())) {
                                         DrawShineRecordFields(sr.values, spawnTable->columns, 1);
-                                        if (DrawTinyIconButton("mobLua",DrawIconCode,false,"KI / Lua bearbeiten"))
+                                        if (DrawTinyIconButton("mobLua",DrawIconCode,false,L("KI / Lua bearbeiten","Edit AI / Lua")))
                                             OpenAiScriptEditor(state,sr.values[1]);
                                         ImGui::SameLine(0,3);
-                                        if (DrawTinyIconButton("mobRoute",DrawIconRoute,false,"MobRoam-Route bearbeiten"))
+                                        if (DrawTinyIconButton("mobRoute",DrawIconRoute,false,L("MobRoam-Route bearbeiten","Edit MobRoam route")))
                                             OpenPatrolRouteEditor(state,sr.values[1]);
                                         ImGui::SameLine();
-                                        if (state.mobDeleteArmed && UI::SmallButton("Monster entfernen")) removeSpawn = static_cast<int>(si);
+                                        if (state.mobDeleteArmed && UI::SmallButton(L("Monster entfernen","Remove monster"))) removeSpawn = static_cast<int>(si);
                                     }
                                     ImGui::PopID();
                                 }
                                 if (removeSpawn >= 0) spawnTable->records.erase(spawnTable->records.begin() + removeSpawn);
                                 // Neues Monster in dieser Zone: Name (MobIndex aus MobInfoServer.shn) + Anzahl.
                                 ImGui::SetNextItemWidth(160.0f);
-                                UI::InputTextWithHint("##newmob", "Monstername (MobIndex)", state.newMobSpawnName, sizeof(state.newMobSpawnName));
+                                UI::InputTextWithHint("##newmob", L("Monstername (MobIndex)","Monster name (MobIndex)"), state.newMobSpawnName, sizeof(state.newMobSpawnName));
                                 ImGui::SameLine();
-                                if (UI::Button("+ Monster hinzufügen") && state.newMobSpawnName[0] != '\0') {
+                                if (UI::Button(L("+ Monster hinzufügen","+ Add monster")) && state.newMobSpawnName[0] != '\0') {
                                     core::legacy::ShineRecord nr;
                                     nr.sourceLine = 0;
                                     nr.values.assign(std::max<std::size_t>(spawnTable->columns.size(), 3), "0");
@@ -10519,17 +10519,17 @@ void DrawToolsContent(EditorState& state) {
                                     nr.values[1] = state.newMobSpawnName;
                                     nr.values[2] = "1";
                                     spawnTable->records.push_back(std::move(nr));
-                                    state.statusMessage = std::string("Monster '") + state.newMobSpawnName + "' zur Zone hinzugefügt (Werte danach anpassen).";
+                                    state.statusMessage = std::string(L("Monster '","Monster '")) + state.newMobSpawnName + L("' zur Zone hinzugefügt (Werte danach anpassen).","' added to the zone (adjust values afterwards).");
                                 }
                             }
                         }
                     }
                 }
                 ImGui::Separator();
-                if (UI::Button("MobRegen speichern")) {
+                if (UI::Button(L("MobRegen speichern","Save MobRegen"))) {
                     auto path = std::filesystem::path(state.shineTextRoot) / "MobRegen" / (std::string(state.legacySaveStem) + ".txt");
                     auto saved = core::legacy::SaveShineTextFile(state.mobRegenTextFile, path);
-                    state.statusMessage = saved ? std::string("MobRegen gespeichert.") : "Fehler: " + saved.error();
+                    state.statusMessage = saved ? std::string(L("MobRegen gespeichert.","MobRegen saved.")) : L("Fehler: ","Error: ") + saved.error();
                 }
             }
         }
