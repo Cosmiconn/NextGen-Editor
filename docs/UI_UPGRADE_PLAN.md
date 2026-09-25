@@ -1,6 +1,6 @@
 # NextGen Editor – UI Upgrade Plan
 
-> **VISUAL SOURCE OF TRUTH:** Für alle neuen UI-Arbeiten gilt verbindlich [docs/ui-vision/README.md](ui-vision/README.md). Mockups, Tokens, Icon-Quellen und Abnahmekriterien definieren das Zielbild.
+> **VISUAL SOURCE OF TRUTH:** Für alle neuen UI-Arbeiten gilt verbindlich [docs/ui-vision/README.md](ui-vision/README.md). Mockups, Tokens, Icon-Quellen und Abnahmekriterien definieren das Zielbild. Das hochgeladene Paket `NextGen_Icons_True_Vector_Set_With_Sizes.zip` ist die verbindliche Artwork-Quelle für Icons; Mapping und Migrationsstatus stehen in [docs/ui-vision/ICON_INVENTORY.md](ui-vision/ICON_INVENTORY.md).
 
 
 > Branch: `ui-upgrade`  
@@ -206,6 +206,17 @@ Noch offen für spätere Ausbaustufen:
 - Interface-Ausbaustufe 1 ist umgesetzt: automatischer `Client/resmenu`-Katalog, Suche, TGA/DDS- sowie PNG/JPG/BMP-Vorschau (WIC unter Windows) und read-only NIF-/Materialanalyse für UI-NIFs. Als erste schreibende, formatsichere Stufe gibt es non-destruktive Projekt-Overrides: ein ausgewähltes Asset wird unverändert nach `<Projekt>/Client/resmenu/...` kopiert, aktive Overrides sind im Katalog markiert, die Vorschau bevorzugt die Projektkopie und der Override kann wieder entfernt werden. Unter Windows kann ein Asset außerdem durch eine externe Datei gleicher Endung direkt in dieser Projektkopie ersetzt werden; beim Rescan werden auch Projekt-only Assets aus `<Projekt>/Client/resmenu/...` in den Katalog aufgenommen. Der Override-Katalog validiert den Projektbestand bytegenau gegen die Originale und unterscheidet `identisch`, `geändert` und `nur im Projekt`; dafür gibt es eigene Badges, Zähler und einen Filter nur für tatsächliche Abweichungen. Byte-identische Projektkopien lassen sich gesammelt bereinigen, ohne geänderte oder projekt-only Assets anzutasten. Die Ergebnisse werden nach Scan/Änderung gecacht, sodass der Dateivergleich nicht pro UI-Frame läuft. Bei UI-NIFs gilt derselbe Overlay-Mechanismus jetzt auch für externe Textur- und Flipbook-Referenzen sowie für „Neu laden“: vorhandene Dateien aus `<Projekt>/Client/resmenu/...` werden vor den read-only Originalen aufgelöst. Der Original-Clientbestand bleibt unangetastet. Inhaltliche Layout-Bearbeitung und schreibendes NIF-Material-Editing bleiben offen; AI Workspace ist umgesetzt.
 - Drop-Table-Ausbaustufe 1 ist umgesetzt: der ShineText-Parser normalisiert das reale `ItemDropTable.txt`-Schema mit 290 Datenspalten plus trailing `;`-Sentinel formatgetreu und besitzt dafür einen >270-Spalten-Roundtrip-/Editier-Regressionstest. Im Spieldaten-Workspace gibt es eine semantische `ItemGroup`-Ansicht mit Mob-/Map-/Drop-Item-Suche, Basiswerten, 45 Drop-Slots, Rate/Anzahl/Upgrade/Rule, ItemInfo-Auflösung und Ausschlussitems. Basis- und Slotwerte sind über den minimal-invasiven ShineText-Writer editierbar; Dirty-State, Strg+S und Neu-laden/Verwerfen sind integriert. Die Validierung umfasst MobId gegen `MobViewInfo.shn`, Drop- und Ausschlussitems gegen `ItemInfo.shn`, `MinLevel <= MaxLevel`, `MinCen <= MaxCen`, Upgrade-Min/Max pro aktivem Slot sowie die in allen 1.485 bereitgestellten NA2016-Records belegte Regel `CheckSum = MaxLevel + 1`. Problem-Records lassen sich gezielt filtern; die Detailansicht nennt die konkrete Fehlerart, eine vollständige Problemliste kann für Audits in die Zwischenablage kopiert werden, und CheckSum wird beim Ändern von MaxLevel automatisch nachgeführt.
 
+## Minimap / Overview – verifizierungsgebundener Ausbau
+
+- eigener Roadmap-Punkt, nicht nur Dekoration des 2D-Views;
+- zuerst echte Fiesta-Beispiele aus Client-/Map-Daten vergleichen;
+- Dateiname, Pfad, Format, Auflösung, Alpha und Orientierung werden in [MINIMAP_FORMAT.md](MINIMAP_FORMAT.md) dokumentiert;
+- vor Formatverifikation ist nur eine editorinterne Top-Down-Preview zulässig;
+- Fiesta-Export erst nach belegter Zuordnung Map → Minimap;
+- erste Preview: orthografisch, ganze Map, korrekte Aspect Ratio, Terrain/Texturen/Wasser, wichtige Objekte optional;
+- NPC/Portal/Spawn/Walk-Overlays bleiben standardmäßig Editor-Preview;
+- Kamera-/Viewport-Rahmen und Click-to-Focus sind anschließende UX-Schritte.
+
 ## 9. Aktuelles Arbeitsziel
 
 Diese Roadmap ist ab jetzt die verbindliche Reihenfolge für den weiteren Ausbau des bestehenden Editors.
@@ -388,4 +399,4 @@ Dieser Abschnitt ist der verbindliche Ausbau-Fahrplan für den laufenden Branch 
 
 ### Priorität
 Die unmittelbare Reihenfolge ist:
-**Level-Editor-Interaktion → SHN → Quest/Skill → Custom NPC/Mob → KFM → globale UX-Politur.**
+**Icon-/UI-Vision festziehen → App-Shell/Map-UI-Retrofit → Minimap-Format verifizieren + Preview → Walk/Block-Footprints → SHN-Referenzen → Skill Animation/VFX → KFM-Playback → Quest-Flow optional → globale QA/Politur.**
