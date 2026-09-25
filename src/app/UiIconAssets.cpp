@@ -4,6 +4,7 @@
 
 #include <glad/glad.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdlib>
 #include <system_error>
@@ -185,20 +186,34 @@ std::filesystem::path UiIconAssets::RelativePath(std::string_view semanticId, in
 std::uint32_t UiIconAssets::Texture(std::string_view semanticId, int requestedSize) {
     if (assetRoot_.empty()) return 0;
 
-    const int size = NormalizeSize(requestedSize);
-    const std::string cacheKey = std::string(semanticId) + "#" + std::to_string(size);
+    const int preferredSize = NormalizeSize(requestedSize);
+    const std::string cacheKey = std::string(semanticId) + "#" + std::to_string(preferredSize);
     if (const auto it = textures_.find(cacheKey); it != textures_.end()) {
         return it->second;
     }
 
-    const auto relative = RelativePath(semanticId, size);
-    if (relative.empty()) {
-        textures_.emplace(cacheKey, 0);
-        return 0;
-    }
+    // A checkout may intentionally contain only the runtime sizes that have already been
+    // migrated. Prefer the exact size, then gracefully fall back to the nearest available
+    // approved export. On equal distance prefer the larger source so ImGui downsamples it.
+    auto candidates = kSupportedSizes;
+    std::sort(candidates.begin(), candidates.end(), [preferredSize](int a, int b) {
+        const int da = std::abs(a - preferredSize);
+        const int db = std::abs(b - preferredSize);
+        if (da != db) return da < db;
+        return a > b;
+    });
 
-    const auto file = assetRoot_ / relative;
-    if (!std::filesystem::exists(file)) {
+    std::filesystem::path file;
+    for (const int candidateSize : candidates) {
+        const auto relative = RelativePath(semanticId, candidateSize);
+        if (relative.empty()) break;
+        const auto candidate = assetRoot_ / relative;
+        if (std::filesystem::exists(candidate)) {
+            file = candidate;
+            break;
+        }
+    }
+    if (file.empty()) {
         textures_.emplace(cacheKey, 0);
         return 0;
     }
