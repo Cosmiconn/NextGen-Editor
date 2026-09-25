@@ -5251,24 +5251,27 @@ void DrawShnEditor(EditorState& state) {
         }
     }
     ImGui::Separator();
-    struct DataTool { const char* id; const char* label; IconDrawFn icon; };
+    struct DataTool { const char* id; const char* label; IconDrawFn icon; const char* semanticIcon; };
     const DataTool dataTools[] = {
-        {"single","Single SHN",DrawIconTable},
-        {"multi","Multi SHN",DrawIconLayers},
-        {"xp","XP Rate",DrawIconBolt},
-        {"prices","Preise",DrawIconTable},
-        {"quest","Quest",DrawIconBook},
-        {"portals","Portale",DrawIconPortal},
-        {"creatures","NPC / Mob",DrawIconPerson},
-        {"skills","Skills",DrawIconBolt},
-        {"ai","AI Scripts",DrawIconCode},
-        {"interface","Interface",DrawIconMonitorEye},
-        {"drops","Drops",DrawIconSpawn},
+        {"single","Single SHN",DrawIconTable,"module.shn.single"},
+        {"multi","Multi SHN",DrawIconLayers,"module.shn.multi"},
+        {"xp","XP Rate",DrawIconBolt,"module.xp"},
+        {"prices",L("Preise","Prices"),DrawIconTable,"module.prices"},
+        {"quest","Quest",DrawIconBook,"module.quest"},
+        // Portal and the combined NPC/Mob launcher still have no exact package icon.
+        // Keep their semantic DrawList fallbacks instead of reusing a misleading asset.
+        {"portals",L("Portale","Portals"),DrawIconPortal,nullptr},
+        {"creatures","NPC / Mob",DrawIconPerson,nullptr},
+        {"skills","Skills",DrawIconBolt,"module.skill"},
+        {"ai","AI Scripts",DrawIconCode,"module.ai"},
+        {"interface","Interface",DrawIconMonitorEye,"module.interface"},
+        {"drops","Drops",DrawIconSpawn,"module.droptable"},
     };
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(5.0f, 5.0f));
     for (int i = 0; i < static_cast<int>(std::size(dataTools)); ++i) {
         const auto& tool = dataTools[i];
-        if (DrawIconButton(tool.id, tool.label, tool.icon, state.shnSubTab == i, ImVec2(102.0f, 58.0f)))
+        if (DrawIconButton(tool.id, tool.label, tool.icon, state.shnSubTab == i,
+                           ImVec2(102.0f, 58.0f), true, tool.semanticIcon))
             state.shnSubTab = i;
         if (i + 1 < static_cast<int>(std::size(dataTools))) ImGui::SameLine();
     }
