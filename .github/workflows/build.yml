@@ -20,10 +20,10 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y g++-14
       - name: Configure Linux core
         if: runner.os == 'Linux'
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-14 -DNEXTGEN_EDITOR_BUILD_GUI=OFF
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-14 -DNEXTGEN_EDITOR_CORE_ONLY=ON
       - name: Configure Windows core
         if: runner.os == 'Windows'
-        run: cmake -S . -B build -DNEXTGEN_EDITOR_BUILD_GUI=OFF
+        run: cmake -S . -B build -DNEXTGEN_EDITOR_CORE_ONLY=ON
       - run: cmake --build build --config Release --parallel 2
       - run: ctest --test-dir build -C Release --output-on-failure
 
