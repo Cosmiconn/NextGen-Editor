@@ -784,6 +784,7 @@ struct EditorState {
     int shnColumnFilterFile = -1;
     std::vector<std::array<char, 64>> shnColumnFilters;
     bool shnHighlightClientServerDiff = true;
+    bool shnHighlightKnownReferences = true;
     std::string shnStatus;
 
     // --- Interface Browser --------------------------------------------------
@@ -3976,6 +3977,170 @@ bool ShnValueAsInt(const core::legacy::ShnValue& v, long long& out) {
     }, v);
 }
 
+// High-confidence cross-file ID families verified against the supplied NA2016 corpus.
+// Only these exact families participate in semantic reference/error highlighting. We
+// deliberately do NOT infer references from generic numeric overlap or column names.
+struct KnownShnIdFamily {
+    const char* label;
+    std::array<const char*,3> files;
+};
+
+static const KnownShnIdFamily* KnownShnFamilyFor(const std::string& fileName) {
+    static const std::array<KnownShnIdFamily,3> families = {{
+        {"Item",        {"ItemInfo.shn", "ItemInfoServer.shn", "ItemViewInfo.shn"}},
+        {"Mob",         {"MobInfo.shn", "MobInfoServer.shn", "MobViewInfo.shn"}},
+        {"ActiveSkill", {"ActiveSkill.shn", "ActiveSkillInfoServer.shn", "ActiveSkillView.shn"}},
+    }};
+    const std::string needle = LowerAscii(fileName);
+    for (const auto& family : families) {
+        for (const char* member : family.files) {
+            if (needle == LowerAscii(member)) return &family;
+        }
+    }
+    return nullptr;
+}
+
+static int ExactShnColumnIndex(const core::legacy::ShnFile& file, const char* name) {
+    for (std::size_t i = 0; i < file.columns.size(); ++i)
+        if (file.columns[i].name == name) return static_cast<int>(i);
+    return -1;
+}
+
+static int BestLoadedShnDocument(const EditorState& state, const char* fileName,
+                                 EditorState::ShnSource preferredSource, int excludeDocument) {
+    int fallback = -1;
+    const std::string needle = LowerAscii(fileName);
+    for (int i = 0; i < static_cast<int>(state.shnFiles.size()); ++i) {
+        if (i == excludeDocument) continue;
+        const auto& doc = state.shnFiles[static_cast<std::size_t>(i)];
+        if (LowerAscii(doc.file.FileName()) != needle) continue;
+        if (doc.source == preferredSource) return i;
+        if (fallback < 0) fallback = i;
+    }
+    return fallback;
+}
+
+struct LoadedShnFamilyPeer {
+    int document = -1;
+    int idColumn = -1;
+    std::string fileName;
+    std::unordered_map<long long,int> rowById;
+};
+
+static std::vector<LoadedShnFamilyPeer> BuildKnownShnFamilyPeers(const EditorState& state, int currentDocument) {
+    std::vector<LoadedShnFamilyPeer> result;
+    if (currentDocument < 0 || currentDocument >= static_cast<int>(state.shnFiles.size())) return result;
+    const auto& current = state.shnFiles[static_cast<std::size_t>(currentDocument)];
+    const auto* family = KnownShnFamilyFor(current.file.FileName());
+    if (!family) return result;
+
+    for (const char* member : family->files) {
+        if (LowerAscii(member) == LowerAscii(current.file.FileName())) continue;
+        LoadedShnFamilyPeer peer;
+        peer.fileName = member;
+        peer.document = BestLoadedShnDocument(state, member, current.source, currentDocument);
+        if (peer.document >= 0) {
+            const auto& peerFile = state.shnFiles[static_cast<std::size_t>(peer.document)].file;
+            peer.idColumn = ExactShnColumnIndex(peerFile, "ID");
+            if (peer.idColumn >= 0) {
+                peer.rowById.reserve(peerFile.rows.size());
+                for (std::size_t r = 0; r < peerFile.rows.size(); ++r) {
+                    if (static_cast<std::size_t>(peer.idColumn) >= peerFile.rows[r].values.size()) continue;
+                    long long id = 0;
+                    if (ShnValueAsInt(peerFile.rows[r].values[static_cast<std::size_t>(peer.idColumn)], id))
+                        peer.rowById.emplace(id, static_cast<int>(r));
+                }
+            }
+        }
+        result.push_back(std::move(peer));
+    }
+    return result;
+}
+
+enum class ShnReferenceState { None, Valid, Missing };
+
+static ShnReferenceState KnownShnReferenceState(const std::vector<LoadedShnFamilyPeer>& peers,
+                                                long long id) {
+    bool checked = false;
+    for (const auto& peer : peers) {
+        if (peer.document < 0 || peer.idColumn < 0) continue; // not loaded != broken reference
+        checked = true;
+        if (!peer.rowById.contains(id)) return ShnReferenceState::Missing;
+    }
+    return checked ? ShnReferenceState::Valid : ShnReferenceState::None;
+}
+
+static std::string KnownShnReferenceTooltip(const std::vector<LoadedShnFamilyPeer>& peers,
+                                            long long id) {
+    std::string out = L("Verifizierte Familien-ID #","Verified family ID #") + std::to_string(id);
+    for (const auto& peer : peers) {
+        out += "\n• " + peer.fileName + ": ";
+        if (peer.document < 0 || peer.idColumn < 0) out += L("nicht geladen","not loaded");
+        else out += peer.rowById.contains(id) ? L("gefunden","found") : L("FEHLT","MISSING");
+    }
+    return out;
+}
+
+// Returns true when navigation changed the selected document. Caller must stop drawing the
+// current grid in that frame because SelectShnDocument resets grid/filter state.
+static bool DrawKnownShnFamilyReferenceStrip(EditorState& state, int currentDocument,
+                                             const std::vector<LoadedShnFamilyPeer>& peers) {
+    if (!state.shnHighlightKnownReferences || currentDocument < 0 ||
+        currentDocument >= static_cast<int>(state.shnFiles.size()) ||
+        state.shnSelectedRow < 0) return false;
+
+    const auto& current = state.shnFiles[static_cast<std::size_t>(currentDocument)];
+    const auto* family = KnownShnFamilyFor(current.file.FileName());
+    const int idColumn = ExactShnColumnIndex(current.file, "ID");
+    if (!family || idColumn < 0 ||
+        state.shnSelectedRow >= static_cast<int>(current.file.rows.size()) ||
+        static_cast<std::size_t>(idColumn) >= current.file.rows[static_cast<std::size_t>(state.shnSelectedRow)].values.size())
+        return false;
+
+    long long id = 0;
+    if (!ShnValueAsInt(current.file.rows[static_cast<std::size_t>(state.shnSelectedRow)]
+                           .values[static_cast<std::size_t>(idColumn)], id))
+        return false;
+
+    const auto refState = KnownShnReferenceState(peers,id);
+    const ImVec4 color = refState == ShnReferenceState::Missing ? UiTheme::Error
+                       : refState == ShnReferenceState::Valid ? UiTheme::Success
+                                                             : UiTheme::TextSecondary;
+    ImGui::TextColored(color, "%s · ID #%lld", family->label, id);
+    ImGui::SameLine();
+    ImGui::TextDisabled("%s",L("Referenzen:","References:"));
+
+    for (std::size_t i = 0; i < peers.size(); ++i) {
+        const auto& peer = peers[i];
+        ImGui::SameLine();
+        if (peer.document < 0 || peer.idColumn < 0) {
+            ImGui::TextDisabled("%s %s", peer.fileName.c_str(), L("(nicht geladen)","(not loaded)"));
+            continue;
+        }
+        const auto found = peer.rowById.find(id);
+        if (found == peer.rowById.end()) {
+            ImGui::TextColored(UiTheme::Error, "✕ %s", peer.fileName.c_str());
+            continue;
+        }
+        ImGui::PushID(static_cast<int>(i));
+        if (UI::SmallButton((std::string("↗ ") + peer.fileName).c_str())) {
+            const int row = found->second;
+            SelectShnDocument(state, peer.document);
+            state.shnSelectedRow = row;
+            state.shnSelectedColumn = peer.idColumn;
+            state.shnStatus = peer.fileName + L(": Familien-ID #", ": family ID #") +
+                              std::to_string(id) + L(" geöffnet."," opened.");
+            ImGui::PopID();
+            return true;
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s",L("Passenden Datensatz in dieser verifizierten SHN-Familie öffnen",
+                                     "Open matching record in this verified SHN family"));
+        ImGui::PopID();
+    }
+    return false;
+}
+
 // Zellstatus-Konstanten für die Grün/Rot-Markierung, siehe EditorState::ShnDocument::cellStatus.
 constexpr std::uint8_t kShnCellNormal = 0;
 constexpr std::uint8_t kShnCellAutoFilled = 1;   // grün - aus einer anderen Datei übernommen
@@ -4312,6 +4477,11 @@ void DrawShnGrid(EditorState& state) {
     const std::vector<int> counterpartColumns =
         counterpart ? MatchShnColumnsByName(file, *counterpart) : std::vector<int>(file.columns.size(), -1);
 
+    const auto* knownFamily = KnownShnFamilyFor(file.FileName());
+    const int familyIdColumn = knownFamily ? ExactShnColumnIndex(file, "ID") : -1;
+    const auto familyPeers = knownFamily ? BuildKnownShnFamilyPeers(state, state.shnSelectedFile)
+                                         : std::vector<LoadedShnFamilyPeer>{};
+
     ImGui::TextColored(ShnSourceColor(doc.source), "%s", ShnSourceName(doc.source));
     ImGui::SameLine();
     ImGui::Text("%s", file.FileName().c_str());
@@ -4364,10 +4534,23 @@ void DrawShnGrid(EditorState& state) {
     ImGui::TextDisabled("Doppelklick/F2: Inline · Rechtsklick: Optionen");
     if (counterpart) {
         ImGui::SameLine();
-        UI::Checkbox("Client/Server Unterschiede##shnDiff", &state.shnHighlightClientServerDiff);
+        UI::Checkbox(L("Client/Server Unterschiede##shnDiff","Client/server differences##shnDiff"),
+                     &state.shnHighlightClientServerDiff);
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Orange Schrift = gleicher Dateiname auf der Gegenseite, aber anderer Zellwert.");
+            ImGui::SetTooltip("%s",L("Orange Schrift = gleicher Dateiname auf der Gegenseite, aber anderer Zellwert.",
+                                     "Orange text = same file on the other side, but a different cell value."));
     }
+    if (knownFamily && familyIdColumn >= 0) {
+        ImGui::SameLine();
+        UI::Checkbox(L("Familien-Referenzen##shnRefs","Family references##shnRefs"),
+                     &state.shnHighlightKnownReferences);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s",L("Grün = ID in allen geladenen, verifizierten Familienmitgliedern vorhanden. Rot = ID fehlt in mindestens einem geladenen Familienmitglied.",
+                                     "Green = ID exists in every loaded, verified family member. Red = ID is missing from at least one loaded family member."));
+    }
+
+    if (DrawKnownShnFamilyReferenceStrip(state, state.shnSelectedFile, familyPeers))
+        return;
 
     ImGui::Separator();
     const std::string needle = LowerAscii(state.shnSearch);
@@ -4526,12 +4709,22 @@ void DrawShnGrid(EditorState& state) {
                         ? doc.cellStatus[ri][ci] : kShnCellNormal;
                     const bool dirtyCell = ri < doc.cellDirty.size() && ci < doc.cellDirty[ri].size() &&
                                            doc.cellDirty[ri][ci] != 0;
+                    ShnReferenceState referenceState = ShnReferenceState::None;
+                    long long referenceId = 0;
+                    if (state.shnHighlightKnownReferences && static_cast<int>(ci) == familyIdColumn &&
+                        ShnValueAsInt(row.values[ci], referenceId)) {
+                        referenceState = KnownShnReferenceState(familyPeers, referenceId);
+                    }
                     if (status == kShnCellAutoFilled)
                         ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, IM_COL32(30, 90, 40, 160));
                     else if (status == kShnCellNeedsInput)
                         ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, IM_COL32(110, 30, 30, 160));
                     else if (dirtyCell)
                         ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, IM_COL32(20, 92, 140, 125));
+                    else if (referenceState == ShnReferenceState::Missing)
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, IM_COL32(120, 32, 42, 175));
+                    else if (referenceState == ShnReferenceState::Valid)
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, IM_COL32(24, 86, 55, 125));
 
                     const bool selected =
                         state.shnSelectedRow == static_cast<int>(ri) &&
@@ -4621,16 +4814,15 @@ void DrawShnGrid(EditorState& state) {
                         }
 
                         if (ImGui::IsItemHovered()) {
-                            if (counterpartDiff) {
-                                ImGui::SetTooltip("%s\nTyp: %s\nGegenstück: %s\nDoppelklick/F2 = Inline bearbeiten",
-                                                  core::legacy::ShnValueToString(row.values[ci]).c_str(),
-                                                  file.TypeName(file.columns[ci]).c_str(),
-                                                  counterpartText.c_str());
-                            } else {
-                                ImGui::SetTooltip("%s\nTyp: %s\nDoppelklick/F2 = Inline bearbeiten",
-                                                  core::legacy::ShnValueToString(row.values[ci]).c_str(),
-                                                  file.TypeName(file.columns[ci]).c_str());
-                            }
+                            std::string tooltip = core::legacy::ShnValueToString(row.values[ci]) +
+                                                  "\n" + L("Typ: ","Type: ") + file.TypeName(file.columns[ci]);
+                            if (counterpartDiff)
+                                tooltip += "\n" + std::string(L("Gegenstück: ","Counterpart: ")) + counterpartText;
+                            if (referenceState != ShnReferenceState::None)
+                                tooltip += "\n" + KnownShnReferenceTooltip(familyPeers, referenceId);
+                            tooltip += "\n" + std::string(L("Doppelklick/F2 = Inline bearbeiten",
+                                                             "Double-click/F2 = inline edit"));
+                            ImGui::SetTooltip("%s", tooltip.c_str());
                         }
                     }
 
