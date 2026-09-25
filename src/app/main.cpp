@@ -83,6 +83,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <deque>
@@ -713,6 +714,10 @@ struct EditorState {
     // --- Neue Navigationsebene (Projekt-Hub / Projekt-Konfiguration / Map-Editor-Start) ---
     AppScreen screen = AppScreen::ProjectHub;
     ProjectConfig project;
+    bool mapDirty = false; // Legacy-Map-Module wurden seit dem letzten Öffnen/Speichern verändert.
+    bool recentEntriesLoaded = false;
+    std::vector<std::string> recentProjects;
+    std::vector<std::string> recentMaps;
     std::string comingSoonTitle; // Titel der Karte, über die der Platzhalter-Bildschirm erreicht wurde
 
     // "Create New Map"-Formular (siehe DrawMapEditorLauncher) - ersetzt das bisherige feste
@@ -776,6 +781,86 @@ struct EditorState {
     std::vector<std::string> nifPrecacheQueue; // Kopie von availableNifFiles zum Abarbeiten
     std::size_t nifPrecacheCursor = 0;
 };
+
+std::filesystem::path NextGenUserSettingsDir() {
+    std::filesystem::path base;
+#ifdef _WIN32
+    if (const char* appData = std::getenv("APPDATA"); appData && *appData) base = appData;
+    else if (const char* profile = std::getenv("USERPROFILE"); profile && *profile) base = profile;
+#else
+    if (const char* xdg = std::getenv("XDG_CONFIG_HOME"); xdg && *xdg) base = xdg;
+    else if (const char* home = std::getenv("HOME"); home && *home) base = std::filesystem::path(home) / ".config";
+#endif
+    if (base.empty()) {
+        std::error_code ec;
+        base = std::filesystem::temp_directory_path(ec);
+        if (ec) base = ".";
+    }
+    return base / "NextGen-Editor";
+}
+
+std::string NormalizedRecentPath(const std::string& input) {
+    if (input.empty()) return {};
+    std::error_code ec;
+    auto path = std::filesystem::path(input);
+    auto absolute = std::filesystem::absolute(path, ec);
+    if (!ec) path = absolute;
+    return path.lexically_normal().string();
+}
+
+void SaveRecentEntries(const EditorState& state) {
+    const auto dir = NextGenUserSettingsDir();
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    if (ec) return;
+    std::ofstream out(dir / "recent.txt", std::ios::binary | std::ios::trunc);
+    if (!out) return;
+    for (const auto& path : state.recentProjects) out << "project=" << path << "\n";
+    for (const auto& path : state.recentMaps) out << "map=" << path << "\n";
+}
+
+void LoadRecentEntries(EditorState& state) {
+    if (state.recentEntriesLoaded) return;
+    state.recentEntriesLoaded = true;
+    std::ifstream in(NextGenUserSettingsDir() / "recent.txt", std::ios::binary);
+    if (!in) return;
+    std::string line;
+    while (std::getline(in, line)) {
+        const auto eq = line.find('=');
+        if (eq == std::string::npos) continue;
+        const std::string kind = line.substr(0, eq);
+        const std::string path = NormalizedRecentPath(line.substr(eq + 1));
+        if (path.empty()) continue;
+        auto& list = kind == "project" ? state.recentProjects : state.recentMaps;
+        if (kind != "project" && kind != "map") continue;
+        if (std::find(list.begin(), list.end(), path) == list.end()) list.push_back(path);
+        if (list.size() >= 8) continue;
+    }
+    if (state.recentProjects.size() > 8) state.recentProjects.resize(8);
+    if (state.recentMaps.size() > 8) state.recentMaps.resize(8);
+}
+
+void TouchRecentPath(EditorState& state, std::vector<std::string>& list, const std::string& path) {
+    const std::string normalized = NormalizedRecentPath(path);
+    if (normalized.empty()) return;
+    list.erase(std::remove(list.begin(), list.end(), normalized), list.end());
+    list.insert(list.begin(), normalized);
+    if (list.size() > 8) list.resize(8);
+    SaveRecentEntries(state);
+}
+
+void TouchRecentProject(EditorState& state, const std::string& path) {
+    TouchRecentPath(state, state.recentProjects, path);
+}
+
+void TouchRecentMap(EditorState& state, const std::string& path) {
+    TouchRecentPath(state, state.recentMaps, path);
+}
+
+std::size_t DirtyShnDocumentCount(const EditorState& state) {
+    return static_cast<std::size_t>(std::count_if(state.shnFiles.begin(), state.shnFiles.end(),
+        [](const auto& doc) { return doc.dirty; }));
+}
 
 // Listet Dateien mit einer der angegebenen Endungen unter root (rekursiv, begrenzte Tiefe),
 // relative Pfade zu root. Für Asset-Picker (Textur-/Modell-Auswahl) - siehe DrawAssetPickerPopup.
