@@ -3496,7 +3496,7 @@ bool DrawIconButton(const char* id, const char* label, IconDrawFn icon, bool act
 
 bool DrawCompactIconTextButton(const char* id, const char* label, IconDrawFn fallbackIcon,
                                const char* semanticIcon, bool enabled = true,
-                               const char* tooltip = nullptr) {
+                               const char* tooltip = nullptr, bool active = false) {
     ImGui::PushID(id);
     const ImVec2 textSize = ImGui::CalcTextSize(label);
     const ImVec2 size(textSize.x + 34.0f, 30.0f);
@@ -3508,13 +3508,24 @@ bool DrawCompactIconTextButton(const char* id, const char* label, IconDrawFn fal
     const bool hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled);
 
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    const ImU32 bg = hovered && enabled ? IM_COL32(13,48,78,235) : IM_COL32(8,25,40,120);
-    const ImU32 border = hovered && enabled ? IM_COL32(19,140,255,185) : IM_COL32(31,62,88,160);
-    const ImU32 fg = enabled ? (hovered ? IM_COL32(232,246,255,255) : IM_COL32(181,204,222,255))
+    const ImU32 bg = active ? IM_COL32(7,63,143,235)
+                      : hovered && enabled ? IM_COL32(13,48,78,235)
+                                           : IM_COL32(8,25,40,120);
+    const ImU32 border = active ? IM_COL32(32,221,242,220)
+                          : hovered && enabled ? IM_COL32(19,140,255,185)
+                                               : IM_COL32(31,62,88,160);
+    const ImU32 fg = enabled ? (active ? IM_COL32(244,251,255,255)
+                                : hovered ? IM_COL32(232,246,255,255)
+                                          : IM_COL32(181,204,222,255))
                              : IM_COL32(88,108,126,145);
 
     dl->AddRectFilled(p, ImVec2(p.x + size.x, p.y + size.y), bg, 5.0f);
-    dl->AddRect(p, ImVec2(p.x + size.x, p.y + size.y), border, 5.0f, 0, 1.0f);
+    dl->AddRect(p, ImVec2(p.x + size.x, p.y + size.y), border, 5.0f, 0, active ? 1.4f : 1.0f);
+    if (active) {
+        dl->AddRectFilled(ImVec2(p.x + 6.0f, p.y + size.y - 2.0f),
+                          ImVec2(p.x + size.x - 6.0f, p.y + size.y),
+                          IM_COL32(32,221,242,255), 1.0f);
+    }
 
     bool drewApprovedIcon = false;
     if (semanticIcon && *semanticIcon) {
@@ -3634,12 +3645,23 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
     }
     ImGui::SameLine(225.0f);
 
-    struct PrimaryNav { const char* key; AppScreen target; };
+    struct PrimaryNav {
+        const char* key;
+        AppScreen target;
+        IconDrawFn fallbackIcon;
+        const char* semanticIcon;
+        const char* tooltipDe;
+        const char* tooltipEn;
+    };
     const PrimaryNav primary[] = {
-        {"nav.map", AppScreen::MapEditorLauncher},
-        {"nav.data", AppScreen::ShnEditor},
-        {"nav.animations", AppScreen::KfmBrowser},
-        {"nav.project", AppScreen::ProjectHub},
+        {"nav.map",        AppScreen::MapEditorLauncher, DrawIconGlobe,       "nav.world",
+         "Karten- und World-Editor", "Map and world editor"},
+        {"nav.data",       AppScreen::ShnEditor,         DrawIconTable,       "module.shn.single",
+         "Spieldaten-Editoren", "Game-data editors"},
+        {"nav.animations", AppScreen::KfmBrowser,        DrawIconClapper,     "module.kfm",
+         "KFM/KF Animationen", "KFM/KF animations"},
+        {"nav.project",    AppScreen::ProjectHub,        DrawIconPencilPaper, "panel.project",
+         "Projektübersicht", "Project overview"},
     };
     for (const auto& item : primary) {
         const bool active =
@@ -3648,17 +3670,10 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
             (item.target == AppScreen::ProjectHub &&
              (state.screen == AppScreen::ProjectHub || state.screen == AppScreen::NewProjectConfig)) ||
             state.screen == item.target;
-        ImGui::PushStyleColor(ImGuiCol_Button, active ? IM_COL32(8, 62, 132, 210) : IM_COL32(8, 25, 40, 120));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(13, 68, 111, 235));
-        if (UI::Button(T(item.key))) state.screen = item.target;
-        const ImVec2 navMin = ImGui::GetItemRectMin();
-        const ImVec2 navMax = ImGui::GetItemRectMax();
-        if (active) {
-            ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(navMin.x + 7.0f, navMax.y - 2.0f),
-                                                      ImVec2(navMax.x - 7.0f, navMax.y),
-                                                      IM_COL32(32,221,242,255), 1.0f);
+        if (DrawCompactIconTextButton(item.key, T(item.key), item.fallbackIcon, item.semanticIcon,
+                                      true, L(item.tooltipDe,item.tooltipEn), active)) {
+            state.screen = item.target;
         }
-        ImGui::PopStyleColor(2);
         ImGui::SameLine();
     }
 
