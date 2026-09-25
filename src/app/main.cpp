@@ -13255,8 +13255,27 @@ std::optional<std::filesystem::path> ResolveNifInspectorTexturePathCached(
         return std::filesystem::path(it->second);
     }
 
-    const auto resolved = ResolveNifInspectorTexturePath(
-        root, state.nifInspectorAsset, textureName);
+    std::optional<std::filesystem::path> resolved;
+
+    // Im Interface-Workspace bildet <Projekt>/Client/resmenu einen Overlay-Layer über
+    // dem read-only Client/resmenu. Dadurch sieht der NIF-Inspector nicht nur das
+    // ausgewählte NIF-Override, sondern bevorzugt auch projektseitig ersetzte oder
+    // projekt-only Texturabhängigkeiten. Im Karten-Asset-Browser bleibt das Verhalten
+    // unverändert, weil dort root != interfaceRoot ist.
+    const bool interfaceContext =
+        !state.interfaceRoot.empty() &&
+        std::filesystem::path(state.interfaceRoot).lexically_normal() == root.lexically_normal();
+    if (interfaceContext && state.project.projectFolder[0] != '\0') {
+        const std::filesystem::path overrideRoot =
+            std::filesystem::path(state.project.projectFolder) / "Client" / "resmenu";
+        resolved = ResolveNifInspectorTexturePath(
+            overrideRoot, state.nifInspectorAsset, textureName);
+    }
+    if (!resolved) {
+        resolved = ResolveNifInspectorTexturePath(
+            root, state.nifInspectorAsset, textureName);
+    }
+
     state.nifInspectorResolvedTextureCache.emplace(
         key, resolved ? resolved->string() : std::string{});
     return resolved;
@@ -13285,8 +13304,21 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
     ImGui::SameLine();
     ImGui::TextDisabled("nur lesen");
     ImGui::SameLine();
-    if (UI::SmallButton("Neu laden##nifInspector"))
-        LoadNifAssetInspector(state, root / state.nifInspectorAsset, state.nifInspectorAsset);
+    if (UI::SmallButton("Neu laden##nifInspector")) {
+        std::filesystem::path reloadPath = root / state.nifInspectorAsset;
+        const bool interfaceContext =
+            !state.interfaceRoot.empty() &&
+            std::filesystem::path(state.interfaceRoot).lexically_normal() == root.lexically_normal();
+        if (interfaceContext && state.project.projectFolder[0] != '\0') {
+            const std::filesystem::path projectCandidate =
+                std::filesystem::path(state.project.projectFolder) /
+                "Client" / "resmenu" / state.nifInspectorAsset;
+            std::error_code projectEc;
+            if (std::filesystem::is_regular_file(projectCandidate, projectEc) && !projectEc)
+                reloadPath = projectCandidate;
+        }
+        LoadNifAssetInspector(state, reloadPath, state.nifInspectorAsset);
+    }
 
     ImGui::TextWrapped("%s", state.nifInspectorAsset.c_str());
     if (!state.nifInspectorError.empty()) {
@@ -14415,8 +14447,8 @@ void DrawInterfaceWorkspace(EditorState& state) {
     if (ext == ".nif") {
         if (state.nifInspectorAsset != rel)
             LoadNifAssetInspector(state, path, rel);
-        // Externe Texturreferenzen bleiben zunächst gegen den read-only Quellbestand aufgelöst;
-        // nur die ausgewählte NIF-Datei selbst kommt bei vorhandenem Override aus dem Projekt.
+        // Der Inspector behandelt <Projekt>/Client/resmenu als Overlay: sowohl das NIF selbst
+        // als auch externe Textur-/Flipbook-Referenzen bevorzugen vorhandene Projektkopien.
         DrawNifAssetInspector(state, root);
     } else if (ext == ".tga" || ext == ".dds" || ext == ".png" ||
                ext == ".jpg" || ext == ".jpeg" || ext == ".bmp") {
