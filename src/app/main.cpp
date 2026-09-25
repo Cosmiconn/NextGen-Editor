@@ -4464,6 +4464,28 @@ void DrawProjectHub(EditorState& state) {
         else if (i == 2) ImGui::Dummy(ImVec2(0.0f, gap));
     }
 
+    ImGui::SeparatorText("Zuletzt verwendete Projekte");
+    if (state.recentProjects.empty()) {
+        ImGui::TextDisabled("Noch keine Projekte geöffnet.");
+    } else {
+        const float recentW = std::max(220.0f, (ImGui::GetContentRegionAvail().x - 16.0f) / 3.0f);
+        for (std::size_t i = 0; i < state.recentProjects.size(); ++i) {
+            const auto& path = state.recentProjects[i];
+            std::error_code ec;
+            const bool exists = std::filesystem::is_regular_file(std::filesystem::path(path) / "project.tsproj", ec);
+            const std::string leaf = std::filesystem::path(path).filename().string();
+            ImGui::PushID(static_cast<int>(i));
+            ImGui::BeginDisabled(!exists);
+            if (UI::Button((leaf.empty() ? path : leaf).c_str(), ImVec2(recentW, 34.0f)))
+                LoadProjectFolderIntoState(state, path);
+            ImGui::EndDisabled();
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                ImGui::SetTooltip("%s%s", path.c_str(), exists ? "" : "\n(nicht mehr gefunden)");
+            ImGui::PopID();
+            if (i % 3 != 2 && i + 1 < state.recentProjects.size()) ImGui::SameLine();
+        }
+    }
+
     if (!state.statusMessage.empty()) {
         ImGui::Separator();
         ImGui::TextWrapped("%s", state.statusMessage.c_str());
@@ -4541,6 +4563,7 @@ void DrawNewProjectConfig(EditorState& state) {
             std::string err;
             if (SaveProjectConfig(state.project, &err)) {
                 state.project.hasProject = true;
+                TouchRecentProject(state, state.project.projectFolder);
                 state.statusMessage = T("newproject.saved");
                 state.screen = AppScreen::ProjectHub;
             } else {
@@ -4671,6 +4694,7 @@ void DrawMapEditorLauncher(EditorState& state) {
             std::snprintf(state.legacySaveStem, sizeof(state.legacySaveStem), "%s", state.newMapName);
             if (state.project.projectFolder[0] != '\0')
                 std::snprintf(state.legacySaveDir, sizeof(state.legacySaveDir), "%s", state.project.projectFolder);
+            state.mapDirty = true;
             state.statusMessage = "Neue Karte '" + std::string(state.newMapName) + "' angelegt (" +
                                   std::to_string(w) + "x" + std::to_string(h) + ").";
             state.screen = AppScreen::MapEditorWorkspace;
@@ -4691,6 +4715,29 @@ void DrawMapEditorLauncher(EditorState& state) {
             if (UI::Button("Projekt konfigurieren", ImVec2(-1,0)))
                 state.screen = AppScreen::NewProjectConfig;
         } else {
+            if (!state.recentMaps.empty()) {
+                ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "ZULETZT GEÖFFNET");
+                const std::size_t showCount = std::min<std::size_t>(5, state.recentMaps.size());
+                for (std::size_t i = 0; i < showCount; ++i) {
+                    const auto& recent = state.recentMaps[i];
+                    std::error_code ec;
+                    const bool exists = std::filesystem::is_regular_file(recent, ec);
+                    const std::string label = std::filesystem::path(recent).stem().string();
+                    ImGui::PushID(static_cast<int>(i));
+                    ImGui::BeginDisabled(!exists);
+                    if (UI::SmallButton(label.empty() ? recent.c_str() : label.c_str())) {
+                        if (OpenLegacyMapIntoState(state, recent, true))
+                            state.screen = AppScreen::MapEditorWorkspace;
+                    }
+                    ImGui::EndDisabled();
+                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                        ImGui::SetTooltip("%s%s", recent.c_str(), exists ? "" : "\n(nicht mehr gefunden)");
+                    ImGui::PopID();
+                    if (i + 1 < showCount) ImGui::SameLine();
+                }
+                ImGui::Separator();
+            }
+
             ImGui::TextDisabled("SUCHWURZEL");
             ImGui::TextWrapped("%s", resolvedRoot.empty() ? "(noch nicht gescannt)" : resolvedRoot.c_str());
             if (UI::SmallButton("Neu durchsuchen")) state.lastScannedMapRoot.clear();
@@ -4715,21 +4762,8 @@ void DrawMapEditorLauncher(EditorState& state) {
 
             ImGui::BeginDisabled(state.selectedMapIndex < 0);
             if (UI::Button("Ausgewählte Karte öffnen", ImVec2(-1.0f, 40.0f))) {
-                core::legacy::LegacyMapOpenReport report;
-                auto result = core::legacy::OpenLegacyMap(state.legacyMapIniPath, &report);
-                if (result) {
-                    const std::filesystem::path iniPath(state.legacyMapIniPath);
-                    ApplyProjectToState(state, std::move(*result), iniPath.parent_path());
-                    if (state.project.projectFolder[0] != '\0')
-                        std::snprintf(state.legacySaveDir, sizeof(state.legacySaveDir), "%s", state.project.projectFolder);
-                    else
-                        std::snprintf(state.legacySaveDir, sizeof(state.legacySaveDir), "%s", iniPath.parent_path().string().c_str());
-                    std::snprintf(state.legacySaveStem, sizeof(state.legacySaveStem), "%s", iniPath.stem().string().c_str());
-                    state.statusMessage = "Karte geöffnet (" + std::to_string(report.issues.size()) + " Hinweis(e)).";
+                if (OpenLegacyMapIntoState(state, state.legacyMapIniPath, true))
                     state.screen = AppScreen::MapEditorWorkspace;
-                } else {
-                    state.statusMessage = "Karte öffnen fehlgeschlagen: " + result.error();
-                }
             }
             ImGui::EndDisabled();
         }
