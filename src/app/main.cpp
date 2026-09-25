@@ -3677,7 +3677,9 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
                            ImVec2(22.0f,22.0f), "panel.settings"))
         state.settingsOpen = !state.settingsOpen;
     ImGui::SameLine();
-    if (UI::Button("?##manual")) state.manualOpen = !state.manualOpen;
+    if (DrawTinyIconButton("manualTop", nullptr, state.manualOpen, L("Hilfe öffnen","Open help"),
+                           ImVec2(22.0f,22.0f), "panel.help"))
+        state.manualOpen = !state.manualOpen;
     ImGui::SameLine();
     ImGui::SetNextItemWidth(64.0f);
     int langIdx = app::CurrentLanguage() == app::Language::German ? 0 : 1;
@@ -5607,13 +5609,13 @@ void DrawMapEditorLauncher(EditorState& state) {
 
     const bool onNewMap = state.mapLauncherView == EditorState::MapLauncherView::NewMap;
     const bool onBrowse = state.mapLauncherView == EditorState::MapLauncherView::Browse;
-    if (DrawIconButton("launcher.new", "Neue Karte", DrawIconTerrain, onNewMap, ImVec2(108,58)))
+    if (DrawIconButton("launcher.new", L("Neue Karte","New map"), DrawIconTerrain, onNewMap, ImVec2(108,58), true, "file.new"))
         state.mapLauncherView = EditorState::MapLauncherView::NewMap;
     ImGui::SameLine();
-    if (DrawIconButton("launcher.open", "Karte öffnen", DrawIconGlobe, onBrowse, ImVec2(108,58)))
+    if (DrawIconButton("launcher.open", L("Karte öffnen","Open map"), DrawIconGlobe, onBrowse, ImVec2(108,58), true, "file.open"))
         state.mapLauncherView = EditorState::MapLauncherView::Browse;
     ImGui::SameLine();
-    if (DrawIconButton("launcher.project", "Projekt", DrawIconPencilPaper, false, ImVec2(92,58)))
+    if (DrawIconButton("launcher.project", L("Projekt","Project"), DrawIconPencilPaper, false, ImVec2(92,58), true, "panel.project"))
         state.screen = AppScreen::ProjectHub;
     ImGui::Separator();
 
@@ -9104,10 +9106,10 @@ void DrawCustomCreatureEditor(EditorState& state) {
     ImGui::SameLine();
     ImGui::TextDisabled("%s", L("Vorlage klonen · Werte anpassen · Aussehen wählen · optional platzieren", "Clone template · adjust values · choose appearance · optionally place"));
     ImGui::Separator();
-    if (DrawIconButton("customNpc", "NPC", DrawIconPerson, w.isNpc, ImVec2(94,58)))
+    if (DrawIconButton("customNpc", "NPC", DrawIconPerson, w.isNpc, ImVec2(94,58), true, "module.custom_npc"))
         w.isNpc = true;
     ImGui::SameLine();
-    if (DrawIconButton("customMob", L("Monster", "Monster"), DrawIconSpawn, !w.isNpc, ImVec2(94,58))) {
+    if (DrawIconButton("customMob", L("Monster", "Monster"), DrawIconSpawn, !w.isNpc, ImVec2(94,58), true, "module.custom_mob")) {
         w.isNpc = false;
         if (w.lookMode == 2) w.lookMode = 0;
     }
