@@ -2,10 +2,14 @@ cmake_minimum_required(VERSION 3.21)
 
 # On Windows this repository is primarily the desktop editor.  When vcpkg is
 # installed in one of the conventional environment locations, pick its
-# toolchain automatically so a normal CMake configure can build the GUI
-# instead of silently producing only the headless/core targets.
+# toolchain automatically so a normal CMake configure can build the GUI.
+#
+# IMPORTANT: do not gate this on NEXTGEN_EDITOR_BUILD_GUI. Older build folders
+# may still have that value cached as OFF. Such a stale cache must not make the
+# Windows editor silently disappear. Explicit headless builds use the separate
+# NEXTGEN_EDITOR_CORE_ONLY switch below.
 if(CMAKE_HOST_WIN32 AND NOT DEFINED CMAKE_TOOLCHAIN_FILE AND
-   (NOT DEFINED NEXTGEN_EDITOR_BUILD_GUI OR NEXTGEN_EDITOR_BUILD_GUI))
+   (NOT DEFINED NEXTGEN_EDITOR_CORE_ONLY OR NOT NEXTGEN_EDITOR_CORE_ONLY))
     if(DEFINED ENV{VCPKG_ROOT} AND
        EXISTS "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake")
         set(CMAKE_TOOLCHAIN_FILE
@@ -70,13 +74,34 @@ target_include_directories(mapeditor_core PUBLIC include)
 target_compile_features(mapeditor_core PUBLIC cxx_std_23)
 
 # -----------------------------------------------------------------------------
+option(NEXTGEN_EDITOR_CORE_ONLY
+       "Build only core/tools/tests and intentionally suppress the Windows editor"
+       OFF)
+
 if(WIN32)
-    set(_nextgen_gui_default ON)
+    if(NEXTGEN_EDITOR_CORE_ONLY)
+        set(NEXTGEN_EDITOR_BUILD_GUI OFF CACHE BOOL
+            "Build the GLFW/OpenGL GUI application" FORCE)
+        message(STATUS "NextGen-Editor: explicit core-only Windows build")
+    else()
+        # Self-heal build directories that were configured by older revisions
+        # with NEXTGEN_EDITOR_BUILD_GUI=OFF. On Windows the desktop editor is the
+        # primary product, so a normal configure/build must always produce it.
+        if(DEFINED NEXTGEN_EDITOR_BUILD_GUI AND NOT NEXTGEN_EDITOR_BUILD_GUI)
+            message(STATUS
+                "NextGen-Editor: overriding stale NEXTGEN_EDITOR_BUILD_GUI=OFF; "
+                "use -DNEXTGEN_EDITOR_CORE_ONLY=ON for an intentional headless build")
+        endif()
+        set(NEXTGEN_EDITOR_BUILD_GUI ON CACHE BOOL
+            "Build the GLFW/OpenGL GUI application" FORCE)
+    endif()
 else()
-    set(_nextgen_gui_default OFF)
+    option(NEXTGEN_EDITOR_BUILD_GUI "Build the GLFW/OpenGL GUI application" OFF)
+    if(NEXTGEN_EDITOR_CORE_ONLY)
+        set(NEXTGEN_EDITOR_BUILD_GUI OFF CACHE BOOL
+            "Build the GLFW/OpenGL GUI application" FORCE)
+    endif()
 endif()
-option(NEXTGEN_EDITOR_BUILD_GUI "Build the GLFW/OpenGL GUI application" ${_nextgen_gui_default})
-unset(_nextgen_gui_default)
 
 # Standalone-App (GLFW3 + Dear ImGui [docking, glfw+opengl3-binding] + glad)
 # Installation via vcpkg, siehe vcpkg.json.
