@@ -1,4 +1,22 @@
 cmake_minimum_required(VERSION 3.21)
+
+# On Windows this repository is primarily the desktop editor.  When vcpkg is
+# installed in one of the conventional environment locations, pick its
+# toolchain automatically so a normal CMake configure can build the GUI
+# instead of silently producing only the headless/core targets.
+if(CMAKE_HOST_WIN32 AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+    foreach(_vcpkg_env VCPKG_ROOT VCPKG_INSTALLATION_ROOT)
+        if(DEFINED ENV{${_vcpkg_env}} AND
+           EXISTS "$ENV{${_vcpkg_env}}/scripts/buildsystems/vcpkg.cmake")
+            set(CMAKE_TOOLCHAIN_FILE
+                "$ENV{${_vcpkg_env}}/scripts/buildsystems/vcpkg.cmake"
+                CACHE FILEPATH "vcpkg toolchain")
+            break()
+        endif()
+    endforeach()
+    unset(_vcpkg_env)
+endif()
+
 project(TheSeedMapEditor LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
@@ -50,7 +68,13 @@ target_include_directories(mapeditor_core PUBLIC include)
 target_compile_features(mapeditor_core PUBLIC cxx_std_23)
 
 # -----------------------------------------------------------------------------
-option(NEXTGEN_EDITOR_BUILD_GUI "Build the GLFW/OpenGL GUI application" OFF)
+if(WIN32)
+    set(_nextgen_gui_default ON)
+else()
+    set(_nextgen_gui_default OFF)
+endif()
+option(NEXTGEN_EDITOR_BUILD_GUI "Build the GLFW/OpenGL GUI application" ${_nextgen_gui_default})
+unset(_nextgen_gui_default)
 
 # Standalone-App (GLFW3 + Dear ImGui [docking, glfw+opengl3-binding] + glad)
 # Installation via vcpkg, siehe vcpkg.json.
