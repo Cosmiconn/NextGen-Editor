@@ -346,6 +346,16 @@ std::vector<core::NifVec3> ComputeFallbackNormals(const core::NifMeshPart& part)
 
 } // namespace
 
+std::expected<core::DdsImage, std::string> LoadPlatformRasterImage(
+    const std::filesystem::path& file) {
+#ifdef _WIN32
+    return LoadWicImage(file);
+#else
+    (void)file;
+    return std::unexpected("Plattform-Rasterdecoder ist nur unter Windows verfügbar");
+#endif
+}
+
 NifMeshRenderer::~NifMeshRenderer() { Shutdown(); }
 
 void NifMeshRenderer::Init() {
