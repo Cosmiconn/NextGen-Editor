@@ -11864,6 +11864,27 @@ void DrawSceneOutlinerPanel(EditorState& state) {
             }
             if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
                 FocusCurrentSceneSelection(state);
+            if (ImGui::BeginPopupContextItem("##npcSceneContext")) {
+                state.selectedNpcRecordIdx = static_cast<int>(idx);
+                ImGui::TextDisabled("%s",semantic.tooltip.c_str());
+                ImGui::Separator();
+                if (UI::MenuItem("Im 3D-Viewport fokussieren")) FocusCurrentSceneSelection(state);
+                if (UI::MenuItem("Dialog bearbeiten")) OpenNpcDialogEditor(state,rec.values[0]);
+                if (UI::MenuItem("Lua / AI bearbeiten")) OpenAiScriptEditor(state,rec.values[0]);
+                if (UI::MenuItem("Route bearbeiten")) OpenPatrolRouteEditor(state,rec.values[0]);
+                if (role == "Merchant" && UI::MenuItem("Shop / Inventar bearbeiten")) {
+                    EnsureShopTextLoaded(state,rec.values[0]);
+                    state.shopEditorOpen=true;
+                }
+                if (role == "Gate") {
+                    for (const auto& marker : CollectPortalMarkers(state)) {
+                        if (marker.kind != kPortalKindGateLink || marker.idx != idx) continue;
+                        if (UI::MenuItem("Gate-Ziel öffnen")) NavigateToPortalTarget(state,marker);
+                        break;
+                    }
+                }
+                ImGui::EndPopup();
+            }
             if (selected) {
                 RefreshRoamOverlayRoutes(state);
                 const bool hasSelectedRoute = std::any_of(
@@ -11934,6 +11955,29 @@ void DrawSceneOutlinerPanel(EditorState& state) {
             }
             if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
                 FocusCurrentSceneSelection(state);
+            if (ImGui::BeginPopupContextItem("##mobSceneContext")) {
+                state.selectedMobZoneIdx = static_cast<int>(i);
+                ImGui::TextDisabled("%s",semantic.tooltip.c_str());
+                ImGui::TextDisabled("%d Arten · %d Mobs",groups,totalMobs);
+                ImGui::Separator();
+                if (UI::MenuItem("Im 3D-Viewport fokussieren")) FocusCurrentSceneSelection(state);
+                if (spawns && ImGui::BeginMenu("Monster in dieser Zone")) {
+                    bool any=false;
+                    for (const auto& spawn : spawns->records) {
+                        if (spawn.values.size() < 2 || spawn.values[0] != rec.values[0]) continue;
+                        any=true;
+                        const std::string mobName=spawn.values[1];
+                        if (ImGui::BeginMenu(mobName.c_str())) {
+                            if (UI::MenuItem("Lua / AI bearbeiten")) OpenAiScriptEditor(state,mobName);
+                            if (UI::MenuItem("MobRoam-Route bearbeiten")) OpenPatrolRouteEditor(state,mobName);
+                            ImGui::EndMenu();
+                        }
+                    }
+                    if (!any) ImGui::TextDisabled("Keine Monster");
+                    ImGui::EndMenu();
+                }
+                ImGui::EndPopup();
+            }
             if (selected) {
                 RefreshRoamOverlayRoutes(state);
                 bool hasSelectedRoute = false;
@@ -11988,6 +12032,17 @@ void DrawSceneOutlinerPanel(EditorState& state) {
             }
             if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
                 FocusCurrentSceneSelection(state);
+            if (ImGui::BeginPopupContextItem("##portalSceneContext")) {
+                state.selectedPortalKind = m.kind;
+                state.selectedPortalIdx = static_cast<int>(m.idx);
+                if (UI::MenuItem("Im 3D-Viewport fokussieren")) FocusCurrentSceneSelection(state);
+                if (m.kind == kPortalKindGateLink) {
+                    if (UI::MenuItem("Zielkarte öffnen")) NavigateToPortalTarget(state,m);
+                } else if (UI::MenuItem("Position per 2D-Klick setzen")) {
+                    state.portalPickMode=true;
+                }
+                ImGui::EndPopup();
+            }
             ImGui::PopID();
         }
         ImGui::EndChild();
