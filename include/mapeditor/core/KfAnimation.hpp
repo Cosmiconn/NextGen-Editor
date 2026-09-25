@@ -137,4 +137,23 @@ struct KfAnimationFile {
 std::expected<KfAnimationFile, std::string> DecodeKfAnimation(std::span<const std::uint8_t> bytes);
 std::expected<KfAnimationFile, std::string> LoadKfAnimation(const std::filesystem::path& path);
 
+// Zeitliche Auswertung bereits dekodierter Transform-Tracks. Die API bleibt GUI-frei und
+// arbeitet direkt in der KF-Sequenzzeit (StartTime..StopTime), damit Preview, Tests und spätere
+// Export-/Diagnosewerkzeuge exakt denselben Sampler verwenden können.
+//
+// Unterstützt werden zunächst die für Fiesta bereits verifizierten Pose-, Linear-, Constant-
+// und XYZ-Rotationsspuren. Für noch nicht verifizierte Quadratic-/TBC- oder komprimierte
+// B-Spline-Spuren wird bewusst ein Fehler geliefert statt eine falsche Animation zu raten.
+std::expected<KfTransform, std::string>
+SampleKfTransformTrack(const KfAnimationFile& file, const KfControlledTrack& track,
+                       float sequenceTime);
+
+struct KfSampledTransform {
+    std::string nodeName;
+    KfTransform transform{};
+};
+
+std::expected<std::vector<KfSampledTransform>, std::string>
+SampleKfSequence(const KfAnimationFile& file, float sequenceTime);
+
 } // namespace theseed::mapeditor::core
