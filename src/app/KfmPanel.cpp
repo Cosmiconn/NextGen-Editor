@@ -15,7 +15,7 @@ std::string lower(std::string value) { for(auto& c:value)c=static_cast<char>(std
 bool KfmPanel::Open(const std::filesystem::path& path) {
     auto loaded=core::LoadKfmFile(path);
     if(!loaded) { message_=loaded.error();return false; }
-    source_=path;file_=std::move(*loaded);references_.reset();selected_=0;transitionCount_=0;
+    source_=path;file_=std::move(*loaded);references_.reset();selected_=0;transitionCount_=0;dirty_=false;
     previewKf_.reset(); previewKfPath_.clear(); previewAnimationIndex_=static_cast<std::size_t>(-1);
     previewTime_=0.0f; previewPlaying_=false; previewMessage_.clear();
     for(const auto& a:file_->animations)transitionCount_+=a.transitions.size();
@@ -32,6 +32,12 @@ void KfmPanel::Filter() {
         if(needle.empty() || lower(a.kfFileName+" "+a.name+" "+std::to_string(a.eventCode)).find(needle)!=std::string::npos)visible_.push_back(i);
     }
 }
+void KfmPanel::MarkEdited(bool referencesChanged) {
+    dirty_ = true;
+    if (referencesChanged) references_.reset();
+    Filter();
+}
+
 void KfmPanel::LoadSelectedKfPreview() {
     previewPlaying_ = false;
     previewKf_.reset();
@@ -90,11 +96,12 @@ void KfmPanel::Draw(const std::function<std::optional<std::string>()>& browse) {
         return;
     }
 
-    const auto& f = *file_;
+    auto& f = *file_;
 
     // Kompakte Status-/Metadatenzeile
     ImGui::BeginChild("##kfmStats", ImVec2(0, 76.0f), true);
-    ImGui::TextColored(ImVec4(0.35f, 0.75f, 1.0f, 1.0f), "KFM %s", core::KfmVersionName(f.version));
+    ImGui::TextColored(ImVec4(0.35f, 0.75f, 1.0f, 1.0f), "KFM %s%s",
+                       core::KfmVersionName(f.version), dirty_ ? " *" : "");
     ImGui::SameLine();
     ImGui::TextDisabled("| %zu %s | %zu %s", f.animations.size(), L("Animationen", "animations"),
                         transitionCount_, L("Übergänge", "transitions"));
@@ -112,7 +119,10 @@ void KfmPanel::Draw(const std::function<std::optional<std::string>()>& browse) {
     ImGui::SameLine();
     if (ImGui::Button(L("Kopie exportieren", "Export copy"))) {
         auto saved = core::SaveKfmFile(f, std::filesystem::u8path(exportPath_));
-        message_ = saved ? L("KFM-Kopie gespeichert.", "KFM copy saved.") : saved.error();
+        message_ = saved
+            ? L(dirty_ ? "Bearbeitete KFM-Kopie gespeichert." : "KFM-Kopie gespeichert.",
+                dirty_ ? "Edited KFM copy saved." : "KFM copy saved.")
+            : saved.error();
     }
 
     if (references_) {
@@ -196,47 +206,201 @@ void KfmPanel::Draw(const std::function<std::optional<std::string>()>& browse) {
     ImGui::Separator();
 
     if (selected_ < f.animations.size()) {
-        const auto& a = f.animations[selected_];
-        ImGui::Text("Event ID %d", a.eventCode);
-        ImGui::TextDisabled("Index %d", a.index);
-        ImGui::TextWrapped("%s", a.kfFileName.c_str());
-        if (!a.name.empty()) ImGui::TextDisabled("%s", a.name.c_str());
-        if (references_ && references_->animations[selected_]) {
-            ImGui::Separator();
+        auto& a = f.animations[selected_];
+
+        ImGui::SeparatorText(L("Animation", "Animation"));
+        int eventCode = a.eventCode;
+        ImGui::SetNextItemWidth(120.0f);
+        if (ImGui::InputInt("Event ID##anim", &eventCode)) {
+            a.eventCode = eventCode;
+            MarkEdited(true);
+        }
+        ImGui::SameLine();
+        int animationIndex = a.index;
+        ImGui::SetNextItemWidth(100.0f);
+        if (ImGui::InputInt("Index##anim", &animationIndex)) {
+            a.index = animationIndex;
+            MarkEdited(false);
+        }
+
+        {
+            std::array<char,1024> buf{};
+            std::snprintf(buf.data(),buf.size(),"%s",a.kfFileName.c_str());
+            ImGui::SetNextItemWidth(-1.0f);
+            if (ImGui::InputText(L("KF-Datei##anim", "KF file##anim"),buf.data(),buf.size())) {
+                a.kfFileName = buf.data();
+                previewKf_.reset();
+                previewKfPath_.clear();
+                previewAnimationIndex_ = static_cast<std::size_t>(-1);
+                MarkEdited(true);
+            }
+        }
+        if (f.version == core::KfmVersion::V1_2_4b) {
+            std::array<char,512> buf{};
+            std::snprintf(buf.data(),buf.size(),"%s",a.name.c_str());
+            ImGui::SetNextItemWidth(-1.0f);
+            if (ImGui::InputText(L("Legacy-Name##anim", "Legacy name##anim"),buf.data(),buf.size())) {
+                a.name = buf.data();
+                MarkEdited(false);
+            }
+        }
+
+        if (references_ && selected_ < references_->animations.size() && references_->animations[selected_]) {
             ImGui::TextDisabled("%s", L("Aufgelöste Datei", "Resolved file"));
             ImGui::TextWrapped("%s", utf8(*references_->animations[selected_]).c_str());
         }
 
-        ImGui::Separator();
-        ImGui::Text("%s (%zu)", L("Übergänge", "Transitions"), a.transitions.size());
-        if (ImGui::BeginTable("kfm-transitions", 4,
+        ImGui::SeparatorText(L("Übergänge", "Transitions"));
+        ImGui::TextDisabled("%s",
+            L("Typ ist bewusst read-only: Struktur ist bekannt, Laufzeitsemantik der Typwerte noch nicht vollständig.",
+              "Type is intentionally read-only: structure is known, runtime semantics of type values are not fully established."));
+
+        std::optional<std::size_t> transitionToDelete;
+        if (ImGui::BeginTable("kfm-transitions", 5,
                 ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable |
-                ImGuiTableFlags_ScrollY, ImVec2(0, std::max(120.0f, ImGui::GetContentRegionAvail().y - 44.0f)))) {
-            ImGui::TableSetupColumn(L("Ziel", "Target"), ImGuiTableColumnFlags_WidthFixed, 72);
-            ImGui::TableSetupColumn(L("Typ", "Type"), ImGuiTableColumnFlags_WidthFixed, 48);
-            ImGui::TableSetupColumn(L("Dauer", "Duration"), ImGuiTableColumnFlags_WidthFixed, 78);
-            ImGui::TableSetupColumn(L("Details", "Details"), ImGuiTableColumnFlags_WidthStretch);
+                ImGuiTableFlags_ScrollY, ImVec2(0, std::clamp(ImGui::GetContentRegionAvail().y * 0.34f, 120.0f, 245.0f)))) {
+            ImGui::TableSetupColumn(L("Ziel", "Target"), ImGuiTableColumnFlags_WidthFixed, 88);
+            ImGui::TableSetupColumn(L("Typ", "Type"), ImGuiTableColumnFlags_WidthFixed, 52);
+            ImGui::TableSetupColumn(L("Dauer", "Duration"), ImGuiTableColumnFlags_WidthFixed, 92);
+            ImGui::TableSetupColumn(L("Payload", "Payload"), ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 72);
             ImGui::TableHeadersRow();
 
             for (std::size_t row = 0; row < a.transitions.size(); ++row) {
-                const auto& t = a.transitions[row];
+                auto& t = a.transitions[row];
+                ImGui::PushID(static_cast<int>(row));
                 ImGui::TableNextRow();
-                ImGui::TableNextColumn(); ImGui::Text("%d", t.eventCode);
-                ImGui::TableNextColumn(); ImGui::Text("%d", t.type);
+
                 ImGui::TableNextColumn();
-                if (t.type == 5) ImGui::TextUnformatted("-");
-                else ImGui::Text("%.4g", t.duration);
-                ImGui::TableNextColumn();
-                ImGui::Text("%zu Keys · %zu Intermediates", t.textKeys.size(), t.intermediateAnimations.size());
-                if ((!t.textKeys.empty() || !t.intermediateAnimations.empty()) && ImGui::IsItemHovered()) {
-                    ImGui::BeginTooltip();
-                    for (const auto& k : t.textKeys) ImGui::Text("%s -> %s", k.source.c_str(), k.destination.c_str());
-                    for (const auto& m : t.intermediateAnimations) ImGui::Text("%d / %.6g", m.eventCode, m.value);
-                    ImGui::EndTooltip();
+                ImGui::SetNextItemWidth(-1.0f);
+                int target = t.eventCode;
+                if (ImGui::InputInt("##target",&target,0,0)) {
+                    t.eventCode = target;
+                    MarkEdited(true);
                 }
+
+                ImGui::TableNextColumn();
+                ImGui::Text("%d",t.type);
+
+                ImGui::TableNextColumn();
+                if (t.type == 5) {
+                    ImGui::TextDisabled("-");
+                } else {
+                    float duration = t.duration;
+                    ImGui::SetNextItemWidth(-1.0f);
+                    if (ImGui::InputFloat("##duration",&duration,0.0f,0.0f,"%.4g")) {
+                        t.duration = duration;
+                        MarkEdited(false);
+                    }
+                }
+
+                ImGui::TableNextColumn();
+                if (t.type == 5)
+                    ImGui::TextDisabled("%s",L("kein Payload","no payload"));
+                else
+                    ImGui::Text("%zu Keys · %zu Intermediates",t.textKeys.size(),t.intermediateAnimations.size());
+
+                ImGui::TableNextColumn();
+                if (t.type != 5) {
+                    if (ImGui::SmallButton(L("Details", "Details")))
+                        ImGui::OpenPopup("##transitionPayload");
+                } else {
+                    ImGui::TextDisabled("Type 5");
+                }
+
+                if (ImGui::BeginPopup("##transitionPayload")) {
+                    ImGui::Text("%s %zu · Type %d",L("Übergang","Transition"),row,t.type);
+                    ImGui::SeparatorText(L("Text-Key-Paare","Text-key pairs"));
+                    std::optional<std::size_t> keyToDelete;
+                    for (std::size_t ki=0;ki<t.textKeys.size();++ki) {
+                        auto& key=t.textKeys[ki];
+                        ImGui::PushID(static_cast<int>(ki));
+                        std::array<char,384> src{},dst{};
+                        std::snprintf(src.data(),src.size(),"%s",key.source.c_str());
+                        std::snprintf(dst.data(),dst.size(),"%s",key.destination.c_str());
+                        ImGui::SetNextItemWidth(170.0f);
+                        if (ImGui::InputText("##src",src.data(),src.size())) {
+                            key.source=src.data(); MarkEdited(false);
+                        }
+                        ImGui::SameLine();
+                        ImGui::SetNextItemWidth(170.0f);
+                        if (ImGui::InputText("##dst",dst.data(),dst.size())) {
+                            key.destination=dst.data(); MarkEdited(false);
+                        }
+                        ImGui::SameLine();
+                        if (ImGui::SmallButton("X")) keyToDelete=ki;
+                        ImGui::PopID();
+                    }
+                    if (keyToDelete) {
+                        t.textKeys.erase(t.textKeys.begin()+static_cast<std::ptrdiff_t>(*keyToDelete));
+                        MarkEdited(false);
+                    }
+                    if (ImGui::SmallButton(L("+ Text-Key","+ Text key"))) {
+                        t.textKeys.push_back({});
+                        MarkEdited(false);
+                    }
+
+                    ImGui::SeparatorText(L("Intermediate-Animationen","Intermediate animations"));
+                    std::optional<std::size_t> intermediateToDelete;
+                    for (std::size_t mi=0;mi<t.intermediateAnimations.size();++mi) {
+                        auto& mid=t.intermediateAnimations[mi];
+                        ImGui::PushID(10000+static_cast<int>(mi));
+                        int midEvent=mid.eventCode;
+                        float midValue=mid.value;
+                        ImGui::SetNextItemWidth(120.0f);
+                        if (ImGui::InputInt("##midEvent",&midEvent,0,0)) {
+                            mid.eventCode=midEvent; MarkEdited(true);
+                        }
+                        ImGui::SameLine();
+                        ImGui::SetNextItemWidth(130.0f);
+                        if (ImGui::InputFloat("##midValue",&midValue,0.0f,0.0f,"%.6g")) {
+                            mid.value=midValue; MarkEdited(false);
+                        }
+                        ImGui::SameLine();
+                        if (ImGui::SmallButton("X")) intermediateToDelete=mi;
+                        ImGui::PopID();
+                    }
+                    if (intermediateToDelete) {
+                        t.intermediateAnimations.erase(
+                            t.intermediateAnimations.begin()+static_cast<std::ptrdiff_t>(*intermediateToDelete));
+                        MarkEdited(true);
+                    }
+                    if (ImGui::SmallButton(L("+ Intermediate","+ Intermediate"))) {
+                        t.intermediateAnimations.push_back({});
+                        MarkEdited(true);
+                    }
+                    ImGui::EndPopup();
+                }
+
+                if (ImGui::BeginPopupContextItem("##transitionContext")) {
+                    ImGui::TextDisabled("%s %zu · Type %d",L("Übergang","Transition"),row,t.type);
+                    if (ImGui::MenuItem(L("Übergang löschen","Delete transition")))
+                        transitionToDelete=row;
+                    ImGui::EndPopup();
+                }
+                ImGui::PopID();
             }
             ImGui::EndTable();
         }
+
+        if (transitionToDelete && *transitionToDelete < a.transitions.size()) {
+            a.transitions.erase(a.transitions.begin()+static_cast<std::ptrdiff_t>(*transitionToDelete));
+            --transitionCount_;
+            MarkEdited(true);
+        }
+
+        if (ImGui::Button(L("+ Type-5-Übergang","+ Type-5 transition"))) {
+            core::KfmTransition t;
+            t.type = 5;
+            t.eventCode = a.eventCode;
+            a.transitions.push_back(std::move(t));
+            ++transitionCount_;
+            MarkEdited(true);
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s",
+            L("Neue Übergänge werden konservativ als payload-loser Type 5 angelegt.",
+              "New transitions are conservatively created as payload-free type 5."));
     } else {
         ImGui::TextDisabled("%s", L("Keine Animation ausgewählt.", "No animation selected."));
     }
