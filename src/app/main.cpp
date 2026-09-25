@@ -7004,6 +7004,7 @@ void DrawAiScriptEditorPopup(EditorState& state) {
             state.aiScriptEditorText.assign(buf.data());
             state.aiScriptDirty=true;
         }
+        if (ShortcutPressed(state.shortcutSave) && state.aiScriptDirty) SaveAiScript(state);
         if (UI::Button(state.aiScriptDirty ? L("Speichern *","Save *") : L("Speichern","Save"))) SaveAiScript(state);
         ImGui::SameLine();
         if (UI::Button(L("Neu laden / verwerfen","Reload / discard")))
@@ -7099,6 +7100,7 @@ void DrawAiWorkspace(EditorState& state) {
     ImGui::Separator();
     ImGui::TextDisabled("%s",state.aiScriptEditorPath.c_str());
 
+    if(ShortcutPressed(state.shortcutSave) && state.aiScriptDirty) SaveAiScript(state);
     if(UI::Button(state.aiScriptDirty?L("Speichern *","Save *"):L("Speichern","Save")))
         SaveAiScript(state);
     ImGui::SameLine();
@@ -9505,6 +9507,8 @@ void DrawCommandPalette(EditorState& state) {
     add("Spieldaten: Custom NPC / Mob", "", [&] { state.shnSubTab = 6; state.screen = AppScreen::ShnEditor; });
     add("Spieldaten: Skill Editor", "", [&] { state.shnSubTab = 7; state.screen = AppScreen::ShnEditor; });
     add("Spieldaten: AI Workspace", "", [&] { state.shnSubTab = 8; state.screen = AppScreen::ShnEditor; });
+    if (state.aiScriptDirty && !state.aiScriptEditorPath.empty())
+        add("AI: Aktuelles Skript speichern", ShortcutLabel(state.shortcutSave), [&] { SaveAiScript(state); });
     add("Animationen: KFM", "", [&] { state.screen = AppScreen::KfmBrowser; });
     add("Hilfe: Handbuch", "F1", [&] { state.manualOpen = true; });
     add("Einstellungen: Shortcuts & Workspace", "", [&] { state.settingsOpen = true; });
