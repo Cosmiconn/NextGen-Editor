@@ -6,7 +6,9 @@
 // Platzhalter - beide Renderer arbeiten zusammen im selben 3D-Vorschau-Pass.
 //
 // Texturierung: klassische NiTexturingProperty-Slots Base/Dark/Detail/Gloss/Glow/Bump/Decal
-// werden gleichzeitig ausgewertet, inklusive eigener UV-Sets und Texture-Transforms. DDS/TGA
+// werden gleichzeitig ausgewertet, inklusive eigener UV-Sets und Texture-Transforms.
+// VCAlphaTextureBlender wird zusätzlich mit seinen drei ShaderTexDesc-Maps und Vertex-Alpha
+// nach der originalen Gamebryo-Shaderlogik gerendert. DDS/TGA
 // werden intern dekodiert; unter Windows ergaenzt WIC JPG/PNG/BMP (relevant z.B. fuer echte
 // Fiesta-Bumpmaps). Use External=0 verwendet weiterhin eingebettete NiPixelData.
 //
@@ -104,6 +106,7 @@ private:
         };
         std::vector<FlipAnimation> textureFlipAnimations;
         std::uint32_t textureApplyMode = 2;
+        bool vcAlphaTextureBlender = false;
         std::array<float, 3> ambientColor{1.0f, 1.0f, 1.0f};
         std::array<float, 3> diffuseColor{1.0f, 1.0f, 1.0f};
         std::array<float, 3> specularColor{1.0f, 1.0f, 1.0f};
@@ -148,7 +151,7 @@ private:
     std::unordered_map<std::string, std::uint32_t> textureCache_; // Schlüssel: aufgelöster Textur-Pfad
     std::vector<const LoadedModel*> perObjectModel_;             // parallel zu set, nullptr = kein Mesh
     struct UniformLocations {
-        int locViewProj = -1, locModel = -1, locLightDir = -1, locCameraPos = -1, locAmbientColor = -1, locDiffuseColor = -1, locSpecularColor = -1, locEmissiveColor = -1, locGlossiness = -1, locSpecularEnabled = -1, locApplyMode = -1, locBumpLumaScale = -1, locBumpLumaOffset = -1, locBumpMatrix = -1, locAlphaTest = -1, locAlphaCutoff = -1, locAlphaTestFunc = -1, locMaterialAlpha = -1;
+        int locViewProj = -1, locModel = -1, locLightDir = -1, locCameraPos = -1, locAmbientColor = -1, locDiffuseColor = -1, locSpecularColor = -1, locEmissiveColor = -1, locGlossiness = -1, locSpecularEnabled = -1, locApplyMode = -1, locVcAlphaTextureBlender = -1, locBumpLumaScale = -1, locBumpLumaOffset = -1, locBumpMatrix = -1, locAlphaTest = -1, locAlphaCutoff = -1, locAlphaTestFunc = -1, locMaterialAlpha = -1;
         std::array<int, 10> locHasTex{}, locUvSet{}, locHasTransform{}, locTranslation{}, locScale{}, locRotation{}, locCenter{}, locSampler{};
     } uniforms_;
     struct DrawItem {
