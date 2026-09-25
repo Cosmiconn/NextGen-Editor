@@ -1590,6 +1590,7 @@ void DeleteSelectedObjects(EditorState& state) {
 
     ClearObjectSelection(state);
     ReloadObjectRenderers(state);
+    state.mapDirty = true;
 }
 
 void DeleteAllNormalObjects(EditorState& state) {
@@ -1603,6 +1604,7 @@ void DeleteAllNormalObjects(EditorState& state) {
     ReloadObjectRenderers(state);
     state.statusMessage = std::to_string(removed) +
         " normale Placement-Objekte entfernt. Sky/Water/GroundObject bleiben unverändert.";
+    if (removed > 0) state.mapDirty = true;
 }
 
 // SHMD-Kategorieeinträge besitzen im Dateiformat KEINEN Transform. Sobald der Benutzer einen
@@ -1676,6 +1678,7 @@ bool PromoteSelectedShmdObjectsToPlacements(EditorState& state, std::optional<in
     state.statusMessage =
         "SHMD-Szenenmodell in normales Placement umgewandelt: Sky/Water/GroundObject speichern "
         "keine eigenen Transform-Daten; Position/Rotation/Skalierung bleiben so verlustfrei erhalten.";
+    state.mapDirty = true;
     return true;
 }
 
@@ -1689,6 +1692,7 @@ void MoveSelectedObjectsBy(EditorState& state, float dx, float dy, float dz) {
         object.posY += dy;
         object.posZ += dz;
     }
+    if (dx != 0.0f || dy != 0.0f || dz != 0.0f) state.mapDirty = true;
 }
 
 void RotateSelectedObjectsYawBy(EditorState& state, float deltaRadians) {
@@ -1710,6 +1714,7 @@ void RotateSelectedObjectsYawBy(EditorState& state, float deltaRadians) {
             object.rotX /= length; object.rotY /= length; object.rotZ /= length; object.rotW /= length;
         }
     }
+    state.mapDirty = true;
 }
 
 void ScaleSelectedObjectsBy(EditorState& state, float factor) {
@@ -1720,6 +1725,7 @@ void ScaleSelectedObjectsBy(EditorState& state, float factor) {
         auto& object = state.placementSet.At(static_cast<std::size_t>(id));
         object.scale = std::clamp(object.scale * factor, 0.01f, 100.0f);
     }
+    state.mapDirty = true;
 }
 
 void SyncSelectedObjectModelPath(EditorState& state) {
@@ -1758,6 +1764,7 @@ void ApplySelectedObjectModelPath(EditorState& state, const std::string& modelPa
     state.footprintCache.erase(modelPath);
     state.selectedObjectModelPathFor = kNoObjectSelection;
     SyncSelectedObjectModelPath(state);
+    state.mapDirty = true;
 }
 
 void RefreshShmdCategoryVisibility(EditorState& state) {
@@ -1839,6 +1846,32 @@ void ApplyProjectToState(EditorState& state, core::legacy::LegacyMapProject&& pr
 
     state.legacyIniMeta = std::move(project.ini);
     state.hasLegacyIniMeta = true;
+    state.mapDirty = false;
+}
+
+bool OpenLegacyMapIntoState(EditorState& state, const std::filesystem::path& iniPath,
+                            bool preferProjectOutput = true) {
+    core::legacy::LegacyMapOpenReport report;
+    auto result = core::legacy::OpenLegacyMap(iniPath, &report);
+    if (!result) {
+        state.statusMessage = "Karte öffnen fehlgeschlagen: " + result.error();
+        return false;
+    }
+
+    std::snprintf(state.legacyMapIniPath, sizeof(state.legacyMapIniPath), "%s", iniPath.string().c_str());
+    ApplyProjectToState(state, std::move(*result), iniPath.parent_path());
+    if (preferProjectOutput && state.project.projectFolder[0] != '\0')
+        std::snprintf(state.legacySaveDir, sizeof(state.legacySaveDir), "%s", state.project.projectFolder);
+    else
+        std::snprintf(state.legacySaveDir, sizeof(state.legacySaveDir), "%s", iniPath.parent_path().string().c_str());
+    std::snprintf(state.legacySaveStem, sizeof(state.legacySaveStem), "%s", iniPath.stem().string().c_str());
+
+    TouchRecentMap(state, iniPath.string());
+    state.statusMessage = "Karte geöffnet (" + std::to_string(report.issues.size()) + " Hinweis(e)) - " +
+                          std::to_string(state.placementSet.Count() + state.shmdCategoryRenderSet.Count()) +
+                          " Objekte, " + std::to_string(state.textureStack.LayerCount()) + " Textur-Layer.";
+    for (const auto& issue : report.issues) state.statusMessage += "\n- " + issue;
+    return true;
 }
 
 // Leitet die Block&Walk-Gitterauflösung aus der Heightmap ab: Breite = QuadsBreite/2, Höhe =
@@ -9837,6 +9870,7 @@ int PlaceObjectAtWorld(EditorState& state, const std::string& modelPath, float x
     state.selectedObjects={id}; state.selectedObject=id; state.objectPlaceMode=0;
     state.objectGizmoMatrixValid=false;
     ReloadObjectRenderers(state);
+    state.mapDirty = true;
     return id;
 }
 
