@@ -757,6 +757,7 @@ struct EditorState {
     int dropTableSelectedRecord = -1;
     char dropTableFilter[128] = "";
     bool dropTableOnlyActive = true;
+    bool dropTableProblemsOnly = false;
 
     std::string statusMessage;
 
@@ -1368,6 +1369,7 @@ void SyncProjectRoots(EditorState& state) {
     state.dropTableLoadError.clear();
     state.dropTableSelectedRecord = -1;
     state.dropTableFilter[0] = '\0';
+    state.dropTableProblemsOnly = false;
 }
 
 // Die Textur-Layer-Auflösung bleibt unabhängig von der Heightmap. Neue Karten verwenden
@@ -13632,23 +13634,67 @@ void DrawDropTableEditor(EditorState& state) {
     const int cCenRate = FindShineColumn(*table, "CenRate");
     const int cChecksum = FindShineColumn(*table, "CheckSum");
 
-    UI::InputTextWithHint("##dropFilter", "Mob oder MapArea filtern...",
+    EnsureItemLookup(state);
+    EnsureMobViewInfoLoaded(state);
+    std::unordered_set<std::string> knownMobs;
+    if (state.mobViewInfoLoaded) {
+        for (const auto& row : state.mobViewInfoShn.rows) {
+            if (row.values.size() <= 1) continue;
+            const std::string name = core::legacy::ShnValueToString(row.values[1]);
+            if (!name.empty()) knownMobs.insert(name);
+        }
+    }
+
+    std::array<int,45> dropItemColumns{};
+    dropItemColumns.fill(-1);
+    for (int slotNo=1; slotNo<=45; ++slotNo)
+        dropItemColumns[static_cast<std::size_t>(slotNo-1)] =
+            FindShineColumn(*table, "DrItem" + std::to_string(slotNo));
+
+    UI::InputTextWithHint("##dropFilter", "Mob, MapArea oder Drop-Item filtern...",
                           state.dropTableFilter, sizeof(state.dropTableFilter));
+    ImGui::SameLine();
+    UI::Checkbox("Nur fehlende Referenzen##dropTable", &state.dropTableProblemsOnly);
     const std::string needle = LowerAscii(state.dropTableFilter);
+
+    auto recordReferenceProblem = [&](const core::legacy::ShineRecord& candidate) {
+        const std::string mob = ShineRecordValue(candidate,cMob);
+        if (!mob.empty() && mob != "-" && !knownMobs.empty() && knownMobs.count(mob)==0) return true;
+        if (!state.itemEntries.empty()) {
+            for (const int col : dropItemColumns) {
+                const std::string item = ShineRecordValue(candidate,col);
+                if (!item.empty() && item != "-" && state.itemByInx.count(item)==0) return true;
+            }
+        }
+        return false;
+    };
 
     std::vector<std::size_t> visible;
     visible.reserve(table->records.size());
+    std::size_t referenceProblemCount=0;
     for (std::size_t ri = 0; ri < table->records.size(); ++ri) {
-        const auto& record = table->records[ri];
-        const std::string mob = ShineRecordValue(record, cMob);
-        const std::string map = ShineRecordValue(record, cMap);
-        if (needle.empty() || LowerAscii(mob + " " + map).find(needle) != std::string::npos)
+        const auto& candidate = table->records[ri];
+        const bool problem=recordReferenceProblem(candidate);
+        if(problem) ++referenceProblemCount;
+        if(state.dropTableProblemsOnly && !problem) continue;
+
+        const std::string mob = ShineRecordValue(candidate, cMob);
+        const std::string map = ShineRecordValue(candidate, cMap);
+        std::string haystack=mob+" "+map;
+        if(!needle.empty()) {
+            for(const int col:dropItemColumns) {
+                const std::string item=ShineRecordValue(candidate,col);
+                if(!item.empty()&&item!="-") haystack+=" "+item;
+            }
+        }
+        if (needle.empty() || LowerAscii(haystack).find(needle) != std::string::npos)
             visible.push_back(ri);
     }
 
-    ImGui::TextDisabled("%zu / %zu Mobs · %zu Schema-Spalten%s",
+    ImGui::TextDisabled("%zu / %zu Mobs · %zu Schema-Spalten%s · %zu mit fehlenden Referenzen",
                         visible.size(), table->records.size(), table->columns.size(),
-                        table->trailingSemicolonSentinel ? " · ; Sentinel normalisiert" : "");
+                        table->trailingSemicolonSentinel ? " · ; Sentinel normalisiert" : "",
+                        referenceProblemCount);
     const ImVec2 avail = ImGui::GetContentRegionAvail();
     const float leftW = std::clamp(avail.x * 0.30f, 280.0f, 390.0f);
 
@@ -13663,6 +13709,7 @@ void DrawDropTableEditor(EditorState& state) {
             const std::string map = ShineRecordValue(record, cMap);
             std::string label = mob.empty() ? ("Record " + std::to_string(ri)) : mob;
             if (!map.empty() && map != "-") label += "  ·  " + map;
+            if (recordReferenceProblem(record)) label = "!  " + label;
             if (UI::Selectable((label + "##dropMob").c_str(),
                                state.dropTableSelectedRecord == static_cast<int>(ri))) {
                 state.dropTableSelectedRecord = static_cast<int>(ri);
@@ -13681,11 +13728,17 @@ void DrawDropTableEditor(EditorState& state) {
         return;
     }
 
-    EnsureItemLookup(state);
     auto& record = table->records[static_cast<std::size_t>(state.dropTableSelectedRecord)];
     const std::string mob = ShineRecordValue(record, cMob);
     ImGui::TextColored(ImVec4(0.55f,0.82f,1.0f,1.0f), "%s",
                        mob.empty() ? "(unbenannter Mob)" : mob.c_str());
+    if (!mob.empty() && mob != "-" && !knownMobs.empty()) {
+        ImGui::SameLine();
+        if (knownMobs.count(mob))
+            ImGui::TextColored(ImVec4(0.42f,0.86f,0.62f,1.0f), "MobViewInfo ✓");
+        else
+            ImGui::TextColored(ImVec4(1.0f,0.48f,0.34f,1.0f), "nicht in MobViewInfo");
+    }
     ImGui::SameLine();
     const std::string map = ShineRecordValue(record, cMap);
     if (!map.empty() && map != "-") ImGui::TextDisabled("MapArea %s", map.c_str());
