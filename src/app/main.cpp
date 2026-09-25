@@ -6799,40 +6799,105 @@ void EnsureNpcDialogLoaded(EditorState& state) {
     else state.statusMessage = "NpcDialogData.shn: " + result.error();
 }
 
+bool LoadAiScriptFile(EditorState& state, const std::filesystem::path& path,
+                      const std::string& displayName, bool openPopup) {
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(path,ec)) {
+        state.statusMessage = "KI-Skript nicht gefunden: " + path.string();
+        return false;
+    }
+    if (state.aiScriptDirty && state.aiScriptEditorPath != path.string()) {
+        state.statusMessage = "KI-Skript hat ungespeicherte Änderungen. Erst speichern oder neu laden.";
+        return false;
+    }
+    std::ifstream in(path,std::ios::binary);
+    if (!in) {
+        state.statusMessage = "KI-Skript konnte nicht geöffnet werden: " + path.string();
+        return false;
+    }
+    state.aiScriptEditorText.assign((std::istreambuf_iterator<char>(in)),std::istreambuf_iterator<char>());
+    state.aiScriptEditorPath=path.string();
+    state.aiScriptEditorName=displayName.empty()?path.filename().string():displayName;
+    state.aiScriptDirty=false;
+    if(openPopup) state.aiScriptEditorOpen=true;
+    return true;
+}
+
+bool SaveAiScript(EditorState& state) {
+    if(state.aiScriptEditorPath.empty()) return false;
+    std::ofstream out(state.aiScriptEditorPath,std::ios::binary|std::ios::trunc);
+    if(!out) {
+        state.statusMessage = "Fehler beim Speichern: " + state.aiScriptEditorPath;
+        return false;
+    }
+    out.write(state.aiScriptEditorText.data(),static_cast<std::streamsize>(state.aiScriptEditorText.size()));
+    if(!out) {
+        state.statusMessage = "Fehler beim Speichern: " + state.aiScriptEditorPath;
+        return false;
+    }
+    state.aiScriptDirty=false;
+    state.statusMessage = "Gespeichert: " + state.aiScriptEditorPath;
+    return true;
+}
+
+void ScanAiWorkspace(EditorState& state) {
+    const std::string key=state.shnServerRoot;
+    if(key==state.aiWorkspaceScanKey) return;
+    state.aiWorkspaceScanKey=key;
+    state.aiWorkspaceFiles.clear();
+    state.aiWorkspaceLabels.clear();
+    state.aiWorkspaceKinds.clear();
+    state.aiWorkspaceSelected=-1;
+    if(key.empty()) return;
+
+    struct RootDef { const char* rel; const char* ext; const char* prefix; int kind; };
+    const RootDef roots[]={
+        {"LuaScript/AIScript",".lua","Lua",0},
+        {"MobBehaviorDescript",".ps","Pine",1}
+    };
+    struct Entry { std::filesystem::path path; std::string label; int kind; };
+    std::vector<Entry> entries;
+    std::error_code ec;
+    for(const auto& rootDef:roots) {
+        const auto root=std::filesystem::path(key)/rootDef.rel;
+        if(!std::filesystem::is_directory(root,ec)) { ec.clear(); continue; }
+        for(std::filesystem::recursive_directory_iterator it(
+                root,std::filesystem::directory_options::skip_permission_denied,ec),end;
+            it!=end;it.increment(ec)) {
+            if(ec) { ec.clear(); continue; }
+            if(!it->is_regular_file(ec)||ec) { ec.clear(); continue; }
+            if(LowerAscii(it->path().extension().string())!=rootDef.ext) continue;
+            auto rel=std::filesystem::relative(it->path(),root,ec);
+            if(ec) { ec.clear(); rel=it->path().filename(); }
+            entries.push_back({it->path(),std::string(rootDef.prefix)+" · "+rel.generic_string(),rootDef.kind});
+        }
+    }
+    std::stable_sort(entries.begin(),entries.end(),[](const Entry& a,const Entry& b){
+        return LowerAscii(a.label)<LowerAscii(b.label);
+    });
+    for(auto& e:entries) {
+        state.aiWorkspaceFiles.push_back(std::move(e.path));
+        state.aiWorkspaceLabels.push_back(std::move(e.label));
+        state.aiWorkspaceKinds.push_back(e.kind);
+    }
+}
+
 // Öffnet ein Lua-KI-Skript (LuaScript/AIScript/<Name>.lua, unter state.shnServerRoot) als
 // reinen Text-Editor - siehe CHANGELOG [0.44.22]. Echte, vollständige Lua-Dateien (require/
 // function/Engine-Aufrufe wie cStaticDamage_smo) - bewusst KEINE Syntaxprüfung, nur
 // Text-Bearbeitung, ein Lua-Parser wäre weit außerhalb des Editor-Umfangs.
 void OpenAiScriptEditor(EditorState& state, const std::string& mobName) {
     if (state.shnServerRoot.empty()) { state.statusMessage = "Server-SHN-Ordner nötig (Single SHN Editor)."; return; }
-    auto path = std::filesystem::path(state.shnServerRoot) / "LuaScript" / "AIScript" / (mobName + ".lua");
-    std::error_code ec;
-    if (!std::filesystem::exists(path, ec)) {
-        state.statusMessage = "Kein Lua-KI-Skript gefunden: " + path.string();
-        return;
-    }
-    std::ifstream in(path, std::ios::binary);
-    state.aiScriptEditorText.assign((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    state.aiScriptEditorPath = path.string();
-    state.aiScriptEditorName = mobName + ".lua";
-    state.aiScriptEditorOpen = true;
+    const auto path=std::filesystem::path(state.shnServerRoot)/"LuaScript"/"AIScript"/(mobName+".lua");
+    LoadAiScriptFile(state,path,mobName+".lua",true);
 }
 
 // Dito für PineScript (MobBehaviorDescript/<relativer Pfad ohne .ps>) - relScriptPath kommt
 // z.B. direkt aus World/PineScript.txt (Spalte ScriptName, siehe CHANGELOG [0.44.22]).
 void OpenPineScriptEditor(EditorState& state, const std::string& relScriptPath) {
     if (state.shnServerRoot.empty()) { state.statusMessage = "Server-SHN-Ordner nötig (Single SHN Editor)."; return; }
-    auto path = std::filesystem::path(state.shnServerRoot) / "MobBehaviorDescript" / (relScriptPath + ".ps");
-    std::error_code ec;
-    if (!std::filesystem::exists(path, ec)) {
-        state.statusMessage = "Kein PineScript-Verhalten gefunden: " + path.string();
-        return;
-    }
-    std::ifstream in(path, std::ios::binary);
-    state.aiScriptEditorText.assign((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    state.aiScriptEditorPath = path.string();
-    state.aiScriptEditorName = relScriptPath + ".ps";
-    state.aiScriptEditorOpen = true;
+    const auto path=std::filesystem::path(state.shnServerRoot)/"MobBehaviorDescript"/(relScriptPath+".ps");
+    LoadAiScriptFile(state,path,relScriptPath+".ps",true);
 }
 
 // Lädt/öffnet die Patrouillenroute eines Mobs/NPCs (MobRoam/<Name>.txt, Server) - ShineText-
@@ -6925,16 +6990,9 @@ void DrawAiScriptEditorPopup(EditorState& state) {
         buf.resize(std::max<std::size_t>(buf.size() + 1, 8192));
         if (ImGui::InputTextMultiline("##aiscript", buf.data(), buf.size(), ImVec2(-1.0f, 420.0f), ImGuiInputTextFlags_AllowTabInput)) {
             state.aiScriptEditorText.assign(buf.data());
+            state.aiScriptDirty=true;
         }
-        if (UI::Button("Speichern")) {
-            std::ofstream out(state.aiScriptEditorPath, std::ios::binary);
-            if (out) {
-                out.write(state.aiScriptEditorText.data(), static_cast<std::streamsize>(state.aiScriptEditorText.size()));
-                state.statusMessage = "Gespeichert: " + state.aiScriptEditorPath;
-            } else {
-                state.statusMessage = "Fehler beim Speichern: " + state.aiScriptEditorPath;
-            }
-        }
+        if (UI::Button(state.aiScriptDirty ? "Speichern *" : "Speichern")) SaveAiScript(state);
         ImGui::SameLine();
         if (UI::Button("Schließen")) { state.aiScriptEditorOpen = false; ImGui::CloseCurrentPopup(); }
         ImGui::EndPopup();
