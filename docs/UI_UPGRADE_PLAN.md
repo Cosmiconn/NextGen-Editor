@@ -193,7 +193,8 @@ Zusätzlich in der laufenden zweiten Ausbaustufe umgesetzt:
 Noch offen für spätere Ausbaustufen:
 - NPC-/Mob-/Portal-Outliner sind inzwischen spezialisiert: semantische Rollen-/Gruppenicons, Auswahl-Details, direkte Kontextaktionen, Gate-Zielnavigation und Schnellfilter (NPC-Rolle, Mob-Belegung, Portal-Typ); weitere Gruppierungstiefe bleibt optional;
 - Custom NPC/Mob Wizard einschließlich Vorschau, Schrittleiste, Ausrüstung, Rollenplatzierung und Zusammenfassung vollständig an die DE/EN-Sprachumschaltung angebunden.
-- Custom NPC/Mob Wizard und Skill-Editor verwenden inzwischen durchgängig dieselbe DE/EN-Panel-Sprache; der tiefe Quest-Editor ist der nächste verbleibende Lokalisierungsblock;
+- tiefer Quest-Editor (Allgemein, Voraussetzungen, Ziele, Drops, Belohnungen, Dialoge und Scripts) vollständig an die DE/EN-Sprachumschaltung angebunden.
+- Skill-, Quest- und Custom NPC/Mob-Editor verwenden inzwischen durchgängig dieselbe DE/EN-Panel-Sprache; verbleibende tiefe Spezialdialoge können schrittweise nachgezogen werden;
 - optional gespeicherte Workspace-Presets;
 - zukünftige Interface/Drop-Table/AI/NIF-Material-Editoren.
 
