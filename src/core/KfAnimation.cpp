@@ -504,6 +504,16 @@ std::expected<KfAnimationFile, std::string> DecodeKfAnimation(std::span<const st
             if (!palette && controlled.palette >= 0)
                 return std::unexpected("Controlled KF block palette reference is not NiStringPalette");
 
+            // Fiesta-KFs können die gemeinsame NiControllerSequence-Palette verwenden,
+            // obwohl der einzelne ControlledBlock keinen eigenen Palette-Ref trägt.
+            // Ohne diesen Fallback werden die Tracks korrekt dekodiert, ihre Node-/Controller-
+            // Namen bleiben aber leer (z.B. BallCrush_Base_Stand.kf: "Plane").
+            if (!palette && rawSequence->palette >= 0) {
+                palette = BlockAs<RawPalette>(blocks, rawSequence->palette);
+                if (!palette)
+                    return std::unexpected("KF sequence palette reference is not NiStringPalette");
+            }
+
             auto readName = [&](std::uint32_t offset) {
                 return palette ? PaletteString(r, palette->data, offset) : std::string{};
             };
