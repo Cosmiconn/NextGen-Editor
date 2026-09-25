@@ -134,6 +134,7 @@ add_executable(map_editor
     src/app/Renderer.cpp
     src/app/ObjectMarkerRenderer.cpp
     src/app/NifMeshRenderer.cpp
+    src/app/UiIconAssets.cpp
 )
 # Der interne CMake-Targetname bleibt stabil; die ausgelieferte Windows-App heißt bewusst Editor.exe.
 set_target_properties(map_editor PROPERTIES OUTPUT_NAME "Editor")
@@ -141,6 +142,16 @@ if (WIN32)
     target_sources(map_editor PRIVATE src/app/resources/nextgen.rc)
 endif()
 target_include_directories(map_editor PRIVATE src/app)
+
+# Ship the approved runtime UI assets next to Editor.exe. The directory is allowed to
+# contain only the currently migrated subset; missing icons keep their DrawList fallback.
+add_custom_command(TARGET map_editor POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/assets/ui"
+            "$<TARGET_FILE_DIR:map_editor>/assets/ui"
+    COMMENT "Copying NextGen UI assets"
+)
+
 target_link_libraries(map_editor PRIVATE
     mapeditor_core
     glfw
