@@ -6420,6 +6420,62 @@ void DrawPortalMarkers2D(EditorState& state, const ImVec2& origin, const ImVec2&
     }
 }
 
+bool FocusCurrentSceneSelection(EditorState& state) {
+    if (state.editMode == EditMode::ObjectPlacement) {
+        if (state.selectedObjects.empty()) return false;
+        FocusSelectedObjects(state);
+        return true;
+    }
+
+    if (state.editMode == EditMode::Npcs) {
+        EnsureNpcTextLoaded(state);
+        auto* table = state.npcTextFile.FindTable("ShineNPC");
+        if (!table || state.selectedNpcRecordIdx < 0) return false;
+        const auto idx = static_cast<std::size_t>(state.selectedNpcRecordIdx);
+        if (idx >= table->records.size() || table->records[idx].values.size() < 4) return false;
+        const float x = static_cast<float>(std::atof(table->records[idx].values[2].c_str()));
+        const float z = static_cast<float>(std::atof(table->records[idx].values[3].c_str()));
+        state.camera.SetTarget(x, state.heightmap.SampleWorld(x,z) + 25.0f, z);
+        state.camera.Zoom(220.0f - state.camera.Distance());
+        return true;
+    }
+
+    if (state.editMode == EditMode::Mobs) {
+        EnsureMobRegenLoaded(state);
+        auto* zones = state.mobRegenTextFile.FindTable("MobRegenGroup");
+        if (!zones || state.selectedMobZoneIdx < 0) return false;
+        const auto idx = static_cast<std::size_t>(state.selectedMobZoneIdx);
+        if (idx >= zones->records.size() || zones->records[idx].values.size() < 4) return false;
+        const auto& rec = zones->records[idx];
+        const float x = static_cast<float>(std::atof(rec.values[2].c_str()));
+        const float z = static_cast<float>(std::atof(rec.values[3].c_str()));
+        float radius = 90.0f;
+        if (rec.values.size() >= 7) {
+            const float zw = std::abs(static_cast<float>(std::atof(rec.values[4].c_str())));
+            const float zh = std::abs(static_cast<float>(std::atof(rec.values[5].c_str())));
+            const float rangeVal = std::abs(static_cast<float>(std::atof(rec.values[6].c_str())));
+            radius = std::max(radius, std::max({zw, zh, rangeVal}));
+        }
+        state.camera.SetTarget(x, state.heightmap.SampleWorld(x,z) + 20.0f, z);
+        const float desired = std::clamp(radius * 2.8f, 260.0f, 6000.0f);
+        state.camera.Zoom(desired - state.camera.Distance());
+        return true;
+    }
+
+    if (state.editMode == EditMode::Portals) {
+        EnsurePortalDataLoaded(state);
+        for (const auto& marker : CollectPortalMarkers(state)) {
+            if (marker.kind != state.selectedPortalKind || static_cast<int>(marker.idx) != state.selectedPortalIdx)
+                continue;
+            state.camera.SetTarget(marker.x, state.heightmap.SampleWorld(marker.x,marker.y) + 25.0f, marker.y);
+            state.camera.Zoom(260.0f - state.camera.Distance());
+            return true;
+        }
+    }
+
+    return false;
+}
+
 
 void EnsureNpcDialogLoaded(EditorState& state) {
     if (state.npcDialogLoaded || state.npcDialogRessystemRoot.empty()) return;
@@ -8752,11 +8808,13 @@ void HandleGlobalShortcuts(EditorState& state) {
         }
     }
 
+    if (ShortcutPressed(state.shortcutFocus))
+        FocusCurrentSceneSelection(state);
+
     if (state.editMode == EditMode::ObjectPlacement) {
         if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_C, false)) CopySelectedObjects(state);
         if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_V, false)) PasteObjectClipboard(state);
         if (ShortcutPressed(state.shortcutDuplicate)) DuplicateSelectedObjects(state);
-        if (ShortcutPressed(state.shortcutFocus)) FocusSelectedObjects(state);
         if (ShortcutPressed(state.shortcutGround)) GroundSelectedObjects(state);
         if (ShortcutPressed(state.shortcutDelete)) DeleteSelectedObjects(state);
 
@@ -8973,7 +9031,7 @@ void DrawCommandPalette(EditorState& state) {
     }
 
     if (!state.selectedObjects.empty()) {
-        add("Objekte: Auswahl fokussieren", ShortcutLabel(state.shortcutFocus), [&] { FocusSelectedObjects(state); });
+        add("Szene: Auswahl fokussieren", ShortcutLabel(state.shortcutFocus), [&] { FocusCurrentSceneSelection(state); });
         add("Objekte: Auf Terrain setzen", ShortcutLabel(state.shortcutGround), [&] { GroundSelectedObjects(state); });
         add("Objekte: Duplizieren", ShortcutLabel(state.shortcutDuplicate), [&] { DuplicateSelectedObjects(state); });
         add("Objekte: Kopieren", "Strg+C", [&] { CopySelectedObjects(state); });
@@ -11510,6 +11568,8 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                 state.selectedNpcRecordIdx = static_cast<int>(idx);
                 if (!state.showAllRoamRoutes) state.roamOverlayKey.clear();
             }
+            if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+                FocusCurrentSceneSelection(state);
             if (selected) {
                 RefreshRoamOverlayRoutes(state);
                 const bool hasSelectedRoute = std::any_of(
@@ -11570,6 +11630,8 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                 state.selectedMobZoneIdx = static_cast<int>(i);
                 if (!state.showAllRoamRoutes) state.roamOverlayKey.clear();
             }
+            if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+                FocusCurrentSceneSelection(state);
             if (selected) {
                 RefreshRoamOverlayRoutes(state);
                 bool hasSelectedRoute = false;
@@ -11615,6 +11677,8 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                 state.selectedPortalKind = m.kind;
                 state.selectedPortalIdx = static_cast<int>(m.idx);
             }
+            if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+                FocusCurrentSceneSelection(state);
             ImGui::PopID();
         }
         ImGui::EndChild();
