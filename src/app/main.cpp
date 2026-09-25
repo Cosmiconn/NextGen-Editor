@@ -1519,6 +1519,9 @@ bool PromoteSelectedShmdObjectsToPlacements(EditorState& state, std::optional<in
         int oldId = kNoObjectSelection;
         core::PlacedObject object;
         std::pair<std::size_t, std::size_t> source{};
+        std::string editorKey;
+        std::string editorLabel;
+        std::string editorGroup;
     };
     std::vector<Promotion> promotions;
     for (const int id : state.selectedObjects) {
@@ -1528,7 +1531,10 @@ bool PromoteSelectedShmdObjectsToPlacements(EditorState& state, std::optional<in
         if (!renderIndex || *renderIndex >= state.shmdCategorySource.size() ||
             *renderIndex >= state.shmdCategoryRenderSet.Count()) continue;
         promotions.push_back({id, state.shmdCategoryRenderSet.At(*renderIndex),
-                              state.shmdCategorySource[*renderIndex]});
+                              state.shmdCategorySource[*renderIndex],
+                              ShmdEditorObjectKey(state,id),
+                              ObjectEditorLabel(state,id),
+                              ObjectEditorGroup(state,id)});
     }
     if (promotions.empty()) return false;
 
@@ -1538,6 +1544,14 @@ bool PromoteSelectedShmdObjectsToPlacements(EditorState& state, std::optional<in
         const int newId = static_cast<int>(state.placementSet.AddObject(std::move(promotion.object)));
         state.objectEditorHidden.push_back(0);
         state.objectEditorLocked.push_back(0);
+        state.objectEditorLabels.push_back(promotion.editorLabel);
+        state.objectEditorGroups.push_back(promotion.editorGroup);
+        if(!promotion.editorKey.empty()) {
+            state.shmdEditorHiddenKeys.erase(promotion.editorKey);
+            state.shmdEditorLockedKeys.erase(promotion.editorKey);
+            state.shmdEditorLabels.erase(promotion.editorKey);
+            state.shmdEditorGroups.erase(promotion.editorKey);
+        }
         replacement[promotion.oldId] = newId;
         sources.push_back(promotion.source);
     }
@@ -1637,12 +1651,15 @@ void ApplySelectedObjectModelPath(EditorState& state, const std::string& modelPa
     } else {
         const auto renderIndex = ShmdRenderIndex(state.selectedObject);
         if (!renderIndex || *renderIndex >= state.shmdCategorySource.size()) return;
+        const std::string oldEditorKey=ShmdEditorObjectKey(state,state.selectedObject);
         const auto [categoryIndex, pathIndex] = state.shmdCategorySource[*renderIndex];
         if (categoryIndex >= state.placementSet.categories.size()) return;
         auto& paths = state.placementSet.categories[categoryIndex].modelPaths;
         if (pathIndex >= paths.size()) return;
         paths[pathIndex] = modelPath;
         RebuildShmdCategoryRenderSet(state, CurrentObjectAssetMapDir(state));
+        TransferShmdEditorMetadataKey(state,oldEditorKey,
+                                      ShmdEditorObjectKey(state,state.selectedObject));
     }
     state.footprintCache.erase(modelPath);
     state.selectedObjectModelPathFor = kNoObjectSelection;
