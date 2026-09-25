@@ -90,22 +90,22 @@ The supplied SwaDn01 directory contains scene/block files and no candidate raste
 | SwaDn01 | MapViewInfo row ID 64; full 0→511 rectangle; scale 0.5 | none located | unresolved | unresolved | metadata verified, image mapping unresolved |
 | Mem_UA | no MapViewInfo row | `Mem_UA.BMP` rejected as minimap candidate | 257×257 RGB vertex-color texture | n/a | no verified minimap metadata/image |
 
-## What is already safe to implement before export
+## Editor preview implementation
 
-The editor may implement a **non-exporting preview panel** using its own render data because that does not assert a Fiesta file format.
+A **non-exporting preview panel is now implemented** using the editor's existing terrain/texturing render data. It does not assert a Fiesta file format.
 
-Safe preview scope:
+Implemented preview scope:
 
-- reuse current heightmap/terrain and texture render data;
-- orthographic top-down camera;
-- fit full map bounds;
-- optional water/object overlays;
-- current 2D/3D camera viewport rectangle;
-- click-to-focus can be added later;
-- preview remains an editor texture until target format verification is complete;
-- when a loaded map has a matching `MapViewInfo` record, its scale/crop metadata may be displayed as **read-only diagnostic data**, but must not silently change export output before the image convention is verified.
+- reuses the current heightmap/terrain and texture render data;
+- independent orthographic top-down framebuffer, so the 2D editor and minimap cannot overwrite each other's texture in the same frame;
+- fits the complete map bounds while preserving aspect ratio;
+- optional normal-object markers;
+- optional current 2D viewport rectangle;
+- clicking the minimap recenters the existing 2D view without introducing a new coordinate model;
+- dedicated `panel.minimap` icon/header in the dock UI;
+- preview remains an editor texture; **no Fiesta image is written**.
 
-The preview UI must follow the same shared panel-header, toolbar, hover, active and disabled states as the 2D/3D viewports.
+Still pending inside the preview (not exporter): water/special-object overlays and optional gameplay overlays can be added only as editor visualization. When a loaded map has a matching `MapViewInfo` record, its scale/crop metadata may later be displayed as **read-only diagnostic data**, but must not silently change export output before the image convention is verified.
 
 ## Export implementation gate
 
