@@ -3755,6 +3755,7 @@ bool SaveShnDocument(EditorState& state,int document) {
     if (result) {
         doc.dirty=false;
         ClearShnDirtyCells(doc);
+        ++state.shnEditCounter;
         state.shnStatus=std::string(ShnSourceName(doc.source))+" gespeichert: "+doc.file.FileName();
         return true;
     }
@@ -3775,7 +3776,33 @@ std::pair<std::size_t,std::size_t> SaveAllDirtyShnDocuments(EditorState& state) 
             ++failed;
         }
     }
+    if (saved > 0) ++state.shnEditCounter;
     return {saved,failed};
+}
+
+bool ReloadShnDocument(EditorState& state,int document) {
+    if (document < 0 || document >= static_cast<int>(state.shnFiles.size())) return false;
+    auto& doc=state.shnFiles[static_cast<std::size_t>(document)];
+    const auto path=doc.file.path;
+    auto loaded=core::legacy::LoadShnFile(path);
+    if (!loaded) {
+        state.shnStatus="Neu laden fehlgeschlagen: "+loaded.error();
+        return false;
+    }
+    doc.file=std::move(*loaded);
+    doc.dirty=false;
+    doc.cellStatus.clear();
+    doc.cellDirty.clear();
+    EnsureCellStatusSize(doc);
+    state.shnUndo.clear();
+    state.shnRedo.clear();
+    state.shnSelectedRow=-1;
+    state.shnSelectedColumn=-1;
+    state.shnInlineEditActive=false;
+    state.shnVisibleKey.clear();
+    ++state.shnEditCounter;
+    state.shnStatus=std::string(ShnSourceName(doc.source))+" neu geladen: "+doc.file.FileName();
+    return true;
 }
 
 bool ApplyShnCellText(EditorState& state, int document, int row, int column,
@@ -5093,6 +5120,8 @@ void DrawShnEditor(EditorState& state) {
             ImGui::BeginDisabled(!doc.dirty);
             if(UI::Button(doc.dirty?L("Speichern *","Save *"):L("Speichern","Save"),ImVec2(-1,0)))
                 SaveShnDocument(state,state.shnSelectedFile);
+            if(UI::Button(L("Neu laden / Änderungen verwerfen","Reload / discard changes"),ImVec2(-1,0)))
+                ReloadShnDocument(state,state.shnSelectedFile);
             ImGui::EndDisabled();
             ImGui::Separator();
             if (UI::InputTextWithHint("##shnSearch",L("Zeilen durchsuchen...","Search rows..."),
@@ -6056,6 +6085,30 @@ void DrawQuestEditor(EditorState& state) {
         if (saved) state.questDirty = false;
         state.statusMessage = saved ? std::string("QuestData.shn gespeichert.") : "Fehler: " + saved.error();
     };
+    auto reloadQuestData = [&]() {
+        const auto path=std::filesystem::path(state.shnServerRoot)/"QuestData.shn";
+        const int selectedId=(state.selectedQuestIdx>=0 &&
+            static_cast<std::size_t>(state.selectedQuestIdx)<quests.size())
+            ? static_cast<int>(quests[static_cast<std::size_t>(state.selectedQuestIdx)].id) : -1;
+        auto loaded=core::legacy::LoadQuestData(path);
+        if (!loaded) {
+            state.statusMessage="QuestData.shn: "+loaded.error();
+            return;
+        }
+        state.questDataFile=std::move(*loaded);
+        state.questDirty=false;
+        state.selectedQuestIdx=-1;
+        if (selectedId>=0) {
+            for (std::size_t i=0;i<state.questDataFile.records.size();++i)
+                if (state.questDataFile.records[i].id==selectedId) {
+                    state.selectedQuestIdx=static_cast<int>(i);
+                    break;
+                }
+        }
+        ++state.questRevision;
+        state.questListKey.clear();
+        state.statusMessage=L("QuestData.shn neu geladen.","QuestData.shn reloaded.");
+    };
     auto duplicateSelectedQuest = [&]() {
         if (state.selectedQuestIdx < 0 ||
             static_cast<std::size_t>(state.selectedQuestIdx) >= quests.size()) return;
@@ -6106,6 +6159,10 @@ void DrawQuestEditor(EditorState& state) {
         saveQuestData();
     }
     if (ShortcutPressed(state.shortcutSave) && state.questDirty) saveQuestData();
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!state.questDirty);
+    if (UI::Button(L("Neu laden / verwerfen","Reload / discard"))) reloadQuestData();
+    ImGui::EndDisabled();
     ImGui::SameLine();
     ImGui::BeginDisabled(state.selectedQuestIdx < 0 ||
                          static_cast<std::size_t>(state.selectedQuestIdx) >= quests.size());
