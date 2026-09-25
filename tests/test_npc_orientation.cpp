@@ -170,6 +170,9 @@ int main() {
               "AI-Skript wird als Text geladen");
         st.aiScriptEditorText="changed\n";
         st.aiScriptDirty=true;
+        Check(LoadAiScriptFile(st,luaPath,"TestMob.lua",false) &&
+              st.aiScriptEditorText=="changed\n" && st.aiScriptDirty,
+              "Erneute Auswahl desselben AI-Skripts bewahrt den Dirty-Puffer");
         Check(!LoadAiScriptFile(st,pinePath,"Guard.ps",false),
               "Dirty-Schutz verhindert versehentlichen Skriptwechsel");
         Check(SaveAiScript(st) && !st.aiScriptDirty,
