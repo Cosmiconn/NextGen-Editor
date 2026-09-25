@@ -789,6 +789,7 @@ struct EditorState {
     // dieses Bildschirms in der Sitzung true setzen, damit spätere Nutzer-Anpassungen
     // (Größe/Position) nicht bei jedem Frame zurückgesetzt werden.
     bool mapEditorDockspaceBuilt = false;
+    bool resetMapDockLayout = false;
     std::string nifPrecacheDoneForRoot; // resmapRoot, für den die Vorladung zuletzt komplett durchlief
     std::vector<std::string> nifPrecacheQueue; // Kopie von availableNifFiles zum Abarbeiten
     std::size_t nifPrecacheCursor = 0;
@@ -11407,34 +11408,40 @@ void DrawMapEditorWorkspace(EditorState& state) {
     ImGui::Separator();
 
     const ImGuiID dockspaceId = ImGui::GetID("##MapEditorDockspace");
-    if (!state.mapEditorDockspaceBuilt) {
-        ImGui::DockBuilderRemoveNode(dockspaceId);
-        ImGui::DockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags_DockSpace);
-        ImGui::DockBuilderSetNodeSize(dockspaceId, ImGui::GetContentRegionAvail());
-
-        ImGuiID center = dockspaceId;
-        ImGuiID leftId = 0, inspectorId = 0, bottomId = 0;
-        ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, 0.18f, &leftId, &center);
-        ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, 0.25f, &inspectorId, &center);
-        ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, 0.34f, &bottomId, &center);
-
-        ImGuiID navigatorId = 0, sceneId = leftId;
-        ImGui::DockBuilderSplitNode(leftId, ImGuiDir_Up, 0.34f, &navigatorId, &sceneId);
-
-        ImGuiID assetId = 0, view2dId = bottomId;
-        ImGui::DockBuilderSplitNode(bottomId, ImGuiDir_Left, 0.43f, &assetId, &view2dId);
-        const ImGuiID view3dId = center;
-
-        ImGui::DockBuilderDockWindow("Navigator##mapNavigator", navigatorId);
-        ImGui::DockBuilderDockWindow("Layer##layerManager", sceneId);
-        ImGui::DockBuilderDockWindow("Sichtbarkeit##visibilityPanel", sceneId);
-        ImGui::DockBuilderDockWindow("Szene##sceneOutliner", sceneId);
-        ImGui::DockBuilderDockWindow("Eigenschaften##fileToolsCol", inspectorId);
-        ImGui::DockBuilderDockWindow("Asset Browser##assetBrowser", assetId);
-        ImGui::DockBuilderDockWindow("2D-Ansicht##view2d", view2dId);
-        ImGui::DockBuilderDockWindow("3D-Ansicht##view3d", view3dId);
-        ImGui::DockBuilderFinish(dockspaceId);
+    if (!state.mapEditorDockspaceBuilt || state.resetMapDockLayout) {
+        const bool haveSavedLayout = ImGui::DockBuilderGetNode(dockspaceId) != nullptr;
+        const bool buildDefault = state.resetMapDockLayout || !haveSavedLayout;
         state.mapEditorDockspaceBuilt = true;
+
+        if (buildDefault) {
+            ImGui::DockBuilderRemoveNode(dockspaceId);
+            ImGui::DockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags_DockSpace);
+            ImGui::DockBuilderSetNodeSize(dockspaceId, ImGui::GetContentRegionAvail());
+
+            ImGuiID center = dockspaceId;
+            ImGuiID leftId = 0, inspectorId = 0, bottomId = 0;
+            ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, 0.18f, &leftId, &center);
+            ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, 0.25f, &inspectorId, &center);
+            ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, 0.34f, &bottomId, &center);
+
+            ImGuiID navigatorId = 0, sceneId = leftId;
+            ImGui::DockBuilderSplitNode(leftId, ImGuiDir_Up, 0.34f, &navigatorId, &sceneId);
+
+            ImGuiID assetId = 0, view2dId = bottomId;
+            ImGui::DockBuilderSplitNode(bottomId, ImGuiDir_Left, 0.43f, &assetId, &view2dId);
+            const ImGuiID view3dId = center;
+
+            ImGui::DockBuilderDockWindow("Navigator##mapNavigator", navigatorId);
+            ImGui::DockBuilderDockWindow("Layer##layerManager", sceneId);
+            ImGui::DockBuilderDockWindow("Sichtbarkeit##visibilityPanel", sceneId);
+            ImGui::DockBuilderDockWindow("Szene##sceneOutliner", sceneId);
+            ImGui::DockBuilderDockWindow("Eigenschaften##fileToolsCol", inspectorId);
+            ImGui::DockBuilderDockWindow("Asset Browser##assetBrowser", assetId);
+            ImGui::DockBuilderDockWindow("2D-Ansicht##view2d", view2dId);
+            ImGui::DockBuilderDockWindow("3D-Ansicht##view3d", view3dId);
+            ImGui::DockBuilderFinish(dockspaceId);
+        }
+        state.resetMapDockLayout = false;
     }
 
     const float statusH = 28.0f;
@@ -11476,6 +11483,11 @@ void DrawMapEditorWorkspace(EditorState& state) {
     if (UI::Button("Karte wechseln", ImVec2(-1,0))) state.screen = AppScreen::MapEditorLauncher;
     if (UI::Button("Spieldaten öffnen", ImVec2(-1,0))) state.screen = AppScreen::ShnEditor;
     if (UI::Button("Animationen / KFM", ImVec2(-1,0))) state.screen = AppScreen::KfmBrowser;
+    ImGui::Separator();
+    if (UI::Button("Standardlayout zurücksetzen", ImVec2(-1,0))) {
+        state.resetMapDockLayout = true;
+        state.statusMessage = "Map-Workspace auf Standardlayout zurückgesetzt.";
+    }
     ImGui::End();
     ImGui::PopStyleColor();
 
@@ -11622,6 +11634,14 @@ int main() {
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    static std::string imguiIniPath;
+    {
+        std::error_code ec;
+        const auto settingsDir = NextGenUserSettingsDir();
+        std::filesystem::create_directories(settingsDir, ec);
+        imguiIniPath = (settingsDir / "layout.ini").string();
+        io.IniFilename = imguiIniPath.c_str();
+    }
     ImGui::StyleColorsDark();
     ApplyEditorTheme();
 
@@ -11713,6 +11733,7 @@ int main() {
     state.nifMeshRenderer.Shutdown();
     state.shmdCategoryMeshRenderer.Shutdown();
     state.npcMeshRenderer.Shutdown();
+    if (io.IniFilename && *io.IniFilename) ImGui::SaveIniSettingsToDisk(io.IniFilename);
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
