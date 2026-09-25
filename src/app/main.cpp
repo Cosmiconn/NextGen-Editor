@@ -790,6 +790,9 @@ struct EditorState {
     std::string assetPickerFilter;
     char workspaceAssetFilter[128] = "";
     char objectOutlinerFilter[128] = "";
+    int sceneNpcQuickFilter = 0;    // 0 alle, 1 Quest, 2 Handel, 3 Service, 4 Gates
+    int sceneMobQuickFilter = 0;    // 0 alle, 1 leer, 2 eine Art, 3 gemischt
+    int scenePortalQuickFilter = 0; // 0 alle, 1 Gates, 2 TownPortal, 3 Recall
     // Basis-Ordner der beiden Listen oben - zum Auflösen relativer Picker-Einträge zu echten
     // Pfaden für Vorschaubilder (siehe GetOrLoadAssetThumbnail). Werden beim Scannen (Klick auf
     // "Durchsuchen...") zusammen mit der jeweiligen Liste gesetzt.
@@ -3082,6 +3085,18 @@ SceneSemanticIcon ResolveMobZoneSceneIcon(int speciesCount) {
     if (speciesCount <= 0) return {DrawIconSpawn,IM_COL32(125,135,150,220),"Leere Spawn-Zone"};
     if (speciesCount == 1) return {DrawIconSpawn,IM_COL32(95,195,255,245),"Spawn-Zone · eine Monsterart"};
     return {DrawIconPack,IM_COL32(255,165,90,245),"Gemischte Mob-Gruppe · mehrere Monsterarten"};
+}
+
+bool SceneQuickFilterButton(const char* id,const char* label,bool active) {
+    ImGui::PushID(id);
+    if(active) {
+        ImGui::PushStyleColor(ImGuiCol_Button,ImVec4(0.16f,0.43f,0.72f,0.95f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered,ImVec4(0.20f,0.52f,0.84f,1.0f));
+    }
+    const bool clicked=UI::SmallButton(label);
+    if(active) ImGui::PopStyleColor(2);
+    ImGui::PopID();
+    return clicked;
 }
 
 void DrawInlineIcon(const char* id, IconDrawFn icon, ImU32 color,
@@ -11843,12 +11858,29 @@ void DrawSceneOutlinerPanel(EditorState& state) {
         if (UI::Checkbox("Alle Routen##npcRouteOverlayAll", &state.showAllRoamRoutes))
             state.roamOverlayKey.clear();
         ImGui::EndDisabled();
+
+        if(SceneQuickFilterButton("npcAll","Alle",state.sceneNpcQuickFilter==0)) state.sceneNpcQuickFilter=0;
+        ImGui::SameLine();
+        if(SceneQuickFilterButton("npcQuest","Quest",state.sceneNpcQuickFilter==1)) state.sceneNpcQuickFilter=1;
+        ImGui::SameLine();
+        if(SceneQuickFilterButton("npcTrade","Handel",state.sceneNpcQuickFilter==2)) state.sceneNpcQuickFilter=2;
+        ImGui::SameLine();
+        if(SceneQuickFilterButton("npcService","Service",state.sceneNpcQuickFilter==3)) state.sceneNpcQuickFilter=3;
+        ImGui::SameLine();
+        if(SceneQuickFilterButton("npcGate","Gates",state.sceneNpcQuickFilter==4)) state.sceneNpcQuickFilter=4;
+
         ImGui::BeginChild("##sceneNpcList", ImVec2(0,0), true);
         for (std::size_t idx : indices) {
             auto& rec = table->records[idx];
             if (rec.values.size() < 8) continue;
             const std::string role = rec.values[6];
             const std::string arg = rec.values[7];
+            const bool roleMatches = state.sceneNpcQuickFilter==0 ||
+                                     (state.sceneNpcQuickFilter==1 && role=="QuestNpc") ||
+                                     (state.sceneNpcQuickFilter==2 && (role=="Merchant" || role=="StoreManager")) ||
+                                     (state.sceneNpcQuickFilter==3 && (role=="NPCMenu" || role=="Guard")) ||
+                                     (state.sceneNpcQuickFilter==4 && role=="Gate");
+            if(!roleMatches) continue;
             const auto semantic = ResolveNpcSceneIcon(role,arg);
             const std::string label = rec.values[0] + "  ·  " + role +
                                       ((!arg.empty() && arg != "-") ? (" / " + arg) : std::string());
@@ -11960,12 +11992,26 @@ void DrawSceneOutlinerPanel(EditorState& state) {
         if (UI::Checkbox("Alle Routen##mobRouteOverlayAll", &state.showAllRoamRoutes))
             state.roamOverlayKey.clear();
         ImGui::EndDisabled();
+
+        if(SceneQuickFilterButton("mobAll","Alle",state.sceneMobQuickFilter==0)) state.sceneMobQuickFilter=0;
+        ImGui::SameLine();
+        if(SceneQuickFilterButton("mobEmpty","Leer",state.sceneMobQuickFilter==1)) state.sceneMobQuickFilter=1;
+        ImGui::SameLine();
+        if(SceneQuickFilterButton("mobSingle","1 Art",state.sceneMobQuickFilter==2)) state.sceneMobQuickFilter=2;
+        ImGui::SameLine();
+        if(SceneQuickFilterButton("mobMixed","Gemischt",state.sceneMobQuickFilter==3)) state.sceneMobQuickFilter=3;
+
         ImGui::BeginChild("##sceneMobZoneList", ImVec2(0,0), true);
         for (std::size_t i = 0; i < zones->records.size(); ++i) {
             auto& rec = zones->records[i];
             if (rec.values.empty()) continue;
             const int groups = groupCounts[rec.values[0]];
             const int totalMobs = totalMobCounts[rec.values[0]];
+            const bool groupMatches = state.sceneMobQuickFilter==0 ||
+                                      (state.sceneMobQuickFilter==1 && groups==0) ||
+                                      (state.sceneMobQuickFilter==2 && groups==1) ||
+                                      (state.sceneMobQuickFilter==3 && groups>1);
+            if(!groupMatches) continue;
             const auto semantic = ResolveMobZoneSceneIcon(groups);
             const std::string label = rec.values[0] + "  ·  " + std::to_string(groups) +
                                       (groups == 1 ? " Art" : " Arten") + " · " +
@@ -12057,11 +12103,25 @@ void DrawSceneOutlinerPanel(EditorState& state) {
         const std::size_t outboundCount = static_cast<std::size_t>(std::count_if(
             markers.begin(),markers.end(),[](const PortalMarker& m){ return m.kind==kPortalKindGateLink; }));
         ImGui::TextDisabled("%zu Marker · %zu ausgehend", markers.size(), outboundCount);
+
+        if(SceneQuickFilterButton("portalAll","Alle",state.scenePortalQuickFilter==0)) state.scenePortalQuickFilter=0;
+        ImGui::SameLine();
+        if(SceneQuickFilterButton("portalGates","Gates",state.scenePortalQuickFilter==1)) state.scenePortalQuickFilter=1;
+        ImGui::SameLine();
+        if(SceneQuickFilterButton("portalTown","Town",state.scenePortalQuickFilter==2)) state.scenePortalQuickFilter=2;
+        ImGui::SameLine();
+        if(SceneQuickFilterButton("portalRecall","Recall",state.scenePortalQuickFilter==3)) state.scenePortalQuickFilter=3;
+
         ImGui::BeginChild("##scenePortalList", ImVec2(0,0), true);
         for (std::size_t i = 0; i < markers.size(); ++i) {
             const auto& m = markers[i];
             const bool town = m.kind == kPortalKindTown;
             const bool recall = m.kind == kPortalKindRecall;
+            const bool typeMatches = state.scenePortalQuickFilter==0 ||
+                                     (state.scenePortalQuickFilter==1 && m.kind==kPortalKindGateLink) ||
+                                     (state.scenePortalQuickFilter==2 && town) ||
+                                     (state.scenePortalQuickFilter==3 && recall);
+            if(!typeMatches) continue;
             std::string label = town ? ("TownPortal · " + m.label)
                               : recall ? ("Recall · " + m.label)
                                        : ("Gate · " + m.label);
