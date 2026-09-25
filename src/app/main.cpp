@@ -746,6 +746,17 @@ struct EditorState {
     int interfaceSelectedAsset = -1;
     char interfaceAssetFilter[128] = "";
 
+    // --- Drop Table Browser -------------------------------------------------
+    // Semantische Ansicht von Server/9Data/Shine/World/ItemDropTable.txt. Die Datei ist
+    // extrem breit (NA2016: 290 echte Datenspalten); deshalb wird sie nicht als Roh-Grid
+    // dargestellt, sondern in Mob-Basisdaten + bis zu 45 Drop-Slots aufgeteilt.
+    core::legacy::ShineTextFile dropTableFile;
+    bool dropTableLoaded = false;
+    std::string dropTableLoadError;
+    int dropTableSelectedRecord = -1;
+    char dropTableFilter[128] = "";
+    bool dropTableOnlyActive = true;
+
     std::string statusMessage;
 
     // --- Neue Navigationsebene (Projekt-Hub / Projekt-Konfiguration / Map-Editor-Start) ---
@@ -1350,6 +1361,11 @@ void SyncProjectRoots(EditorState& state) {
     state.interfaceAssets.clear();
     state.interfaceSelectedAsset = -1;
     state.interfaceAssetFilter[0] = '\0';
+    state.dropTableLoaded = false;
+    state.dropTableFile = core::legacy::ShineTextFile{};
+    state.dropTableLoadError.clear();
+    state.dropTableSelectedRecord = -1;
+    state.dropTableFilter[0] = '\0';
 }
 
 // Die Textur-Layer-Auflösung bleibt unabhängig von der Heightmap. Neue Karten verwenden
@@ -4828,6 +4844,7 @@ void DrawCustomCreatureEditor(EditorState& state);
 void DrawSkillEditor(EditorState& state);
 void DrawAiWorkspace(EditorState& state);
 void DrawInterfaceWorkspace(EditorState& state);
+void DrawDropTableEditor(EditorState& state);
 
 void DrawShnEditor(EditorState& state) {
     // Beim ersten Oeffnen die aus den Projekt-Ordnern abgeleiteten Client-/Server-SHN-Ordner
@@ -4843,7 +4860,7 @@ void DrawShnEditor(EditorState& state) {
     ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(8, 20, 31, 255));
     ImGui::BeginChild("##shnEditor", ImVec2(0,0), false);
     ImGui::TextColored(ImVec4(0.40f,0.72f,0.96f,1.0f), "Spieldaten");
-    ImGui::SameLine(); ImGui::TextDisabled("SHN · Quest · Portale · Custom NPC/Mob · Skills · AI · Interface");
+    ImGui::SameLine(); ImGui::TextDisabled("SHN · Quest · Portale · Custom NPC/Mob · Skills · AI · Interface · Drops");
     ImGui::Separator();
     struct DataTool { const char* id; const char* label; IconDrawFn icon; };
     const DataTool dataTools[] = {
@@ -4857,6 +4874,7 @@ void DrawShnEditor(EditorState& state) {
         {"skills","Skills",DrawIconBolt},
         {"ai","AI Scripts",DrawIconCode},
         {"interface","Interface",DrawIconMonitorEye},
+        {"drops","Drops",DrawIconSpawn},
     };
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(5.0f, 5.0f));
     for (int i = 0; i < static_cast<int>(std::size(dataTools)); ++i) {
@@ -4962,7 +4980,8 @@ void DrawShnEditor(EditorState& state) {
     else if(state.shnSubTab==6) { DrawCustomCreatureEditor(state); }
     else if(state.shnSubTab==7) { DrawSkillEditor(state); }
     else if(state.shnSubTab==8) { DrawAiWorkspace(state); }
-    else { DrawInterfaceWorkspace(state); }
+    else if(state.shnSubTab==9) { DrawInterfaceWorkspace(state); }
+    else { DrawDropTableEditor(state); }
     ImGui::EndChild(); ImGui::EndChild(); ImGui::PopStyleColor();
 }
 
@@ -9619,6 +9638,7 @@ void DrawCommandPalette(EditorState& state) {
     add("Spieldaten: Skill Editor", "", [&] { state.shnSubTab = 7; state.screen = AppScreen::ShnEditor; });
     add("Spieldaten: AI Workspace", "", [&] { state.shnSubTab = 8; state.screen = AppScreen::ShnEditor; });
     add("Spieldaten: Interface Browser", "", [&] { state.shnSubTab = 9; state.screen = AppScreen::ShnEditor; });
+    add("Spieldaten: Drop Table Browser", "", [&] { state.shnSubTab = 10; state.screen = AppScreen::ShnEditor; });
     if (state.aiScriptDirty && !state.aiScriptEditorPath.empty())
         add("AI: Aktuelles Skript speichern", ShortcutLabel(state.shortcutSave), [&] { SaveAiScript(state); });
     add("Animationen: KFM", "", [&] { state.screen = AppScreen::KfmBrowser; });
@@ -13496,6 +13516,237 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
     ImGui::EndChild();
 }
 
+
+
+int FindShineColumn(const core::legacy::ShineTable& table, const std::string& name) {
+    for (std::size_t i = 0; i < table.columns.size(); ++i)
+        if (table.columns[i].name == name) return static_cast<int>(i);
+    return -1;
+}
+
+std::string ShineRecordValue(const core::legacy::ShineRecord& record, int column) {
+    if (column < 0 || static_cast<std::size_t>(column) >= record.values.size()) return {};
+    return record.values[static_cast<std::size_t>(column)];
+}
+
+void EnsureDropTableLoaded(EditorState& state) {
+    if (state.dropTableLoaded || !state.dropTableLoadError.empty()) return;
+    if (state.shineTextRoot.empty()) {
+        state.dropTableLoadError = "Server-Shine-Ordner nicht gefunden.";
+        return;
+    }
+    const auto path = std::filesystem::path(state.shineTextRoot) / "World" / "ItemDropTable.txt";
+    auto loaded = core::legacy::LoadShineTextFile(path);
+    if (!loaded) {
+        state.dropTableLoadError = loaded.error();
+        return;
+    }
+    auto* table = loaded->FindTable("ItemGroup");
+    if (!table) {
+        state.dropTableLoadError = "Tabelle ItemGroup fehlt in ItemDropTable.txt.";
+        return;
+    }
+    if (table->columns.size() < 200) {
+        state.dropTableLoadError = "ItemGroup-Schema unerwartet klein: " +
+                                   std::to_string(table->columns.size()) + " Spalten.";
+        return;
+    }
+    state.dropTableFile = std::move(*loaded);
+    state.dropTableLoaded = true;
+    state.dropTableSelectedRecord = table->records.empty() ? -1 : 0;
+}
+
+void DrawDropTableEditor(EditorState& state) {
+    EnsureDropTableLoaded(state);
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "DROP TABLE / ITEMGROUP");
+    ImGui::SameLine();
+    ImGui::TextDisabled("semantische Ansicht · read-only");
+    ImGui::SameLine();
+    if (UI::SmallButton("Neu laden##dropTable")) {
+        state.dropTableLoaded = false;
+        state.dropTableFile = core::legacy::ShineTextFile{};
+        state.dropTableLoadError.clear();
+        state.dropTableSelectedRecord = -1;
+        EnsureDropTableLoaded(state);
+    }
+    ImGui::Separator();
+
+    if (!state.dropTableLoadError.empty()) {
+        ImGui::TextWrapped("%s", state.dropTableLoadError.c_str());
+        return;
+    }
+    if (!state.dropTableLoaded) {
+        ImGui::TextDisabled("ItemDropTable.txt wird geladen...");
+        return;
+    }
+
+    auto* table = state.dropTableFile.FindTable("ItemGroup");
+    if (!table) {
+        ImGui::TextDisabled("ItemGroup-Tabelle fehlt.");
+        return;
+    }
+
+    const int cMap = FindShineColumn(*table, "MapArea");
+    const int cMob = FindShineColumn(*table, "MobId");
+    const int cMinLevel = FindShineColumn(*table, "MinLevel");
+    const int cMaxLevel = FindShineColumn(*table, "MaxLevel");
+    const int cMinCen = FindShineColumn(*table, "MinCen");
+    const int cMaxCen = FindShineColumn(*table, "MaxCen");
+    const int cCenRate = FindShineColumn(*table, "CenRate");
+    const int cChecksum = FindShineColumn(*table, "CheckSum");
+
+    UI::InputTextWithHint("##dropFilter", "Mob oder MapArea filtern...",
+                          state.dropTableFilter, sizeof(state.dropTableFilter));
+    const std::string needle = LowerAscii(state.dropTableFilter);
+
+    std::vector<std::size_t> visible;
+    visible.reserve(table->records.size());
+    for (std::size_t ri = 0; ri < table->records.size(); ++ri) {
+        const auto& record = table->records[ri];
+        const std::string mob = ShineRecordValue(record, cMob);
+        const std::string map = ShineRecordValue(record, cMap);
+        if (needle.empty() || LowerAscii(mob + " " + map).find(needle) != std::string::npos)
+            visible.push_back(ri);
+    }
+
+    ImGui::TextDisabled("%zu / %zu Mobs · %zu Schema-Spalten%s",
+                        visible.size(), table->records.size(), table->columns.size(),
+                        table->trailingSemicolonSentinel ? " · ; Sentinel normalisiert" : "");
+    const ImVec2 avail = ImGui::GetContentRegionAvail();
+    const float leftW = std::clamp(avail.x * 0.30f, 280.0f, 390.0f);
+
+    ImGui::BeginChild("##dropMobList", ImVec2(leftW, 0), true);
+    ImGuiListClipper clipper;
+    clipper.Begin(static_cast<int>(visible.size()));
+    while (clipper.Step()) {
+        for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row) {
+            const std::size_t ri = visible[static_cast<std::size_t>(row)];
+            const auto& record = table->records[ri];
+            const std::string mob = ShineRecordValue(record, cMob);
+            const std::string map = ShineRecordValue(record, cMap);
+            std::string label = mob.empty() ? ("Record " + std::to_string(ri)) : mob;
+            if (!map.empty() && map != "-") label += "  ·  " + map;
+            if (UI::Selectable((label + "##dropMob").c_str(),
+                               state.dropTableSelectedRecord == static_cast<int>(ri))) {
+                state.dropTableSelectedRecord = static_cast<int>(ri);
+            }
+        }
+    }
+    if (visible.empty()) ImGui::TextDisabled("Keine passenden Mobs.");
+    ImGui::EndChild();
+
+    ImGui::SameLine();
+    ImGui::BeginChild("##dropDetails", ImVec2(0,0), true);
+    if (state.dropTableSelectedRecord < 0 ||
+        state.dropTableSelectedRecord >= static_cast<int>(table->records.size())) {
+        ImGui::TextDisabled("Mob auswählen.");
+        ImGui::EndChild();
+        return;
+    }
+
+    EnsureItemLookup(state);
+    const auto& record = table->records[static_cast<std::size_t>(state.dropTableSelectedRecord)];
+    const std::string mob = ShineRecordValue(record, cMob);
+    ImGui::TextColored(ImVec4(0.55f,0.82f,1.0f,1.0f), "%s",
+                       mob.empty() ? "(unbenannter Mob)" : mob.c_str());
+    ImGui::SameLine();
+    const std::string map = ShineRecordValue(record, cMap);
+    if (!map.empty() && map != "-") ImGui::TextDisabled("MapArea %s", map.c_str());
+
+    ImGui::TextDisabled("Level %s–%s · Cen %s–%s · CenRate %s",
+                        ShineRecordValue(record,cMinLevel).c_str(),
+                        ShineRecordValue(record,cMaxLevel).c_str(),
+                        ShineRecordValue(record,cMinCen).c_str(),
+                        ShineRecordValue(record,cMaxCen).c_str(),
+                        ShineRecordValue(record,cCenRate).c_str());
+    ImGui::SameLine();
+    if (cChecksum >= 0)
+        ImGui::TextDisabled("· CheckSum %s", ShineRecordValue(record,cChecksum).c_str());
+
+    UI::Checkbox("Nur belegte Drop-Slots##dropTable", &state.dropTableOnlyActive);
+    ImGui::Separator();
+
+    struct DropSlot {
+        int number = 0;
+        std::string item;
+        std::string rate;
+        std::string upgradeMin;
+        std::string upgradeMax;
+        std::string rule;
+        std::string amount;
+    };
+    std::vector<DropSlot> slots;
+    slots.reserve(45);
+    for (int slotNo = 1; slotNo <= 45; ++slotNo) {
+        const std::string suffix = std::to_string(slotNo);
+        char twoDigit[4];
+        std::snprintf(twoDigit, sizeof(twoDigit), "%02d", slotNo);
+        DropSlot slot;
+        slot.number = slotNo;
+        slot.item = ShineRecordValue(record, FindShineColumn(*table, "DrItem" + suffix));
+        slot.rate = ShineRecordValue(record, FindShineColumn(*table, "DrItem" + suffix + "R"));
+        slot.upgradeMin = ShineRecordValue(record, FindShineColumn(*table, "UpGradeMin" + std::string(twoDigit)));
+        slot.upgradeMax = ShineRecordValue(record, FindShineColumn(*table, "UpGradeMax" + std::string(twoDigit)));
+        slot.rule = ShineRecordValue(record, FindShineColumn(*table, "Rule" + suffix));
+        slot.amount = ShineRecordValue(record, FindShineColumn(*table, "Num" + suffix));
+        const bool active = !slot.item.empty() && slot.item != "-";
+        if (!state.dropTableOnlyActive || active) slots.push_back(std::move(slot));
+    }
+
+    if (ImGui::BeginTable("##dropSlots", 7,
+            ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
+            ImGuiTableFlags_Resizable, ImVec2(0, std::max(180.0f, ImGui::GetContentRegionAvail().y - 100.0f)))) {
+        ImGui::TableSetupScrollFreeze(0,1);
+        ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed, 36.0f);
+        ImGui::TableSetupColumn("Item", ImGuiTableColumnFlags_WidthStretch, 0.32f);
+        ImGui::TableSetupColumn("Rate", ImGuiTableColumnFlags_WidthFixed, 72.0f);
+        ImGui::TableSetupColumn("Anzahl", ImGuiTableColumnFlags_WidthFixed, 58.0f);
+        ImGui::TableSetupColumn("Upgrade", ImGuiTableColumnFlags_WidthFixed, 85.0f);
+        ImGui::TableSetupColumn("Rule", ImGuiTableColumnFlags_WidthFixed, 58.0f);
+        ImGui::TableSetupColumn("ItemInfo", ImGuiTableColumnFlags_WidthStretch, 0.25f);
+        ImGui::TableHeadersRow();
+
+        for (const auto& slot : slots) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0); ImGui::Text("%d", slot.number);
+            ImGui::TableSetColumnIndex(1);
+            const bool active = !slot.item.empty() && slot.item != "-";
+            if (active) ImGui::TextUnformatted(slot.item.c_str());
+            else ImGui::TextDisabled("(leer)");
+            ImGui::TableSetColumnIndex(2); ImGui::TextUnformatted(slot.rate.c_str());
+            ImGui::TableSetColumnIndex(3); ImGui::TextUnformatted(slot.amount.c_str());
+            ImGui::TableSetColumnIndex(4);
+            ImGui::Text("%s–%s", slot.upgradeMin.c_str(), slot.upgradeMax.c_str());
+            ImGui::TableSetColumnIndex(5); ImGui::TextUnformatted(slot.rule.c_str());
+            ImGui::TableSetColumnIndex(6);
+            if (active) {
+                if (const auto it = state.itemByInx.find(slot.item); it != state.itemByInx.end()) {
+                    const auto& item = state.itemEntries[it->second];
+                    if (!item.name.empty()) ImGui::TextUnformatted(item.name.c_str());
+                    else ImGui::TextDisabled("ID %lld", item.id);
+                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("InxName %s\nID %lld", item.inx.c_str(), item.id);
+                } else {
+                    ImGui::TextColored(ImVec4(1.0f,0.48f,0.34f,1.0f), "nicht in ItemInfo");
+                }
+            }
+        }
+        ImGui::EndTable();
+    }
+
+    std::vector<std::string> exclusions;
+    for (int i = 1; i <= 5; ++i) {
+        const std::string value = ShineRecordValue(record, FindShineColumn(*table, "ExcItem" + std::to_string(i)));
+        if (!value.empty() && value != "-") exclusions.push_back(value);
+    }
+    if (!exclusions.empty()) {
+        ImGui::SeparatorText("Ausgeschlossene Items");
+        for (std::size_t i = 0; i < exclusions.size(); ++i) {
+            if (i) ImGui::SameLine();
+            ImGui::TextDisabled("%s%s", i ? "· " : "", exclusions[i].c_str());
+        }
+    }
+    ImGui::EndChild();
+}
 
 void DrawInterfaceWorkspace(EditorState& state) {
     if (state.interfaceRoot.empty() && state.project.clientFolder[0] != '\0') {
