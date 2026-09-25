@@ -415,6 +415,10 @@ struct EditorState {
     // (u = x/spanX, v = Bildzeile, Norden oben, siehe DrawEditor2DContent).
     float view2dZoom = 1.0f;
     float view2dCenterU = 0.5f, view2dCenterV = 0.5f;
+    // Minimap is an editor-only overview until docs/MINIMAP_FORMAT.md has enough real
+    // client-image evidence for a Fiesta exporter.
+    bool minimapShowViewport = true;
+    bool minimapShowObjects = false;
     app::HeightmapRenderer renderer;
     app::ObjectMarkerRenderer objectMarkerRenderer;
     app::ObjectMarkerRenderer portalMarkerRenderer; // Portale-Tab: TownPortal-/Schriftrollen-Ziele im 3D-View
@@ -11671,6 +11675,94 @@ static std::vector<std::pair<float, float>> ObjectFootprintWorldPolygon(EditorSt
     return world;
 }
 
+void DrawMinimapPreviewContent(EditorState& state) {
+    DrawPanelHeader("minimapHeader", "MINIMAP", DrawIconGrid, "panel.minimap",
+                    L("Editor-Vorschau","Editor preview"));
+
+    UI::Checkbox(L("2D-Ausschnitt","2D viewport"), &state.minimapShowViewport);
+    ImGui::SameLine();
+    UI::Checkbox(L("Objekte","Objects"), &state.minimapShowObjects);
+
+    const float spanX = static_cast<float>(state.heightmap.Width() > 1 ? state.heightmap.Width() - 1 : 1) * state.heightmap.BlockWidth();
+    const float spanZ = static_cast<float>(state.heightmap.Height() > 1 ? state.heightmap.Height() - 1 : 1) * state.heightmap.BlockHeight();
+    if (spanX <= 0.0f || spanZ <= 0.0f) {
+        ImGui::TextDisabled("%s", L("Keine Kartengeometrie geladen.","No map geometry loaded."));
+        return;
+    }
+
+    ImVec2 avail = ImGui::GetContentRegionAvail();
+    const float maxW = std::max(80.0f, avail.x);
+    const float maxH = std::max(80.0f, avail.y - ImGui::GetTextLineHeightWithSpacing() - 4.0f);
+    const float aspect = spanX / spanZ;
+    ImVec2 imageSize(maxW, maxW / std::max(aspect, 0.001f));
+    if (imageSize.y > maxH) {
+        imageSize.y = maxH;
+        imageSize.x = maxH * aspect;
+    }
+    imageSize.x = std::max(80.0f, imageSize.x);
+    imageSize.y = std::max(80.0f, imageSize.y);
+
+    if (imageSize.x < maxW) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (maxW - imageSize.x) * 0.5f);
+    const ImVec2 imageMin = ImGui::GetCursorScreenPos();
+    const int renderW = std::clamp(static_cast<int>(std::lround(imageSize.x)), 64, 1024);
+    const int renderH = std::clamp(static_cast<int>(std::lround(imageSize.y)), 64, 1024);
+    const std::uint32_t tex = state.renderer.RenderTopDownOverview(renderW, renderH);
+    if (tex == 0) {
+        ImGui::Dummy(imageSize);
+        ImGui::TextDisabled("%s",L("Minimap-Vorschau nicht verfügbar.","Minimap preview unavailable."));
+        return;
+    }
+
+    ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(tex)), imageSize,
+                 ImVec2(0,0), ImVec2(1,1));
+    const bool hovered = ImGui::IsItemHovered();
+    const ImVec2 imageMax(imageMin.x + imageSize.x, imageMin.y + imageSize.y);
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    dl->AddRect(imageMin, imageMax, IM_COL32(31,82,116,230), 3.0f, 0, 1.0f);
+
+    if (state.minimapShowObjects) {
+        RefreshObjectVisibility(state);
+        for (std::size_t i = 0; i < state.placementSet.Count(); ++i) {
+            if (IsObjectHidden(state, i)) continue;
+            const auto& obj = state.placementSet.At(i);
+            const float u = std::clamp(obj.posX / spanX, 0.0f, 1.0f);
+            const float v = 1.0f - std::clamp(obj.posZ / spanZ, 0.0f, 1.0f);
+            const bool selected = std::find(state.selectedObjects.begin(), state.selectedObjects.end(), static_cast<int>(i)) != state.selectedObjects.end();
+            dl->AddCircleFilled(ImVec2(imageMin.x + u * imageSize.x, imageMin.y + v * imageSize.y),
+                                selected ? 2.8f : 1.3f,
+                                selected ? IM_COL32(255,255,255,245) : IM_COL32(65,190,230,150));
+        }
+    }
+
+    const float zoom = std::clamp(state.view2dZoom, 1.0f, 40.0f);
+    if (state.minimapShowViewport) {
+        const float half = 0.5f / zoom;
+        const float u0 = std::clamp(state.view2dCenterU - half, 0.0f, 1.0f);
+        const float v0 = std::clamp(state.view2dCenterV - half, 0.0f, 1.0f);
+        const float u1 = std::clamp(state.view2dCenterU + half, 0.0f, 1.0f);
+        const float v1 = std::clamp(state.view2dCenterV + half, 0.0f, 1.0f);
+        dl->AddRect(ImVec2(imageMin.x + u0 * imageSize.x, imageMin.y + v0 * imageSize.y),
+                    ImVec2(imageMin.x + u1 * imageSize.x, imageMin.y + v1 * imageSize.y),
+                    IM_COL32(32,221,242,245), 1.5f, 0, 2.0f);
+    }
+
+    if (hovered) {
+        ImGui::SetTooltip("%s",L("Klick: 2D-Ansicht hier zentrieren","Click: center the 2D view here"));
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+            const ImVec2 mouse = ImGui::GetMousePos();
+            const float u = std::clamp((mouse.x - imageMin.x) / imageSize.x, 0.0f, 1.0f);
+            const float v = std::clamp((mouse.y - imageMin.y) / imageSize.y, 0.0f, 1.0f);
+            const float half = 0.5f / zoom;
+            state.view2dCenterU = std::clamp(u, half, 1.0f - half);
+            state.view2dCenterV = std::clamp(v, half, 1.0f - half);
+            state.statusMessage = L("2D-Ansicht über Minimap zentriert.","2D view centered from minimap.");
+        }
+    }
+
+    ImGui::TextDisabled("%s",L("Editor-Preview · Fiesta-Export bis Formatverifikation gesperrt",
+                               "Editor preview · Fiesta export locked until format verification"));
+}
+
 void DrawEditor2DContent(EditorState& state) {
     const bool texMode = state.editMode == EditMode::TexturePaint;
     const bool walkMode = state.editMode == EditMode::BlockWalk;
@@ -15895,6 +15987,7 @@ void DrawMapEditorWorkspace(EditorState& state) {
             ImGui::DockBuilderDockWindow("Szene##sceneOutliner", sceneId);
             ImGui::DockBuilderDockWindow("Eigenschaften##fileToolsCol", inspectorId);
             ImGui::DockBuilderDockWindow("Asset Browser##assetBrowser", assetId);
+            ImGui::DockBuilderDockWindow("Minimap##minimapPanel", assetId);
             ImGui::DockBuilderDockWindow("2D-Ansicht##view2d", view2dId);
             ImGui::DockBuilderDockWindow("3D-Ansicht##view3d", view3dId);
             ImGui::DockBuilderFinish(dockspaceId);
@@ -16028,6 +16121,12 @@ void DrawMapEditorWorkspace(EditorState& state) {
     ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
     ImGui::Begin("Asset Browser##assetBrowser");
     DrawWorkspaceAssetBrowser(state);
+    ImGui::End();
+    ImGui::PopStyleColor();
+
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
+    ImGui::Begin("Minimap##minimapPanel");
+    DrawMinimapPreviewContent(state);
     ImGui::End();
     ImGui::PopStyleColor();
 
