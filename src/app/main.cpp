@@ -78,7 +78,6 @@
 
 #include <algorithm>
 #include <array>
-#include <array>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
@@ -88,6 +87,7 @@
 #include <fstream>
 #include <deque>
 #include <functional>
+#include <map>
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
@@ -1489,6 +1489,10 @@ bool IsObjectEditorHidden(const EditorState& state, int id) {
 }
 
 struct EditVec3 { float x = 0.0f, y = 0.0f, z = 0.0f; };
+
+// Vorwärtsdeklaration: Route-/Overlay-Code steht vor der gemeinsamen 3D-Projektionshilfe.
+bool ProjectWorldTo3DView(const EditorState& state, const ImVec2& imagePos, int w, int h,
+                          const EditVec3& world, ImVec2& screen);
 struct EditQuat { float x = 0.0f, y = 0.0f, z = 0.0f, w = 1.0f; };
 
 EditQuat NormalizeEditQuat(EditQuat q) {
