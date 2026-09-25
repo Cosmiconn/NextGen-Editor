@@ -128,39 +128,16 @@ int main(int argc, char** argv) {
     assert(effect->splineData.size() == 1);
     assert(effect->splineBases.size() == 1);
 
-    // Die echte Fixture benennt die Plane-Knoten durchnummeriert (Plane13..Plane18).
-    // Getestet werden soll hier die dekodierte XYZ-Rotationsstruktur, nicht ein erfundener
-    // exakter Knotename. Suche deshalb den passenden Plane-Track anhand seiner Datenform.
-    const KfControlledTrack* plane = nullptr;
-    for (const auto& track : effect->sequence.transformTracks) {
-        if (track.nodeName.rfind("Plane", 0) != 0 || track.compressedSpline ||
-            track.keys.rotationType != 4) continue;
-        if (track.keys.xyzRotation[0].keys.size() == 2 &&
-            track.keys.xyzRotation[1].keys.size() == 2 &&
-            track.keys.xyzRotation[2].keys.size() == 2) {
-            plane = &track;
-            break;
-        }
-    }
-    if (plane == nullptr) {
-        std::cerr << "No Plane* track with 2-key XYZ rotation found. Tracks:\n";
-        for (const auto& track : effect->sequence.transformTracks) {
-            std::cerr << "  [" << track.nodeName << "] compressed=" << track.compressedSpline
-                      << " rotationType=" << track.keys.rotationType
-                      << " quat=" << track.keys.quaternionRotation.size()
-                      << " xyz=(" << track.keys.xyzRotation[0].keys.size()
-                      << "," << track.keys.xyzRotation[1].keys.size()
-                      << "," << track.keys.xyzRotation[2].keys.size() << ")"
-                      << " translation=" << track.keys.translation.keys.size()
-                      << " scale=" << track.keys.scale.keys.size() << "\n";
-        }
-        return 2;
-    }
-    assert(!plane->compressedSpline);
-    assert(plane->keys.rotationType == 4);
-    assert(plane->keys.xyzRotation[0].keys.size() == 2);
-    assert(plane->keys.xyzRotation[1].keys.size() == 2);
-    assert(plane->keys.xyzRotation[2].keys.size() == 2);
+    // In der echten BallCrush-Fixture liegt die unkomprimierte XYZ-Rotation auf
+    // Dummy07. Die Plane13..15-Tracks tragen dagegen Skalierungskeys; Plane16/18 sind
+    // komprimierte B-Spline-Tracks. Der Test bildet damit die tatsächliche Datei ab.
+    const auto* xyz = FindTrack(*effect, "Dummy07");
+    assert(xyz != nullptr);
+    assert(!xyz->compressedSpline);
+    assert(xyz->keys.rotationType == 4);
+    assert(xyz->keys.xyzRotation[0].keys.size() == 2);
+    assert(xyz->keys.xyzRotation[1].keys.size() == 2);
+    assert(xyz->keys.xyzRotation[2].keys.size() == 2);
 
     const auto character = LoadKfAnimation(std::filesystem::path(argv[2]));
     if (!character) {
