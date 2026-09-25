@@ -2,15 +2,18 @@
 
 ## Verbindliche Quelle
 
-Für den UI-Retrofit gelten zwei komplementäre, technisch verifizierte Quellen:
+Für den UI-Retrofit ist **`NextGen_Icons_Final.zip`** die einzige verbindliche Artwork-Quelle.
 
-- **Vector-Master:** `NextGen_Icons_True_Vector_Set_With_Sizes.zip/svg/` – 54 echte pfadbasierte SVGs, ohne eingebettete Rasterbilder.
-- **Raster-/Appearance-Referenz:** `NextGen_Icons_Complete_PNG_SVG.zip/png/` – hochwertige 256/1024-PNGs.
-- **Runtime Small Sizes:** `NextGen_Icons_True_Vector_Set_With_Sizes.zip/icons_png/{16,24,32,48,64,128}/`.
-- Die „SVGs“ des Complete-Pakets sind eingebettete PNG-Container und **keine** Vector-Master.
-- vollständiges Inventar/Mapping: [ICON_INVENTORY.md](ICON_INVENTORY.md)
-- bestehende Lucide-SVGs und native ImDrawList-Symbole sind nur Migrationsbestand bzw. Fallback für tatsächlich fehlende Paketicons.
-- kein neues Ersatzicon zeichnen, solange ein passendes Paketicon existiert.
+Technisch geprüft:
+- 68 Manifest-Einträge;
+- `svg/`: 68 echte pfadbasierte SVGs, ohne eingebettete Rasterbilder;
+- `icons_png/16|24|32|48|64|128`: 68 Icons je Größe;
+- `svg_embedded_png_256|1024/`: optionale SVG-Container mit eingebetteten PNGs für exakte Rasterdarstellung;
+- zusätzliche 14 UI-Icons schließen 2D/3D, KFM, AI, XP, Preise, Eye, Lock/Unlock, Copy, Duplicate, Delete, Command Palette und Recent Projects ab.
+
+Die älteren beiden ZIPs bleiben nur Provenienz/Vorgeschichte. Für neue Repo-Imports, Mapping und QA wird ausschließlich das Final-Paket verwendet.
+
+Vollständiges Inventar/Mapping: [ICON_INVENTORY.md](ICON_INVENTORY.md)
 
 ## Grundstil
 
@@ -50,11 +53,15 @@ Farbe ändert nicht die Bedeutung des Glyphs; Kernaktionen müssen auch ohne Far
 UI-Code referenziert semantische IDs statt konkrete Dateinamen:
 
 - `file.*`
+- `history.*`
 - `transform.*`
 - `world.*`
 - `scene.*`
 - `gameplay.*`
 - `module.*`
+- `view.*`
+- `state.*`
+- `edit.*`
 - `system.*`
 - `brand.*`
 
