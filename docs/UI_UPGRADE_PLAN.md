@@ -186,6 +186,7 @@ Zusätzlich in der laufenden zweiten Ausbaustufe umgesetzt:
 - Terrain-/Walk-Brush-Overlays und Presets sowie Layer-DnD, DDS-Drop, Duplizieren und größere Thumbnails umgesetzt.
 - Single-SHN modernisiert: sortierbare/fixierte Tabelle, Spaltenfilter, Dirty-/Fehler-Markierungen, Inline-Editing, Copy/Paste, Undo/Redo und Client/Server-Diff.
 - Multi-SHN zu einer Client/Server-Vergleichsansicht mit Schema-/Zeilen-/Zell-Diffs ausgebaut.
+- KFM-Playback-Grundlage ergänzt: ausgewählte KF-Dateien können geladen, auf einer Timeline abgespielt und pro Transform-Track live gesampelt werden; Play/Pause, Loop und Geschwindigkeit sind vorhanden. Komprimierte Fiesta-B-Spline-Tracks bleiben bewusst als noch nicht verifiziert markiert, statt falsches Skelett-Playback vorzutäuschen.
 
 Noch offen für spätere Ausbaustufen:
 - spezialisierte NPC-/Mob-/Portal-Outliner statt nur der heutigen kontextuellen Listen;
