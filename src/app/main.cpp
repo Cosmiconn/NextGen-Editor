@@ -13027,7 +13027,7 @@ void DrawWorkspaceTabBar(EditorState& state) {
     ImGui::BeginGroup();
 
     const bool canSave = state.hasLegacyIniMeta || state.legacySaveDir[0] != '\0';
-    if (DrawIconButton("cmd.save", "Speichern", DrawIconSave, false, ImVec2(78,58), canSave)) {
+    if (DrawIconButton("cmd.save", L("Speichern","Save"), DrawIconSave, false, ImVec2(78,58), canSave)) {
         auto project = BuildProjectFromState(state);
         auto result = core::legacy::SaveLegacyMap(project, state.legacySaveDir, state.legacySaveStem);
         if (result) {
@@ -13041,21 +13041,50 @@ void DrawWorkspaceTabBar(EditorState& state) {
         }
     }
     ImGui::SameLine();
-    if (DrawIconButton("cmd.undo", "Undo", DrawIconUndo, false, ImVec2(68,58), undoAvailable())) doUndo();
+    if (DrawIconButton("cmd.undo", L("Rückgängig","Undo"), DrawIconUndo, false, ImVec2(68,58), undoAvailable())) doUndo();
     ImGui::SameLine();
-    if (DrawIconButton("cmd.redo", "Redo", DrawIconRedo, false, ImVec2(68,58), redoAvailable())) doRedo();
+    if (DrawIconButton("cmd.redo", L("Wiederholen","Redo"), DrawIconRedo, false, ImVec2(68,58), redoAvailable())) doRedo();
+
+    // Transform-Gruppe: dieselben echten ImGuizmo-Modi wie im Objekt-Inspector, jetzt
+    // direkt in der primären Toolbar erreichbar. Kein neuer Fake-Modus; die Buttons
+    // schalten den bestehenden ObjectPlacement-Auswahlmodus und objectGizmoOperation.
+    ImGui::SameLine(); ImGui::Dummy(ImVec2(8.0f, 1.0f)); ImGui::SameLine();
+    auto activateTransform = [&](int operation) {
+        setMode(EditMode::ObjectPlacement);
+        state.objectPlaceMode = 0; // Auswählen statt neues Objekt platzieren
+        state.objectGizmoOperation = operation;
+    };
+    if (DrawIconButton("cmd.move", L("Verschieben","Move"), DrawIconMove,
+                       state.editMode == EditMode::ObjectPlacement && state.objectPlaceMode == 0 &&
+                       state.objectGizmoOperation == 0, ImVec2(72,58))) activateTransform(0);
+    ImGui::SameLine();
+    if (DrawIconButton("cmd.rotate", L("Rotieren","Rotate"), DrawIconRotate,
+                       state.editMode == EditMode::ObjectPlacement && state.objectPlaceMode == 0 &&
+                       state.objectGizmoOperation == 1, ImVec2(72,58))) activateTransform(1);
+    ImGui::SameLine();
+    if (DrawIconButton("cmd.scale", L("Skalieren","Scale"), DrawIconScale,
+                       state.editMode == EditMode::ObjectPlacement && state.objectPlaceMode == 0 &&
+                       state.objectGizmoOperation == 2, ImVec2(72,58))) activateTransform(2);
+    ImGui::SameLine();
+    if (DrawIconButton("cmd.snap", "Snap", DrawIconSnap,
+                       state.editMode == EditMode::ObjectPlacement && state.objectGizmoSnap,
+                       ImVec2(64,58))) {
+        setMode(EditMode::ObjectPlacement);
+        state.objectPlaceMode = 0;
+        state.objectGizmoSnap = !state.objectGizmoSnap;
+    }
 
     ImGui::SameLine(); ImGui::Dummy(ImVec2(8.0f, 1.0f)); ImGui::SameLine();
 
     struct Tool { const char* id; const char* label; EditMode mode; IconDrawFn icon; };
     const Tool tools[] = {
-        {"terrain","Terrain",EditMode::Heightmap,DrawIconTerrain},
-        {"texture","Textur",EditMode::TexturePaint,DrawIconBrush},
+        {"terrain",L("Terrain","Terrain"),EditMode::Heightmap,DrawIconTerrain},
+        {"texture",L("Textur","Texture"),EditMode::TexturePaint,DrawIconBrush},
         {"walk","Block & Walk",EditMode::BlockWalk,DrawIconGrid},
-        {"objects","Objekte",EditMode::ObjectPlacement,DrawIconCube},
+        {"objects",L("Objekte","Objects"),EditMode::ObjectPlacement,DrawIconCube},
         {"npcs","NPCs",EditMode::Npcs,DrawIconPerson},
         {"mobs","Mobs",EditMode::Mobs,DrawIconSpawn},
-        {"portals","Portale",EditMode::Portals,DrawIconPortal},
+        {"portals",L("Portale","Portals"),EditMode::Portals,DrawIconPortal},
     };
     for (const auto& tool : tools) {
         if (DrawIconButton(tool.id, tool.label, tool.icon, state.editMode == tool.mode))
@@ -13064,7 +13093,7 @@ void DrawWorkspaceTabBar(EditorState& state) {
     }
 
     ImGui::Dummy(ImVec2(8.0f, 1.0f)); ImGui::SameLine();
-    if (DrawIconButton("cmd.data","Spieldaten",DrawIconTable,false,ImVec2(86,58))) {
+    if (DrawIconButton("cmd.data",L("Spieldaten","Data"),DrawIconTable,false,ImVec2(86,58))) {
         state.screen = AppScreen::ShnEditor;
     }
     ImGui::SameLine();
@@ -13072,7 +13101,7 @@ void DrawWorkspaceTabBar(EditorState& state) {
         state.screen = AppScreen::KfmBrowser;
     }
     ImGui::SameLine();
-    if (DrawIconButton("cmd.back","Zurück",DrawIconUndo,false,ImVec2(70,58))) {
+    if (DrawIconButton("cmd.back",L("Zurück","Back"),DrawIconUndo,false,ImVec2(70,58))) {
         state.screen = AppScreen::MapEditorLauncher;
     }
 
