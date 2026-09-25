@@ -6941,6 +6941,10 @@ static const char* const kAvatarSlotNames[19] = {
     "Rechte Hand", "Linke Hand", "Körper", "Beine", "Schuhe", "Acc. Körper", "Acc. Beine", "Acc. Schuhe", "Acc. Mund",
     "Acc. Kopf A", "Acc. Augen", "Acc. Kopf", "Acc. Linke Hand", "Acc. Rechte Hand", "Acc. Rücken", "Acc. Taille", "Acc. Hüfte",
     "Mini-Monster", "Mini-Monster R"};
+static const char* const kAvatarSlotNamesEn[19] = {
+    "Right hand", "Left hand", "Body", "Legs", "Shoes", "Acc. body", "Acc. legs", "Acc. shoes", "Acc. mouth",
+    "Acc. head A", "Acc. eyes", "Acc. head", "Acc. left hand", "Acc. right hand", "Acc. back", "Acc. waist", "Acc. hip",
+    "Mini monster", "Mini monster R"};
 static const char* const kAvatarSlotColumns[19] = {
     "Equ_RightHand", "Equ_LeftHand", "Equ_Body", "Equ_Leg", "Equ_Shoes", "Equ_AccBody", "Equ_AccLeg", "Equ_AccShoes", "Equ_AccMouth",
     "Equ_AccHeadA", "Equ_AccEye", "Equ_AccHead", "Equ_AccLeftHand", "Equ_AccRightHand", "Equ_AccBack", "Equ_AccWeast", "Equ_AccHip",
@@ -7873,9 +7877,9 @@ static void UpdateAvatarPreview(EditorState& state) {
 void DrawCreatureWizardPreview(EditorState& state) {
     auto& w = state.wiz;
     ImGui::BeginChild("##creatureWizardPreview", ImVec2(0,0), true);
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "VORSCHAU");
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s", L("VORSCHAU", "PREVIEW"));
     ImGui::SameLine();
-    ImGui::TextDisabled("%s", w.isNpc ? "NPC" : "Monster");
+    ImGui::TextDisabled("%s", w.isNpc ? "NPC" : L("Monster", "Monster"));
     ImGui::Separator();
 
     if (w.templateId < 0) {
@@ -7885,7 +7889,7 @@ void DrawCreatureWizardPreview(EditorState& state) {
                      ImVec2(p.x + width * 0.5f, p.y + 70.0f),
                      34.0f, IM_COL32(90,120,145,210));
         ImGui::Dummy(ImVec2(0,140.0f));
-        ImGui::TextDisabled("Zuerst links eine Vorlage wählen.");
+        ImGui::TextDisabled("%s", L("Zuerst links eine Vorlage wählen.", "Choose a template on the left first."));
     } else if (w.isNpc && w.lookMode == 2) {
         UpdateAvatarPreview(state);
         const float width = std::min(300.0f, std::max(160.0f, ImGui::GetContentRegionAvail().x));
@@ -7894,13 +7898,13 @@ void DrawCreatureWizardPreview(EditorState& state) {
             ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(state.avatarTex)),
                          ImVec2(width,height));
             ImGui::SetNextItemWidth(width);
-            UI::SliderFloat("##wizardPreviewYaw",&state.avatarYaw,-3.1416f,3.1416f,"Drehung %.2f");
+            UI::SliderFloat("##wizardPreviewYaw",&state.avatarYaw,-3.1416f,3.1416f,L("Drehung %.2f", "Rotation %.2f"));
             for (const auto& note : state.avatarModel->notes)
                 ImGui::TextColored(ImVec4(1.0f,0.75f,0.35f,1.0f),"%s",note.c_str());
         } else if (!state.avatarError.empty()) {
             ImGui::TextColored(ImVec4(1.0f,0.5f,0.4f,1.0f),"%s",state.avatarError.c_str());
         } else {
-            ImGui::TextDisabled("Avatar wird vorbereitet...");
+            ImGui::TextDisabled("%s", L("Avatar wird vorbereitet...", "Preparing avatar..."));
         }
     } else {
         EnsureNpcDialogRoot(state);
@@ -7939,27 +7943,27 @@ void DrawCreatureWizardPreview(EditorState& state) {
                          32.0f, IM_COL32(100,185,235,230));
             ImGui::Dummy(ImVec2(0,130.0f));
         }
-        ImGui::TextDisabled("Modell");
-        ImGui::TextWrapped("%s",fileName.empty() ? "(Vorlagenmodell nicht aufgelöst)" : fileName.c_str());
+        ImGui::TextDisabled("%s", L("Modell", "Model"));
+        ImGui::TextWrapped("%s",fileName.empty() ? L("(Vorlagenmodell nicht aufgelöst)", "(template model unresolved)") : fileName.c_str());
     }
 
     ImGui::Separator();
-    ImGui::TextDisabled("Vorlage");
+    ImGui::TextDisabled("%s", L("Vorlage", "Template"));
     ImGui::TextWrapped("%s%s%lld",
-                       w.templateInx.empty() ? "(keine)" : w.templateInx.c_str(),
+                       w.templateInx.empty() ? L("(keine)", "(none)") : w.templateInx.c_str(),
                        w.templateId >= 0 ? "  ·  #" : "",
                        w.templateId >= 0 ? w.templateId : 0);
-    ImGui::TextDisabled("Neue Identität");
-    ImGui::TextWrapped("%s",w.newInx[0] ? w.newInx : "(noch offen)");
+    ImGui::TextDisabled("%s", L("Neue Identität", "New identity"));
+    ImGui::TextWrapped("%s",w.newInx[0] ? w.newInx : L("(noch offen)", "(not set yet)"));
     if (w.displayName[0]) ImGui::TextWrapped("%s",w.displayName);
     if (!w.isNpc) {
-        ImGui::SeparatorText("Werte");
+        ImGui::SeparatorText(L("Werte", "Values"));
         ImGui::Text("Level %d",w.level);
         ImGui::Text("HP %d",w.maxHp);
-        ImGui::Text("Größe %d",w.size);
+        ImGui::Text(L("Größe %d", "Size %d"),w.size);
     } else if (w.placeOnMap) {
-        ImGui::SeparatorText("Platzierung");
-        ImGui::Text("%s",state.legacySaveStem[0] ? state.legacySaveStem : "(keine Karte)");
+        ImGui::SeparatorText(L("Platzierung", "Placement"));
+        ImGui::Text("%s",state.legacySaveStem[0] ? state.legacySaveStem : L("(keine Karte)", "(no map)"));
         ImGui::Text("X %d · Y %d",w.placeX,w.placeY);
         ImGui::TextDisabled("%s",kNpcRoles[std::clamp(w.roleIdx,0,5)]);
     }
@@ -7971,28 +7975,28 @@ void DrawCustomCreatureEditor(EditorState& state) {
     EnsureItemLookup(state);
     ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "CUSTOM NPC / MOB");
     ImGui::SameLine();
-    ImGui::TextDisabled("Vorlage klonen · Werte anpassen · Aussehen wählen · optional platzieren");
+    ImGui::TextDisabled("%s", L("Vorlage klonen · Werte anpassen · Aussehen wählen · optional platzieren", "Clone template · adjust values · choose appearance · optionally place"));
     ImGui::Separator();
     if (DrawIconButton("customNpc", "NPC", DrawIconPerson, w.isNpc, ImVec2(94,58)))
         w.isNpc = true;
     ImGui::SameLine();
-    if (DrawIconButton("customMob", "Monster", DrawIconSpawn, !w.isNpc, ImVec2(94,58))) {
+    if (DrawIconButton("customMob", L("Monster", "Monster"), DrawIconSpawn, !w.isNpc, ImVec2(94,58))) {
         w.isNpc = false;
         if (w.lookMode == 2) w.lookMode = 0;
     }
     ImGui::SameLine();
-    ImGui::TextWrapped("Klont die Vorlage konsistent in die zugehörigen Client-/Server-Tabellen. "
-                       "Die neue ID wird auf Wunsch automatisch über alle beteiligten Tabellen hinweg gewählt.");
+    ImGui::TextWrapped("%s", L("Klont die Vorlage konsistent in die zugehörigen Client-/Server-Tabellen. Die neue ID wird auf Wunsch automatisch über alle beteiligten Tabellen hinweg gewählt.",
+                                  "Clones the template consistently into the related client/server tables. The new ID can be chosen automatically so it is free across all involved tables."));
 
     w.step = std::clamp(w.step, 0, 4);
     ImGui::Separator();
     struct WizardStep { const char* label; IconDrawFn icon; };
     const WizardStep wizardSteps[] = {
-        {"1 Vorlage", DrawIconLayers},
-        {"2 Werte", DrawIconTable},
-        {"3 Aussehen", DrawIconCube},
-        {"4 Rolle / Ort", DrawIconPortal},
-        {"5 Anlegen", DrawIconSave},
+        {L("1 Vorlage", "1 Template"), DrawIconLayers},
+        {L("2 Werte", "2 Values"), DrawIconTable},
+        {L("3 Aussehen", "3 Appearance"), DrawIconCube},
+        {L("4 Rolle / Ort", "4 Role / Place"), DrawIconPortal},
+        {L("5 Anlegen", "5 Create"), DrawIconSave},
     };
     for (int i = 0; i < 5; ++i) {
         if (DrawIconButton((std::string("wizStep") + std::to_string(i)).c_str(),
@@ -8000,7 +8004,7 @@ void DrawCustomCreatureEditor(EditorState& state) {
             w.step = i;
         if (i < 4) ImGui::SameLine();
     }
-    ImGui::TextDisabled("Schritt %d / 5", w.step + 1);
+    ImGui::TextDisabled(L("Schritt %d / 5", "Step %d / 5"), w.step + 1);
 
     const float previewWidth = std::clamp(ImGui::GetContentRegionAvail().x * 0.28f, 280.0f, 360.0f);
     if (!ImGui::BeginTable("##creatureWizardLayout",2,ImGuiTableFlags_SizingStretchProp)) return;
