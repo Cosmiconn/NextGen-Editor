@@ -5,7 +5,8 @@
 - [x] strukturelle SVG-Mockups geplant/versioniert
 - [x] SVG-Icon-Pack geplant/versioniert
 - [ ] freigegebene Raster-Referenzen zusätzlich archivieren
-- [ ] Windows-ICO aus dem NG-Master neu erzeugen
+- [ ] finales 54-Icon-Paket inventarisieren und semantisch mappen
+- [ ] Windows-ICO aus dem freigegebenen NG-Master neu erzeugen
 
 ## Phase 1 – Design Tokens
 Zentrale Theme-Tokens, Radius, Padding, Button-/Headerhöhen, States.
@@ -13,12 +14,16 @@ Zentrale Theme-Tokens, Radius, Padding, Button-/Headerhöhen, States.
 **Abnahme:** kein Kernpanel nutzt ad-hoc Farben ohne semantischen Grund.
 
 ## Phase 2 – App Shell
-Topbar → Toolbar → Statusbar → Dock Header.
+Topbar → Menüleiste → Primary Toolbar → Statusbar → Dock Header.
+
+Die freigegebenen Paket-Icons ersetzen dabei schrittweise die bisherigen Lucide-/DrawList-Fallbacks; keine zweite Icon-Sprache parallel ausbauen.
 
 **Abnahme:** Map, SHN, Quest, Skill und KFM teilen dieselbe Shell-Sprache.
 
 ## Phase 3 – Karteneditor
-3D → Outliner → Inspector → Asset Browser → Terrain → Layer → 2D/Minimap → Block&Walk.
+3D → Outliner → Inspector → Asset Browser → Terrain → Layer → 2D → Minimap → Block&Walk.
+
+**Minimap-Gate:** zuerst `docs/MINIMAP_FORMAT.md` mit realen Fiesta-Beispielen vervollständigen. Eine editorinterne Preview darf vorher entstehen; ein Fiesta-Exporter erst nach verifiziertem Dateiformat, Pfad, Orientierung und Auflösung.
 
 **Abnahme:** `mockups/editor-shell-target.svg` strukturell wiedererkennbar.
 
@@ -29,7 +34,7 @@ SHN → Quest → Skill → AI → Drops → Interface.
 KFM Preview → Transport → Timeline → Trackliste → Skeleton/Mesh Playback.
 
 ## Phase 6 – Polish
-Icon-Pass, Tooltips, Spacing, Tastaturfokus, HiDPI, 100/125/150/200 %, 1366×768 / 1920×1080 / 2560×1440.
+Icon-Pass aus dem freigegebenen Paket, Tooltips, Spacing, Tastaturfokus, HiDPI, 100/125/150/200 %, 1366×768 / 1920×1080 / 2560×1440.
 
 ## Harte Kriterien
 1. 3D ist im Default-Layout größter Einzelbereich.
