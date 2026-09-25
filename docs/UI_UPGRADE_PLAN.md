@@ -191,7 +191,7 @@ Zusätzlich in der laufenden zweiten Ausbaustufe umgesetzt:
 - Dock-/Workspace-Layout wird dauerhaft im NextGen-Benutzerordner gespeichert und beim nächsten Start wiederhergestellt; ein expliziter Reset stellt das Standardlayout wieder her.
 
 Noch offen für spätere Ausbaustufen:
-- spezialisierte NPC-/Mob-/Portal-Outliner statt nur der heutigen kontextuellen Listen;
+- NPC-/Mob-/Portal-Outliner sind inzwischen spezialisiert: semantische Rollen-/Gruppenicons, Auswahl-Details, direkte Kontextaktionen sowie Gate-Zielnavigation; weitere Gruppierungs-/Filtertiefe bleibt optional;
 - gleiche Panel-Sprache in allen tiefen Quest-/Skill-/Custom-Dialog-Unteransichten;
 - optional gespeicherte Workspace-Presets;
 - zukünftige Interface/Drop-Table/AI/NIF-Material-Editoren.
@@ -284,6 +284,7 @@ Bereits umgesetzt:
 - NPC- und Mob-Inspector in fachliche Bereiche gegliedert.
 - NPC-/MobRoam-Routen als 2D-/3D-Overlay, wahlweise nur für die aktuelle Auswahl oder dauerhaft für alle relevanten NPCs/Mobs der Karte.
 - szenenweites Frame Selected: F bzw. Doppelklick im Szene-Outliner fokussiert Objekte, NPCs, Mob-Zonen und Portale im 3D-Viewport.
+- spezialisierte NPC-/Mob-/Portal-Outliner mit semantischen Icons, Rechtsklick-Aktionen und ausgewählten Inline-Details/Aktionen (Dialog/AI/Route/Shop, Mob-Einträge, Portal-Ziele).
 - Mob-Spawn-Zonen zusätzlich als 3D-Overlay.
 - Portal-Inspector in Auswahl / Position / Bedingungen / Positionieren / Aktionen gegliedert.
 - TownPortal und RecallCoord zusätzlich mit unterschiedlichen 3D-Markern.
@@ -293,7 +294,7 @@ Bereits umgesetzt:
 Noch offen innerhalb von Priorität 1/2:
 - freie Editor-Labels sowie einklappbare Gruppen/Ordner im Objekt-Outliner (reine Editor-Metadaten).
 - echtes Geometrie-Ray-Picking für geladene NIF-Dreiecke ist umgesetzt; nur nicht ladbare NIFs verwenden noch den projizierten Marker-Fallback.
-- noch tiefere NPC-/Mob-Rollenicons; Route/Roam-Overlays sind inzwischen für Auswahl oder gesamten Kartenkontext verfügbar.
+- tiefere NPC-/Mob-Semantik ist umgesetzt: NPC-Icons werten `Role + RoleArg0` aus (Quest/GBDice, Waffen, Skill, SoulStone, Guild, Coin/RandomOption usw.); Mob-Zonen unterscheiden leer/eine Art/gemischte Gruppe und zeigen Art-/Mobzahlen. Route/Roam-Overlays sind für Auswahl oder gesamten Kartenkontext verfügbar.
 - belastbare Zielkarten-Verknüpfung ist für NPC-Gates belegt und umgesetzt (`RoleArg0 -> LinkTable.argument`); TownPortal/RecallCoord bleiben korrekt als Ziel-/Ankunftsdaten behandelt und werden nicht fälschlich als Outbound-Link interpretiert.
 
 
