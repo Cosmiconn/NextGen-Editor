@@ -2469,6 +2469,57 @@ std::optional<std::string> BrowseForShnFileWindows(const char* title, bool kfm =
 }
 #endif
 
+#ifdef _WIN32
+std::optional<std::string> BrowseForInterfaceAssetWindows(const char* title, const std::string& extension) {
+    const HRESULT comInit = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    const bool weOwnCom = SUCCEEDED(comInit);
+    std::optional<std::string> result;
+    IFileOpenDialog* dialog = nullptr;
+    if (SUCCEEDED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
+                                   IID_PPV_ARGS(&dialog))) && dialog) {
+        DWORD options = 0;
+        dialog->GetOptions(&options);
+        dialog->SetOptions(options | FOS_FORCEFILESYSTEM | FOS_FILEMUSTEXIST | FOS_PATHMUSTEXIST);
+
+        std::wstring extW;
+        if (!extension.empty()) {
+            wchar_t converted[32]{};
+            MultiByteToWideChar(CP_UTF8, 0, extension.c_str(), -1, converted,
+                                static_cast<int>(std::size(converted)));
+            extW = converted;
+        }
+        const std::wstring pattern = extW.empty() ? L"*.*" : (L"*" + extW);
+        COMDLG_FILTERSPEC filters[] = {
+            {L"Passender Dateityp", pattern.c_str()},
+            {L"Alle Dateien", L"*.*"}
+        };
+        dialog->SetFileTypes(static_cast<UINT>(std::size(filters)), filters);
+
+        wchar_t wtitle[256]{};
+        MultiByteToWideChar(CP_UTF8, 0, title, -1, wtitle, static_cast<int>(std::size(wtitle)));
+        dialog->SetTitle(wtitle);
+        const HWND owner = g_appWindowForDialogs ? glfwGetWin32Window(g_appWindowForDialogs) : nullptr;
+        if (SUCCEEDED(dialog->Show(owner))) {
+            IShellItem* item = nullptr;
+            if (SUCCEEDED(dialog->GetResult(&item)) && item) {
+                PWSTR pathW = nullptr;
+                if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &pathW)) && pathW) {
+                    char pathA[4096]{};
+                    WideCharToMultiByte(CP_UTF8, 0, pathW, -1, pathA,
+                                        static_cast<int>(std::size(pathA)), nullptr, nullptr);
+                    result = std::string(pathA);
+                    CoTaskMemFree(pathW);
+                }
+                item->Release();
+            }
+        }
+        dialog->Release();
+    }
+    if (weOwnCom) CoUninitialize();
+    return result;
+}
+#endif
+
 // Sammelt ALLE Ordner namens "resmap" (Groß-/Kleinschreibung egal) unter root, bis zu einer
 // begrenzten Tiefe - bewusst NICHT nur den ersten Treffer (siehe Rückmeldung: es gibt
 // offenbar mehr als einen so benannten Ordner, z.B. einen leeren/falschen unter einem
@@ -14145,6 +14196,26 @@ void DrawInterfaceWorkspace(EditorState& state) {
         CreateInterfaceProjectOverride(state, sourcePath, rel);
     }
     ImGui::EndDisabled();
+#ifdef _WIN32
+    ImGui::SameLine();
+    ImGui::BeginDisabled(state.project.projectFolder[0] == '\0');
+    if (UI::SmallButton(L("Asset ersetzen...##interfaceOverride",
+                          "Replace asset...##interfaceOverride"))) {
+        if (auto picked = BrowseForInterfaceAssetWindows(
+                L("Interface-Asset als Projekt-Override wählen",
+                  "Choose interface asset for project override"), ext)) {
+            const std::filesystem::path replacement = *picked;
+            if (LowerAscii(replacement.extension().string()) != ext) {
+                state.statusMessage = L(
+                    "Ersatz abgelehnt: Dateiendung muss dem ausgewählten Asset entsprechen.",
+                    "Replacement rejected: file extension must match the selected asset.");
+            } else {
+                CreateInterfaceProjectOverride(state, replacement, rel);
+            }
+        }
+    }
+    ImGui::EndDisabled();
+#endif
     if (hasProjectOverride) {
         ImGui::SameLine();
         if (UI::SmallButton(L("Projektkopie entfernen##interfaceOverride",
