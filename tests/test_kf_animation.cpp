@@ -129,7 +129,13 @@ int main(int argc, char** argv) {
     assert(effect->splineBases.size() == 1);
 
     const auto* plane = FindTrack(*effect, "Plane");
-    assert(plane != nullptr);
+    if (plane == nullptr) {
+        std::cerr << "Effect transform tracks:";
+        for (const auto& track : effect->sequence.transformTracks)
+            std::cerr << " [" << track.nodeName << "]";
+        std::cerr << "\n";
+        return 2;
+    }
     assert(!plane->compressedSpline);
     assert(plane->keys.rotationType == 4);
     assert(plane->keys.xyzRotation[0].keys.size() == 2);
