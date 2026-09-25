@@ -4759,7 +4759,7 @@ void DrawShnEditor(EditorState& state) {
     ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(8, 20, 31, 255));
     ImGui::BeginChild("##shnEditor", ImVec2(0,0), false);
     ImGui::TextColored(ImVec4(0.40f,0.72f,0.96f,1.0f), "Spieldaten");
-    ImGui::SameLine(); ImGui::TextDisabled("SHN · Quest · Portale · Custom NPC/Mob · Skills");
+    ImGui::SameLine(); ImGui::TextDisabled("SHN · Quest · Portale · Custom NPC/Mob · Skills · AI");
     ImGui::Separator();
     struct DataTool { const char* id; const char* label; IconDrawFn icon; };
     const DataTool dataTools[] = {
@@ -4918,7 +4918,7 @@ void DrawProjectHub(EditorState& state) {
          {"KFM-Katalog", "Übergänge", "Dateiverweise prüfen", "verlustfreie Kopie exportieren"},
          DrawIconClapper, HubAction::Kfm, true},
         {"hub.extensions", "Erweiterungen",
-         {"Interface Editor", "Drop Table Editor", "AI Workspace", "NIF / Material Editing"},
+         {"Interface Editor", "Drop Table Editor", "NIF / Material Editing", "weitere Spezialwerkzeuge"},
          DrawIconAtom, HubAction::Extensions, false},
     };
 
@@ -6985,20 +6985,25 @@ void DrawPatrolRouteEditorPopup(EditorState& state) {
 
 void DrawAiScriptEditorPopup(EditorState& state) {
     if (!state.aiScriptEditorOpen) return;
-    ImGui::OpenPopup("KI-Skript bearbeiten");
+    ImGui::OpenPopup(L("KI-Skript bearbeiten","Edit AI script"));
     ImGui::SetNextWindowSize(ImVec2(720.0f, 540.0f), ImGuiCond_FirstUseEver);
-    if (ImGui::BeginPopupModal("KI-Skript bearbeiten", &state.aiScriptEditorOpen)) {
-        ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), "%s", state.aiScriptEditorName.c_str());
-        ImGui::TextDisabled("Reiner Text-Editor (Lua/PineScript) - keine Syntaxprüfung, Änderungen 1:1 gespeichert.");
+    if (ImGui::BeginPopupModal(L("KI-Skript bearbeiten","Edit AI script"), &state.aiScriptEditorOpen)) {
+        ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), "%s%s",
+                           state.aiScriptEditorName.c_str(),state.aiScriptDirty?" *":"");
+        ImGui::TextDisabled("%s",L("Reiner Text-Editor (Lua/PineScript) - keine Syntaxprüfung, Änderungen 1:1 gespeichert.",
+                                    "Plain text editor (Lua/PineScript) - no syntax checking, changes are saved 1:1."));
         std::vector<char> buf(state.aiScriptEditorText.begin(), state.aiScriptEditorText.end());
         buf.resize(std::max<std::size_t>(buf.size() + 1, 8192));
         if (ImGui::InputTextMultiline("##aiscript", buf.data(), buf.size(), ImVec2(-1.0f, 420.0f), ImGuiInputTextFlags_AllowTabInput)) {
             state.aiScriptEditorText.assign(buf.data());
             state.aiScriptDirty=true;
         }
-        if (UI::Button(state.aiScriptDirty ? "Speichern *" : "Speichern")) SaveAiScript(state);
+        if (UI::Button(state.aiScriptDirty ? L("Speichern *","Save *") : L("Speichern","Save"))) SaveAiScript(state);
         ImGui::SameLine();
-        if (UI::Button("Schließen")) { state.aiScriptEditorOpen = false; ImGui::CloseCurrentPopup(); }
+        if (UI::Button(L("Neu laden / verwerfen","Reload / discard")))
+            LoadAiScriptFile(state,state.aiScriptEditorPath,state.aiScriptEditorName,true,true);
+        ImGui::SameLine();
+        if (UI::Button(L("Schließen","Close"))) { state.aiScriptEditorOpen = false; ImGui::CloseCurrentPopup(); }
         ImGui::EndPopup();
     }
 }
