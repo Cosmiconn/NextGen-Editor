@@ -12673,7 +12673,8 @@ std::string CurrentGizmoSelectionKey(const EditorState& state) {
 }
 
 bool DrawObjectTransformGizmo(EditorState& state, const ImVec2& imageScreenPos, int w, int h) {
-    if (state.editMode != EditMode::ObjectPlacement || state.selectedObjects.empty()) {
+    if (state.editMode != EditMode::ObjectPlacement || state.selectedObjects.empty() ||
+        state.objectGizmoOperation < 0) {
         state.objectGizmoMatrixValid = false;
         state.objectGizmoWasUsing = false;
         return false;
@@ -13124,9 +13125,16 @@ void DrawWorkspaceTabBar(EditorState& state) {
     ImGui::SameLine(); ImGui::Dummy(ImVec2(8.0f, 1.0f)); ImGui::SameLine();
     auto activateTransform = [&](int operation) {
         setMode(EditMode::ObjectPlacement);
-        state.objectPlaceMode = 0; // Auswählen statt neues Objekt platzieren
+        state.objectPlaceMode = 0; // Auswahlmodus statt neues Objekt platzieren
         state.objectGizmoOperation = operation;
+        state.objectGizmoMatrixValid = false;
     };
+    if (DrawIconButton("cmd.select", L("Auswählen","Select"), DrawIconCube,
+                       state.editMode == EditMode::ObjectPlacement && state.objectPlaceMode == 0 &&
+                       state.objectGizmoOperation < 0, ImVec2(72,58), true, "transform.select")) {
+        activateTransform(-1);
+    }
+    ImGui::SameLine();
     if (DrawIconButton("cmd.move", L("Verschieben","Move"), DrawIconMove,
                        state.editMode == EditMode::ObjectPlacement && state.objectPlaceMode == 0 &&
                        state.objectGizmoOperation == 0, ImVec2(72,58), true, "transform.move")) activateTransform(0);
@@ -13139,12 +13147,29 @@ void DrawWorkspaceTabBar(EditorState& state) {
                        state.editMode == EditMode::ObjectPlacement && state.objectPlaceMode == 0 &&
                        state.objectGizmoOperation == 2, ImVec2(72,58), true, "transform.scale")) activateTransform(2);
     ImGui::SameLine();
+    const bool transformSnapAvailable =
+        state.editMode == EditMode::ObjectPlacement && state.objectPlaceMode == 0 &&
+        state.objectGizmoOperation >= 0;
     if (DrawIconButton("cmd.snap", "Snap", DrawIconSnap,
-                       state.editMode == EditMode::ObjectPlacement && state.objectGizmoSnap,
-                       ImVec2(64,58))) {
-        setMode(EditMode::ObjectPlacement);
-        state.objectPlaceMode = 0;
+                       transformSnapAvailable && state.objectGizmoSnap,
+                       ImVec2(64,58), transformSnapAvailable)) {
         state.objectGizmoSnap = !state.objectGizmoSnap;
+    }
+
+    ImGui::SameLine(); ImGui::Dummy(ImVec2(8.0f, 1.0f)); ImGui::SameLine();
+    if (DrawIconButton("cmd.view2d", "2D", DrawIconGrid, false,
+                       ImVec2(56,58), true, "view.2d")) {
+        ImGui::SetWindowFocus("2D-Ansicht##view2d");
+    }
+    ImGui::SameLine();
+    if (DrawIconButton("cmd.view3d", "3D", DrawIconCube, false,
+                       ImVec2(56,58), true, "view.3d")) {
+        ImGui::SetWindowFocus("3D-Ansicht##view3d");
+    }
+    ImGui::SameLine();
+    if (DrawIconButton("cmd.layers", L("Layer","Layers"), DrawIconLayers, false,
+                       ImVec2(64,58), true, "world.layers")) {
+        ImGui::SetWindowFocus("Layer##layerManager");
     }
 
     ImGui::SameLine(); ImGui::Dummy(ImVec2(8.0f, 1.0f)); ImGui::SameLine();
