@@ -718,6 +718,18 @@ struct EditorState {
     bool recentEntriesLoaded = false;
     std::vector<std::string> recentProjects;
     std::vector<std::string> recentMaps;
+
+    bool commandPaletteOpen = false;
+    char commandPaletteQuery[128] = "";
+    int commandPaletteSelection = 0;
+    struct Toast {
+        std::string text;
+        float remaining = 4.0f;
+        bool error = false;
+    };
+    std::deque<Toast> toasts;
+    std::string lastToastedStatus;
+
     std::string comingSoonTitle; // Titel der Karte, über die der Platzhalter-Bildschirm erreicht wurde
 
     // "Create New Map"-Formular (siehe DrawMapEditorLauncher) - ersetzt das bisherige feste
@@ -879,6 +891,74 @@ bool LoadProjectFolderIntoState(EditorState& state, const std::string& folder) {
     state.screen = AppScreen::ProjectHub;
     return true;
 }
+std::string CompactToastText(const std::string& message) {
+    std::string text = message;
+    if (const auto nl = text.find('\n'); nl != std::string::npos) text.resize(nl);
+    if (text.size() > 220) text.resize(217), text += "...";
+    return text;
+}
+
+void PushToast(EditorState& state, const std::string& message, bool error = false) {
+    const std::string text = CompactToastText(message);
+    if (text.empty()) return;
+    if (!state.toasts.empty() && state.toasts.back().text == text) {
+        state.toasts.back().remaining = 4.0f;
+        state.toasts.back().error = error;
+        return;
+    }
+    state.toasts.push_back({text, 4.0f, error});
+    while (state.toasts.size() > 4) state.toasts.pop_front();
+}
+
+void SyncStatusToast(EditorState& state) {
+    if (state.statusMessage.empty() || state.statusMessage == state.lastToastedStatus) return;
+    state.lastToastedStatus = state.statusMessage;
+    std::string lower = state.statusMessage;
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    const bool error = lower.find("fehler") != std::string::npos ||
+                       lower.find("fehlgeschlagen") != std::string::npos ||
+                       lower.find("nicht gefunden") != std::string::npos;
+    PushToast(state, state.statusMessage, error);
+}
+
+void DrawToasts(EditorState& state) {
+    if (state.toasts.empty()) return;
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    float y = viewport->WorkPos.y + 18.0f;
+    constexpr float width = 390.0f;
+    int index = 0;
+    for (auto& toast : state.toasts) {
+        toast.remaining -= ImGui::GetIO().DeltaTime;
+        ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + viewport->WorkSize.x - width - 18.0f, y),
+                                ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(width, 0.0f), ImGuiCond_Always);
+        ImGui::SetNextWindowBgAlpha(0.96f);
+        ImGui::PushStyleColor(ImGuiCol_Border,
+            toast.error ? ImVec4(0.85f,0.25f,0.22f,0.95f) : ImVec4(0.12f,0.52f,0.78f,0.95f));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
+        const std::string id = "##toast" + std::to_string(index++);
+        ImGui::Begin(id.c_str(), nullptr,
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoDocking |
+                     ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoNav |
+                     ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs);
+        ImGui::TextColored(toast.error ? ImVec4(1.0f,0.42f,0.36f,1.0f)
+                                       : ImVec4(0.30f,0.78f,1.0f,1.0f),
+                           "%s", toast.error ? "FEHLER" : "NEXTGEN");
+        ImGui::Separator();
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + width - 28.0f);
+        ImGui::TextWrapped("%s", toast.text.c_str());
+        ImGui::PopTextWrapPos();
+        const float h = ImGui::GetWindowHeight();
+        ImGui::End();
+        ImGui::PopStyleVar();
+        ImGui::PopStyleColor();
+        y += h + 8.0f;
+    }
+    std::erase_if(state.toasts, [](const EditorState::Toast& t) { return t.remaining <= 0.0f; });
+}
+
 
 // Listet Dateien mit einer der angegebenen Endungen unter root (rekursiv, begrenzte Tiefe),
 // relative Pfade zu root. Für Asset-Picker (Textur-/Modell-Auswahl) - siehe DrawAssetPickerPopup.
