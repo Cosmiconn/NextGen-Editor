@@ -1294,8 +1294,15 @@ void ScaleSelectedObjectsAroundPivot(EditorState& state, const EditVec3& pivot, 
 
 void CopySelectedObjects(EditorState& state) {
     state.objectClipboard.clear();
-    for (const int id : state.selectedObjects)
-        if (const auto* obj=EditableObject(state,id)) state.objectClipboard.push_back(*obj);
+    state.objectClipboardLabels.clear();
+    state.objectClipboardGroups.clear();
+    for (const int id : state.selectedObjects) {
+        if (const auto* obj=EditableObject(state,id)) {
+            state.objectClipboard.push_back(*obj);
+            state.objectClipboardLabels.push_back(ObjectEditorLabel(state,id));
+            state.objectClipboardGroups.push_back(ObjectEditorGroup(state,id));
+        }
+    }
     state.statusMessage=state.objectClipboard.empty()
         ? "Keine Objekte kopiert."
         : std::to_string(state.objectClipboard.size())+" Objekt(e) kopiert.";
@@ -1306,11 +1313,14 @@ void PasteObjectClipboard(EditorState& state) {
     SyncObjectEditorMetadata(state);
     const float offset=state.objectGizmoSnap ? std::max(1.0f,state.objectMoveSnap) : 50.0f;
     std::vector<int> ids;
-    for (auto obj : state.objectClipboard) {
+    for (std::size_t i=0;i<state.objectClipboard.size();++i) {
+        auto obj=state.objectClipboard[i];
         obj.posX+=offset; obj.posZ+=offset;
         const int id=static_cast<int>(state.placementSet.AddObject(std::move(obj)));
         ids.push_back(id);
         state.objectEditorHidden.push_back(0); state.objectEditorLocked.push_back(0);
+        state.objectEditorLabels.push_back(i<state.objectClipboardLabels.size()?state.objectClipboardLabels[i]:std::string{});
+        state.objectEditorGroups.push_back(i<state.objectClipboardGroups.size()?state.objectClipboardGroups[i]:std::string{});
     }
     state.selectedObjects=std::move(ids);
     state.selectedObject=state.selectedObjects.empty()?kNoObjectSelection:state.selectedObjects.back();
@@ -1320,18 +1330,22 @@ void PasteObjectClipboard(EditorState& state) {
 
 void DuplicateSelectedObjects(EditorState& state) {
     if (state.selectedObjects.empty()) return;
-    std::vector<core::PlacedObject> copies;
+    struct ObjectCopy { core::PlacedObject object; std::string label; std::string group; };
+    std::vector<ObjectCopy> copies;
     for (const int id : state.selectedObjects)
-        if (const auto* obj=EditableObject(state,id)) copies.push_back(*obj);
+        if (const auto* obj=EditableObject(state,id))
+            copies.push_back({*obj,ObjectEditorLabel(state,id),ObjectEditorGroup(state,id)});
     if (copies.empty()) return;
     const float offset=state.objectGizmoSnap ? std::max(1.0f,state.objectMoveSnap) : 50.0f;
     SyncObjectEditorMetadata(state);
     std::vector<int> ids;
-    for (auto obj : copies) {
-        obj.posX+=offset; obj.posZ+=offset;
-        const int id=static_cast<int>(state.placementSet.AddObject(std::move(obj)));
+    for (auto& copy : copies) {
+        copy.object.posX+=offset; copy.object.posZ+=offset;
+        const int id=static_cast<int>(state.placementSet.AddObject(std::move(copy.object)));
         ids.push_back(id);
         state.objectEditorHidden.push_back(0); state.objectEditorLocked.push_back(0);
+        state.objectEditorLabels.push_back(copy.label.empty()?std::string{}:copy.label+" Kopie");
+        state.objectEditorGroups.push_back(copy.group);
     }
     state.selectedObjects=std::move(ids);
     state.selectedObject=state.selectedObjects.back();
@@ -1472,6 +1486,10 @@ void DeleteSelectedObjects(EditorState& state) {
                 state.objectEditorHidden.erase(state.objectEditorHidden.begin() + index);
             if (static_cast<std::size_t>(index) < state.objectEditorLocked.size())
                 state.objectEditorLocked.erase(state.objectEditorLocked.begin() + index);
+            if (static_cast<std::size_t>(index) < state.objectEditorLabels.size())
+                state.objectEditorLabels.erase(state.objectEditorLabels.begin() + index);
+            if (static_cast<std::size_t>(index) < state.objectEditorGroups.size())
+                state.objectEditorGroups.erase(state.objectEditorGroups.begin() + index);
         }
     }
     EraseShmdCategorySources(state, std::move(categorySources));
@@ -1485,6 +1503,8 @@ void DeleteAllNormalObjects(EditorState& state) {
     state.placementSet.ClearObjects();
     state.objectEditorHidden.clear();
     state.objectEditorLocked.clear();
+    state.objectEditorLabels.clear();
+    state.objectEditorGroups.clear();
     ClearObjectSelection(state);
     ReloadObjectRenderers(state);
     state.statusMessage = std::to_string(removed) +
