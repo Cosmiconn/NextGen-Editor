@@ -620,6 +620,10 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                         continue;
                     }
                     sub.indexCount = static_cast<std::uint32_t>(validIndices.size());
+                    sub.pickPositions = part.positions;
+                    sub.pickIndices = validIndices;
+                    sub.localBoundsMin = {boundsMin.x,boundsMin.y,boundsMin.z};
+                    sub.localBoundsMax = {boundsMax.x,boundsMax.y,boundsMax.z};
 
                     // Alle klassischen Textur-Slots laden. Jeder Slot behaelt sein eigenes UV-Set,
                     // Clamp/Filter und seine optionale NIF-Texturtransformation.
@@ -871,6 +875,54 @@ std::array<float, 3> Cross3(const std::array<float, 3>& a, const std::array<floa
             a[0] * b[1] - a[1] * b[0]};
 }
 
+float Dot3(const std::array<float,3>& a,const std::array<float,3>& b) {
+    return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+}
+
+std::array<float,3> Sub3(const std::array<float,3>& a,const std::array<float,3>& b) {
+    return {a[0]-b[0],a[1]-b[1],a[2]-b[2]};
+}
+
+bool RayTriangle(const std::array<float,3>& origin,const std::array<float,3>& dir,
+                 const std::array<float,3>& a,const std::array<float,3>& b,
+                 const std::array<float,3>& c,float& tOut) {
+    // Möller-Trumbore, bewusst zweiseitig: viele Fiesta-NIFs rendern beide Seiten.
+    const auto e1=Sub3(b,a), e2=Sub3(c,a);
+    const auto p=Cross3(dir,e2);
+    const float det=Dot3(e1,p);
+    if(std::abs(det)<1.0e-7f) return false;
+    const float inv=1.0f/det;
+    const auto tv=Sub3(origin,a);
+    const float u=Dot3(tv,p)*inv;
+    if(u<0.0f||u>1.0f) return false;
+    const auto q=Cross3(tv,e1);
+    const float v=Dot3(dir,q)*inv;
+    if(v<0.0f||u+v>1.0f) return false;
+    const float t=Dot3(e2,q)*inv;
+    if(t<0.0f) return false;
+    tOut=t;
+    return true;
+}
+
+bool RayWorldAabb(const std::array<float,3>& origin,const std::array<float,3>& dir,
+                  const std::array<float,3>& bmin,const std::array<float,3>& bmax,
+                  float maxDistance) {
+    float tmin=0.0f, tmax=maxDistance;
+    for(int axis=0;axis<3;++axis) {
+        if(std::abs(dir[axis])<1.0e-8f) {
+            if(origin[axis]<bmin[axis]||origin[axis]>bmax[axis]) return false;
+            continue;
+        }
+        float a=(bmin[axis]-origin[axis])/dir[axis];
+        float b=(bmax[axis]-origin[axis])/dir[axis];
+        if(a>b) std::swap(a,b);
+        tmin=std::max(tmin,a);
+        tmax=std::min(tmax,b);
+        if(tmin>tmax) return false;
+    }
+    return tmax>=0.0f;
+}
+
 Mat4 BillboardFacingRotation(const std::array<float, 3>& pivotWorld,
                              const OrbitCamera& camera, std::uint16_t mode) {
     // OrbitCamera speichert die Kamera im gespiegelten Anzeigeraum; fuer Weltkoordinaten
@@ -913,6 +965,77 @@ Mat4 ApplyBillboard(const Mat4& objectModel, float objectScale,
            TranslationMatrix(-billboardPivot[0], -billboardPivot[1], -billboardPivot[2]);
 }
 } // namespace
+
+std::optional<float> NifMeshRenderer::RaycastObject(
+    const core::ObjectPlacementSet& set, std::size_t objectIndex, const OrbitCamera& camera,
+    const std::array<float,3>& rayOrigin, const std::array<float,3>& rayDirection) const {
+    if(objectIndex>=perObjectModel_.size()||objectIndex>=set.Count()) return std::nullopt;
+    const LoadedModel* model=perObjectModel_[objectIndex];
+    if(model==nullptr) return std::nullopt;
+
+    const auto& obj=set.At(objectIndex);
+    if(!std::isfinite(obj.posX)||!std::isfinite(obj.posY)||!std::isfinite(obj.posZ)||
+       !std::isfinite(obj.rotX)||!std::isfinite(obj.rotY)||!std::isfinite(obj.rotZ)||
+       !std::isfinite(obj.rotW)||!std::isfinite(obj.scale)) return std::nullopt;
+
+    Mat4 modelMat=QuatToMat4Local(obj.rotX,obj.rotY,obj.rotZ,obj.rotW);
+    for(int col=0;col<3;++col) {
+        modelMat.m[col*4+0]*=obj.scale;
+        modelMat.m[col*4+1]*=obj.scale;
+        modelMat.m[col*4+2]*=obj.scale;
+    }
+    modelMat.m[12]=obj.posX; modelMat.m[13]=obj.posY; modelMat.m[14]=obj.posZ;
+
+    const Mat4 view=camera.ViewMatrix();
+    float best=std::numeric_limits<float>::infinity();
+
+    for(const auto& sub:model->subMeshes) {
+        if(sub.pickPositions.empty()||sub.pickIndices.empty()) continue;
+        if(sub.lodControlled) {
+            const auto lodWorld=TransformPoint(modelMat,sub.lodCenter);
+            const auto lodView=TransformPoint(view,lodWorld);
+            const float distance=std::sqrt(lodView[0]*lodView[0]+lodView[1]*lodView[1]+lodView[2]*lodView[2]);
+            if(!(sub.lodNear<=distance&&distance<sub.lodFar)) continue;
+        }
+
+        Mat4 effective=modelMat;
+        if(sub.billboard)
+            effective=ApplyBillboard(modelMat,obj.scale,sub.billboardPivot,sub.billboardMode,
+                                     sub.billboardInverseRotation,camera);
+
+        std::array<float,3> worldMin{
+            std::numeric_limits<float>::max(),std::numeric_limits<float>::max(),std::numeric_limits<float>::max()};
+        std::array<float,3> worldMax{
+            std::numeric_limits<float>::lowest(),std::numeric_limits<float>::lowest(),std::numeric_limits<float>::lowest()};
+        for(int mask=0;mask<8;++mask) {
+            const std::array<float,3> local{
+                (mask&1)?sub.localBoundsMax[0]:sub.localBoundsMin[0],
+                (mask&2)?sub.localBoundsMax[1]:sub.localBoundsMin[1],
+                (mask&4)?sub.localBoundsMax[2]:sub.localBoundsMin[2]};
+            const auto p=TransformPoint(effective,local);
+            for(int axis=0;axis<3;++axis) {
+                worldMin[axis]=std::min(worldMin[axis],p[axis]);
+                worldMax[axis]=std::max(worldMax[axis],p[axis]);
+            }
+        }
+        if(!RayWorldAabb(rayOrigin,rayDirection,worldMin,worldMax,best)) continue;
+
+        for(std::size_t ti=0;ti+2<sub.pickIndices.size();ti+=3) {
+            const auto ia=sub.pickIndices[ti], ib=sub.pickIndices[ti+1], ic=sub.pickIndices[ti+2];
+            if(ia>=sub.pickPositions.size()||ib>=sub.pickPositions.size()||ic>=sub.pickPositions.size()) continue;
+            const auto toWorld=[&](const core::NifVec3& p){
+                return TransformPoint(effective,{p.x,p.y,p.z});
+            };
+            const auto a=toWorld(sub.pickPositions[ia]);
+            const auto b=toWorld(sub.pickPositions[ib]);
+            const auto c=toWorld(sub.pickPositions[ic]);
+            float t=0.0f;
+            if(RayTriangle(rayOrigin,rayDirection,a,b,c,t)&&t<best) best=t;
+        }
+    }
+    if(!std::isfinite(best)) return std::nullopt;
+    return best;
+}
 
 void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamera& camera, int width, int height,
                            const std::vector<char>* hidden) {
