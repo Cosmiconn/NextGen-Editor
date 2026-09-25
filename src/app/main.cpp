@@ -10549,8 +10549,20 @@ void DrawToolsContent(EditorState& state) {
 // Die Reihenfolge der Pruefung ist wichtig ("flowerpot" ist Deko, nicht Blume; "lightbug" ein Effekt).
 // ---------------------------------------------------------------------------
 enum ObjCategory { kCatTrees = 0, kCatGrass, kCatRocks, kCatBuildings, kCatFences, kCatProps, kCatWater, kCatCreatures, kCatEffects, kCatOther, kCatCount };
-static const char* const kCategoryNames[kCatCount] = {"Bäume & Büsche", "Gras & Blumen", "Felsen & Steine", "Gebäude", "Zäune, Mauern & Brücken",
-                                                      "Dekoration & Möbel", "Wasser & Schiffe", "Tiere & Kreaturen", "Effekte & Licht", "Sonstiges"};
+static const char* ObjectCategoryDisplayName(int category) {
+    switch (category) {
+        case kCatTrees: return L("Bäume & Büsche","Trees & bushes");
+        case kCatGrass: return L("Gras & Blumen","Grass & flowers");
+        case kCatRocks: return L("Felsen & Steine","Rocks & stones");
+        case kCatBuildings: return L("Gebäude","Buildings");
+        case kCatFences: return L("Zäune, Mauern & Brücken","Fences, walls & bridges");
+        case kCatProps: return L("Dekoration & Möbel","Decor & furniture");
+        case kCatWater: return L("Wasser & Schiffe","Water & ships");
+        case kCatCreatures: return L("Tiere & Kreaturen","Animals & creatures");
+        case kCatEffects: return L("Effekte & Licht","Effects & light");
+        default: return L("Sonstiges","Other");
+    }
+}
 
 static int ClassifyObjectModel(const std::string& modelPath) {
     std::string name = LowerAscii(modelPath);
@@ -10605,59 +10617,59 @@ static bool IsObjectHidden(const EditorState& state, std::size_t i) {
 static void DrawVisibilityPanel(EditorState& state) {
     RefreshObjectVisibility(state);
     UI::Checkbox("Terrain", &state.showTerrain);
-    UI::Checkbox("Objekt-Modelle (3D)", &state.showObjectMeshes);
-    UI::Checkbox("Objekt-Platzhalter (3D)", &state.showObjectMarkers);
+    UI::Checkbox(L("Objekt-Modelle (3D)","Object models (3D)"), &state.showObjectMeshes);
+    UI::Checkbox(L("Objekt-Platzhalter (3D)","Object markers (3D)"), &state.showObjectMarkers);
 
     if (!state.shmdCategoryRenderKind.empty()) {
         int shmdCounts[3] = {};
         for (const int kind : state.shmdCategoryRenderKind) {
             if (kind >= 0 && kind < 3) ++shmdCounts[kind];
         }
-        ImGui::SeparatorText("SHMD-Szenenmodelle");
+        ImGui::SeparatorText(L("SHMD-Szenenmodelle","SHMD scene models"));
         UI::Checkbox("Sky (SHMD)", &state.showShmdSky);
-        ImGui::SameLine(); ImGui::TextDisabled("%d Modell(e)", shmdCounts[0]);
+        ImGui::SameLine(); ImGui::TextDisabled(L("%d Modell(e)","%d model(s)"), shmdCounts[0]);
         UI::Checkbox("Water (SHMD)", &state.showShmdWater);
-        ImGui::SameLine(); ImGui::TextDisabled("%d Modell(e)", shmdCounts[1]);
+        ImGui::SameLine(); ImGui::TextDisabled(L("%d Modell(e)","%d model(s)"), shmdCounts[1]);
         UI::Checkbox("GroundObject (SHMD)", &state.showShmdGroundObject);
-        ImGui::SameLine(); ImGui::TextDisabled("%d Modell(e)", shmdCounts[2]);
+        ImGui::SameLine(); ImGui::TextDisabled(L("%d Modell(e)","%d model(s)"), shmdCounts[2]);
     }
 
-    UI::Checkbox("NPC-Modelle (3D)", &state.showNpcModels);
-    UI::Checkbox("NPC-Namen und Blickpfeile (3D, NPC-Modus)", &state.showNpcLabels);
-    UI::Checkbox("Patrouillen-/Roam-Routen (2D/3D, Auswahl)", &state.showRoamRoutes);
+    UI::Checkbox(L("NPC-Modelle (3D)","NPC models (3D)"), &state.showNpcModels);
+    UI::Checkbox(L("NPC-Namen und Blickpfeile (3D, NPC-Modus)","NPC names and facing arrows (3D, NPC mode)"), &state.showNpcLabels);
+    UI::Checkbox(L("Patrouillen-/Roam-Routen (2D/3D, Auswahl)","Patrol / roam routes (2D/3D, selection)"), &state.showRoamRoutes);
     if (state.npcModelsMissing > 0) {
-        ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.35f, 1.0f), "%d NPC(s) ohne Modell (Platzhalter fehlen):", state.npcModelsMissing);
+        ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.35f, 1.0f), L("%d NPC(s) ohne Modell (Platzhalter fehlen):","%d NPC(s) without model (placeholder missing):"), state.npcModelsMissing);
         for (const auto& n : state.npcModelsMissingNames) ImGui::BulletText("%s", n.c_str());
     }
-    UI::Checkbox("Objekte im 2D-View", &state.showObjects2D);
+    UI::Checkbox(L("Objekte im 2D-View","Objects in 2D view"), &state.showObjects2D);
 
     if (state.textureStack.LayerCount() > 0) {
-        ImGui::SeparatorText("Terrain-Layer");
+        ImGui::SeparatorText(L("Terrain-Layer","Terrain layers"));
         state.layerHidden.resize(state.textureStack.LayerCount(), 0);
         for (std::size_t i = 0; i < state.textureStack.LayerCount(); ++i) {
             bool visible = state.layerHidden[i] == 0;
             const std::string label = state.textureStack.Layer(i).name + "##vislayer" + std::to_string(i);
             if (UI::Checkbox(label.c_str(), &visible)) state.layerHidden[i] = visible ? 0 : 1;
         }
-        if (UI::SmallButton("Alle Layer an")) std::fill(state.layerHidden.begin(), state.layerHidden.end(), 0);
+        if (UI::SmallButton(L("Alle Layer an","Show all layers"))) std::fill(state.layerHidden.begin(), state.layerHidden.end(), 0);
     }
 
     if (state.placementSet.Count() > 0) {
-        ImGui::SeparatorText("Objekt-Kategorien");
+        ImGui::SeparatorText(L("Objekt-Kategorien","Object categories"));
         int counts[kCatCount] = {};
         for (const int c : state.objectCategory) if (c >= 0 && c < kCatCount) ++counts[c];
         for (int c = 0; c < kCatCount; ++c) {
             if (counts[c] == 0) continue;
             ImGui::PushID(c);
-            UI::Checkbox((std::string(kCategoryNames[c]) + " (" + std::to_string(counts[c]) + ")").c_str(), &state.categoryVisible[c]);
+            UI::Checkbox((std::string(ObjectCategoryDisplayName(c)) + " (" + std::to_string(counts[c]) + ")").c_str(), &state.categoryVisible[c]);
             ImGui::SameLine();
-            if (UI::SmallButton("nur")) { for (int k = 0; k < kCatCount; ++k) state.categoryVisible[k] = (k == c); }
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Nur diese Kategorie zeigen");
+            if (UI::SmallButton(L("nur","only"))) { for (int k = 0; k < kCatCount; ++k) state.categoryVisible[k] = (k == c); }
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s",L("Nur diese Kategorie zeigen","Show only this category"));
             ImGui::PopID();
         }
-        if (UI::SmallButton("Alle an")) for (bool& v : state.categoryVisible) v = true;
+        if (UI::SmallButton(L("Alle an","All on"))) for (bool& v : state.categoryVisible) v = true;
         ImGui::SameLine();
-        if (UI::SmallButton("Alle aus")) for (bool& v : state.categoryVisible) v = false;
+        if (UI::SmallButton(L("Alle aus","All off"))) for (bool& v : state.categoryVisible) v = false;
     }
 }
 
@@ -13129,7 +13141,7 @@ void DrawLayerManagerPanel(EditorState& state) {
         if (ImGui::BeginDragDropSource()) {
             const int sourceIndex=static_cast<int>(i);
             ImGui::SetDragDropPayload("NEXTGEN_LAYER_INDEX",&sourceIndex,sizeof(sourceIndex));
-            ImGui::Text("Layer verschieben");
+            ImGui::Text("%s",L("Layer verschieben","Move layer"));
             ImGui::TextDisabled("%s",label.c_str());
             ImGui::EndDragDropSource();
         }
@@ -13141,7 +13153,7 @@ void DrawLayerManagerPanel(EditorState& state) {
                     !state.textureAssetRoot.empty()?state.textureAssetRoot:CurrentObjectAssetMapDir(state));
                 state.layerPreviewDirty=true;
                 state.mapDirty=true;
-                state.statusMessage="Layer-Textur ersetzt: "+std::string(rel);
+                state.statusMessage=L("Layer-Textur ersetzt: ","Layer texture replaced: ")+std::string(rel);
             }
             if (const ImGuiPayload* payload=ImGui::AcceptDragDropPayload("NEXTGEN_LAYER_INDEX")) {
                 const int from=*static_cast<const int*>(payload->Data);
@@ -13162,7 +13174,7 @@ void DrawLayerManagerPanel(EditorState& state) {
         }
 
         if (ImGui::BeginPopupContextItem("##layerContext")) {
-            if (ImGui::MenuItem("Duplizieren")) {
+            if (ImGui::MenuItem(L("Duplizieren","Duplicate"))) {
                 const auto copy=layer;
                 const std::size_t ni=state.textureStack.AddLayer(copy.name+" Kopie",copy.diffuseFileName,copy.uvScaleDiffuse);
                 state.textureStack.Layer(ni)=copy;
@@ -13174,7 +13186,7 @@ void DrawLayerManagerPanel(EditorState& state) {
                 state.layerPreviewDirty=true;
                 state.mapDirty=true;
             }
-            if (ImGui::MenuItem("Entfernen",nullptr,false,state.textureStack.LayerCount()>1)) {
+            if (ImGui::MenuItem(L("Entfernen","Remove"),nullptr,false,state.textureStack.LayerCount()>1)) {
                 state.textureStack.RemoveLayer(i);
                 state.selectedLayer=state.textureStack.LayerCount()==0?-1:
                     std::min(state.selectedLayer,static_cast<int>(state.textureStack.LayerCount())-1);
@@ -13196,7 +13208,7 @@ void DrawLayerManagerPanel(EditorState& state) {
     ImGui::InvisibleButton("##ddsNewLayerDrop",ImVec2(-1,34));
     const ImVec2 dropMin=ImGui::GetItemRectMin(), dropMax=ImGui::GetItemRectMax();
     ImGui::GetWindowDrawList()->AddRect(dropMin,dropMax,IM_COL32(45,110,155,180),4.0f,0,1.2f);
-    const char* dropText="DDS hier ablegen = neuer Layer";
+    const char* dropText=L("DDS hier ablegen = neuer Layer","Drop DDS here = new layer");
     const ImVec2 ts=ImGui::CalcTextSize(dropText);
     ImGui::GetWindowDrawList()->AddText(ImVec2((dropMin.x+dropMax.x-ts.x)*0.5f,(dropMin.y+dropMax.y-ts.y)*0.5f),
                                         IM_COL32(150,200,230,230),dropText);
@@ -13211,28 +13223,28 @@ void DrawLayerManagerPanel(EditorState& state) {
                 !state.textureAssetRoot.empty()?state.textureAssetRoot:CurrentObjectAssetMapDir(state));
             state.layerPreviewDirty=true;
             state.mapDirty=true;
-            state.statusMessage="Neuer Layer aus DDS: "+std::string(rel);
+            state.statusMessage=L("Neuer Layer aus DDS: ","New layer from DDS: ")+std::string(rel);
         }
         ImGui::EndDragDropTarget();
     }
 
     if (state.selectedLayer >= 0 && static_cast<std::size_t>(state.selectedLayer) < state.textureStack.LayerCount()) {
         const auto& layer = state.textureStack.Layer(static_cast<std::size_t>(state.selectedLayer));
-        ImGui::TextDisabled("Ausgewählt");
+        ImGui::TextDisabled("%s",L("Ausgewählt","Selected"));
         ImGui::TextWrapped("%s", layer.name.c_str());
         ImGui::TextDisabled("Diffuse: %s", layer.diffuseFileName.c_str());
         ImGui::TextDisabled("UV Scale: %.3f", layer.uvScaleDiffuse);
     }
 
     ImGui::Separator();
-    ImGui::TextDisabled("Neuer Layer");
+    ImGui::TextDisabled("%s",L("Neuer Layer","New layer"));
     UI::InputText("Name##layerDock", state.newLayerName, sizeof(state.newLayerName));
     UI::InputText("Diffuse##layerDock", state.newLayerDiffuse, sizeof(state.newLayerDiffuse));
-    ImGui::TextDisabled("Textur kann auch unten im Asset Browser gewählt werden.");
+    ImGui::TextDisabled("%s",L("Textur kann auch unten im Asset Browser gewählt werden.","A texture can also be selected in the Asset Browser below."));
     UI::InputFloat("UV-Scale##layerDock", &state.newLayerUvScale);
 
     ImGui::BeginDisabled(state.textureStack.LayerCount() >= static_cast<std::size_t>(app::HeightmapRenderer::kMaxTextureLayers));
-    if (UI::Button("Layer hinzufügen##layerDock", ImVec2(-1,0))) {
+    if (UI::Button(L("Layer hinzufügen##layerDock","Add layer##layerDock"), ImVec2(-1,0))) {
         if (state.textureStack.Width() == 0)
             state.textureStack = core::TextureLayerStack(1024u, 1024u);
         const auto newIndex = state.textureStack.AddLayer(state.newLayerName, state.newLayerDiffuse, state.newLayerUvScale);
@@ -13244,7 +13256,7 @@ void DrawLayerManagerPanel(EditorState& state) {
     ImGui::EndDisabled();
 
     ImGui::BeginDisabled(state.selectedLayer < 0);
-    if (UI::Button("Layer duplizieren##layerDock", ImVec2(-1,0))) {
+    if (UI::Button(L("Layer duplizieren##layerDock","Duplicate layer##layerDock"), ImVec2(-1,0))) {
         const auto copy=state.textureStack.Layer(static_cast<std::size_t>(state.selectedLayer));
         const std::size_t ni=state.textureStack.AddLayer(copy.name+" Kopie",copy.diffuseFileName,copy.uvScaleDiffuse);
         state.textureStack.Layer(ni)=copy;
@@ -13256,7 +13268,7 @@ void DrawLayerManagerPanel(EditorState& state) {
         state.layerPreviewDirty=true;
         state.mapDirty=true;
     }
-    if (UI::Button("Ausgewählten Layer entfernen##layerDock", ImVec2(-1,0))) {
+    if (UI::Button(L("Ausgewählten Layer entfernen##layerDock","Remove selected layer##layerDock"), ImVec2(-1,0))) {
         state.textureStack.RemoveLayer(static_cast<std::size_t>(state.selectedLayer));
         if (state.textureStack.LayerCount() == 0) state.selectedLayer = -1;
         else state.selectedLayer = std::min(state.selectedLayer, static_cast<int>(state.textureStack.LayerCount()) - 1);
