@@ -4745,7 +4745,7 @@ void DrawShnMultiProfiles(EditorState& state) {
         ImGui::TableSetupColumn("Server", ImGuiTableColumnFlags_WidthStretch, 1.1f);
         ImGui::TableSetupColumn("Schema", ImGuiTableColumnFlags_WidthFixed, 105.0f);
         ImGui::TableSetupColumn("Zeilen", ImGuiTableColumnFlags_WidthFixed, 100.0f);
-        ImGui::TableSetupColumn("Zell-Diff", ImGuiTableColumnFlags_WidthFixed, 95.0f);
+        ImGui::TableSetupColumn("Diff", ImGuiTableColumnFlags_WidthFixed, 125.0f);
         ImGui::TableSetupColumn("Aktion", ImGuiTableColumnFlags_WidthFixed, 125.0f);
         ImGui::TableHeadersRow();
 
@@ -4759,7 +4759,9 @@ void DrawShnMultiProfiles(EditorState& state) {
             bool schemaEqual = false;
             bool rowCountEqual = false;
             std::size_t diffCells = 0;
+            std::size_t unmatchedRows = 0;
             bool diffTruncated = false;
+            bool comparisonById = false;
 
             if (clientFile && serverFile) {
                 rowCountEqual = clientFile->rows.size() == serverFile->rows.size();
@@ -4774,20 +4776,64 @@ void DrawShnMultiProfiles(EditorState& state) {
                     }
                 }
                 if (schemaEqual) {
-                    const std::size_t rowLimit = std::min(clientFile->rows.size(), serverFile->rows.size());
                     constexpr std::size_t kDiffScanLimit = 5000;
                     std::size_t scanned = 0;
-                    for (std::size_t ri = 0; ri < rowLimit && scanned < kDiffScanLimit; ++ri) {
-                        const auto& cr = clientFile->rows[ri];
-                        const auto& sr = serverFile->rows[ri];
-                        const std::size_t colLimit = std::min(cr.values.size(), sr.values.size());
-                        for (std::size_t ci = 0; ci < colLimit && scanned < kDiffScanLimit; ++ci, ++scanned) {
-                            if (core::legacy::ShnValueToString(cr.values[ci]) !=
-                                core::legacy::ShnValueToString(sr.values[ci]))
-                                ++diffCells;
+                    const int clientIdCol=FindShnIdColumn(*clientFile);
+                    const int serverIdCol=FindShnIdColumn(*serverFile);
+                    std::unordered_map<long long,std::size_t> clientById,serverById;
+                    bool uniqueIds=clientIdCol>=0 && serverIdCol>=0;
+                    if (uniqueIds) {
+                        for (std::size_t ri=0;ri<clientFile->rows.size();++ri) {
+                            long long id=0;
+                            if (static_cast<std::size_t>(clientIdCol)>=clientFile->rows[ri].values.size() ||
+                                !ShnValueAsInt(clientFile->rows[ri].values[static_cast<std::size_t>(clientIdCol)],id) ||
+                                !clientById.emplace(id,ri).second) { uniqueIds=false; break; }
                         }
                     }
-                    diffTruncated = scanned >= kDiffScanLimit;
+                    if (uniqueIds) {
+                        for (std::size_t ri=0;ri<serverFile->rows.size();++ri) {
+                            long long id=0;
+                            if (static_cast<std::size_t>(serverIdCol)>=serverFile->rows[ri].values.size() ||
+                                !ShnValueAsInt(serverFile->rows[ri].values[static_cast<std::size_t>(serverIdCol)],id) ||
+                                !serverById.emplace(id,ri).second) { uniqueIds=false; break; }
+                        }
+                    }
+
+                    comparisonById=uniqueIds && (!clientById.empty() || !serverById.empty());
+                    if (comparisonById) {
+                        for (const auto& [id,clientRow] : clientById) {
+                            const auto sit=serverById.find(id);
+                            if (sit==serverById.end()) { ++unmatchedRows; continue; }
+                            if (scanned>=kDiffScanLimit) { diffTruncated=true; continue; }
+                            const auto& cr=clientFile->rows[clientRow];
+                            const auto& sr=serverFile->rows[sit->second];
+                            const std::size_t colLimit=std::min(cr.values.size(),sr.values.size());
+                            for (std::size_t ci=0;ci<colLimit && scanned<kDiffScanLimit;++ci,++scanned) {
+                                if (core::legacy::ShnValueToString(cr.values[ci]) !=
+                                    core::legacy::ShnValueToString(sr.values[ci])) ++diffCells;
+                            }
+                            if (scanned>=kDiffScanLimit) diffTruncated=true;
+                        }
+                        for (const auto& [id,serverRow] : serverById) {
+                            (void)serverRow;
+                            if (!clientById.contains(id)) ++unmatchedRows;
+                        }
+                    } else {
+                        const std::size_t rowLimit=std::min(clientFile->rows.size(),serverFile->rows.size());
+                        unmatchedRows=clientFile->rows.size()>serverFile->rows.size()
+                            ? clientFile->rows.size()-serverFile->rows.size()
+                            : serverFile->rows.size()-clientFile->rows.size();
+                        for (std::size_t ri=0;ri<rowLimit && scanned<kDiffScanLimit;++ri) {
+                            const auto& cr=clientFile->rows[ri];
+                            const auto& sr=serverFile->rows[ri];
+                            const std::size_t colLimit=std::min(cr.values.size(),sr.values.size());
+                            for (std::size_t ci=0;ci<colLimit && scanned<kDiffScanLimit;++ci,++scanned) {
+                                if (core::legacy::ShnValueToString(cr.values[ci]) !=
+                                    core::legacy::ShnValueToString(sr.values[ci])) ++diffCells;
+                            }
+                        }
+                        diffTruncated=scanned>=kDiffScanLimit;
+                    }
                 }
             }
 
@@ -4843,13 +4889,26 @@ void DrawShnMultiProfiles(EditorState& state) {
                 ImGui::TextDisabled("-");
             } else if (!schemaEqual) {
                 ImGui::TextDisabled("n/a");
-            } else if (diffCells == 0 && rowCountEqual) {
+            } else if (diffCells == 0 && unmatchedRows == 0) {
                 ImGui::TextColored(ImVec4(0.45f,0.85f,0.60f,1.0f), "0");
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("%s",comparisonById
+                        ? L("Zeilen wurden über ihre ID zugeordnet.","Rows were matched by ID.")
+                        : L("Keine eindeutige ID-Spalte: Vergleich nach Zeilenposition.","No unique ID column: compared by row position."));
             } else {
-                ImGui::TextColored(ImVec4(1.0f,0.72f,0.30f,1.0f), "%zu%s",
-                                   diffCells, diffTruncated ? "+" : "");
-                if (diffTruncated && ImGui::IsItemHovered())
-                    ImGui::SetTooltip("Aus Performancegründen wurden maximal 5000 Zellen verglichen.");
+                ImGui::TextColored(ImVec4(1.0f,0.72f,0.30f,1.0f), "Z:%zu%s R:%zu",
+                                   diffCells,diffTruncated?"+":"",unmatchedRows);
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("%s\n%s",comparisonById
+                        ? L("Zeilen wurden über ihre ID zugeordnet; Sortierreihenfolge erzeugt keine falschen Diffs.",
+                            "Rows were matched by ID; sort order does not create false diffs.")
+                        : L("Keine eindeutige ID-Spalte: Vergleich nach Zeilenposition.",
+                            "No unique ID column: compared by row position."),
+                        diffTruncated
+                            ? L("Maximal 5000 Zellen wurden inhaltlich verglichen.","At most 5000 cells were compared.")
+                            : L("Z = abweichende Zellen, R = nur auf einer Seite vorhandene Zeilen.",
+                                "Z = differing cells, R = rows present on only one side."));
+                }
             }
 
             ImGui::TableSetColumnIndex(6);
