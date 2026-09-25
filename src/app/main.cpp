@@ -6186,6 +6186,8 @@ void DrawQuestEditor(EditorState& state) {
             const std::string t = QuestTextOf(state, q.description);
             infoText(t.empty() ? L("(kein Text)", "(no text)") : t, !t.empty());
         }
+        rowLabel(L("Start-NPC erforderlich","Starting NPC required"));
+        { bool need = q.needNpc != 0; if (UI::Checkbox("##needNpc",&need)) { q.needNpc = need ? 1 : 0; markQuestChanged(); } }
         u16Row(L("Start-NPC (Mob-ID)", "Starting NPC (mob ID)"), "##startnpc", q.startingNpc);
         {
             auto r = ResolveMobNameForQuest(state, q.startingNpc);
@@ -6206,11 +6208,17 @@ void DrawQuestEditor(EditorState& state) {
 
     if (UI::CollapsingHeader(L("Voraussetzungen", "Requirements"), ImGuiTreeNodeFlags_DefaultOpen) &&
         beginForm("##qRequirements")) {
-        rowLabel(L("Mindest-Level", "Minimum level"));
-        { int v = q.minLevel; if (UI::InputInt("##minlv", &v, 0, 0)) { q.minLevel = static_cast<std::uint8_t>(std::clamp(v, 0, 255)); markQuestChanged(); } }
-        rowLabel(L("Maximal-Level", "Maximum level"));
-        { int v = q.maxLevel; if (UI::InputInt("##maxlv", &v, 0, 0)) { q.maxLevel = static_cast<std::uint8_t>(std::clamp(v, 0, 255)); markQuestChanged(); } }
+        rowLabel(L("Level-Bedingung aktiv","Level requirement enabled"));
+        { bool need = q.needLevel != 0; if (UI::Checkbox("##needLevel",&need)) { q.needLevel = need ? 1 : 0; markQuestChanged(); } }
+        if (q.needLevel != 0) {
+            rowLabel(L("Mindest-Level", "Minimum level"));
+            { int v = q.minLevel; if (UI::InputInt("##minlv", &v, 0, 0)) { q.minLevel = static_cast<std::uint8_t>(std::clamp(v, 0, 255)); markQuestChanged(); } }
+            rowLabel(L("Maximal-Level", "Maximum level"));
+            { int v = q.maxLevel; if (UI::InputInt("##maxlv", &v, 0, 0)) { q.maxLevel = static_cast<std::uint8_t>(std::clamp(v, 0, 255)); markQuestChanged(); } }
+        }
 
+        rowLabel(L("Item-Bedingung aktiv","Item requirement enabled"));
+        { bool need = q.needItem != 0; if (UI::Checkbox("##needItem",&need)) { q.needItem = need ? 1 : 0; markQuestChanged(); } }
         if (q.needItem != 0) {
             u16Row(L("Benötigtes Item (ID)", "Required item (ID)"), "##reqitem", q.itemId);
             auto r = ResolveItemNameForQuest(state, q.itemId);
@@ -6220,8 +6228,12 @@ void DrawQuestEditor(EditorState& state) {
                 if (UI::SmallButton(L("Öffnen##requiredItemRef", "Open##requiredItemRef")))
                     OpenShnRecordById(state, {"ItemInfo.shn"}, EditorState::ShnSource::Server, q.itemId);
             }
+            rowLabel(L("Item bei Annahme verbrauchen","Consume item on accept"));
+            { bool vanish = q.itemVanish != 0; if (UI::Checkbox("##itemVanish",&vanish)) { q.itemVanish = vanish ? 1 : 0; markQuestChanged(); } }
         }
 
+        rowLabel(L("Vorgänger-Quest nötig","Predecessor quest required"));
+        { bool need = q.needPred != 0; if (UI::Checkbox("##needPred",&need)) { q.needPred = need ? 1 : 0; markQuestChanged(); } }
         if (q.needPred != 0) {
             u16Row(L("Vorgänger-Quest (ID)", "Predecessor quest (ID)"), "##pred", q.predecessor);
             bool found = false;
@@ -6241,6 +6253,18 @@ void DrawQuestEditor(EditorState& state) {
                 if (UI::SmallButton(L("Öffnen##predecessorQuestRef", "Open##predecessorQuestRef")))
                     state.selectedQuestIdx = static_cast<int>(predecessorIndex);
             }
+        }
+
+        rowLabel(L("Klassen-Bedingung aktiv","Class requirement enabled"));
+        { bool need = q.needClass != 0; if (UI::Checkbox("##needClass",&need)) { q.needClass = need ? 1 : 0; markQuestChanged(); } }
+        if (q.needClass != 0) {
+            rowLabel(L("Klassen-Typ (Rohwert)","Class type (raw value)"));
+            int classType = q.classType;
+            if (UI::InputInt("##classType",&classType,0,0)) {
+                q.classType = static_cast<std::uint8_t>(std::clamp(classType,0,255));
+                markQuestChanged();
+            }
+            infoText(L("Enum noch nicht semantisch kartiert","Enum not semantically mapped yet"),true,false);
         }
         ImGui::EndTable();
     }
