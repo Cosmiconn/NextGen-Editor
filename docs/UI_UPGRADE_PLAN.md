@@ -282,6 +282,7 @@ Bereits umgesetzt:
 - Terrain-/Textur-/Walk-Brush-Overlay in 2D und 3D, inklusive Falloff-Anzeige und Presets.
 - Walk & Block: rot/grün-Legende und Shift-Drag-Rechteckfüllung als einzelner Undo-Schritt.
 - NPC- und Mob-Inspector in fachliche Bereiche gegliedert.
+- NPC-/MobRoam-Routen als 2D-/3D-Overlay, wahlweise nur für die aktuelle Auswahl oder dauerhaft für alle relevanten NPCs/Mobs der Karte.
 - Mob-Spawn-Zonen zusätzlich als 3D-Overlay.
 - Portal-Inspector in Auswahl / Position / Bedingungen / Positionieren / Aktionen gegliedert.
 - TownPortal und RecallCoord zusätzlich mit unterschiedlichen 3D-Markern.
@@ -290,7 +291,7 @@ Bereits umgesetzt:
 Noch offen innerhalb von Priorität 1/2:
 - freie Editor-Labels sowie einklappbare Gruppen/Ordner im Objekt-Outliner (reine Editor-Metadaten).
 - optional echtes Geometrie-Ray-Picking statt des derzeitigen projizierten Objektursprungs.
-- noch tiefere NPC-/Mob-Rollenicons und permanente Route/Roam-Overlays.
+- noch tiefere NPC-/Mob-Rollenicons; Route/Roam-Overlays sind inzwischen für Auswahl oder gesamten Kartenkontext verfügbar.
 - belastbare Zielkarten-Verknüpfung für Portale erst, sobald die konkrete Outbound-Relation aus den Fiesta-Daten eindeutig belegt ist.
 
 
