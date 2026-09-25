@@ -264,6 +264,7 @@ Bereits umgesetzt:
 - Auswahl fokussieren und Auswahl auf Terrain setzen.
 - 3D-Picking für sichtbare, entsperrte Objekte.
 - Rechteckauswahl in 2D mit Shift; Strg+Shift erweitert die bestehende Auswahl.
+- Lasso-Auswahl in 2D mit Alt+Shift; Strg+Alt+Shift erweitert die bestehende Auswahl.
 - Copy / Paste / Duplicate inklusive Shortcuts.
 - Eye / Lock und Rechtsklick-Kontextmenüs im Szene-Outliner.
 - Eye / Lock gilt auch für Sky, Water und GroundObject.
@@ -280,7 +281,6 @@ Bereits umgesetzt:
 
 Noch offen innerhalb von Priorität 1/2:
 - freie Editor-Labels sowie Gruppen/Ordner im Objekt-Outliner.
-- Lasso-Auswahl zusätzlich zur Rechteckauswahl.
 - optional echtes Geometrie-Ray-Picking statt des derzeitigen projizierten Objektursprungs.
 - noch tiefere NPC-/Mob-Rollenicons und permanente Route/Roam-Overlays.
 - belastbare Zielkarten-Verknüpfung für Portale erst, sobald die konkrete Outbound-Relation aus den Fiesta-Daten eindeutig belegt ist.
@@ -297,7 +297,7 @@ Dieser Abschnitt ist der verbindliche Ausbau-Fahrplan für den laufenden Branch 
 3. Drag & Drop von NIF-Assets direkt in 2D/3D.
 4. Copy / Paste / Duplizieren.
 5. Eye / Lock und einheitliche Kontextmenüs im Szene-Outliner.
-6. Rechteck-/Mehrfachauswahl und später optional Lasso.
+6. Rechteck- und Lasso-Mehrfachauswahl.
 7. Objektgruppen/Ordner als reine Editor-Organisation, ohne das Fiesta-Dateiformat zu verändern.
 
 ### Terrain
