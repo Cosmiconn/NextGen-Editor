@@ -1624,6 +1624,7 @@ struct NiTriStripsBlock {
     AVObjectBase base;
     std::int32_t dataRef = -1;
     std::int32_t skinInstanceRef = -1;
+    std::string shaderName;
 };
 
 // Gemeinsame Kopf-Struktur für NiTriShape UND NiTriStrips ("NiTriBasedGeom"): AVObjectBase +
@@ -1647,15 +1648,15 @@ NiTriStripsBlock ParseNiTriStripsHeader(ByteReader& r) {
     block.skinInstanceRef = r.I32();
     const std::uint8_t hasShader = r.U8();
     if (!r.LegacyLayout()) {
-        if (hasShader) { r.SizedString(); r.I32(); }
+        if (hasShader) { block.shaderName = r.SizedString(); r.I32(); }
         return block;
     }
     if (hasShader == 1) {
         // Geskinnte Charakter-Meshes ("FxSkinningBaseMap" in reschar/): Shader-Name (SizedString) +
         // "Shader Extra Data" (i32, -1) laut nif.xml (CHANGELOG [0.44.30]).
         // Bei LEEREM Namen (z.B. Cypian/Bark02.nif, Teva/Pillar_B.nif) fehlt das Extra-Data-Feld.
-        const std::string shaderName = r.SizedString();
-        if (!shaderName.empty()) r.I32();
+        block.shaderName = r.SizedString();
+        if (!block.shaderName.empty()) r.I32();
     } else {
         // has_shader=0: es folgt in vielen Dateien ein ECHTER String (Laenge > 0, z.B. Gruppe der
         // AdlF-Tore) und in den meisten der leere String (Laenge 0). Steht dort aber 0xFFFFFFFF
@@ -1733,6 +1734,7 @@ NifMaterial ParseNiMaterialProperty(ByteReader& r, bool fifteenFloats) {
 struct RawTriStripsData {
     std::vector<NifVec3> vertices;
     std::vector<NifVec3> normals;
+    std::vector<NifColor4> vertexColors;
     std::vector<NifVec2> uvs;
     std::vector<std::vector<NifVec2>> uvSets;
     std::vector<std::vector<std::uint16_t>> strips;
@@ -1772,6 +1774,7 @@ struct NifTextureState {
     std::int32_t controllerRef = -1;
     std::uint32_t applyMode = 2; // APPLY_MODULATE
     std::array<NifTextureSlotState, 10> slots{};
+    std::vector<std::pair<std::uint32_t, NifTextureSlotState>> shaderSlots;
     float bumpMapLumaScale = 1.0f;
     float bumpMapLumaOffset = 0.0f;
     std::array<float, 4> bumpMapMatrix{1.0f, 0.0f, 0.0f, 1.0f};
@@ -1837,29 +1840,28 @@ NifTextureState ParseNiTexturingProperty(ByteReader& r, bool hasPS2Fields) {
         }
     }
 
-    // Seit 10.0.1.0 folgen ShaderTexDesc-Eintraege. Sie werden noch nicht als klassische
-    // Fiesta-Slots gerendert, muessen aber byte-exakt konsumiert werden.
+    // ShaderTexDesc ist shader-spezifisch. Den TexDesc deshalb vollständig bewahren und
+    // erst zusammen mit dem Shadernamen der Geometrie zuordnen.
     const std::uint32_t numShaderTextures = r.CountU32(64);
     for (std::uint32_t i = 0; i < numShaderTextures; ++i) {
         const std::uint8_t hasMap = r.U8();
         if (!hasMap) continue;
-        r.I32();    // source_ref
-        r.U32();    // clamp_mode
-        r.U32();    // filter_mode
-        r.U32();    // uv_set
-        if (hasPS2Fields) {
-            r.I16();
-            r.I16();
+        NifTextureSlotState slot;
+        slot.present = true;
+        slot.sourceRef = r.I32();
+        slot.clampMode = r.U32();
+        slot.filterMode = r.U32();
+        slot.uvSet = r.U32();
+        if (hasPS2Fields) { r.I16(); r.I16(); }
+        slot.hasTransform = r.U8() != 0;
+        if (slot.hasTransform) {
+            slot.translation = {r.F32(), r.F32()};
+            slot.scale = {r.F32(), r.F32()};
+            slot.rotation = r.F32();
+            slot.transformType = r.U32();
+            slot.center = {r.F32(), r.F32()};
         }
-        const std::uint8_t hasTransform = r.U8();
-        if (hasTransform) {
-            r.F32(); r.F32();
-            r.F32(); r.F32();
-            r.F32();
-            r.U32();
-            r.F32(); r.F32();
-        }
-        r.U32();    // map_id
+        state.shaderSlots.emplace_back(r.U32(), slot);
     }
     return state;
 }
@@ -2190,8 +2192,9 @@ RawTriStripsData ParseNiTriStripsData(ByteReader& r, bool hasTrailer, bool isOld
     r.F32(); r.F32(); r.F32(); r.F32(); // Bounding-Sphere (center xyz + radius)
     const std::uint8_t hasColors = r.U8();
     if (hasColors) {
+        d.vertexColors.reserve(numVerts);
         for (std::uint32_t i = 0; i < numVerts; ++i) {
-            r.F32(); r.F32(); r.F32(); r.F32();
+            d.vertexColors.push_back({r.F32(), r.F32(), r.F32(), r.F32()});
         }
     }
     // HAUPTFUND DIESER KORREKTUR: das früher hier (VOR den UV-Daten) gelesene "uv_flags"-u16
@@ -2310,6 +2313,7 @@ void ExpandTriangleStrip(const std::vector<std::uint16_t>& strip, std::vector<st
 struct RawTriShapeData {
     std::vector<NifVec3> vertices;
     std::vector<NifVec3> normals;
+    std::vector<NifColor4> vertexColors;
     std::vector<NifVec2> uvs;
     std::vector<std::vector<NifVec2>> uvSets;
     std::vector<std::uint16_t> triangleIndices; // flach, 3 pro Dreieck, direkt in `vertices` indiziert
@@ -2375,8 +2379,9 @@ RawTriShapeData ParseNiTriShapeData(ByteReader& r, bool hasTrailer, bool isOlder
     r.F32(); r.F32(); r.F32(); r.F32(); // Bounding-Sphere (center xyz + radius)
     const std::uint8_t hasColors = r.U8();
     if (hasColors) {
+        d.vertexColors.reserve(numVerts);
         for (std::uint32_t i = 0; i < numVerts; ++i) {
-            r.F32(); r.F32(); r.F32(); r.F32();
+            d.vertexColors.push_back({r.F32(), r.F32(), r.F32(), r.F32()});
         }
     }
     // Kein "uv_flags" vor den UV-Daten - siehe ParseNiTriStripsData für die vollständige
@@ -2609,6 +2614,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
     // bei erkannter Inkonsistenz aus den Geometrie-Knoten neu aufgebaut.
     struct RawGeom {
         std::vector<NifVec3> positions, normals;
+        std::vector<NifColor4> vertexColors;
         std::vector<NifVec2> uvs;
         std::vector<std::vector<NifVec2>> uvSets;
         std::vector<std::uint32_t> triangleIndices;
@@ -2618,6 +2624,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         std::int32_t dataRef = -1;
         std::int32_t skinInstanceRef = -1;
         std::vector<std::int32_t> properties;
+        std::string shaderName;
     };
     std::unordered_map<std::int32_t, RawGeom> rawByData;
     std::vector<GeomNode> geomNodes;
@@ -3072,7 +3079,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 sn.scale = strips.base.scale;
                 if (strips.dataRef >= 0) dataToGeometry[strips.dataRef] = blockIdx;
             }
-            geomNodes.push_back({blockIdx, strips.dataRef, strips.skinInstanceRef, strips.base.properties});
+            geomNodes.push_back({blockIdx, strips.dataRef, strips.skinInstanceRef, strips.base.properties, strips.shaderName});
             currentMeshHasTexturing = false;
             for (const auto propRef : strips.base.properties) {
                 if (propRef < 0 || static_cast<std::uint32_t>(propRef) >= hdr.blockTypeIndex.size()) continue;
@@ -3278,6 +3285,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 RawGeom rg;
                 rg.positions = raw.vertices;
                 rg.normals = raw.normals;
+                rg.vertexColors = raw.vertexColors;
                 rg.uvs = raw.uvs;
                 rg.uvSets = raw.uvSets;
                 for (const auto& strip : raw.strips) ExpandTriangleStrip(strip, rg.triangleIndices);
@@ -3288,6 +3296,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             NifMeshPart& part = model.parts.back();
             part.positions = std::move(raw.vertices);
             part.normals = std::move(raw.normals);
+            part.vertexColors = std::move(raw.vertexColors);
             part.uvs = std::move(raw.uvs);
             part.uvSets = std::move(raw.uvSets);
             for (const auto& strip : raw.strips) {
@@ -3311,6 +3320,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 RawGeom rg;
                 rg.positions = raw.vertices;
                 rg.normals = raw.normals;
+                rg.vertexColors = raw.vertexColors;
                 rg.uvs = raw.uvs;
                 rg.uvSets = raw.uvSets;
                 rg.triangleIndices.assign(raw.triangleIndices.begin(), raw.triangleIndices.end());
@@ -3321,6 +3331,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             NifMeshPart& part = model.parts.back();
             part.positions = std::move(raw.vertices);
             part.normals = std::move(raw.normals);
+            part.vertexColors = std::move(raw.vertexColors);
             part.uvs = std::move(raw.uvs);
             part.uvSets = std::move(raw.uvSets);
             part.triangleIndices.reserve(raw.triangleIndices.size());
@@ -3388,8 +3399,10 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 NifMeshPart part;
                 part.positions = it->second.positions;
                 part.normals = it->second.normals;
+                part.vertexColors = it->second.vertexColors;
                 part.uvs = it->second.uvs;
                 part.uvSets = it->second.uvSets;
+                part.shaderName = g.shaderName;
                 part.triangleIndices = it->second.triangleIndices;
                 for (const auto ref : g.properties) {
                     if (ref < 0) continue;
@@ -3454,6 +3467,15 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         for (std::size_t p = 0; p < model.parts.size() && p < partDataBlock.size(); ++p) {
             const auto it = stencilByData.find(partDataBlock[p]);
             if (it != stencilByData.end()) model.parts[p].faceDrawMode = it->second.drawMode;
+        }
+    }
+
+    {
+        std::unordered_map<std::int32_t, std::string> shaderByData;
+        for (const auto& g : geomNodes) shaderByData[g.dataRef] = g.shaderName;
+        for (std::size_t p = 0; p < model.parts.size() && p < partDataBlock.size(); ++p) {
+            const auto it = shaderByData.find(partDataBlock[p]);
+            if (it != shaderByData.end()) model.parts[p].shaderName = it->second;
         }
     }
 
@@ -3525,8 +3547,27 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 dst.center = src.center;
                 refs[slotIndex] = src.sourceRef;
             }
+            // Original Gamebryo VCAlphaTextureBlender shader: artist maps
+            // 0=Texture1, 1=Texture2, 2=Detail.
+            if (part.shaderName == "VCAlphaTextureBlender") {
+                for (const auto& [mapId, src] : ts.shaderSlots) {
+                    if (mapId > 2u) continue;
+                    auto& dst = part.textureSlots[mapId];
+                    dst.present = src.present;
+                    dst.uvSet = src.uvSet;
+                    dst.clampMode = src.clampMode;
+                    dst.filterMode = src.filterMode;
+                    dst.hasTransform = src.hasTransform;
+                    dst.translation = src.translation;
+                    dst.scale = src.scale;
+                    dst.rotation = src.rotation;
+                    dst.transformType = src.transformType;
+                    dst.center = src.center;
+                    refs[mapId] = src.sourceRef;
+                }
+            }
             partTextureRefs[p] = refs;
-            const auto& base = ts.slots[0];
+            const auto& base = part.textureSlots[0];
             if (base.present) {
                 part.baseUvSet = base.uvSet;
                 part.textureClampMode = base.clampMode;
