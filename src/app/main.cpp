@@ -7779,7 +7779,11 @@ core::legacy::ShineRecord MakeEmptyShopRow(const core::legacy::ShineTable& table
 bool CreateNewShopFile(EditorState& state, const std::string& npcName) {
     const auto dir = std::filesystem::path(state.shineTextRoot) / "NPCItemList";
     std::error_code ec;
-    if (!std::filesystem::is_directory(dir, ec)) { state.statusMessage = "Ordner NPCItemList nicht gefunden: " + dir.string(); return false; }
+    if (!std::filesystem::is_directory(dir, ec)) {
+        state.statusMessage = L("Ordner NPCItemList nicht gefunden: ",
+                                "NPCItemList folder not found: ") + dir.string();
+        return false;
+    }
     for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
         if (entry.path().extension() != ".txt") continue;
         auto tmpl = core::legacy::LoadShineTextFile(entry.path());
@@ -7798,25 +7802,39 @@ bool CreateNewShopFile(EditorState& state, const std::string& npcName) {
         state.shopFileIsNew = true;
         return true;
     }
-    state.statusMessage = "Keine Vorlage in NPCItemList gefunden.";
+    state.statusMessage = L("Keine Vorlage in NPCItemList gefunden.",
+                            "No template found in NPCItemList.");
     return false;
 }
 
 void DrawShopEditorPopup(EditorState& state) {
     if (!state.shopEditorOpen) return;
-    ImGui::OpenPopup("Händler-Inventar");
+    const char* shopPopupTitle =
+        L("Händler-Inventar###shopInventory","Shop inventory###shopInventory");
+    ImGui::OpenPopup(shopPopupTitle);
     ImGui::SetNextWindowSize(ImVec2(940.0f, 640.0f), ImGuiCond_FirstUseEver);
-    if (ImGui::BeginPopupModal("Händler-Inventar", &state.shopEditorOpen)) {
+    if (ImGui::BeginPopupModal(shopPopupTitle, &state.shopEditorOpen)) {
         EnsureItemLookup(state);
         const auto shopPath = std::filesystem::path(state.shineTextRoot) / "NPCItemList" / (state.shopLoadedForNpc + ".txt");
-        ImGui::Text("Shop von: %s", state.shopLoadedForNpc.c_str());
+        ImGui::Text(L("Shop von: %s","Shop for: %s"), state.shopLoadedForNpc.c_str());
         ImGui::SameLine();
-        ImGui::TextDisabled("(%s%s)", shopPath.string().c_str(), state.shopFileIsNew ? " - NEU, noch nicht gespeichert" : "");
-        ImGui::TextDisabled("Jede Zeile = ein Regal mit bis zu 6 Items, jeder Tab = eine Kategorie im Shop-Fenster. Slot klicken = Item wählen, Rechtsklick = leeren.");
+        ImGui::TextDisabled("(%s%s)", shopPath.string().c_str(),
+                            state.shopFileIsNew
+                                ? L(" - NEU, noch nicht gespeichert"," - NEW, not saved yet")
+                                : "");
+        ImGui::TextDisabled("%s",L(
+            "Jede Zeile = ein Regal mit bis zu 6 Items, jeder Tab = eine Kategorie im Shop-Fenster. "
+            "Slot klicken = Item wählen, Rechtsklick = leeren.",
+            "Each row is a shelf with up to 6 items; each tab is a shop category. "
+            "Click a slot to choose an item; right-click to clear it."));
         ImGui::Separator();
         if (!state.shopTextLoaded) {
-            ImGui::TextWrapped("Für diesen NPC gibt es noch keine Shop-Datei (NPCItemList/%s.txt).", state.shopLoadedForNpc.c_str());
-            if (UI::Button("Shop-Datei neu anlegen")) CreateNewShopFile(state, state.shopLoadedForNpc);
+            ImGui::TextWrapped(
+                L("Für diesen NPC gibt es noch keine Shop-Datei (NPCItemList/%s.txt).",
+                  "There is no shop file for this NPC yet (NPCItemList/%s.txt)."),
+                state.shopLoadedForNpc.c_str());
+            if (UI::Button(L("Shop-Datei neu anlegen","Create shop file")))
+                CreateNewShopFile(state, state.shopLoadedForNpc);
         } else {
             auto& file = state.shopTextFile;
             int deleteTable = -1;
@@ -7830,7 +7848,7 @@ void DrawShopEditorPopup(EditorState& state) {
                     if (ImGui::BeginTable("##shopgrid", slotCols + 2, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY, ImVec2(0.0f, 380.0f))) {
                         ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed, 32.0f);
                         for (int c = 0; c < slotCols; ++c) ImGui::TableSetupColumn(("Slot " + std::to_string(c + 1)).c_str());
-                        ImGui::TableSetupColumn("Zeile", ImGuiTableColumnFlags_WidthFixed, 96.0f);
+                        ImGui::TableSetupColumn(L("Zeile","Row"), ImGuiTableColumnFlags_WidthFixed, 96.0f);
                         ImGui::TableSetupScrollFreeze(0, 1);
                         ImGui::TableHeadersRow();
                         int moveRow = -1, moveDir = 0, removeRow = -1;
@@ -7850,7 +7868,8 @@ void DrawShopEditorPopup(EditorState& state) {
                                 const bool known = isEmpty || found != state.itemByInx.end() || state.itemEntries.empty();
                                 if (!known) ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(150, 40, 40, 255));
                                 else if (isEmpty) ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(45, 50, 58, 255));
-                                if (UI::Button((isEmpty ? std::string("(leer)") : v).c_str(), ImVec2(-1.0f, 0.0f))) {
+                                const std::string slotLabel = isEmpty ? L("(leer)","(empty)") : v;
+                                if (UI::Button(slotLabel.c_str(), ImVec2(-1.0f, 0.0f))) {
                                     state.shopPickTable = static_cast<int>(t);
                                     state.shopPickRow = static_cast<int>(ri);
                                     state.shopPickCol = c + 1;
@@ -7860,11 +7879,22 @@ void DrawShopEditorPopup(EditorState& state) {
                                 if (!known || isEmpty) ImGui::PopStyleColor();
                                 if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) { v = "-"; }
                                 if (ImGui::IsItemHovered()) {
-                                    if (isEmpty) ImGui::SetTooltip("Leerer Slot - klicken, um ein Item zu wählen");
-                                    else if (found != state.itemByInx.end()) {
+                                    if (isEmpty) {
+                                        ImGui::SetTooltip("%s",L(
+                                            "Leerer Slot - klicken, um ein Item zu wählen",
+                                            "Empty slot - click to choose an item"));
+                                    } else if (found != state.itemByInx.end()) {
                                         const auto& e = state.itemEntries[found->second];
-                                        ImGui::SetTooltip("%s\nID %lld\nRechtsklick = Slot leeren", e.name.c_str(), e.id);
-                                    } else if (!state.itemEntries.empty()) ImGui::SetTooltip("'%s' ist NICHT in ItemInfo.shn - Tippfehler oder fehlendes Item?", v.c_str());
+                                        ImGui::SetTooltip(
+                                            L("%s\nID %lld\nRechtsklick = Slot leeren",
+                                              "%s\nID %lld\nRight-click = clear slot"),
+                                            e.name.c_str(), e.id);
+                                    } else if (!state.itemEntries.empty()) {
+                                        ImGui::SetTooltip(
+                                            L("'%s' ist NICHT in ItemInfo.shn - Tippfehler oder fehlendes Item?",
+                                              "'%s' is NOT in ItemInfo.shn - typo or missing item?"),
+                                            v.c_str());
+                                    }
                                 }
                                 ImGui::PopID();
                             }
@@ -7886,18 +7916,19 @@ void DrawShopEditorPopup(EditorState& state) {
                         }
                         if (removeRow >= 0) { table.records.erase(table.records.begin() + removeRow); structureChanged = true; }
                     }
-                    if (UI::Button("+ Zeile")) {
+                    if (UI::Button(L("+ Zeile","+ Row"))) {
                         table.records.push_back(MakeEmptyShopRow(table));
                         structureChanged = true;
                     }
                     if (state.shopDeleteArmed && file.tables.size() > 1) {
                         ImGui::SameLine();
-                        if (UI::Button("Diesen Tab löschen")) deleteTable = static_cast<int>(t);
+                        if (UI::Button(L("Diesen Tab löschen","Delete this tab")))
+                            deleteTable = static_cast<int>(t);
                     }
                     if (structureChanged) RenumberShopRows(table);
                     ImGui::EndTabItem();
                 }
-                if (UI::TabItemButton("+ Tab", ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoTooltip)) {
+                if (UI::TabItemButton(L("+ Tab","+ Tab"), ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoTooltip)) {
                     core::legacy::ShineTable nt;
                     int maxNo = -1;
                     for (const auto& t : file.tables) {
@@ -7921,14 +7952,22 @@ void DrawShopEditorPopup(EditorState& state) {
             if (deleteTable >= 0) { file.tables.erase(file.tables.begin() + deleteTable); state.shopDeleteArmed = false; }
 
             // Item-Auswahl (Popup): Suche in InxName und Anzeigename.
-            if (state.shopPickRequested) { ImGui::OpenPopup("Item wählen##shop"); state.shopPickRequested = false; }
-            if (ImGui::BeginPopup("Item wählen##shop")) {
+            const char* itemPickerTitle =
+                L("Item wählen###shopItemPicker","Choose item###shopItemPicker");
+            if (state.shopPickRequested) {
+                ImGui::OpenPopup(itemPickerTitle);
+                state.shopPickRequested = false;
+            }
+            if (ImGui::BeginPopup(itemPickerTitle)) {
                 if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
                 ImGui::SetNextItemWidth(520.0f);
-                UI::InputTextWithHint("##itemfilter", "Suche (Name oder Item-Bezeichnung)", state.shopItemFilter, sizeof(state.shopItemFilter));
+                UI::InputTextWithHint("##itemfilter",
+                                      L("Suche (Name oder Item-Bezeichnung)",
+                                        "Search (name or item description)"),
+                                      state.shopItemFilter, sizeof(state.shopItemFilter));
                 const std::string needle = LowerAscii(state.shopItemFilter);
                 ImGui::BeginChild("##itemlist", ImVec2(520.0f, 320.0f), true);
-                if (UI::Selectable("(leer) -")) {
+                if (UI::Selectable(L("(leer) -","(empty) -"))) {
                     if (state.shopPickTable >= 0 && state.shopPickTable < static_cast<int>(file.tables.size())) {
                         auto& tb = file.tables[static_cast<std::size_t>(state.shopPickTable)];
                         if (state.shopPickRow >= 0 && state.shopPickRow < static_cast<int>(tb.records.size()))
@@ -7939,7 +7978,12 @@ void DrawShopEditorPopup(EditorState& state) {
                 int shown = 0;
                 for (const auto& e : state.itemEntries) {
                     if (!needle.empty() && LowerAscii(e.inx).find(needle) == std::string::npos && LowerAscii(e.name).find(needle) == std::string::npos) continue;
-                    if (++shown > 300) { ImGui::TextDisabled("... weitere Treffer - Suche eingrenzen"); break; }
+                    if (++shown > 300) {
+                        ImGui::TextDisabled("%s",L(
+                            "... weitere Treffer - Suche eingrenzen",
+                            "... more matches - narrow the search"));
+                        break;
+                    }
                     const std::string label = e.inx + "   " + e.name + "   (#" + std::to_string(e.id) + ")##" + std::to_string(shown);
                     if (UI::Selectable(label.c_str())) {
                         if (state.shopPickTable >= 0 && state.shopPickTable < static_cast<int>(file.tables.size())) {
@@ -7951,31 +7995,40 @@ void DrawShopEditorPopup(EditorState& state) {
                     }
                 }
                 ImGui::EndChild();
-                if (state.itemEntries.empty()) ImGui::TextDisabled("ItemInfo.shn nicht geladen - Item-Bezeichnung von Hand eingeben ist im Raster nicht möglich.");
+                if (state.itemEntries.empty()) {
+                    ImGui::TextDisabled("%s",L(
+                        "ItemInfo.shn nicht geladen - Item-Bezeichnung von Hand eingeben ist im Raster nicht möglich.",
+                        "ItemInfo.shn is not loaded - manual item entry is not available in the grid."));
+                }
                 ImGui::EndPopup();
             }
 
             ImGui::Separator();
-            UI::Checkbox("Löschen freigeben", &state.shopDeleteArmed);
+            UI::Checkbox(L("Löschen freigeben","Enable delete"), &state.shopDeleteArmed);
             ImGui::SameLine();
-            if (UI::Button("Speichern")) {
+            if (UI::Button(L("Speichern","Save"))) {
                 std::error_code ec;
                 std::filesystem::create_directories(shopPath.parent_path(), ec);
                 auto saved = core::legacy::SaveShineTextFile(state.shopTextFile, shopPath);
                 if (saved) {
-                    state.statusMessage = "Händler-Inventar gespeichert: " + state.shopLoadedForNpc;
+                    state.statusMessage =
+                        L("Händler-Inventar gespeichert: ","Shop inventory saved: ") +
+                        state.shopLoadedForNpc;
                     // Neu laden: Tabellen/Records bekommen ihre echten Quellzeilen, "neu"-Markierungen entfallen.
                     const std::string npc = state.shopLoadedForNpc;
                     state.shopTextLoaded = false;
                     state.shopFileIsNew = false;
                     EnsureShopTextLoaded(state, npc);
                 } else {
-                    state.statusMessage = "Fehler: " + saved.error();
+                    state.statusMessage = L("Fehler: ","Error: ") + saved.error();
                 }
             }
         }
         ImGui::SameLine();
-        if (UI::Button("Schließen")) { state.shopEditorOpen = false; ImGui::CloseCurrentPopup(); }
+        if (UI::Button(L("Schließen","Close"))) {
+            state.shopEditorOpen = false;
+            ImGui::CloseCurrentPopup();
+        }
         ImGui::EndPopup();
     }
 }
