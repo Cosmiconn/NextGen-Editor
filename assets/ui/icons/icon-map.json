@@ -1,7 +1,5 @@
 {
-  "schema": 1,
-  "vector_source": "NextGen_Icons_True_Vector_Set_With_Sizes.zip",
-  "raster_reference": "NextGen_Icons_Complete_PNG_SVG.zip",
+  "schema": 2,
   "semantic_ids": {
     "file.new": "toolbar/01_neu",
     "file.open": "toolbar/02_oeffnen",
@@ -56,6 +54,21 @@
     "module.droptable": "extra/06_droptable",
     "module.custom_npc": "extra/07_custom_npc",
     "module.custom_mob": "extra/08_custom_mob",
-    "brand.ng": "extra/09_ng_icon"
-  }
+    "brand.ng": "extra/09_ng_icon",
+    "view.2d": "additional_ui/01_2d",
+    "view.3d": "additional_ui/02_3d",
+    "module.kfm": "additional_ui/03_kfm",
+    "module.ai": "additional_ui/04_ai",
+    "module.xp": "additional_ui/05_xp",
+    "module.prices": "additional_ui/06_preise",
+    "state.visibility": "additional_ui/07_visibility_eye",
+    "state.lock": "additional_ui/08_lock",
+    "state.unlock": "additional_ui/09_unlock",
+    "edit.copy": "additional_ui/10_copy",
+    "edit.duplicate": "additional_ui/11_duplicate",
+    "edit.delete": "additional_ui/12_delete",
+    "system.command_palette": "additional_ui/13_command_palette",
+    "system.recent_projects": "additional_ui/14_recent_projects"
+  },
+  "source": "NextGen_Icons_Final.zip"
 }
