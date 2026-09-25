@@ -4,7 +4,8 @@ cmake_minimum_required(VERSION 3.21)
 # installed in one of the conventional environment locations, pick its
 # toolchain automatically so a normal CMake configure can build the GUI
 # instead of silently producing only the headless/core targets.
-if(CMAKE_HOST_WIN32 AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+if(CMAKE_HOST_WIN32 AND NOT DEFINED CMAKE_TOOLCHAIN_FILE AND
+   (NOT DEFINED NEXTGEN_EDITOR_BUILD_GUI OR NEXTGEN_EDITOR_BUILD_GUI))
     if(DEFINED ENV{VCPKG_ROOT} AND
        EXISTS "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake")
         set(CMAKE_TOOLCHAIN_FILE
