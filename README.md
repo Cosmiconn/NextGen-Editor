@@ -35,6 +35,15 @@ cmake -S . -B build "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.
 cmake --build build --config Release
 ```
 
+Wurde derselbe `build`-Ordner zuvor mit `NEXTGEN_EDITOR_BUILD_GUI=OFF` konfiguriert, bleibt
+dieser Wert im CMake-Cache erhalten. Dann einmal explizit auf GUI umstellen oder den Build-Ordner
+neu erzeugen:
+
+```powershell
+cmake -S . -B build -DNEXTGEN_EDITOR_BUILD_GUI=ON
+cmake --build build --config Release --target map_editor
+```
+
 C++23 einschließlich `std::expected` ist erforderlich. Lokal geprüft mit MSVC 19.51.
 Für Linux ist beispielsweise GCC 14 vorgesehen; die CI-Konfiguration enthält Windows- und
 Linux-Core-Builds. Ein vorhandener Workflow ist noch kein Nachweis eines erfolgreichen CI-Laufs.
