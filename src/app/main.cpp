@@ -1464,6 +1464,7 @@ void EraseShmdCategorySources(EditorState& state,
 void DeleteSelectedObjects(EditorState& state) {
     std::vector<int> placementIndices;
     std::vector<std::pair<std::size_t, std::size_t>> categorySources;
+    std::vector<std::string> categoryEditorKeys;
     for (const int id : state.selectedObjects) {
         if (id >= 0) {
             if (static_cast<std::size_t>(id) < state.placementSet.Count() && !IsObjectEditorLocked(state,id))
@@ -1474,6 +1475,8 @@ void DeleteSelectedObjects(EditorState& state) {
         const auto renderIndex = ShmdRenderIndex(id);
         if (renderIndex && *renderIndex < state.shmdCategorySource.size()) {
             categorySources.push_back(state.shmdCategorySource[*renderIndex]);
+            const std::string key=ShmdEditorObjectKey(state,id);
+            if(!key.empty()) categoryEditorKeys.push_back(key);
         }
     }
 
@@ -1491,6 +1494,12 @@ void DeleteSelectedObjects(EditorState& state) {
             if (static_cast<std::size_t>(index) < state.objectEditorGroups.size())
                 state.objectEditorGroups.erase(state.objectEditorGroups.begin() + index);
         }
+    }
+    for(const auto& key:categoryEditorKeys) {
+        state.shmdEditorHiddenKeys.erase(key);
+        state.shmdEditorLockedKeys.erase(key);
+        state.shmdEditorLabels.erase(key);
+        state.shmdEditorGroups.erase(key);
     }
     EraseShmdCategorySources(state, std::move(categorySources));
 
@@ -2308,8 +2317,12 @@ void DrawAdvancedFileOps(EditorState& state) {
                 state.objectListRangeAnchor = -1;
                 state.objectEditorHidden.assign(state.placementSet.Count(), 0);
                 state.objectEditorLocked.assign(state.placementSet.Count(), 0);
+                state.objectEditorLabels.assign(state.placementSet.Count(), {});
+                state.objectEditorGroups.assign(state.placementSet.Count(), {});
                 state.shmdEditorHiddenKeys.clear();
                 state.shmdEditorLockedKeys.clear();
+                state.shmdEditorLabels.clear();
+                state.shmdEditorGroups.clear();
                 const std::filesystem::path shmdMapDir = std::filesystem::path(state.legacyShmdPath).parent_path();
                 state.nifMeshRenderer.LoadModelsForSet(state.placementSet, shmdMapDir);
                 RebuildShmdCategoryRenderSet(state, shmdMapDir);
