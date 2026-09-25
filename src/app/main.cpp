@@ -12603,10 +12603,6 @@ void DrawSceneOutlinerPanel(EditorState& state) {
         return;
     }
 
-    const std::size_t shmdSceneCount        ImGui::EndChild();
-        return;
-    }
-
     const std::size_t shmdSceneCount = state.shmdCategoryRenderSet.Count();
     const std::size_t total = state.placementSet.Count() + shmdSceneCount;
     ImGui::TextDisabled("%zu Objekte", total);
