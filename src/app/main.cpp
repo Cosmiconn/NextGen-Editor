@@ -7660,11 +7660,15 @@ void OpenNpcDialogEditor(EditorState& state, const std::string& npcName) {
 
 void DrawDialogEditorPopup(EditorState& state) {
     if (!state.dialogEditorOpen) return;
-    ImGui::OpenPopup("NPC-Dialog bearbeiten");
+    const char* dialogPopupTitle =
+        L("NPC-Dialog bearbeiten###npcDialogEditor","Edit NPC dialog###npcDialogEditor");
+    ImGui::OpenPopup(dialogPopupTitle);
     ImGui::SetNextWindowSize(ImVec2(580.0f, 480.0f), ImGuiCond_FirstUseEver);
-    if (ImGui::BeginPopupModal("NPC-Dialog bearbeiten", &state.dialogEditorOpen)) {
+    if (ImGui::BeginPopupModal(dialogPopupTitle, &state.dialogEditorOpen)) {
         if (state.npcDialogRessystemRoot.empty()) {
-            ImGui::TextWrapped("Client-Ordner 'ressystem' (enthält NpcDialogData.shn) nicht gefunden - bitte manuell angeben:");
+            ImGui::TextWrapped("%s",L(
+                "Client-Ordner 'ressystem' (enthält NpcDialogData.shn) nicht gefunden - bitte manuell angeben:",
+                "Client 'ressystem' folder (contains NpcDialogData.shn) was not found - choose it manually:"));
             std::vector<char> rootBuf(state.npcDialogRessystemRoot.begin(), state.npcDialogRessystemRoot.end());
             rootBuf.resize(std::max<std::size_t>(rootBuf.size() + 1, 512));
             ImGui::SetNextItemWidth(-1.0f);
@@ -7672,21 +7676,29 @@ void DrawDialogEditorPopup(EditorState& state) {
                 state.npcDialogRessystemRoot.assign(rootBuf.data()); state.npcDialogLoaded = false;
             }
 #ifdef _WIN32
-            if (UI::Button("Ordner wählen...##ressystem")) {
-                if (auto p = BrowseForFolderWindows("ressystem-Ordner wählen")) { state.npcDialogRessystemRoot = *p; state.npcDialogLoaded = false; }
+            if (UI::Button(L("Ordner wählen...##ressystem","Choose folder...##ressystem"))) {
+                if (auto p = BrowseForFolderWindows(
+                        L("ressystem-Ordner wählen","Choose ressystem folder"))) {
+                    state.npcDialogRessystemRoot = *p;
+                    state.npcDialogLoaded = false;
+                }
             }
 #endif
         } else if (state.dialogEditorRowIdx < 0) {
-            ImGui::TextWrapped("Kein Dialog-Eintrag für diesen NPC in NpcDialogData.shn gefunden (oder Datei konnte nicht geladen werden).");
+            ImGui::TextWrapped("%s",L(
+                "Kein Dialog-Eintrag für diesen NPC in NpcDialogData.shn gefunden (oder Datei konnte nicht geladen werden).",
+                "No dialog entry for this NPC was found in NpcDialogData.shn (or the file could not be loaded)."));
         } else {
-            ImGui::TextDisabled("Begrüßungstext ([NAME] wird durch den Spielernamen ersetzt):");
+            ImGui::TextDisabled("%s",L(
+                "Begrüßungstext ([NAME] wird durch den Spielernamen ersetzt):",
+                "Greeting text ([NAME] is replaced with the player name):"));
             std::vector<char> buf(state.dialogGreetingBuf.begin(), state.dialogGreetingBuf.end());
             buf.resize(std::max<std::size_t>(buf.size() + 1, 2048));
             if (ImGui::InputTextMultiline("##greeting", buf.data(), buf.size(), ImVec2(-1.0f, 100.0f))) {
                 state.dialogGreetingBuf.assign(buf.data());
             }
             ImGui::Separator();
-            ImGui::Text("Buttons:");
+            ImGui::Text("%s",L("Buttons:","Buttons:"));
             int removeIdx = -1;
             for (std::size_t i = 0; i < state.dialogButtonsBuf.size(); ++i) {
                 ImGui::PushID(static_cast<int>(i));
@@ -7699,14 +7711,19 @@ void DrawDialogEditorPopup(EditorState& state) {
                 ImGui::SetNextItemWidth(220.0f);
                 if (UI::InputText("##action", abuf.data(), abuf.size())) action.assign(abuf.data());
                 ImGui::SameLine();
-                if (UI::Button("Entfernen")) removeIdx = static_cast<int>(i);
+                if (UI::Button(L("Entfernen","Remove"))) removeIdx = static_cast<int>(i);
                 ImGui::PopID();
             }
             if (removeIdx >= 0) state.dialogButtonsBuf.erase(state.dialogButtonsBuf.begin() + removeIdx);
-            if (UI::Button("+ Button hinzufügen")) state.dialogButtonsBuf.emplace_back("Neuer Button", "server_ack 1");
-            ImGui::TextDisabled("Übliche Aktionen: 'server_ack <Zahl>' (Server-Callback, z.B. Kauf) oder\n'opendlg <Name>' (verketteter Dialog, z.B. zu einem Aufwertungs-Menü).");
+            if (UI::Button(L("+ Button hinzufügen","+ Add button")))
+                state.dialogButtonsBuf.emplace_back("Neuer Button", "server_ack 1");
+            ImGui::TextDisabled("%s",L(
+                "Übliche Aktionen: 'server_ack <Zahl>' (Server-Callback, z.B. Kauf) oder\n"
+                "'opendlg <Name>' (verketteter Dialog, z.B. zu einem Aufwertungs-Menü).",
+                "Common actions: 'server_ack <number>' (server callback, e.g. purchase) or\n"
+                "'opendlg <name>' (chained dialog, e.g. an upgrade menu)."));
             ImGui::Separator();
-            if (UI::Button("Speichern")) {
+            if (UI::Button(L("Speichern","Save"))) {
                 ParsedNpcDialog d; d.greeting = state.dialogGreetingBuf; d.buttons = state.dialogButtonsBuf;
                 const auto text = SerializeNpcDialogText(d);
                 auto& row = state.npcDialogShn.rows[static_cast<std::size_t>(state.dialogEditorRowIdx)];
@@ -7715,15 +7732,20 @@ void DrawDialogEditorPopup(EditorState& state) {
                     row.values[2] = std::move(*parsedVal);
                     auto path = std::filesystem::path(state.npcDialogRessystemRoot) / "NpcDialogData.shn";
                     auto saved = core::legacy::SaveShnFile(state.npcDialogShn, path);
-                    state.statusMessage = saved ? std::string("NpcDialogData.shn gespeichert.") : "Fehler: " + saved.error();
+                    state.statusMessage = saved
+                        ? L("NpcDialogData.shn gespeichert.","NpcDialogData.shn saved.")
+                        : L("Fehler: ","Error: ") + saved.error();
                     if (saved) { state.dialogEditorOpen = false; ImGui::CloseCurrentPopup(); }
                 } else {
-                    state.statusMessage = "Fehler: " + parsedVal.error();
+                    state.statusMessage = L("Fehler: ","Error: ") + parsedVal.error();
                 }
             }
         }
         ImGui::SameLine();
-        if (UI::Button("Schließen")) { state.dialogEditorOpen = false; ImGui::CloseCurrentPopup(); }
+        if (UI::Button(L("Schließen","Close"))) {
+            state.dialogEditorOpen = false;
+            ImGui::CloseCurrentPopup();
+        }
         ImGui::EndPopup();
     }
 }
