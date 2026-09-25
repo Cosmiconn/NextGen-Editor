@@ -177,6 +177,7 @@ Zusätzlich in der laufenden zweiten Ausbaustufe umgesetzt:
 - Layer-Manager als permanentes eigenes Dock;
 - Sichtbarkeit + Wireframe/Kamera als separates Dock;
 - Properties-Inspector dadurch von Listen- und View-Steuerung entlastet;
+- zentrale Panel-Header für Outliner, Layer, Asset Browser, Sichtbarkeit, Properties, 2D, 3D und KFM auf eine gemeinsame Icon-/Titel-/Kontext-Komponente vereinheitlicht;
 - kontextuelles Fokussieren von Objekt- bzw. Layer-Dock beim Werkzeugwechsel;
 - Statusbar mit Auswahlkoordinaten und FPS;
 - Spieldaten-Workspace mit Icon-Toolbar für Single/Multi SHN, XP, Preise, Quest, Portale, getrenntes Custom NPC/Custom Mob, Skills, AI, Interface und Drops;
