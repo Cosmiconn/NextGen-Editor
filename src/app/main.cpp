@@ -13051,6 +13051,36 @@ const char* NifTextureSlotLabel(std::size_t slot) {
     return slot < std::size(kLabels) ? kLabels[slot] : "Textur";
 }
 
+const char* NifTextureTransformOperationLabel(std::uint32_t operation) {
+    switch (operation) {
+        case 0: return "U-Offset";
+        case 1: return "V-Offset";
+        case 2: return "Rotation";
+        case 3: return "U-Skalierung";
+        case 4: return "V-Skalierung";
+        default: return "Transform";
+    }
+}
+
+const char* NifTextureInterpolationLabel(std::uint32_t interpolation) {
+    switch (interpolation) {
+        case 1: return "Linear";
+        case 2: return "Quadratisch";
+        case 3: return "TBC";
+        case 5: return "Konstant";
+        default: return "Unbekannt";
+    }
+}
+
+const char* NifTextureExtrapolationLabel(std::uint8_t extrapolation) {
+    switch (extrapolation) {
+        case 0: return "Zyklus";
+        case 1: return "Ping-Pong";
+        case 2: return "Clamp";
+        default: return "Unbekannt";
+    }
+}
+
 void LoadNifAssetInspector(EditorState& state, const std::filesystem::path& path,
                            const std::string& relativeAsset) {
     state.nifInspectorAsset = relativeAsset;
@@ -13304,6 +13334,75 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                 ImGui::PopID();
             }
             if (!anyTexture) ImGui::TextDisabled("Keine NiTexturingProperty-Slots.");
+
+            if (!part.textureTransformAnimations.empty() || !part.textureFlipAnimations.empty()) {
+                ImGui::SeparatorText("Textur-Animationen");
+                for (std::size_t ai = 0; ai < part.textureTransformAnimations.size(); ++ai) {
+                    const auto& animation = part.textureTransformAnimations[ai];
+                    ImGui::PushID(static_cast<int>(ai));
+                    ImGui::BulletText("%s · %s",
+                                      NifTextureSlotLabel(animation.slot),
+                                      NifTextureTransformOperationLabel(animation.operation));
+                    ImGui::Indent();
+                    const auto& track = animation.track;
+                    ImGui::TextDisabled("%.3f – %.3f s · %zu Keys · %s · %s",
+                                        track.startTime, track.stopTime, track.keys.size(),
+                                        NifTextureInterpolationLabel(track.interpolation),
+                                        NifTextureExtrapolationLabel(track.extrapolation));
+                    ImGui::TextDisabled("Frequenz %.3f · Phase %.3f%s",
+                                        track.frequency, track.phase,
+                                        track.active ? " · aktiv" : "");
+                    ImGui::Unindent();
+                    ImGui::PopID();
+                }
+
+                for (std::size_t ai = 0; ai < part.textureFlipAnimations.size(); ++ai) {
+                    const auto& animation = part.textureFlipAnimations[ai];
+                    ImGui::PushID(static_cast<int>(part.textureTransformAnimations.size() + ai));
+                    std::size_t embeddedFrames = 0;
+                    std::size_t missingFrames = 0;
+                    for (const auto& frame : animation.frames) {
+                        if (frame.embeddedTexture) {
+                            ++embeddedFrames;
+                        } else if (frame.texture.empty() ||
+                                   !ResolveNifInspectorTexturePathCached(state, root, frame.texture)) {
+                            ++missingFrames;
+                        }
+                    }
+
+                    ImGui::BulletText("%s · Flipbook · %zu Frames",
+                                      NifTextureSlotLabel(animation.slot), animation.frames.size());
+                    ImGui::Indent();
+                    const auto& track = animation.track;
+                    ImGui::TextDisabled("%.3f – %.3f s · %zu Keys · %s · %s",
+                                        track.startTime, track.stopTime, track.keys.size(),
+                                        NifTextureInterpolationLabel(track.interpolation),
+                                        NifTextureExtrapolationLabel(track.extrapolation));
+                    ImGui::TextDisabled("%zu eingebettet · %zu extern%s",
+                                        embeddedFrames,
+                                        animation.frames.size() - embeddedFrames,
+                                        missingFrames ? " · fehlende Dateien vorhanden" : "");
+                    if (missingFrames)
+                        ImGui::TextColored(ImVec4(1.0f,0.48f,0.34f,1.0f),
+                                           "%zu Flipbook-Frame(s) nicht auflösbar", missingFrames);
+
+                    const std::size_t framePreviewCount = std::min<std::size_t>(animation.frames.size(), 6);
+                    for (std::size_t fi = 0; fi < framePreviewCount; ++fi) {
+                        const auto& frame = animation.frames[fi];
+                        const std::string frameLabel = frame.embeddedTexture
+                            ? ("Frame " + std::to_string(fi + 1) + " · eingebettet")
+                            : ("Frame " + std::to_string(fi + 1) + " · " +
+                               (frame.texture.empty() ? std::string("(leer)") : frame.texture));
+                        ImGui::TextDisabled("%s", frameLabel.c_str());
+                    }
+                    if (animation.frames.size() > framePreviewCount)
+                        ImGui::TextDisabled("… %zu weitere Frames",
+                                            animation.frames.size() - framePreviewCount);
+                    ImGui::Unindent();
+                    ImGui::PopID();
+                }
+            }
+
             if (part.skinned)
                 ImGui::TextDisabled("Skinning: %u Bones · max. %u Einflüsse",
                                     part.skinBoneCount, part.maxSkinInfluences);
