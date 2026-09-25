@@ -2879,6 +2879,21 @@ void DrawIconSpawn(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
     for(int i=0;i<4;++i){ const float a=0.785398f+i*1.570796f;
         dl->AddCircleFilled(ImVec2(c.x+std::cos(a)*r*0.72f,c.y+std::sin(a)*r*0.72f),r*0.15f,col); }
 }
+void DrawIconShop(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
+    dl->AddRect(ImVec2(c.x-r*0.9f,c.y-r*0.15f),ImVec2(c.x+r*0.9f,c.y+r*0.8f),col,2.0f,0,1.9f);
+    dl->AddLine(ImVec2(c.x-r,c.y-r*0.15f),ImVec2(c.x-r*0.72f,c.y-r*0.85f),col,1.9f);
+    dl->AddLine(ImVec2(c.x-r*0.72f,c.y-r*0.85f),ImVec2(c.x+r*0.72f,c.y-r*0.85f),col,1.9f);
+    dl->AddLine(ImVec2(c.x+r*0.72f,c.y-r*0.85f),ImVec2(c.x+r,c.y-r*0.15f),col,1.9f);
+    dl->AddLine(ImVec2(c.x-r*0.45f,c.y-r*0.85f),ImVec2(c.x-r*0.45f,c.y-r*0.15f),col,1.4f);
+    dl->AddLine(ImVec2(c.x,c.y-r*0.85f),ImVec2(c.x,c.y-r*0.15f),col,1.4f);
+    dl->AddLine(ImVec2(c.x+r*0.45f,c.y-r*0.85f),ImVec2(c.x+r*0.45f,c.y-r*0.15f),col,1.4f);
+}
+void DrawIconRoute(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
+    const ImVec2 p0(c.x-r*0.85f,c.y+r*0.62f), p1(c.x-r*0.15f,c.y-r*0.2f), p2(c.x+r*0.75f,c.y+r*0.15f);
+    dl->AddLine(p0,p1,col,2.0f); dl->AddLine(p1,p2,col,2.0f);
+    dl->AddCircleFilled(p0,r*0.20f,col); dl->AddCircleFilled(p1,r*0.20f,col); dl->AddCircleFilled(p2,r*0.20f,col);
+    dl->AddTriangleFilled(ImVec2(p2.x+r*0.05f,p2.y-r*0.38f),ImVec2(p2.x+r*0.45f,p2.y),ImVec2(p2.x-r*0.05f,p2.y+r*0.20f),col);
+}
 void DrawIconPortal(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
     dl->AddEllipse(c,ImVec2(r*0.82f,r),col,0.0f,28,3.0f);
     dl->AddEllipse(c,ImVec2(r*0.42f,r*0.58f),col,0.0f,24,2.0f);
@@ -2942,6 +2957,18 @@ void DrawIconGear(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
 }
 
 using IconDrawFn = void (*)(ImDrawList*, ImVec2, float, ImU32);
+
+void DrawInlineIcon(const char* id, IconDrawFn icon, ImU32 color,
+                    const char* tooltip = nullptr, ImVec2 size = ImVec2(20.0f,20.0f)) {
+    ImGui::PushID(id);
+    const ImVec2 p = ImGui::GetCursorScreenPos();
+    ImGui::InvisibleButton("##inlineIcon", size);
+    if (icon) icon(ImGui::GetWindowDrawList(),
+                   ImVec2(p.x + size.x * 0.5f, p.y + size.y * 0.5f),
+                   6.5f, color);
+    if (tooltip && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tooltip);
+    ImGui::PopID();
+}
 
 bool DrawTinyIconButton(const char* id, IconDrawFn icon, bool active, const char* tooltip,
                         ImVec2 size = ImVec2(22.0f,22.0f)) {
@@ -11214,12 +11241,35 @@ void DrawSceneOutlinerPanel(EditorState& state) {
         for (std::size_t idx : indices) {
             auto& rec = table->records[idx];
             if (rec.values.size() < 8) continue;
-            const std::string label = rec.values[0] + "  ·  " + rec.values[6];
+            const std::string role = rec.values[6];
+            const std::string label = rec.values[0] + "  ·  " + role;
             if (!needle.empty() && LowerAscii(label).find(needle) == std::string::npos) continue;
-            if (UI::Selectable((label + "##npcScene" + std::to_string(idx)).c_str(),
-                               state.selectedNpcRecordIdx == static_cast<int>(idx))) {
+
+            IconDrawFn icon = DrawIconPerson;
+            ImU32 iconColor = IM_COL32(120,200,255,240);
+            if (role == "QuestNpc") { icon = DrawIconBook; iconColor = IM_COL32(255,205,90,245); }
+            else if (role == "Merchant" || role == "StoreManager") { icon = DrawIconShop; iconColor = IM_COL32(100,225,160,245); }
+            else if (role == "Guard") { icon = DrawIconLock; iconColor = IM_COL32(255,150,90,245); }
+            else if (role == "Gate") { icon = DrawIconPortal; iconColor = IM_COL32(185,125,255,245); }
+            else if (role == "NPCMenu") { icon = DrawIconTable; iconColor = IM_COL32(125,190,255,245); }
+
+            ImGui::PushID(static_cast<int>(idx));
+            DrawInlineIcon("role", icon, iconColor, role.empty() ? "NPC" : role.c_str());
+            ImGui::SameLine(0,4);
+            const bool selected = state.selectedNpcRecordIdx == static_cast<int>(idx);
+            if (UI::Selectable((label + "##npcScene").c_str(), selected)) {
                 state.selectedNpcRecordIdx = static_cast<int>(idx);
+                state.roamOverlayKey.clear();
             }
+            if (selected) {
+                RefreshRoamOverlayRoutes(state);
+                if (!state.roamOverlayRoutes.empty()) {
+                    ImGui::SameLine();
+                    DrawInlineIcon("route", DrawIconRoute, IM_COL32(90,220,255,245),
+                                   "MobRoam-Route vorhanden");
+                }
+            }
+            ImGui::PopID();
         }
         ImGui::EndChild();
         return;
@@ -11232,18 +11282,40 @@ void DrawSceneOutlinerPanel(EditorState& state) {
             return;
         }
         auto* zones = state.mobRegenTextFile.FindTable("MobRegenGroup");
+        auto* spawns = state.mobRegenTextFile.FindTable("MobRegen");
         if (!zones) { ImGui::TextDisabled("MobRegenGroup-Tabelle fehlt."); return; }
+        std::unordered_map<std::string,int> groupCounts;
+        if (spawns) {
+            for (const auto& rec : spawns->records)
+                if (!rec.values.empty()) ++groupCounts[rec.values[0]];
+        }
         ImGui::TextDisabled("%zu Spawn-Zonen", zones->records.size());
         ImGui::BeginChild("##sceneMobZoneList", ImVec2(0,0), true);
         for (std::size_t i = 0; i < zones->records.size(); ++i) {
             auto& rec = zones->records[i];
             if (rec.values.empty()) continue;
-            const std::string label = rec.values[0];
+            const int groups = groupCounts[rec.values[0]];
+            const std::string label = rec.values[0] + "  ·  " + std::to_string(groups) +
+                                      (groups == 1 ? " Gruppe" : " Gruppen");
             if (!needle.empty() && LowerAscii(label).find(needle) == std::string::npos) continue;
-            if (UI::Selectable((label + "##mobScene" + std::to_string(i)).c_str(),
-                               state.selectedMobZoneIdx == static_cast<int>(i))) {
+
+            ImGui::PushID(static_cast<int>(i));
+            DrawInlineIcon("spawn", DrawIconSpawn, IM_COL32(95,195,255,245), "Mob-Spawn-Zone");
+            ImGui::SameLine(0,4);
+            const bool selected = state.selectedMobZoneIdx == static_cast<int>(i);
+            if (UI::Selectable((label + "##mobScene").c_str(), selected)) {
                 state.selectedMobZoneIdx = static_cast<int>(i);
+                state.roamOverlayKey.clear();
             }
+            if (selected) {
+                RefreshRoamOverlayRoutes(state);
+                if (!state.roamOverlayRoutes.empty()) {
+                    ImGui::SameLine();
+                    DrawInlineIcon("route", DrawIconRoute, IM_COL32(90,220,255,245),
+                                   "Mindestens eine MobRoam-Route vorhanden");
+                }
+            }
+            ImGui::PopID();
         }
         ImGui::EndChild();
         return;
@@ -11256,13 +11328,20 @@ void DrawSceneOutlinerPanel(EditorState& state) {
         ImGui::BeginChild("##scenePortalList", ImVec2(0,0), true);
         for (std::size_t i = 0; i < markers.size(); ++i) {
             const auto& m = markers[i];
-            std::string label = m.kind == kPortalKindTown ? m.label : ("Schriftrolle · " + m.label);
+            const bool town = m.kind == kPortalKindTown;
+            std::string label = town ? ("TownPortal · " + m.label) : ("Recall · " + m.label);
             if (!needle.empty() && LowerAscii(label).find(needle) == std::string::npos) continue;
             const bool selected = m.kind == state.selectedPortalKind && static_cast<int>(m.idx) == state.selectedPortalIdx;
-            if (UI::Selectable((label + "##portalScene" + std::to_string(i)).c_str(), selected)) {
+            ImGui::PushID(static_cast<int>(i));
+            DrawInlineIcon("portal", DrawIconPortal,
+                           town ? IM_COL32(95,195,255,245) : IM_COL32(190,125,255,245),
+                           town ? "TownPortal" : "RecallCoord / Schriftrolle");
+            ImGui::SameLine(0,4);
+            if (UI::Selectable((label + "##portalScene").c_str(), selected)) {
                 state.selectedPortalKind = m.kind;
                 state.selectedPortalIdx = static_cast<int>(m.idx);
             }
+            ImGui::PopID();
         }
         ImGui::EndChild();
         return;
