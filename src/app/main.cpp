@@ -13283,7 +13283,7 @@ const char* NifTextureSlotLabel(std::size_t slot) {
         "Base", "Dark", "Detail", "Gloss", "Glow",
         "Bump", "Decal 0", "Decal 1", "Decal 2", "Decal 3"
     };
-    return slot < std::size(kLabels) ? kLabels[slot] : "Textur";
+    return slot < std::size(kLabels) ? kLabels[slot] : L("Textur","Texture");
 }
 
 const char* NifTextureTransformOperationLabel(std::uint32_t operation) {
@@ -13291,8 +13291,8 @@ const char* NifTextureTransformOperationLabel(std::uint32_t operation) {
         case 0: return "U-Offset";
         case 1: return "V-Offset";
         case 2: return "Rotation";
-        case 3: return "U-Skalierung";
-        case 4: return "V-Skalierung";
+        case 3: return L("U-Skalierung","U scale");
+        case 4: return L("V-Skalierung","V scale");
         default: return "Transform";
     }
 }
@@ -13300,19 +13300,19 @@ const char* NifTextureTransformOperationLabel(std::uint32_t operation) {
 const char* NifTextureInterpolationLabel(std::uint32_t interpolation) {
     switch (interpolation) {
         case 1: return "Linear";
-        case 2: return "Quadratisch";
+        case 2: return L("Quadratisch","Quadratic");
         case 3: return "TBC";
-        case 5: return "Konstant";
-        default: return "Unbekannt";
+        case 5: return L("Konstant","Constant");
+        default: return L("Unbekannt","Unknown");
     }
 }
 
 const char* NifTextureExtrapolationLabel(std::uint8_t extrapolation) {
     switch (extrapolation) {
-        case 0: return "Zyklus";
+        case 0: return L("Zyklus","Cycle");
         case 1: return "Ping-Pong";
         case 2: return "Clamp";
-        default: return "Unbekannt";
+        default: return L("Unbekannt","Unknown");
     }
 }
 
@@ -13415,9 +13415,9 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
     ImGui::Separator();
     ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "NIF / MATERIAL");
     ImGui::SameLine();
-    ImGui::TextDisabled("nur lesen");
+    ImGui::TextDisabled("%s",L("nur lesen","read-only"));
     ImGui::SameLine();
-    if (UI::SmallButton("Neu laden##nifInspector")) {
+    if (UI::SmallButton(L("Neu laden##nifInspector","Reload##nifInspector"))) {
         std::filesystem::path reloadPath = root / state.nifInspectorAsset;
         const bool interfaceContext =
             !state.interfaceRoot.empty() &&
@@ -13435,11 +13435,11 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
 
     ImGui::TextWrapped("%s", state.nifInspectorAsset.c_str());
     if (!state.nifInspectorError.empty()) {
-        ImGui::TextWrapped("NIF konnte nicht gelesen werden: %s", state.nifInspectorError.c_str());
+        ImGui::TextWrapped(L("NIF konnte nicht gelesen werden: %s","NIF could not be read: %s"), state.nifInspectorError.c_str());
         return;
     }
     if (!state.nifInspectorModel) {
-        ImGui::TextDisabled("Kein NIF ausgewählt.");
+        ImGui::TextDisabled("%s",L("Kein NIF ausgewählt.","No NIF selected."));
         return;
     }
 
@@ -13483,20 +13483,20 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
         }
     }
 
-    ImGui::Text("Root: %s", model.rootName.empty() ? "(unbenannt)" : model.rootName.c_str());
+    ImGui::Text("Root: %s", model.rootName.empty() ? L("(unbenannt)","(unnamed)") : model.rootName.c_str());
     ImGui::TextDisabled("%zu Mesh-Teile · %zu Dreiecke · %zu Textur-Slots",
                         model.parts.size(), triangleCount, textureCount);
-    ImGui::TextDisabled("%zu extern · %zu eingebettet · %zu Textur-Animationen",
+    ImGui::TextDisabled(L("%zu extern · %zu eingebettet · %zu Textur-Animationen","%zu external · %zu embedded · %zu texture animations"),
                         externalTextureCount, embeddedTextureCount, animatedTextureCount);
     if (flipbookFrameCount > 0)
-        ImGui::TextDisabled("%zu Flipbook-Frames · %zu nicht auflösbar",
+        ImGui::TextDisabled(L("%zu Flipbook-Frames · %zu nicht auflösbar","%zu flipbook frames · %zu unresolved"),
                             flipbookFrameCount, missingFlipbookFrameCount);
     const std::size_t totalMissingTextureRefs = missingTextureCount + missingFlipbookFrameCount;
     if (totalMissingTextureRefs > 0) {
-        ImGui::TextColored(ImVec4(1.0f,0.48f,0.34f,1.0f), "%zu Textur-Referenz(en) nicht gefunden",
+        ImGui::TextColored(ImVec4(1.0f,0.48f,0.34f,1.0f), L("%zu Textur-Referenz(en) nicht gefunden","%zu texture reference(s) not found"),
                            totalMissingTextureRefs);
         ImGui::SameLine();
-        if (UI::SmallButton("Fehlende kopieren##nifInspector")) {
+        if (UI::SmallButton(L("Fehlende kopieren##nifInspector","Copy missing##nifInspector"))) {
             std::string report;
             for (const auto& ref : missingTextureRefs) {
                 if (!report.empty()) report += "\n";
@@ -13504,24 +13504,24 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
             }
             ImGui::SetClipboardText(report.c_str());
             state.statusMessage = std::to_string(missingTextureRefs.size()) +
-                                  " fehlende NIF-Texturpfade kopiert.";
+                                  L(" fehlende NIF-Texturpfade kopiert."," missing NIF texture paths copied.");
         }
     } else if (externalTextureCount > 0 || flipbookFrameCount > 0) {
-        ImGui::TextColored(ImVec4(0.42f,0.86f,0.62f,1.0f), "Alle externen Textur-Referenzen gefunden");
+        ImGui::TextColored(ImVec4(0.42f,0.86f,0.62f,1.0f), "%s",L("Alle externen Textur-Referenzen gefunden","All external texture references found"));
     }
-    ImGui::TextDisabled("%zu Nodes · %u dekodierte eingebettete Texturen",
+    ImGui::TextDisabled(L("%zu Nodes · %u dekodierte eingebettete Texturen","%zu nodes · %u decoded embedded textures"),
                         model.nodes.size(), model.decodedEmbeddedTextures);
     if (model.recovered || model.partial) {
         ImGui::TextDisabled("%s%s",
-                            model.recovered ? "Kompatibilitäts-Recovery aktiv" : "",
-                            model.partial ? (model.recovered ? " · partiell dekodiert" : "Partiell dekodiert") : "");
+                            model.recovered ? L("Kompatibilitäts-Recovery aktiv","Compatibility recovery active") : "",
+                            model.partial ? (model.recovered ? L(" · partiell dekodiert"," · partially decoded") : L("Partiell dekodiert","Partially decoded")) : "");
     }
 
-    UI::InputTextWithHint("##nifInspectorFilter", "Mesh oder Textur filtern...",
+    UI::InputTextWithHint("##nifInspectorFilter", L("Mesh oder Textur filtern...","Filter mesh or texture..."),
                           state.nifInspectorFilter, sizeof(state.nifInspectorFilter));
-    UI::Checkbox("Nur fehlende Texturen##nifInspector", &state.nifInspectorMissingOnly);
+    UI::Checkbox(L("Nur fehlende Texturen##nifInspector","Missing textures only##nifInspector"), &state.nifInspectorMissingOnly);
     ImGui::SameLine();
-    if (UI::SmallButton("Filter zurücksetzen##nifInspector")) {
+    if (UI::SmallButton(L("Filter zurücksetzen##nifInspector","Reset filter##nifInspector"))) {
         state.nifInspectorFilter[0] = '\0';
         state.nifInspectorMissingOnly = false;
     }
@@ -13616,18 +13616,18 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                 }
                 ImGui::BeginGroup();
                 if (slot.embeddedTexture) {
-                    ImGui::Text("Eingebettet · %u × %u",
+                    ImGui::Text(L("Eingebettet · %u × %u","Embedded · %u × %u"),
                                 slot.embeddedTexture->width, slot.embeddedTexture->height);
                 } else {
-                    ImGui::TextWrapped("%s", slot.texture.empty() ? "(keine externe Datei)" : slot.texture.c_str());
+                    ImGui::TextWrapped("%s", slot.texture.empty() ? L("(keine externe Datei)","(no external file)") : slot.texture.c_str());
                     if (!slot.texture.empty()) {
                         if (resolvedTexture) {
-                            ImGui::TextDisabled("Datei: %s", resolvedTexture->filename().string().c_str());
+                            ImGui::TextDisabled(L("Datei: %s","File: %s"), resolvedTexture->filename().string().c_str());
                             if (ImGui::IsItemHovered())
                                 ImGui::SetTooltip("%s", resolvedTexture->string().c_str());
                         } else {
                             ImGui::TextColored(ImVec4(1.0f,0.48f,0.34f,1.0f),
-                                               "Texturdatei nicht gefunden");
+                                               L("Texturdatei nicht gefunden","Texture file not found"));
                         }
                     }
                 }
@@ -13641,10 +13641,10 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                 ImGui::EndGroup();
                 ImGui::PopID();
             }
-            if (!anyTexture) ImGui::TextDisabled("Keine NiTexturingProperty-Slots.");
+            if (!anyTexture) ImGui::TextDisabled("%s",L("Keine NiTexturingProperty-Slots.","No NiTexturingProperty slots."));
 
             if (!part.textureTransformAnimations.empty() || !part.textureFlipAnimations.empty()) {
-                ImGui::SeparatorText("Textur-Animationen");
+                ImGui::SeparatorText(L("Textur-Animationen","Texture animations"));
                 for (std::size_t ai = 0; ai < part.textureTransformAnimations.size(); ++ai) {
                     if (state.nifInspectorMissingOnly) continue;
                     const auto& animation = part.textureTransformAnimations[ai];
@@ -13660,7 +13660,7 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                                         NifTextureExtrapolationLabel(track.extrapolation));
                     ImGui::TextDisabled("Frequenz %.3f · Phase %.3f%s",
                                         track.frequency, track.phase,
-                                        track.active ? " · aktiv" : "");
+                                        track.active ? L(" · aktiv"," · active") : "");
                     ImGui::Unindent();
                     ImGui::PopID();
                 }
@@ -13683,7 +13683,7 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                         continue;
                     }
 
-                    ImGui::BulletText("%s · Flipbook · %zu Frames",
+                    ImGui::BulletText(L("%s · Flipbook · %zu Frames","%s · Flipbook · %zu frames"),
                                       NifTextureSlotLabel(animation.slot), animation.frames.size());
                     ImGui::Indent();
                     const auto& track = animation.track;
@@ -13691,25 +13691,25 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                                         track.startTime, track.stopTime, track.keys.size(),
                                         NifTextureInterpolationLabel(track.interpolation),
                                         NifTextureExtrapolationLabel(track.extrapolation));
-                    ImGui::TextDisabled("%zu eingebettet · %zu extern%s",
+                    ImGui::TextDisabled(L("%zu eingebettet · %zu extern%s","%zu embedded · %zu external%s"),
                                         embeddedFrames,
                                         animation.frames.size() - embeddedFrames,
-                                        missingFrames ? " · fehlende Dateien vorhanden" : "");
+                                        missingFrames ? L(" · fehlende Dateien vorhanden"," · missing files present") : "");
                     if (missingFrames)
                         ImGui::TextColored(ImVec4(1.0f,0.48f,0.34f,1.0f),
-                                           "%zu Flipbook-Frame(s) nicht auflösbar", missingFrames);
+                                           L("%zu Flipbook-Frame(s) nicht auflösbar","%zu flipbook frame(s) unresolved"), missingFrames);
 
                     const std::size_t framePreviewCount = std::min<std::size_t>(animation.frames.size(), 6);
                     for (std::size_t fi = 0; fi < framePreviewCount; ++fi) {
                         const auto& frame = animation.frames[fi];
                         const std::string frameLabel = frame.embeddedTexture
-                            ? ("Frame " + std::to_string(fi + 1) + " · eingebettet")
+                            ? (std::string("Frame ") + std::to_string(fi + 1) + L(" · eingebettet"," · embedded"))
                             : ("Frame " + std::to_string(fi + 1) + " · " +
-                               (frame.texture.empty() ? std::string("(leer)") : frame.texture));
+                               (frame.texture.empty() ? std::string(L("(leer)","(empty)")) : frame.texture));
                         ImGui::TextDisabled("%s", frameLabel.c_str());
                     }
                     if (animation.frames.size() > framePreviewCount)
-                        ImGui::TextDisabled("… %zu weitere Frames",
+                        ImGui::TextDisabled(L("… %zu weitere Frames","… %zu more frames"),
                                             animation.frames.size() - framePreviewCount);
                     ImGui::Unindent();
                     ImGui::PopID();
@@ -13717,7 +13717,7 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
             }
 
             if (part.skinned)
-                ImGui::TextDisabled("Skinning: %u Bones · max. %u Einflüsse",
+                ImGui::TextDisabled(L("Skinning: %u Bones · max. %u Einflüsse","Skinning: %u bones · max. %u influences"),
                                     part.skinBoneCount, part.maxSkinInfluences);
             if (part.billboard) ImGui::TextDisabled("Billboard-Modus: %u", part.billboardMode);
             if (part.lodControlled) ImGui::TextDisabled("LOD: %.1f – %.1f", part.lodNear, part.lodFar);
@@ -13726,8 +13726,8 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
     }
     if (visiblePartCount == 0)
         ImGui::TextDisabled(state.nifInspectorMissingOnly
-                                ? "Keine Mesh-Teile mit fehlenden Texturen."
-                                : "Keine passenden Mesh-Teile.");
+                                ? L("Keine Mesh-Teile mit fehlenden Texturen.","No mesh parts with missing textures.")
+                                : L("Keine passenden Mesh-Teile.","No matching mesh parts."));
     ImGui::EndChild();
 }
 
@@ -14748,7 +14748,7 @@ void DrawInterfaceWorkspace(EditorState& state) {
             ImGui::TextDisabled("%s",L("Bild konnte nicht dekodiert werden.","Image could not be decoded."));
         }
     } else {
-        ImGui::TextDisabled("Für diesen Dateityp ist noch keine Vorschau verfügbar.");
+        ImGui::TextDisabled("%s",L("Für diesen Dateityp ist noch keine Vorschau verfügbar.","No preview is available for this file type yet."));
     }
     ImGui::EndChild();
 }
@@ -14777,16 +14777,16 @@ void DrawWorkspaceAssetBrowser(EditorState& state) {
 
     ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "ASSET BROWSER");
     ImGui::SameLine();
-    ImGui::TextDisabled(objectMode ? "NIF Modelle" : textureMode ? "Texturen" : "kontextsensitiv");
+    ImGui::TextDisabled(objectMode ? L("NIF Modelle","NIF models") : textureMode ? L("Texturen","Textures") : L("kontextsensitiv","context-sensitive"));
     ImGui::Separator();
 
     if (!objectMode && !textureMode) {
-        ImGui::TextWrapped("Der Asset Browser wird bei 'Objekte' und 'Textur' aktiv. "
-                           "Weitere Asset-Typen können später hier ergänzt werden.");
+        ImGui::TextWrapped("%s",L("Der Asset Browser wird bei 'Objekte' und 'Textur' aktiv. Weitere Asset-Typen können später hier ergänzt werden.",
+                                "The Asset Browser becomes active for 'Objects' and 'Texture'. Additional asset types can be added here later."));
         return;
     }
 
-    UI::InputTextWithHint("##workspaceAssetFilter", "Assets filtern...",
+    UI::InputTextWithHint("##workspaceAssetFilter", L("Assets filtern...","Filter assets..."),
                           state.workspaceAssetFilter, sizeof(state.workspaceAssetFilter));
 
     const auto& files = objectMode ? state.availableNifFiles : state.availableTextureFiles;
@@ -14835,21 +14835,21 @@ void DrawWorkspaceAssetBrowser(EditorState& state) {
                     const std::string legacy = ToLegacyResmapModelPath(rel);
                     std::snprintf(state.newObjectModelPath, sizeof(state.newObjectModelPath), "%s", legacy.c_str());
                     LoadNifAssetInspector(state, root / rel, rel);
-                    state.statusMessage = "Objekt-Asset gewählt: " + legacy;
+                    state.statusMessage = L("Objekt-Asset gewählt: ","Object asset selected: ") + legacy;
                 } else {
                     std::snprintf(state.newLayerDiffuse, sizeof(state.newLayerDiffuse), "%s", rel.c_str());
-                    state.statusMessage = "Textur-Asset gewählt: " + rel;
+                    state.statusMessage = L("Textur-Asset gewählt: ","Texture asset selected: ") + rel;
                 }
             }
             if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
                 if (objectMode) {
                     const std::string legacy=ToLegacyResmapModelPath(rel);
                     ImGui::SetDragDropPayload("NEXTGEN_NIF_ASSET",legacy.c_str(),legacy.size()+1);
-                    ImGui::Text("NIF platzieren");
+                    ImGui::Text("%s",L("NIF platzieren","Place NIF"));
                     ImGui::TextDisabled("%s",legacy.c_str());
                 } else {
                     ImGui::SetDragDropPayload("NEXTGEN_DDS_ASSET",rel.c_str(),rel.size()+1);
-                    ImGui::Text("Textur zuweisen");
+                    ImGui::Text("%s",L("Textur zuweisen","Assign texture"));
                     ImGui::TextDisabled("%s",rel.c_str());
                 }
                 ImGui::EndDragDropSource();
