@@ -3374,13 +3374,26 @@ bool SceneQuickFilterButton(const char* id,const char* label,bool active) {
 }
 
 void DrawInlineIcon(const char* id, IconDrawFn icon, ImU32 color,
-                    const char* tooltip = nullptr, ImVec2 size = ImVec2(20.0f,20.0f)) {
+                    const char* tooltip = nullptr, ImVec2 size = ImVec2(20.0f,20.0f),
+                    const char* semanticIcon = nullptr) {
     ImGui::PushID(id);
     const ImVec2 p = ImGui::GetCursorScreenPos();
     ImGui::InvisibleButton("##inlineIcon", size);
-    if (icon) icon(ImGui::GetWindowDrawList(),
-                   ImVec2(p.x + size.x * 0.5f, p.y + size.y * 0.5f),
-                   6.5f, color);
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    bool drewApprovedIcon = false;
+    if (semanticIcon && *semanticIcon) {
+        if (const std::uint32_t tex = gUiIcons.Texture(semanticIcon, 16); tex != 0) {
+            const float iconSize = std::min(16.0f, std::min(size.x - 2.0f, size.y - 2.0f));
+            const ImVec2 center(p.x + size.x * 0.5f, p.y + size.y * 0.5f);
+            const ImVec2 half(iconSize * 0.5f, iconSize * 0.5f);
+            dl->AddImage(static_cast<ImTextureID>(static_cast<intptr_t>(tex)),
+                         ImVec2(center.x - half.x, center.y - half.y),
+                         ImVec2(center.x + half.x, center.y + half.y));
+            drewApprovedIcon = true;
+        }
+    }
+    if (!drewApprovedIcon && icon)
+        icon(dl, ImVec2(p.x + size.x * 0.5f, p.y + size.y * 0.5f), 6.5f, color);
     if (tooltip && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tooltip);
     ImGui::PopID();
 }
@@ -3553,8 +3566,16 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
     topDl->AddRectFilled(ImVec2(brandPos.x, brandPos.y), ImVec2(brandPos.x + 34.0f, brandPos.y + 30.0f),
                          IM_COL32(5,37,67,255), 7.0f);
     topDl->AddRect(ImVec2(brandPos.x, brandPos.y), ImVec2(brandPos.x + 34.0f, brandPos.y + 30.0f),
-                   IM_COL32(32,221,242,220), 7.0f, 0, 1.2f);
-    topDl->AddText(ImVec2(brandPos.x + 6.0f, brandPos.y + 7.0f), IM_COL32(222,250,255,255), "NG");
+                   IM_COL32(32,221,242,160), 7.0f, 0, 1.0f);
+    if (const std::uint32_t brandTex = gUiIcons.Texture("brand.ng", 32); brandTex != 0) {
+        topDl->AddImage(static_cast<ImTextureID>(static_cast<intptr_t>(brandTex)),
+                        ImVec2(brandPos.x + 2.0f, brandPos.y),
+                        ImVec2(brandPos.x + 32.0f, brandPos.y + 30.0f));
+    } else {
+        // Functional fallback for development builds without copied assets.
+        topDl->AddText(ImVec2(brandPos.x + 6.0f, brandPos.y + 7.0f),
+                       IM_COL32(222,250,255,255), "NG");
+    }
 
     ImGui::SameLine(0.0f, 9.0f);
     ImGui::AlignTextToFramePadding();
@@ -15844,6 +15865,9 @@ void DrawMapEditorWorkspace(EditorState& state) {
 
     ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
     ImGui::Begin("3D-Ansicht##view3d");
+    DrawInlineIcon("view3dHeader", DrawIconCube, IM_COL32(100,205,255,245), nullptr,
+                   ImVec2(18.0f,18.0f), "view.3d");
+    ImGui::SameLine(0.0f, 5.0f);
     ImGui::TextColored(UiTheme::AccentCyan, "%s",L("3D ANSICHT","3D VIEW"));
     ImGui::SameLine(); ImGui::TextDisabled("%s", modeName());
     ImGui::Separator();
@@ -15859,6 +15883,9 @@ void DrawMapEditorWorkspace(EditorState& state) {
 
     ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
     ImGui::Begin("2D-Ansicht##view2d");
+    DrawInlineIcon("view2dHeader", DrawIconGrid, IM_COL32(100,205,255,245), nullptr,
+                   ImVec2(18.0f,18.0f), "view.2d");
+    ImGui::SameLine(0.0f, 5.0f);
     ImGui::TextColored(UiTheme::AccentCyan, "%s",L("2D DRAUFSICHT","2D TOP VIEW"));
     ImGui::SameLine(); ImGui::TextDisabled("%s",L("Nord oben","North up"));
     ImGui::Separator();
