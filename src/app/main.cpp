@@ -8383,13 +8383,13 @@ void DrawToolsContent(EditorState& state) {
         ImGui::Separator();
         ImGui::BeginDisabled(!state.undo.CanUndo());
         if (UI::Button("Rückgängig (Strg+Z)")) {
-            if (state.undo.Undo(state.heightmap)) state.meshDirty = true;
+            if (state.undo.Undo(state.heightmap)) { state.meshDirty = true; state.mapDirty = true; }
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
         ImGui::BeginDisabled(!state.undo.CanRedo());
         if (UI::Button("Wiederholen (Strg+Y)")) {
-            if (state.undo.Redo(state.heightmap)) state.meshDirty = true;
+            if (state.undo.Redo(state.heightmap)) { state.meshDirty = true; state.mapDirty = true; }
         }
         ImGui::EndDisabled();
 
@@ -8490,13 +8490,13 @@ void DrawToolsContent(EditorState& state) {
         ImGui::Separator();
         ImGui::BeginDisabled(!state.walkUndo.CanUndo());
         if (UI::Button("Rückgängig (Walk)")) {
-            if (state.walkUndo.Undo(state.walkGrid)) state.walkPreviewDirty = true;
+            if (state.walkUndo.Undo(state.walkGrid)) { state.walkPreviewDirty = true; state.mapDirty = true; }
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
         ImGui::BeginDisabled(!state.walkUndo.CanRedo());
         if (UI::Button("Wiederholen (Walk)")) {
-            if (state.walkUndo.Redo(state.walkGrid)) state.walkPreviewDirty = true;
+            if (state.walkUndo.Redo(state.walkGrid)) { state.walkPreviewDirty = true; state.mapDirty = true; }
         }
         ImGui::EndDisabled();
     } else if (state.editMode == EditMode::ObjectPlacement) {
@@ -9116,6 +9116,7 @@ static void StampObjectFootprints(EditorState& state, bool blocked) {
     if (!patch.entries.empty()) {
         state.walkUndo.Push(std::move(patch));
         state.walkPreviewDirty = true;
+        state.mapDirty = true;
     }
     state.statusMessage = std::to_string(used) + " Objekt-Grundflächen " + (blocked ? "gesperrt" : "freigegeben") + " (Rückgängig möglich).";
 }
@@ -9575,6 +9576,7 @@ void DrawEditor2DContent(EditorState& state) {
                 if(!patch.entries.empty()) {
                     state.walkUndo.Push(std::move(patch));
                     state.walkPreviewDirty=true;
+                    state.mapDirty=true;
                 }
                 state.walkRectActive=false;
                 state.statusMessage=state.walkBlockMode?"Walk-Rechteck gesperrt.":"Walk-Rechteck freigegeben.";
@@ -9740,6 +9742,7 @@ void DrawEditor2DContent(EditorState& state) {
                 if (!patch.entries.empty()) {
                     state.undo.Push(std::move(patch));
                     state.meshDirty = true;
+                    state.mapDirty = true;
                 }
             } else if (texMode) {
                 // Eigene Zellgröße des Textur-Gitters (unabhängige Auflösung, siehe
@@ -9777,6 +9780,7 @@ void DrawEditor2DContent(EditorState& state) {
                 if (!patch.entries.empty()) {
                     state.textureUndo.Push(std::move(patch));
                     state.layerPreviewDirty = true;
+                    state.mapDirty = true;
                     state.renderer.UpdateBlendTextures(state.textureStack);
                 }
             } else if (walkMode) {
@@ -9787,6 +9791,7 @@ void DrawEditor2DContent(EditorState& state) {
                     state.walkGrid, state.walkSettings.radius, worldX, worldZ, state.walkBlockMode, changed);
                 if (!patch.entries.empty()) {
                     state.walkUndo.Push(std::move(patch));
+                    state.mapDirty = true;
                     if (!state.walkPreviewDirty) UpdateWalkPreviewRect(state, changed[0], changed[1], changed[2], changed[3]);
                 }
             }
@@ -10410,16 +10415,17 @@ void DrawWorkspaceTabBar(EditorState& state) {
     auto doUndo = [&]() {
         switch (state.editMode) {
             case EditMode::Heightmap:
-                if (state.undo.Undo(state.heightmap)) state.meshDirty = true;
+                if (state.undo.Undo(state.heightmap)) { state.meshDirty = true; state.mapDirty = true; }
                 break;
             case EditMode::TexturePaint:
                 if (state.textureUndo.Undo(state.textureStack)) {
+                    state.mapDirty = true;
                     state.layerPreviewDirty = true;
                     state.renderer.UpdateBlendTextures(state.textureStack);
                 }
                 break;
             case EditMode::BlockWalk:
-                if (state.walkUndo.Undo(state.walkGrid)) state.walkPreviewDirty = true;
+                if (state.walkUndo.Undo(state.walkGrid)) { state.walkPreviewDirty = true; state.mapDirty = true; }
                 break;
             default: break;
         }
@@ -10427,16 +10433,17 @@ void DrawWorkspaceTabBar(EditorState& state) {
     auto doRedo = [&]() {
         switch (state.editMode) {
             case EditMode::Heightmap:
-                if (state.undo.Redo(state.heightmap)) state.meshDirty = true;
+                if (state.undo.Redo(state.heightmap)) { state.meshDirty = true; state.mapDirty = true; }
                 break;
             case EditMode::TexturePaint:
                 if (state.textureUndo.Redo(state.textureStack)) {
+                    state.mapDirty = true;
                     state.layerPreviewDirty = true;
                     state.renderer.UpdateBlendTextures(state.textureStack);
                 }
                 break;
             case EditMode::BlockWalk:
-                if (state.walkUndo.Redo(state.walkGrid)) state.walkPreviewDirty = true;
+                if (state.walkUndo.Redo(state.walkGrid)) { state.walkPreviewDirty = true; state.mapDirty = true; }
                 break;
             default: break;
         }
@@ -10856,7 +10863,10 @@ void DrawLayerManagerPanel(EditorState& state) {
                                               ImGuiInputTextFlags_EnterReturnsTrue);
             if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere(-1);
             if (enter || ImGui::IsItemDeactivatedAfterEdit()) {
-                if (state.layerRenameBuffer[0] != '\0') layer.name=state.layerRenameBuffer;
+                if (state.layerRenameBuffer[0] != '\0' && layer.name != state.layerRenameBuffer) {
+                    layer.name=state.layerRenameBuffer;
+                    state.mapDirty=true;
+                }
                 state.layerRenameIndex=-1;
             }
         } else if (UI::Selectable(label.c_str(), selected, ImGuiSelectableFlags_AllowDoubleClick, ImVec2(0,42))) {
@@ -10883,6 +10893,7 @@ void DrawLayerManagerPanel(EditorState& state) {
                 state.renderer.LoadTerrainTextures(state.textureStack,
                     !state.textureAssetRoot.empty()?state.textureAssetRoot:CurrentObjectAssetMapDir(state));
                 state.layerPreviewDirty=true;
+                state.mapDirty=true;
                 state.statusMessage="Layer-Textur ersetzt: "+std::string(rel);
             }
             if (const ImGuiPayload* payload=ImGui::AcceptDragDropPayload("NEXTGEN_LAYER_INDEX")) {
@@ -10897,6 +10908,7 @@ void DrawLayerManagerPanel(EditorState& state) {
                     state.renderer.LoadTerrainTextures(state.textureStack,
                         !state.textureAssetRoot.empty()?state.textureAssetRoot:CurrentObjectAssetMapDir(state));
                     state.layerPreviewDirty=true;
+                    state.mapDirty=true;
                 }
             }
             ImGui::EndDragDropTarget();
@@ -10913,6 +10925,7 @@ void DrawLayerManagerPanel(EditorState& state) {
                 state.renderer.LoadTerrainTextures(state.textureStack,
                     !state.textureAssetRoot.empty()?state.textureAssetRoot:CurrentObjectAssetMapDir(state));
                 state.layerPreviewDirty=true;
+                state.mapDirty=true;
             }
             if (ImGui::MenuItem("Entfernen",nullptr,false,state.textureStack.LayerCount()>1)) {
                 state.textureStack.RemoveLayer(i);
@@ -10922,6 +10935,7 @@ void DrawLayerManagerPanel(EditorState& state) {
                 state.renderer.LoadTerrainTextures(state.textureStack,
                     !state.textureAssetRoot.empty()?state.textureAssetRoot:CurrentObjectAssetMapDir(state));
                 state.layerPreviewDirty=true;
+                state.mapDirty=true;
                 ImGui::EndPopup();
                 ImGui::PopID();
                 break;
@@ -10949,6 +10963,7 @@ void DrawLayerManagerPanel(EditorState& state) {
             state.renderer.LoadTerrainTextures(state.textureStack,
                 !state.textureAssetRoot.empty()?state.textureAssetRoot:CurrentObjectAssetMapDir(state));
             state.layerPreviewDirty=true;
+            state.mapDirty=true;
             state.statusMessage="Neuer Layer aus DDS: "+std::string(rel);
         }
         ImGui::EndDragDropTarget();
@@ -10977,6 +10992,7 @@ void DrawLayerManagerPanel(EditorState& state) {
         state.selectedLayer = static_cast<int>(newIndex);
         state.editMode = EditMode::TexturePaint;
         state.layerPreviewDirty = true;
+        state.mapDirty = true;
     }
     ImGui::EndDisabled();
 
@@ -10991,12 +11007,14 @@ void DrawLayerManagerPanel(EditorState& state) {
         state.renderer.LoadTerrainTextures(state.textureStack,
             !state.textureAssetRoot.empty()?state.textureAssetRoot:CurrentObjectAssetMapDir(state));
         state.layerPreviewDirty=true;
+        state.mapDirty=true;
     }
     if (UI::Button("Ausgewählten Layer entfernen##layerDock", ImVec2(-1,0))) {
         state.textureStack.RemoveLayer(static_cast<std::size_t>(state.selectedLayer));
         if (state.textureStack.LayerCount() == 0) state.selectedLayer = -1;
         else state.selectedLayer = std::min(state.selectedLayer, static_cast<int>(state.textureStack.LayerCount()) - 1);
         state.layerPreviewDirty = true;
+        state.mapDirty = true;
     }
     ImGui::EndDisabled();
 }
