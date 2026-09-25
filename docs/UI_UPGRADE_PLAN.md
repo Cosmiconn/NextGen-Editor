@@ -162,10 +162,10 @@ Pflichtsymbole:
 
 Bereits umgesetzt:
 - modernes Dark/Cyan-Theme;
-- primäre Navigation Karte / Spieldaten / Animationen / Projekt;
+- primäre Navigation Karte / Spieldaten / Animationen / Projekt als aktive Icon+Text-Shell;
 - Project Hub nach realem Funktionsumfang;
 - Quest/Skill direkt auf vorhandene Editoren verdrahtet;
-- Icon-Command-Bar für Map-Werkzeuge;
+- Icon-Command-Bar für Map-Werkzeuge; App-Shell-Dateiaktionen und Project-Hub nutzen ebenfalls die finalen semantischen Paketicons;
 - Navigator / 3D / 2D / Inspector als neues Default-Docking;
 - kontextsensitiver Asset Browser für NIF-Modelle und DDS-Texturen;
 - Statuszeile;
@@ -179,7 +179,7 @@ Zusätzlich in der laufenden zweiten Ausbaustufe umgesetzt:
 - Properties-Inspector dadurch von Listen- und View-Steuerung entlastet;
 - kontextuelles Fokussieren von Objekt- bzw. Layer-Dock beim Werkzeugwechsel;
 - Statusbar mit Auswahlkoordinaten und FPS;
-- Spieldaten-Workspace mit Icon-Toolbar für Single/Multi SHN, XP, Preise, Quest, Portale, NPC/Mob und Skills;
+- Spieldaten-Workspace mit Icon-Toolbar für Single/Multi SHN, XP, Preise, Quest, Portale, getrenntes Custom NPC/Custom Mob, Skills, AI, Interface und Drops;
 - KFM-Katalog in Animation-Liste + Detail/Transitions-Bereich umgebaut.
 - spezialisierte Spieldaten-Editoren (Quest, Portale, Custom NPC/Mob, Skill) nutzen die volle Workspace-Breite statt zusätzlich die generische SHN-Dateileiste einzublenden;
 - Quest und Skill in klarer Liste/Eigenschaften-Struktur nachgezogen; Portal- und Custom-NPC/Mob-Kopfbereiche vereinheitlicht;
