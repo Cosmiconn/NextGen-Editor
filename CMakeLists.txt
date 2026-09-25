@@ -245,10 +245,11 @@ get_property(editor_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
 foreach(test_target IN LISTS editor_targets)
     if(test_target MATCHES "^test_")
         if(MSVC)
-            # Release fügt /DNDEBUG automatisch hinzu. /UNDEBUG ist hier absichtlich nötig,
-            # damit assert() in den Test-Binaries aktiv bleibt; D9025 meldet nur genau diese
-            # beabsichtigte Überschreibung und wird deshalb lokal für Test-Targets ausgeblendet.
-            target_compile_options(${test_target} PRIVATE /UNDEBUG /wd9025)
+            # Release setzt /DNDEBUG global. Ein /UNDEBUG auf derselben MSVC-Kommandozeile
+            # erzeugt D9025. Stattdessen wird nach Verarbeitung der Compiler-Defines ein
+            # kleiner Header erzwungen eingebunden, der NDEBUG vor <cassert> undefiniert.
+            target_compile_options(${test_target} PRIVATE
+                "/FI${CMAKE_CURRENT_SOURCE_DIR}/tests/TestAssertions.hpp")
         else()
             target_compile_options(${test_target} PRIVATE -UNDEBUG)
         endif()
