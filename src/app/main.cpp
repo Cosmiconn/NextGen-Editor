@@ -14085,6 +14085,13 @@ void DrawInterfaceWorkspace(EditorState& state) {
                                        ? ImVec4(0.35f,0.78f,1.0f,1.0f)
                                        : ImVec4(0.55f,0.86f,0.66f,1.0f),
                                    "%s", badge);
+                const bool rowHasOverride = IsRegularFileNoThrow(InterfaceProjectOverridePath(state, rel));
+                if (rowHasOverride) {
+                    ImGui::SameLine(0, 4);
+                    ImGui::TextColored(ImVec4(0.42f,0.86f,0.62f,1.0f), "OVR");
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("%s",L("Projekt-Override aktiv","Project override active"));
+                }
                 ImGui::SameLine(0, 6);
 
                 const bool selected = state.interfaceSelectedAsset == static_cast<int>(assetIndex);
