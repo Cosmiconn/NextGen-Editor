@@ -3624,11 +3624,13 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
     ImGui::EndDisabled();
     ImGui::SameLine();
     const std::string paletteShortcutLabel = ShortcutLabel(state.shortcutPalette);
-    if (UI::SmallButton(paletteShortcutLabel.c_str())) {
+    const std::string paletteTooltip = std::string(L("Befehlspalette öffnen","Open command palette")) +
+                                       " (" + paletteShortcutLabel + ")";
+    if (DrawTinyIconButton("paletteTop", DrawIconSearch, false, paletteTooltip.c_str(),
+                           ImVec2(22.0f,22.0f), "system.command_palette")) {
         state.commandPaletteOpen = true;
         state.commandPaletteSelection = 0;
     }
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Befehlspalette öffnen");
 
     const std::size_t dirtyShn = DirtyShnDocumentCount(state);
     if (state.mapDirty || dirtyShn > 0 || state.questDirty || state.townPortalDirty ||
@@ -10874,15 +10876,15 @@ void DrawToolsContent(EditorState& state) {
         SyncSelectedObjectModelPath(state);
         if (auto* obj = EditableObject(state, state.selectedObject)) {
             ImGui::SeparatorText(L("Transform-Werkzeug","Transform tool"));
-            if (DrawIconButton("gizmoMoveProps","Move",DrawIconMove,state.objectGizmoOperation==0,ImVec2(72,52))) {
+            if (DrawIconButton("gizmoMoveProps","Move",DrawIconMove,state.objectGizmoOperation==0,ImVec2(72,52),true,"transform.move")) {
                 state.objectGizmoOperation=0; state.objectGizmoMatrixValid=false;
             }
             ImGui::SameLine();
-            if (DrawIconButton("gizmoRotateProps","Rotate",DrawIconRotate,state.objectGizmoOperation==1,ImVec2(72,52))) {
+            if (DrawIconButton("gizmoRotateProps","Rotate",DrawIconRotate,state.objectGizmoOperation==1,ImVec2(72,52),true,"transform.rotate")) {
                 state.objectGizmoOperation=1; state.objectGizmoMatrixValid=false;
             }
             ImGui::SameLine();
-            if (DrawIconButton("gizmoScaleProps","Scale",DrawIconScale,state.objectGizmoOperation==2,ImVec2(72,52))) {
+            if (DrawIconButton("gizmoScaleProps","Scale",DrawIconScale,state.objectGizmoOperation==2,ImVec2(72,52),true,"transform.scale")) {
                 state.objectGizmoOperation=2; state.objectGizmoMatrixValid=false;
             }
             ImGui::SameLine();
@@ -11113,7 +11115,7 @@ void DrawToolsContent(EditorState& state) {
                         if (DrawIconButton("npcDialogAction","Dialog",DrawIconDialog,false,ImVec2(86,56)))
                             OpenNpcDialogEditor(state,rec.values[0]);
                         ImGui::SameLine();
-                        if (DrawIconButton("npcLuaAction","Lua / AI",DrawIconCode,false,ImVec2(86,56)))
+                        if (DrawIconButton("npcLuaAction","Lua / AI",DrawIconCode,false,ImVec2(86,56),true,"module.ai"))
                             OpenAiScriptEditor(state,rec.values[0]);
                         ImGui::SameLine();
                         if (DrawIconButton("npcRouteAction","Route",DrawIconRoute,false,ImVec2(86,56)))
@@ -13612,13 +13614,13 @@ void DrawSceneOutlinerPanel(EditorState& state) {
     ImGui::TextDisabled(L("%zu gewählt","%zu selected"), state.selectedObjects.size());
 
     if (!state.selectedObjects.empty()) {
-        if (DrawTinyIconButton("outlinerDuplicate",DrawIconDuplicate,false,L("Duplizieren (Strg+D)","Duplicate (Ctrl+D)")))
+        if (DrawTinyIconButton("outlinerDuplicate",DrawIconDuplicate,false,L("Duplizieren (Strg+D)","Duplicate (Ctrl+D)"),ImVec2(22,22),"edit.duplicate"))
             DuplicateSelectedObjects(state);
         ImGui::SameLine();
         if (DrawTinyIconButton("outlinerFocus",DrawIconCube,false,L("Auswahl fokussieren (F)","Focus selection (F)")))
             FocusSelectedObjects(state);
         ImGui::SameLine();
-        if (DrawTinyIconButton("outlinerDelete",DrawIconDelete,false,L("Auswahl löschen (Entf)","Delete selection (Del)")))
+        if (DrawTinyIconButton("outlinerDelete",DrawIconDelete,false,L("Auswahl löschen (Entf)","Delete selection (Del)"),ImVec2(22,22),"edit.delete"))
             DeleteSelectedObjects(state);
         ImGui::SameLine();
         ImGui::TextDisabled("%s",L("Strg+C/V · F · Ende=Boden","Ctrl+C/V · F · End=Ground"));
@@ -13706,7 +13708,7 @@ void DrawSceneOutlinerPanel(EditorState& state) {
 
                     const bool hidden=IsObjectEditorHidden(state,id);
                     const bool locked=IsObjectEditorLocked(state,id);
-                    if(DrawTinyIconButton("eye",DrawIconEye,!hidden,hidden?L("Einblenden","Show"):L("Ausblenden","Hide"))) {
+                    if(DrawTinyIconButton("eye",DrawIconEye,!hidden,hidden?L("Einblenden","Show"):L("Ausblenden","Hide"),ImVec2(22,22),"state.visibility")) {
                         if(id>=0) {
                             state.objectEditorHidden[static_cast<std::size_t>(id)]=hidden?0:1;
                             state.objectVisKey.clear();
@@ -13719,7 +13721,7 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                         }
                     }
                     ImGui::SameLine(0,2);
-                    if(DrawTinyIconButton("lock",DrawIconLock,locked,locked?L("Entsperren","Unlock"):L("Sperren","Lock"))) {
+                    if(DrawTinyIconButton("lock",DrawIconLock,locked,locked?L("Entsperren","Unlock"):L("Sperren","Lock"),ImVec2(22,22),locked?"state.unlock":"state.lock")) {
                         if(id>=0) state.objectEditorLocked[static_cast<std::size_t>(id)]=locked?0:1;
                         else {
                             const std::string key=ShmdEditorObjectKey(state,id);
