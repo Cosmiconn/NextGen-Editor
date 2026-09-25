@@ -5251,7 +5251,7 @@ void StartNifThumbnailPrecache(EditorState& state, const std::filesystem::path& 
 void AdvanceNifPrecache(EditorState& state, int filesPerFrame);
 
 void DrawMapEditorLauncher(EditorState& state) {
-    DrawTopNav(state, "Karte");
+    DrawTopNav(state, L("Karte","Map"));
 
     ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "KARTEN");
     ImGui::SameLine();
@@ -9602,7 +9602,7 @@ void HandleGlobalShortcuts(EditorState& state) {
                                   (std::string(state.legacySaveStem) + ".ini")).string());
             state.statusMessage = std::string(T("workspace.savedas")) + state.legacySaveDir;
         } else {
-            state.statusMessage = "Fehler: " + result.error();
+            state.statusMessage = L("Fehler: ","Error: ") + result.error();
         }
     }
 
@@ -14929,7 +14929,7 @@ void DrawMapEditorWorkspace(EditorState& state) {
             ImGui::DockBuilderDockWindow("2D-Ansicht##view2d", view2dId);
             ImGui::DockBuilderDockWindow("3D-Ansicht##view3d", view3dId);
             ImGui::DockBuilderFinish(dockspaceId);
-            state.statusMessage=std::string("Workspace-Preset angewendet: ")+MapWorkspacePresetName(state.mapWorkspacePreset);
+            state.statusMessage=std::string(L("Workspace-Preset angewendet: ","Workspace preset applied: "))+MapWorkspacePresetName(state.mapWorkspacePreset);
         }
         state.resetMapDockLayout = false;
     }
@@ -14941,48 +14941,48 @@ void DrawMapEditorWorkspace(EditorState& state) {
     auto modeName = [&]() -> const char* {
         switch (state.editMode) {
             case EditMode::Heightmap: return "Terrain / Heightmap";
-            case EditMode::TexturePaint: return "Textur-Layer";
+            case EditMode::TexturePaint: return L("Textur-Layer","Texture layer");
             case EditMode::BlockWalk: return "Block & Walk";
-            case EditMode::ObjectPlacement: return "Objekte";
+            case EditMode::ObjectPlacement: return L("Objekte","Objects");
             case EditMode::Npcs: return "NPCs";
-            case EditMode::Mobs: return "Mobs / Spawn-Zonen";
-            case EditMode::Portals: return "Portale";
+            case EditMode::Mobs: return L("Mobs / Spawn-Zonen","Mobs / spawn zones");
+            case EditMode::Portals: return L("Portale","Portals");
             case EditMode::NpcAi: return "NPC AI";
             case EditMode::MobAi: return "Mob AI";
         }
-        return "Werkzeug";
+        return L("Werkzeug","Tool");
     };
 
     ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(7, 18, 28, 255));
     ImGui::Begin("Navigator##mapNavigator");
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "KARTE");
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s",L("KARTE","MAP"));
     ImGui::Separator();
-    ImGui::Text("%s", state.legacySaveStem[0] ? state.legacySaveStem : "(keine Karte)");
+    ImGui::Text("%s", state.legacySaveStem[0] ? state.legacySaveStem : L("(keine Karte)","(no map)"));
     if (state.legacySaveDir[0]) ImGui::TextDisabled("%s", state.legacySaveDir);
     ImGui::Dummy(ImVec2(0,4));
-    ImGui::TextDisabled("Größe");
+    ImGui::TextDisabled("%s",L("Größe","Size"));
     ImGui::Text("%u × %u", state.heightmap.Width(), state.heightmap.Height());
-    ImGui::TextDisabled("Textur-Layer");
+    ImGui::TextDisabled("%s",L("Textur-Layer","Texture layers"));
     ImGui::Text("%zu", state.textureStack.LayerCount());
-    ImGui::TextDisabled("Objekte");
+    ImGui::TextDisabled("%s",L("Objekte","Objects"));
     ImGui::Text("%zu", state.placementSet.Count() + state.shmdCategoryRenderSet.Count());
     ImGui::Separator();
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "AKTIVES WERKZEUG");
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s",L("AKTIVES WERKZEUG","ACTIVE TOOL"));
     ImGui::TextWrapped("%s", modeName());
     ImGui::Dummy(ImVec2(0,6));
-    if (UI::Button("Karte wechseln", ImVec2(-1,0))) state.screen = AppScreen::MapEditorLauncher;
-    if (UI::Button("Spieldaten öffnen", ImVec2(-1,0))) state.screen = AppScreen::ShnEditor;
+    if (UI::Button(L("Karte wechseln","Change map"), ImVec2(-1,0))) state.screen = AppScreen::MapEditorLauncher;
+    if (UI::Button(L("Spieldaten öffnen","Open game data"), ImVec2(-1,0))) state.screen = AppScreen::ShnEditor;
     if (UI::Button("Animationen / KFM", ImVec2(-1,0))) state.screen = AppScreen::KfmBrowser;
     ImGui::Separator();
-    ImGui::TextDisabled("Workspace-Preset");
-    const char* workspacePresets[]={"Standard","3D-Fokus","Terrain / 2D","Daten / Szene"};
+    ImGui::TextDisabled("%s",L("Workspace-Preset","Workspace preset"));
+    const char* workspacePresets[]={L("Standard","Standard"),L("3D-Fokus","3D focus"),L("Terrain / 2D","Terrain / 2D"),L("Daten / Szene","Data / Scene")};
     int presetChoice=state.mapWorkspacePreset;
     ImGui::SetNextItemWidth(-1.0f);
     if (UI::Combo("##mapWorkspacePreset", &presetChoice, workspacePresets, 4) &&
         presetChoice != state.mapWorkspacePreset) {
         RequestMapWorkspacePreset(state,presetChoice);
     }
-    if (UI::Button("Preset erneut anwenden", ImVec2(-1,0)))
+    if (UI::Button(L("Preset erneut anwenden","Reapply preset"), ImVec2(-1,0)))
         RequestMapWorkspacePreset(state,state.mapWorkspacePreset);
     ImGui::End();
     ImGui::PopStyleColor();
@@ -15001,10 +15001,10 @@ void DrawMapEditorWorkspace(EditorState& state) {
 
     ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(7, 18, 28, 255));
     ImGui::Begin("Sichtbarkeit##visibilityPanel");
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "SICHTBARKEIT");
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s",L("SICHTBARKEIT","VISIBILITY"));
     ImGui::Separator();
     DrawVisibilityPanel(state);
-    ImGui::SeparatorText("Ansicht");
+    ImGui::SeparatorText(L("Ansicht","View"));
     UI::Checkbox(T("workspace.wireframe"), &state.wireframe);
     if (UI::Button(T("workspace.centercamera"), ImVec2(-1,0))) {
         const float spanX = static_cast<float>(state.heightmap.Width() > 1 ? state.heightmap.Width() - 1 : 1) * state.heightmap.BlockWidth();
@@ -15017,17 +15017,17 @@ void DrawMapEditorWorkspace(EditorState& state) {
 
     ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(8, 20, 31, 255));
     ImGui::Begin("Eigenschaften##fileToolsCol");
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "EIGENSCHAFTEN");
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s",L("EIGENSCHAFTEN","PROPERTIES"));
     ImGui::SameLine(); ImGui::TextDisabled("%s", modeName());
     ImGui::Separator();
     DrawToolsContent(state);
 
-    if (UI::CollapsingHeader("Datei & Fiesta Import/Export")) {
+    if (UI::CollapsingHeader(L("Datei & Fiesta Import/Export","File & Fiesta Import/Export"))) {
         if (UI::Button(T("workspace.saveas"), ImVec2(-1.0f, 0.0f)))
             ImGui::OpenPopup("##saveAsPopup");
         if (ImGui::BeginPopup("##saveAsPopup")) {
-            UI::InputText("Ordner", state.legacySaveDir, sizeof(state.legacySaveDir));
-            UI::InputText("Name", state.legacySaveStem, sizeof(state.legacySaveStem));
+            UI::InputText(L("Ordner","Folder"), state.legacySaveDir, sizeof(state.legacySaveDir));
+            UI::InputText(L("Name","Name"), state.legacySaveStem, sizeof(state.legacySaveStem));
             if (UI::Button(T("workspace.save"))) {
                 auto project = BuildProjectFromState(state);
                 auto result = core::legacy::SaveLegacyMap(project, state.legacySaveDir, state.legacySaveStem);
@@ -15051,7 +15051,7 @@ void DrawMapEditorWorkspace(EditorState& state) {
 
     ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(7, 17, 27, 255));
     ImGui::Begin("3D-Ansicht##view3d");
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "3D ANSICHT");
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s",L("3D ANSICHT","3D VIEW"));
     ImGui::SameLine(); ImGui::TextDisabled("%s", modeName());
     ImGui::Separator();
     DrawPreview3DContent(state);
@@ -15066,15 +15066,15 @@ void DrawMapEditorWorkspace(EditorState& state) {
 
     ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(7, 17, 27, 255));
     ImGui::Begin("2D-Ansicht##view2d");
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "2D DRAUFSICHT");
-    ImGui::SameLine(); ImGui::TextDisabled("Nord oben");
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s",L("2D DRAUFSICHT","2D TOP VIEW"));
+    ImGui::SameLine(); ImGui::TextDisabled("%s",L("Nord oben","North up"));
     ImGui::Separator();
     DrawEditor2DContent(state);
     ImGui::End();
     ImGui::PopStyleColor();
 
     ImGui::Separator();
-    ImGui::TextDisabled("Map: %s%s  |  Werkzeug: %s  |  Auswahl: %zu  |  %.0f FPS",
+    ImGui::TextDisabled(L("Map: %s%s  |  Werkzeug: %s  |  Auswahl: %zu  |  %.0f FPS","Map: %s%s  |  Tool: %s  |  Selection: %zu  |  %.0f FPS"),
                         state.legacySaveStem[0] ? state.legacySaveStem : "-",
                         state.mapDirty ? " *" : "",
                         modeName(), state.selectedObjects.size(), ImGui::GetIO().Framerate);
