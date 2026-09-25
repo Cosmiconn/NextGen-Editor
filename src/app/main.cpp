@@ -10035,7 +10035,7 @@ void DrawToolsContent(EditorState& state) {
             if (UI::SmallButton(label.c_str())) state.paintSettings.radius=preset;
         }
         UI::SliderFloat(L("Stärke##tex","Strength##tex"), &state.paintSettings.strength, 0.01f, 1.0f);
-        ImGui::TextDisabled("Stärke-Presets");
+        ImGui::TextDisabled("%s",L("Stärke-Presets","Strength presets"));
         for (float preset : {0.10f,0.25f,0.50f,1.00f}) {
             ImGui::SameLine();
             char label[32]; std::snprintf(label,sizeof(label),"%.2f##textureStrength",preset);
@@ -10279,7 +10279,7 @@ void DrawToolsContent(EditorState& state) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (UI::Button("Abbrechen")) ImGui::CloseCurrentPopup();
+            if (UI::Button(L("Abbrechen","Cancel"))) ImGui::CloseCurrentPopup();
             ImGui::EndPopup();
         }
     } else if (state.editMode == EditMode::Npcs) {
@@ -10301,7 +10301,7 @@ void DrawToolsContent(EditorState& state) {
             if (!state.npcTextLoaded) {
                 ImGui::TextWrapped(L("World/NPC.txt konnte unter '%s' nicht geladen werden.","World/NPC.txt could not be loaded from '%s'."), state.shineTextRoot.c_str());
             } else if (state.legacySaveStem[0] == '\0') {
-                ImGui::TextDisabled("Keine Karte offen.");
+                ImGui::TextDisabled("%s",L("Keine Karte offen.","No map open."));
             } else {
                 auto indices = NpcRecordsForCurrentMap(state);
                 auto* table = state.npcTextFile.FindTable("ShineNPC");
@@ -10430,7 +10430,7 @@ void DrawToolsContent(EditorState& state) {
             }
 #endif
         } else if (state.legacySaveStem[0] == '\0') {
-            ImGui::TextDisabled("Keine Karte offen.");
+            ImGui::TextDisabled("%s",L("Keine Karte offen.","No map open."));
         } else {
             EnsureMobRegenLoaded(state);
             if (!state.mobRegenTextLoaded) {
