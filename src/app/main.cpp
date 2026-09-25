@@ -5425,11 +5425,23 @@ EditorState::AssetThumbnail GetOrLoadAssetThumbnail(EditorState& state,
             }
             return false;
         }
-        if (auto image = core::LoadDdsImage(texturePath)) {
-            thumb.tex = UploadThumbnailTexture(image->rgba, image->width, image->height);
-            if (thumb.tex && image->height > 0)
-                thumb.aspect = static_cast<float>(image->width) / static_cast<float>(image->height);
-            return thumb.tex != 0;
+        if (ext == ".dds") {
+            if (auto image = core::LoadDdsImage(texturePath)) {
+                thumb.tex = UploadThumbnailTexture(image->rgba, image->width, image->height);
+                if (thumb.tex && image->height > 0)
+                    thumb.aspect = static_cast<float>(image->width) / static_cast<float>(image->height);
+                return thumb.tex != 0;
+            }
+            return false;
+        }
+        if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp") {
+            if (auto image = app::LoadPlatformRasterImage(texturePath)) {
+                thumb.tex = UploadThumbnailTexture(image->rgba, image->width, image->height);
+                if (thumb.tex && image->height > 0)
+                    thumb.aspect = static_cast<float>(image->width) / static_cast<float>(image->height);
+                return thumb.tex != 0;
+            }
+            return false;
         }
         return false;
     };
@@ -13505,7 +13517,8 @@ void DrawInterfaceWorkspace(EditorState& state) {
 
     const std::filesystem::path root = state.interfaceRoot;
     if (!state.interfaceAssetsScanned) {
-        state.interfaceAssets = ListFilesByExtension(root, {".tga", ".dds", ".png", ".nif"});
+        state.interfaceAssets = ListFilesByExtension(
+            root, {".tga", ".dds", ".png", ".jpg", ".jpeg", ".bmp", ".nif"});
         state.interfaceAssetsScanned = true;
         if (state.interfaceSelectedAsset >= static_cast<int>(state.interfaceAssets.size()))
             state.interfaceSelectedAsset = -1;
@@ -13530,14 +13543,10 @@ void DrawInterfaceWorkspace(EditorState& state) {
 
     std::size_t imageCount = 0;
     std::size_t nifCount = 0;
-    std::size_t pngCount = 0;
     for (const auto& rel : state.interfaceAssets) {
         const std::string ext = LowerAscii(std::filesystem::path(rel).extension().string());
         if (ext == ".nif") ++nifCount;
-        else {
-            ++imageCount;
-            if (ext == ".png") ++pngCount;
-        }
+        else ++imageCount;
     }
 
     const std::string needle = LowerAscii(state.interfaceAssetFilter);
@@ -13550,10 +13559,6 @@ void DrawInterfaceWorkspace(EditorState& state) {
 
     ImGui::TextDisabled("%zu / %zu Assets · %zu Bilder · %zu NIF",
                         matching.size(), state.interfaceAssets.size(), imageCount, nifCount);
-    if (pngCount > 0) {
-        ImGui::SameLine();
-        ImGui::TextDisabled("· %zu PNG ohne Vorschau", pngCount);
-    }
     ImGui::Separator();
 
     const ImVec2 avail = ImGui::GetContentRegionAvail();
@@ -13575,7 +13580,9 @@ void DrawInterfaceWorkspace(EditorState& state) {
                 const char* badge = ext == ".nif" ? "NIF" :
                                     ext == ".tga" ? "TGA" :
                                     ext == ".dds" ? "DDS" :
-                                    ext == ".png" ? "PNG" : "FILE";
+                                    ext == ".png" ? "PNG" :
+                                    (ext == ".jpg" || ext == ".jpeg") ? "JPG" :
+                                    ext == ".bmp" ? "BMP" : "FILE";
                 ImGui::TextColored(ext == ".nif"
                                        ? ImVec4(0.35f,0.78f,1.0f,1.0f)
                                        : ImVec4(0.55f,0.86f,0.66f,1.0f),
@@ -13623,7 +13630,8 @@ void DrawInterfaceWorkspace(EditorState& state) {
         if (state.nifInspectorAsset != rel)
             LoadNifAssetInspector(state, path, rel);
         DrawNifAssetInspector(state, root);
-    } else if (ext == ".tga" || ext == ".dds") {
+    } else if (ext == ".tga" || ext == ".dds" || ext == ".png" ||
+               ext == ".jpg" || ext == ".jpeg" || ext == ".bmp") {
         const auto thumb = GetOrLoadAssetThumbnail(state, path, false);
         if (thumb.tex) {
             ImVec2 size = ImGui::GetContentRegionAvail();
@@ -13636,10 +13644,6 @@ void DrawInterfaceWorkspace(EditorState& state) {
         } else {
             ImGui::TextDisabled("Bild konnte nicht dekodiert werden.");
         }
-    } else if (ext == ".png") {
-        ImGui::TextWrapped("PNG wird bereits katalogisiert, hat aber in der aktuellen Core-Bibliothek "
-                           "noch keinen Decoder. Die Datei bleibt sichtbar, ohne einen unsicheren "
-                           "zusätzlichen Bild-Codec in den Build einzuführen.");
     } else {
         ImGui::TextDisabled("Für diesen Dateityp ist noch keine Vorschau verfügbar.");
     }
