@@ -287,13 +287,14 @@ Bereits umgesetzt:
 - Mob-Spawn-Zonen zusätzlich als 3D-Overlay.
 - Portal-Inspector in Auswahl / Position / Bedingungen / Positionieren / Aktionen gegliedert.
 - TownPortal und RecallCoord zusätzlich mit unterschiedlichen 3D-Markern.
+- ausgehende Gate-Ziele aus `World/NPC.txt` datenbasiert aufgelöst (`ShineNPC.RoleArg0 -> LinkTable.argument`), inklusive Zielkarte/-koordinate, Richtung, Party-Flag und sicherer direkter Zielnavigation.
 - Regressionstests für Gruppenbewegung, Lock, Pivot-Rotation und Gruppenskalierung ergänzt.
 
 Noch offen innerhalb von Priorität 1/2:
 - freie Editor-Labels sowie einklappbare Gruppen/Ordner im Objekt-Outliner (reine Editor-Metadaten).
 - optional echtes Geometrie-Ray-Picking statt des derzeitigen projizierten Objektursprungs.
 - noch tiefere NPC-/Mob-Rollenicons; Route/Roam-Overlays sind inzwischen für Auswahl oder gesamten Kartenkontext verfügbar.
-- belastbare Zielkarten-Verknüpfung für Portale erst, sobald die konkrete Outbound-Relation aus den Fiesta-Daten eindeutig belegt ist.
+- belastbare Zielkarten-Verknüpfung ist für NPC-Gates belegt und umgesetzt (`RoleArg0 -> LinkTable.argument`); TownPortal/RecallCoord bleiben korrekt als Ziel-/Ankunftsdaten behandelt und werden nicht fälschlich als Outbound-Link interpretiert.
 
 
 
