@@ -4740,6 +4740,7 @@ void DrawPortalEditor(EditorState& state);
 
 void DrawCustomCreatureEditor(EditorState& state);
 void DrawSkillEditor(EditorState& state);
+void DrawAiWorkspace(EditorState& state);
 
 void DrawShnEditor(EditorState& state) {
     // Beim ersten Oeffnen die aus den Projekt-Ordnern abgeleiteten Client-/Server-SHN-Ordner
@@ -4767,6 +4768,7 @@ void DrawShnEditor(EditorState& state) {
         {"portals","Portale",DrawIconPortal},
         {"creatures","NPC / Mob",DrawIconPerson},
         {"skills","Skills",DrawIconBolt},
+        {"ai","AI Scripts",DrawIconCode},
     };
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(5.0f, 5.0f));
     for (int i = 0; i < static_cast<int>(std::size(dataTools)); ++i) {
@@ -4870,7 +4872,8 @@ void DrawShnEditor(EditorState& state) {
     else if(state.shnSubTab==4) { DrawQuestEditor(state); }
     else if(state.shnSubTab==5) { DrawPortalEditor(state); }
     else if(state.shnSubTab==6) { DrawCustomCreatureEditor(state); }
-    else { DrawSkillEditor(state); }
+    else if(state.shnSubTab==7) { DrawSkillEditor(state); }
+    else { DrawAiWorkspace(state); }
     ImGui::EndChild(); ImGui::EndChild(); ImGui::PopStyleColor();
 }
 
@@ -4900,7 +4903,7 @@ void DrawProjectHub(EditorState& state) {
          {"Heightmap & Texturen", "Walk & Block", "Objekte + Sky/Water/GroundObject", "NPCs, Mobs & Portale"},
          DrawIconTerrain, HubAction::Map, true},
         {"hub.data", "Spieldaten",
-         {"Single & Multi SHN", "XP Rate / Buy & Sell", "Custom NPC/Mob", "Client + Server Tabellen"},
+         {"Single & Multi SHN", "XP Rate / Buy & Sell", "Custom NPC/Mob + AI", "Client + Server Tabellen"},
          DrawIconTable, HubAction::Data, true},
         {"hub.quest", "Quest Editor",
          {"QuestData + QuestDialog", "Ziele & Drops", "Start/Action/Finish Skripte", "Text-ID Auflösung"},
@@ -9383,6 +9386,7 @@ void DrawCommandPalette(EditorState& state) {
     add("Spieldaten: Portal Editor", "", [&] { state.shnSubTab = 5; state.screen = AppScreen::ShnEditor; });
     add("Spieldaten: Custom NPC / Mob", "", [&] { state.shnSubTab = 6; state.screen = AppScreen::ShnEditor; });
     add("Spieldaten: Skill Editor", "", [&] { state.shnSubTab = 7; state.screen = AppScreen::ShnEditor; });
+    add("Spieldaten: AI Workspace", "", [&] { state.shnSubTab = 8; state.screen = AppScreen::ShnEditor; });
     add("Animationen: KFM", "", [&] { state.screen = AppScreen::KfmBrowser; });
     add("Hilfe: Handbuch", "F1", [&] { state.manualOpen = true; });
     add("Einstellungen: Shortcuts & Workspace", "", [&] { state.settingsOpen = true; });
