@@ -13828,6 +13828,26 @@ void DrawDropTableEditor(EditorState& state) {
         return result;
     };
 
+    auto dropValidationSummary = [&](const DropRecordValidation& validation) {
+        std::vector<std::string> issues;
+        if (validation.missingMob) issues.push_back("MobViewInfo");
+        if (validation.missingDropItems > 0)
+            issues.push_back("DropItem x" + std::to_string(validation.missingDropItems));
+        if (validation.missingExclusionItems > 0)
+            issues.push_back("ExcItem x" + std::to_string(validation.missingExclusionItems));
+        if (validation.levelRange) issues.push_back("MinLevel>MaxLevel");
+        if (validation.cenRange) issues.push_back("MinCen>MaxCen");
+        if (validation.upgradeRanges > 0)
+            issues.push_back("UpgradeRange x" + std::to_string(validation.upgradeRanges));
+        if (validation.checksum) issues.push_back("CheckSum");
+        std::string result;
+        for (std::size_t i=0; i<issues.size(); ++i) {
+            if (i) result += ", ";
+            result += issues[i];
+        }
+        return result;
+    };
+
     std::vector<std::size_t> visible;
     visible.reserve(table->records.size());
     std::size_t referenceProblemCount=0;
@@ -13854,6 +13874,28 @@ void DrawDropTableEditor(EditorState& state) {
                         visible.size(), table->records.size(), table->columns.size(),
                         table->trailingSemicolonSentinel ? " · ; Sentinel normalisiert" : "",
                         referenceProblemCount);
+    if (referenceProblemCount > 0) {
+        ImGui::SameLine();
+        if (UI::SmallButton(L("Problemliste kopieren##dropTable",
+                              "Copy issue list##dropTable"))) {
+            std::string report;
+            for (std::size_t ri=0; ri<table->records.size(); ++ri) {
+                const auto& candidate=table->records[ri];
+                const auto validation=validateDropRecord(candidate);
+                if (!validation.Any()) continue;
+                const std::string mob=ShineRecordValue(candidate,cMob);
+                const std::string map=ShineRecordValue(candidate,cMap);
+                if (!report.empty()) report += "\n";
+                report += mob.empty() ? ("Record " + std::to_string(ri)) : mob;
+                if (!map.empty() && map != "-") report += " [" + map + "]";
+                report += ": " + dropValidationSummary(validation);
+            }
+            ImGui::SetClipboardText(report.c_str());
+            state.statusMessage =
+                std::to_string(referenceProblemCount) +
+                L(" Drop-Table-Probleme kopiert."," drop table issues copied.");
+        }
+    }
     const ImVec2 avail = ImGui::GetContentRegionAvail();
     const float leftW = std::clamp(avail.x * 0.30f, 280.0f, 390.0f);
 
