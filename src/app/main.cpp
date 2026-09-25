@@ -6803,13 +6803,13 @@ void EnsureNpcDialogLoaded(EditorState& state) {
 }
 
 bool LoadAiScriptFile(EditorState& state, const std::filesystem::path& path,
-                      const std::string& displayName, bool openPopup) {
+                      const std::string& displayName, bool openPopup, bool discardDirty=false) {
     std::error_code ec;
     if (!std::filesystem::is_regular_file(path,ec)) {
         state.statusMessage = "KI-Skript nicht gefunden: " + path.string();
         return false;
     }
-    if (state.aiScriptDirty && state.aiScriptEditorPath != path.string()) {
+    if (!discardDirty && state.aiScriptDirty && state.aiScriptEditorPath != path.string()) {
         state.statusMessage = "KI-Skript hat ungespeicherte Änderungen. Erst speichern oder neu laden.";
         return false;
     }
@@ -7001,6 +7001,114 @@ void DrawAiScriptEditorPopup(EditorState& state) {
         ImGui::EndPopup();
     }
 }
+
+void DrawAiWorkspace(EditorState& state) {
+    ScanAiWorkspace(state);
+
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f),"%s",L("AI WORKSPACE","AI WORKSPACE"));
+    ImGui::SameLine();
+    ImGui::TextDisabled(L("%zu Skripte · Lua + PineScript","%zu scripts · Lua + PineScript"),
+                        state.aiWorkspaceFiles.size());
+    ImGui::TextWrapped("%s",L(
+        "Direkter Text-Editor für die bereits verifizierten Fiesta-KI-Pfade. Keine Syntaxinterpretation: Änderungen werden byte-nah als Text gespeichert.",
+        "Direct text editor for the already verified Fiesta AI paths. No syntax interpretation: changes are saved as plain text."));
+    ImGui::Separator();
+
+    if(state.shnServerRoot.empty()) {
+        ImGui::TextWrapped("%s",L(
+            "Kein Server-Shine-Ordner bekannt. Zuerst im Projekt einen Server-Ordner konfigurieren.",
+            "No server Shine folder is known. Configure a server folder in the project first."));
+        return;
+    }
+
+    const float listW=std::clamp(ImGui::GetContentRegionAvail().x*0.30f,300.0f,420.0f);
+    ImGui::BeginChild("##aiLibrary",ImVec2(listW,0),true);
+    ImGui::TextColored(ImVec4(0.55f,0.82f,1.0f,1.0f),"%s",L("SKRIPTBIBLIOTHEK","SCRIPT LIBRARY"));
+    ImGui::SameLine();
+    if(UI::SmallButton(L("Neu scannen","Rescan"))) {
+        state.aiWorkspaceScanKey.clear();
+        ScanAiWorkspace(state);
+    }
+    UI::InputTextWithHint("##aiWorkspaceFilter",L("Lua/PineScript filtern...","Filter Lua/PineScript..."),
+                          state.aiWorkspaceFilter,sizeof(state.aiWorkspaceFilter));
+    const std::string needle=LowerAscii(state.aiWorkspaceFilter);
+    std::vector<std::size_t> visible;
+    visible.reserve(state.aiWorkspaceLabels.size());
+    for(std::size_t i=0;i<state.aiWorkspaceLabels.size();++i)
+        if(needle.empty()||LowerAscii(state.aiWorkspaceLabels[i]).find(needle)!=std::string::npos)
+            visible.push_back(i);
+    ImGui::TextDisabled(L("%zu / %zu sichtbar","%zu / %zu visible"),
+                        visible.size(),state.aiWorkspaceFiles.size());
+    ImGui::Separator();
+
+    ImGuiListClipper clipper;
+    clipper.Begin(static_cast<int>(visible.size()));
+    while(clipper.Step()) {
+        for(int vi=clipper.DisplayStart;vi<clipper.DisplayEnd;++vi) {
+            const std::size_t idx=visible[static_cast<std::size_t>(vi)];
+            ImGui::PushID(static_cast<int>(idx));
+            const bool lua=idx<state.aiWorkspaceKinds.size()&&state.aiWorkspaceKinds[idx]==0;
+            DrawInlineIcon("type",lua?DrawIconCode:DrawIconRoute,
+                           lua?IM_COL32(95,195,255,245):IM_COL32(195,135,255,245),
+                           lua?"Lua AIScript":"PineScript",ImVec2(18,18));
+            ImGui::SameLine(0,4);
+            const bool selected=state.aiWorkspaceSelected==static_cast<int>(idx) ||
+                                (!state.aiScriptEditorPath.empty() &&
+                                 state.aiWorkspaceFiles[idx].string()==state.aiScriptEditorPath);
+            if(UI::Selectable((state.aiWorkspaceLabels[idx]+"##aiEntry").c_str(),selected)) {
+                if(LoadAiScriptFile(state,state.aiWorkspaceFiles[idx],
+                                    state.aiWorkspaceFiles[idx].filename().string(),false)) {
+                    state.aiWorkspaceSelected=static_cast<int>(idx);
+                }
+            }
+            if(ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                ImGui::SetTooltip("%s",state.aiWorkspaceFiles[idx].string().c_str());
+            ImGui::PopID();
+        }
+    }
+    ImGui::EndChild();
+    ImGui::SameLine();
+
+    ImGui::BeginChild("##aiEditor",ImVec2(0,0),true);
+    ImGui::TextColored(ImVec4(0.55f,0.82f,1.0f,1.0f),"%s",L("EDITOR","EDITOR"));
+    if(state.aiScriptEditorPath.empty()) {
+        ImGui::Separator();
+        ImGui::TextDisabled("%s",L("Links ein Skript auswählen.","Choose a script on the left."));
+        ImGui::EndChild();
+        return;
+    }
+
+    ImGui::SameLine();
+    ImGui::Text("%s%s",state.aiScriptEditorName.c_str(),state.aiScriptDirty?" *":"");
+    if(state.aiScriptDirty) {
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(1.0f,0.72f,0.30f,1.0f),"%s",L("UNGESPEICHERT","UNSAVED"));
+    }
+    ImGui::Separator();
+    ImGui::TextDisabled("%s",state.aiScriptEditorPath.c_str());
+
+    if(UI::Button(state.aiScriptDirty?L("Speichern *","Save *"):L("Speichern","Save")))
+        SaveAiScript(state);
+    ImGui::SameLine();
+    if(UI::Button(L("Neu laden / Änderungen verwerfen","Reload / discard changes"))) {
+        LoadAiScriptFile(state,state.aiScriptEditorPath,state.aiScriptEditorName,false,true);
+    }
+    ImGui::SameLine();
+    const std::size_t lineCount=state.aiScriptEditorText.empty()?0:
+        1+static_cast<std::size_t>(std::count(state.aiScriptEditorText.begin(),state.aiScriptEditorText.end(),'\n'));
+    ImGui::TextDisabled(L("%zu Zeilen · %zu Bytes","%zu lines · %zu bytes"),
+                        lineCount,state.aiScriptEditorText.size());
+
+    std::vector<char> buf(state.aiScriptEditorText.begin(),state.aiScriptEditorText.end());
+    buf.resize(std::max<std::size_t>(buf.size()+4096,65536),0);
+    if(ImGui::InputTextMultiline("##aiWorkspaceText",buf.data(),buf.size(),ImVec2(-1.0f,-1.0f),
+                                 ImGuiInputTextFlags_AllowTabInput)) {
+        state.aiScriptEditorText.assign(buf.data());
+        state.aiScriptDirty=true;
+    }
+    ImGui::EndChild();
+}
+
 
 int FindDialogRowForNpc(EditorState& state, const std::string& npcName) {
     for (std::size_t i = 0; i < state.npcDialogShn.rows.size(); ++i) {
