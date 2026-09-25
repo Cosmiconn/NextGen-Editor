@@ -7113,11 +7113,17 @@ void OpenPineScriptEditor(EditorState& state, const std::string& relScriptPath) 
 // EventIndex (siehe CHANGELOG [0.44.23], byte-exakt gegen echte Daten wie BerValeDw04.txt
 // verifiziert). Nicht jedes Mob/NPC hat eine Route - fehlende Datei ist normal, kein Fehler.
 void OpenPatrolRouteEditor(EditorState& state, const std::string& mobName) {
-    if (state.shnServerRoot.empty()) { state.statusMessage = "Server-SHN-Ordner nötig (Single SHN Editor)."; return; }
+    if (state.shnServerRoot.empty()) {
+        state.statusMessage = L(
+            "Server-SHN-Ordner nötig (Single SHN Editor).",
+            "Server SHN folder required (Single SHN Editor).");
+        return;
+    }
     auto path = std::filesystem::path(state.shnServerRoot) / "MobRoam" / (mobName + ".txt");
     std::error_code ec;
     if (!std::filesystem::exists(path, ec)) {
-        state.statusMessage = "Keine Patrouillenroute gefunden: " + path.string();
+        state.statusMessage =
+            L("Keine Patrouillenroute gefunden: ","No patrol route found: ") + path.string();
         state.patrolRouteLoaded = false;
         return;
     }
@@ -7132,18 +7138,27 @@ void OpenPatrolRouteEditor(EditorState& state, const std::string& mobName) {
 
 void DrawPatrolRouteEditorPopup(EditorState& state) {
     if (!state.patrolEditorOpen) return;
-    ImGui::OpenPopup("Patrouillenroute bearbeiten");
+    const char* patrolPopupTitle =
+        L("Patrouillenroute bearbeiten###patrolRouteEditor",
+          "Edit patrol route###patrolRouteEditor");
+    ImGui::OpenPopup(patrolPopupTitle);
     ImGui::SetNextWindowSize(ImVec2(520.0f, 460.0f), ImGuiCond_FirstUseEver);
-    if (ImGui::BeginPopupModal("Patrouillenroute bearbeiten", &state.patrolEditorOpen)) {
+    if (ImGui::BeginPopupModal(patrolPopupTitle, &state.patrolEditorOpen)) {
         ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), "%s", state.patrolEditorName.c_str());
         if (!state.patrolRouteLoaded) {
-            ImGui::TextWrapped("Route konnte nicht geladen werden.");
+            ImGui::TextWrapped("%s",L(
+                "Route konnte nicht geladen werden.",
+                "Route could not be loaded."));
         } else {
             auto* table = state.patrolRouteFile.FindTable("Roaming");
             if (!table) {
-                ImGui::TextDisabled("Keine 'Roaming'-Tabelle in dieser Datei gefunden.");
+                ImGui::TextDisabled("%s",L(
+                    "Keine 'Roaming'-Tabelle in dieser Datei gefunden.",
+                    "No 'Roaming' table was found in this file."));
             } else {
-                ImGui::TextDisabled("Wegpunkte werden der Reihe nach abgelaufen; 'return' = zurück zum Start.");
+                ImGui::TextDisabled("%s",L(
+                    "Wegpunkte werden der Reihe nach abgelaufen; 'return' = zurück zum Start.",
+                    "Waypoints are followed in order; 'return' = return to the start."));
                 int removeIdx = -1;
                 for (std::size_t i = 0; i < table->records.size(); ++i) {
                     ImGui::PushID(static_cast<int>(i));
@@ -7168,21 +7183,26 @@ void DrawPatrolRouteEditorPopup(EditorState& state) {
                     ImGui::PopID();
                 }
                 if (removeIdx >= 0) table->records.erase(table->records.begin() + removeIdx);
-                if (UI::Button("+ Wegpunkt hinzufügen")) {
+                if (UI::Button(L("+ Wegpunkt hinzufügen","+ Add waypoint"))) {
                     std::vector<std::string> vals = {std::to_string(table->records.size()), "0", "0", "-"};
                     table->records.push_back(core::legacy::ShineRecord{vals, 0});
                 }
                 ImGui::Separator();
-                if (UI::Button("Speichern")) {
+                if (UI::Button(L("Speichern","Save"))) {
                     auto path = std::filesystem::path(state.shnServerRoot) / "MobRoam" / (state.patrolEditorName + ".txt");
                     auto saved = core::legacy::SaveShineTextFile(state.patrolRouteFile, path);
-                    state.statusMessage = saved ? std::string("Patrouillenroute gespeichert.") : "Fehler: " + saved.error();
+                    state.statusMessage = saved
+                        ? L("Patrouillenroute gespeichert.","Patrol route saved.")
+                        : L("Fehler: ","Error: ") + saved.error();
                     if (saved) state.roamOverlayKey.clear();
                 }
             }
         }
         ImGui::SameLine();
-        if (UI::Button("Schließen")) { state.patrolEditorOpen = false; ImGui::CloseCurrentPopup(); }
+        if (UI::Button(L("Schließen","Close"))) {
+            state.patrolEditorOpen = false;
+            ImGui::CloseCurrentPopup();
+        }
         ImGui::EndPopup();
     }
 }
