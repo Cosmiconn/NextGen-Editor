@@ -84,6 +84,8 @@ add_executable(map_editor
     src/app/ObjectMarkerRenderer.cpp
     src/app/NifMeshRenderer.cpp
 )
+# Der interne CMake-Targetname bleibt stabil; die ausgelieferte Windows-App heißt bewusst Editor.exe.
+set_target_properties(map_editor PROPERTIES OUTPUT_NAME "Editor")
 if (WIN32)
     target_sources(map_editor PRIVATE src/app/resources/nextgen.rc)
 endif()

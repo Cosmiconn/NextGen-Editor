@@ -23,7 +23,7 @@ Vollständige Windows-App mit vcpkg:
 ```powershell
 cmake -S . -B build -DNEXTGEN_EDITOR_BUILD_GUI=ON "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
 cmake --build build --config Release
-.\build\Release\map_editor.exe
+.\build\Release\Editor.exe
 ```
 
 C++23 einschließlich `std::expected` ist erforderlich. Lokal geprüft mit MSVC 19.51.
