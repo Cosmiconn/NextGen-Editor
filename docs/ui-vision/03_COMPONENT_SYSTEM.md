@@ -3,11 +3,13 @@
 ## Panel Header
 30–34 px, Icon 16–18 px, Titel semibold. Maximal drei Direktaktionen, Rest Kontextmenü.
 
+Im Map-/KFM-Workspace wird dafür zentral `DrawPanelHeader(...)` verwendet: freigegebenes semantisches Icon links, Cyan-Titel, optionaler sekundärer Kontexttext und eine ruhige 1-px-Abschlusslinie. Outliner, Layer, Asset Browser, Visibility, Properties, 2D, 3D und KFM dürfen keine eigenen abweichenden Header-Chromes mehr erfinden.
+
 ## Toolbar Button
 44×44 px, Icon 22–24 px. Aktiver Toolmodus blau gefüllt. Destructive Actions niemals blau.
 
 ## Compact Button
-28–32 px hoch, Radius 5 px, Icon 16 px.
+28–32 px hoch, Radius 5 px, Icon 16–20 px. Die App-Shell verwendet `DrawCompactIconTextButton(...)` für Hauptnavigation sowie Neu/Öffnen/Speichern. Active = Blue/Cyan-Fläche + Cyan-Unterstrich; Hover bleibt deutlich schwächer.
 
 ## Inputs
 28–32 px, dunkle Fläche, 1 px Border. Fokus = Cyan/Blue. X/Y/Z-Farbe nur am Prefix.
