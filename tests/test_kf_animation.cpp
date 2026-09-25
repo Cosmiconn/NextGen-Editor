@@ -128,9 +128,22 @@ int main(int argc, char** argv) {
     assert(effect->splineData.size() == 1);
     assert(effect->splineBases.size() == 1);
 
-    const auto* plane = FindTrack(*effect, "Plane");
+    // Die echte Fixture benennt die Plane-Knoten durchnummeriert (Plane13..Plane18).
+    // Getestet werden soll hier die dekodierte XYZ-Rotationsstruktur, nicht ein erfundener
+    // exakter Knotename. Suche deshalb den passenden Plane-Track anhand seiner Datenform.
+    const KfControlledTrack* plane = nullptr;
+    for (const auto& track : effect->sequence.transformTracks) {
+        if (track.nodeName.rfind("Plane", 0) != 0 || track.compressedSpline ||
+            track.keys.rotationType != 4) continue;
+        if (track.keys.xyzRotation[0].keys.size() == 2 &&
+            track.keys.xyzRotation[1].keys.size() == 2 &&
+            track.keys.xyzRotation[2].keys.size() == 2) {
+            plane = &track;
+            break;
+        }
+    }
     if (plane == nullptr) {
-        std::cerr << "Effect transform tracks:";
+        std::cerr << "No Plane* track with 2-key XYZ rotation found. Tracks:";
         for (const auto& track : effect->sequence.transformTracks)
             std::cerr << " [" << track.nodeName << "]";
         std::cerr << "\n";
