@@ -3745,6 +3745,22 @@ void ClearShnDirtyCells(EditorState::ShnDocument& doc) {
     for (auto& row : doc.cellDirty) std::fill(row.begin(), row.end(), 0);
 }
 
+std::pair<std::size_t,std::size_t> SaveAllDirtyShnDocuments(EditorState& state) {
+    std::size_t saved = 0, failed = 0;
+    for (auto& doc : state.shnFiles) {
+        if (!doc.dirty) continue;
+        auto result = core::legacy::SaveShnFile(doc.file, doc.file.path);
+        if (result) {
+            doc.dirty = false;
+            ClearShnDirtyCells(doc);
+            ++saved;
+        } else {
+            ++failed;
+        }
+    }
+    return {saved,failed};
+}
+
 bool ApplyShnCellText(EditorState& state, int document, int row, int column,
                       const std::string& text, bool recordUndo = true) {
     if (document < 0 || document >= static_cast<int>(state.shnFiles.size())) return false;
@@ -4939,6 +4955,20 @@ void DrawShnEditor(EditorState& state) {
     ImGui::BeginChild("##shnEditor", ImVec2(0,0), false);
     ImGui::TextColored(ImVec4(0.40f,0.72f,0.96f,1.0f), "Spieldaten");
     ImGui::SameLine(); ImGui::TextDisabled("SHN · Quest · Portale · Custom NPC/Mob · Skills · AI · Interface · Drops");
+    const std::size_t dataDirtyShn = DirtyShnDocumentCount(state);
+    if (dataDirtyShn > 0 || state.questDirty) {
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(1.0f,0.68f,0.25f,1.0f), "%s",
+                           L("● ungespeichert","● unsaved"));
+    }
+    if (dataDirtyShn > 0) {
+        ImGui::SameLine();
+        if (UI::SmallButton(L("Alle SHN speichern","Save all SHN"))) {
+            const auto [saved,failed] = SaveAllDirtyShnDocuments(state);
+            state.shnStatus = std::string(L("Gespeichert: ","Saved: ")) + std::to_string(saved) +
+                              (failed ? std::string(", ") + L("Fehler: ","errors: ") + std::to_string(failed) : std::string());
+        }
+    }
     ImGui::Separator();
     struct DataTool { const char* id; const char* label; IconDrawFn icon; };
     const DataTool dataTools[] = {
@@ -5955,6 +5985,12 @@ void DrawQuestEditor(EditorState& state) {
         return;
     }
     auto& quests = state.questDataFile.records;
+    auto saveQuestData = [&]() {
+        auto path = std::filesystem::path(state.shnServerRoot) / "QuestData.shn";
+        auto saved = core::legacy::SaveQuestData(state.questDataFile, path);
+        if (saved) state.questDirty = false;
+        state.statusMessage = saved ? std::string("QuestData.shn gespeichert.") : "Fehler: " + saved.error();
+    };
     ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s", L("QUEST EDITOR", "QUEST EDITOR"));
     ImGui::SameLine();
     ImGui::TextDisabled(L("%zu Quests%s", "%zu quests%s"), quests.size(),
@@ -5966,12 +6002,12 @@ void DrawQuestEditor(EditorState& state) {
     const float questSaveW = 190.0f;
     ImGui::SameLine(std::max(ImGui::GetCursorPosX() + 8.0f,
                              ImGui::GetWindowContentRegionMax().x - questSaveW));
-    if (UI::Button(L("QuestData speichern", "Save QuestData"), ImVec2(questSaveW, 0))) {
-        auto path = std::filesystem::path(state.shnServerRoot) / "QuestData.shn";
-        auto saved = core::legacy::SaveQuestData(state.questDataFile, path);
-        if (saved) state.questDirty = false;
-        state.statusMessage = saved ? std::string("QuestData.shn gespeichert.") : "Fehler: " + saved.error();
+    if (UI::Button(state.questDirty ? L("QuestData speichern *","Save QuestData *")
+                                    : L("QuestData speichern","Save QuestData"),
+                   ImVec2(questSaveW,0))) {
+        saveQuestData();
     }
+    if (ShortcutPressed(state.shortcutSave) && state.questDirty) saveQuestData();
     ImGui::Separator();
     ImGui::SetNextItemWidth(430.0f);
     UI::InputTextWithHint("##questsearch", L("Quest-ID oder Titeltext suchen...", "Search quest ID or title text..."),
@@ -9243,21 +9279,11 @@ void DrawSkillEditor(EditorState& state) {
     auto& asf = state.shnFiles[static_cast<std::size_t>(d.skillC)].file;
 
     // Toolbar: speichern
-    if (UI::Button(L("Alle geänderten SHN speichern", "Save all changed SHN"))) {
-        int saved = 0, failed = 0;
-        for (auto& doc : state.shnFiles) {
-            if (!doc.dirty) continue;
-            auto r = core::legacy::SaveShnFile(doc.file, doc.file.path);
-            if (r) {
-                doc.dirty = false;
-                ClearShnDirtyCells(doc);
-                ++saved;
-            } else {
-                ++failed;
-                ed.report.push_back(L("Fehler beim Speichern: ", "Save error: ") + doc.file.FileName() + " " + r.error());
-            }
-        }
-        ed.report.push_back(std::string(L("Gespeichert: ", "Saved: ")) + std::to_string(saved) + (failed ? std::string(", ") + L("Fehler: ", "errors: ") + std::to_string(failed) : std::string()));
+    if (UI::Button(L("Alle geänderten SHN speichern", "Save all changed SHN")) ||
+        (ShortcutPressed(state.shortcutSave) && DirtyShnDocumentCount(state) > 0)) {
+        const auto [saved,failed] = SaveAllDirtyShnDocuments(state);
+        ed.report.push_back(std::string(L("Gespeichert: ", "Saved: ")) + std::to_string(saved) +
+                            (failed ? std::string(", ") + L("Fehler: ", "errors: ") + std::to_string(failed) : std::string()));
     }
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) ImGui::SetTooltip("%s", L("Schreibt alle geänderten SHN-Tabellen (Client und Server) auf die Platte.", "Writes all modified SHN tables (client and server) to disk."));
     ImGui::SameLine();
@@ -9979,13 +10005,7 @@ void DrawCommandPalette(EditorState& state) {
 
     if (DirtyShnDocumentCount(state) > 0) {
         add("Spieldaten: Alle geänderten SHN speichern", "", [&] {
-            std::size_t saved = 0, failed = 0;
-            for (auto& doc : state.shnFiles) {
-                if (!doc.dirty) continue;
-                auto result = core::legacy::SaveShnFile(doc.file, doc.file.path);
-                if (result) { doc.dirty = false; ++saved; }
-                else ++failed;
-            }
+            const auto [saved,failed] = SaveAllDirtyShnDocuments(state);
             state.statusMessage = "SHN gespeichert: " + std::to_string(saved) +
                 (failed ? ", Fehler: " + std::to_string(failed) : std::string{});
         });
