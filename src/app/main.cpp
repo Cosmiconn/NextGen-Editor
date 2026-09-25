@@ -7516,6 +7516,102 @@ static void UpdateAvatarPreview(EditorState& state) {
     glBindTexture(GL_TEXTURE_2D, 0);
 }
 
+void DrawCreatureWizardPreview(EditorState& state) {
+    auto& w = state.wiz;
+    ImGui::BeginChild("##creatureWizardPreview", ImVec2(0,0), true);
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "VORSCHAU");
+    ImGui::SameLine();
+    ImGui::TextDisabled("%s", w.isNpc ? "NPC" : "Monster");
+    ImGui::Separator();
+
+    if (w.templateId < 0) {
+        const ImVec2 p = ImGui::GetCursorScreenPos();
+        const float width = std::max(100.0f, ImGui::GetContentRegionAvail().x);
+        DrawIconCube(ImGui::GetWindowDrawList(),
+                     ImVec2(p.x + width * 0.5f, p.y + 70.0f),
+                     34.0f, IM_COL32(90,120,145,210));
+        ImGui::Dummy(ImVec2(0,140.0f));
+        ImGui::TextDisabled("Zuerst links eine Vorlage wählen.");
+    } else if (w.isNpc && w.lookMode == 2) {
+        UpdateAvatarPreview(state);
+        const float width = std::min(300.0f, std::max(160.0f, ImGui::GetContentRegionAvail().x));
+        const float height = width * (460.0f / 300.0f);
+        if (state.avatarModel && state.avatarTex != 0) {
+            ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(state.avatarTex)),
+                         ImVec2(width,height));
+            ImGui::SetNextItemWidth(width);
+            UI::SliderFloat("##wizardPreviewYaw",&state.avatarYaw,-3.1416f,3.1416f,"Drehung %.2f");
+            for (const auto& note : state.avatarModel->notes)
+                ImGui::TextColored(ImVec4(1.0f,0.75f,0.35f,1.0f),"%s",note.c_str());
+        } else if (!state.avatarError.empty()) {
+            ImGui::TextColored(ImVec4(1.0f,0.5f,0.4f,1.0f),"%s",state.avatarError.c_str());
+        } else {
+            ImGui::TextDisabled("Avatar wird vorbereitet...");
+        }
+    } else {
+        EnsureNpcDialogRoot(state);
+        EnsureMobViewInfoLoaded(state);
+        EnsureRescharRoot(state);
+
+        std::string fileName;
+        if (w.lookMode == 1 && w.modelFile[0] != '\0')
+            fileName = w.modelFile;
+        else
+            fileName = ResolveMobViewFileName(state,w.templateInx);
+
+        bool renderedThumbnail = false;
+        if (!fileName.empty() && state.project.clientFolder[0] != '\0') {
+            const std::string rel = FindNpcModelPath(state,fileName);
+            if (!rel.empty()) {
+                const auto resolved = std::filesystem::path(state.project.clientFolder) / rel;
+                std::filesystem::path resmapRoot;
+                if (const auto root = FindResmapRootForAssets(state.project.clientFolder))
+                    resmapRoot = *root;
+                const auto thumb = GetOrLoadAssetThumbnail(state,resolved,true,resmapRoot);
+                if (thumb.tex) {
+                    const float width = std::min(280.0f,std::max(140.0f,ImGui::GetContentRegionAvail().x));
+                    const float height = width / std::max(0.25f,thumb.aspect);
+                    ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(thumb.tex)),
+                                 ImVec2(width,std::min(height,320.0f)));
+                    renderedThumbnail = true;
+                }
+            }
+        }
+        if (!renderedThumbnail) {
+            const ImVec2 p = ImGui::GetCursorScreenPos();
+            const float width = std::max(100.0f, ImGui::GetContentRegionAvail().x);
+            DrawIconCube(ImGui::GetWindowDrawList(),
+                         ImVec2(p.x + width * 0.5f, p.y + 65.0f),
+                         32.0f, IM_COL32(100,185,235,230));
+            ImGui::Dummy(ImVec2(0,130.0f));
+        }
+        ImGui::TextDisabled("Modell");
+        ImGui::TextWrapped("%s",fileName.empty() ? "(Vorlagenmodell nicht aufgelöst)" : fileName.c_str());
+    }
+
+    ImGui::Separator();
+    ImGui::TextDisabled("Vorlage");
+    ImGui::TextWrapped("%s%s%lld",
+                       w.templateInx.empty() ? "(keine)" : w.templateInx.c_str(),
+                       w.templateId >= 0 ? "  ·  #" : "",
+                       w.templateId >= 0 ? w.templateId : 0);
+    ImGui::TextDisabled("Neue Identität");
+    ImGui::TextWrapped("%s",w.newInx[0] ? w.newInx : "(noch offen)");
+    if (w.displayName[0]) ImGui::TextWrapped("%s",w.displayName);
+    if (!w.isNpc) {
+        ImGui::SeparatorText("Werte");
+        ImGui::Text("Level %d",w.level);
+        ImGui::Text("HP %d",w.maxHp);
+        ImGui::Text("Größe %d",w.size);
+    } else if (w.placeOnMap) {
+        ImGui::SeparatorText("Platzierung");
+        ImGui::Text("%s",state.legacySaveStem[0] ? state.legacySaveStem : "(keine Karte)");
+        ImGui::Text("X %d · Y %d",w.placeX,w.placeY);
+        ImGui::TextDisabled("%s",kNpcRoles[std::clamp(w.roleIdx,0,5)]);
+    }
+    ImGui::EndChild();
+}
+
 void DrawCustomCreatureEditor(EditorState& state) {
     auto& w = state.wiz;
     EnsureItemLookup(state);
@@ -7552,11 +7648,20 @@ void DrawCustomCreatureEditor(EditorState& state) {
     }
     ImGui::TextDisabled("Schritt %d / 5", w.step + 1);
 
+    const float previewWidth = std::clamp(ImGui::GetContentRegionAvail().x * 0.28f, 280.0f, 360.0f);
+    if (!ImGui::BeginTable("##creatureWizardLayout",2,ImGuiTableFlags_SizingStretchProp)) return;
+    ImGui::TableSetupColumn("##wizardMain",ImGuiTableColumnFlags_WidthStretch);
+    ImGui::TableSetupColumn("##wizardPreview",ImGuiTableColumnFlags_WidthFixed,previewWidth);
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+
     // --- 1. Vorlage
     if (w.step == 0) {
     ImGui::SeparatorText("Vorlage");
     const int mi = FindOrLoadShnDoc(state, "MobInfo.shn", EditorState::ShnSource::Client);
-    if (mi < 0) { ImGui::TextWrapped("MobInfo.shn (Client) nicht geladen - Client-Ordner im Projekt prüfen."); return; }
+    if (mi < 0) {
+        ImGui::TextWrapped("MobInfo.shn (Client) nicht geladen - Client-Ordner im Projekt prüfen.");
+    } else {
     auto& mobInfo = state.shnFiles[static_cast<std::size_t>(mi)].file;
     ImGui::SetNextItemWidth(260.0f);
     UI::InputTextWithHint("##tplfilter", "Vorlage suchen (Name/InxName)", w.templateFilter, sizeof(w.templateFilter));
@@ -7591,6 +7696,7 @@ void DrawCustomCreatureEditor(EditorState& state) {
         }
     }
     ImGui::EndChild();
+    }
     }
 
     // --- 2. Werte
@@ -7675,22 +7781,6 @@ void DrawCustomCreatureEditor(EditorState& state) {
         std::string chosen;
         if (StringPickerPopup("Item wählen##wiz", itemNames, w.itemFilter, sizeof(w.itemFilter), chosen, &itemLabels) && w.pickSlot >= 0 && w.pickSlot < 19) {
             w.equ[static_cast<std::size_t>(w.pickSlot)] = chosen;
-        }
-        ImGui::EndGroup();
-        ImGui::SameLine();
-        // ---- Vorschau (Koerper + Ruestung + Gesicht + Haare + Waffen aus reschar/resitem)
-        ImGui::BeginGroup();
-        UpdateAvatarPreview(state);
-        ImGui::TextDisabled("Vorschau (Bindepose)");
-        if (state.avatarModel && state.avatarTex != 0) {
-            ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(state.avatarTex)), ImVec2(300.0f, 460.0f));
-            ImGui::SetNextItemWidth(300.0f);
-            UI::SliderFloat("##avyaw", &state.avatarYaw, -3.1416f, 3.1416f, "Drehung %.2f");
-            for (const auto& note : state.avatarModel->notes) ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.35f, 1.0f), "%s", note.c_str());
-        } else if (!state.avatarError.empty()) {
-            ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 300.0f);
-            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.4f, 1.0f), "%s", state.avatarError.c_str());
-            ImGui::PopTextWrapPos();
         }
         ImGui::EndGroup();
     }
@@ -7783,6 +7873,10 @@ void DrawCustomCreatureEditor(EditorState& state) {
             ImGui::TextDisabled(w.step == 0 ? "Zuerst eine Vorlage wählen." : "InxName und Anzeigename angeben.");
         }
     }
+
+    ImGui::TableSetColumnIndex(1);
+    DrawCreatureWizardPreview(state);
+    ImGui::EndTable();
 }
 
 // Sprachumschaltung fuer Texte ohne T()-Schluessel: liefert je nach eingestellter Sprache Deutsch oder Englisch.
