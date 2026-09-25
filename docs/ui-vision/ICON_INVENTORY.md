@@ -160,7 +160,7 @@ Bis zu einer expliziten Ergänzung bleiben hierfür die bestehenden funktionalen
 - [x] Custom NPC und Custom Mob besitzen im Spieldaten-Launcher getrennte, echte Final-Paket-Icons und führen weiterhin in denselben funktionalen Wizard mit passend gesetztem Modus.
 - [ ] echte NG-SVG-Quelle nach `assets/ui/branding/` übernehmen und Windows-ICO final aus dem Final-Paket regenerieren.
 - [x] 14 neue Additional-UI-Icons an reale Controls angebunden (2D/3D, KFM, AI, XP, Preise, Eye, Lock/Unlock, Copy, Duplicate, Delete, Command Palette, Recent Projects).
-- [x] zentrale Map-Panel-Header (Outliner, Asset Browser, Properties, Visibility, Layer/Tools) sowie Settings/Help auf Paketicons migriert.
+- [x] zentrale Map-Panel-Header (Outliner, Layer, Asset Browser, Properties, Visibility, 2D, 3D) sowie KFM, Settings/Help auf Paketicons migriert und über einen gemeinsamen Panel-Header-Component vereinheitlicht.
 - [ ] übrige Panel Header und Modul-Launcher vollständig migrieren.
 - [ ] Legacy-DrawList-Symbole nur für die sechs tatsächlich verbleibenden Paketlücken beibehalten.
 
