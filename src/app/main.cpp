@@ -1379,6 +1379,7 @@ void RotateSelectedObjectsAroundPivot(EditorState& state, const EditVec3& pivot,
         const EditQuat nq=MulEditQuat(delta,oq);
         obj.rotX=nq.x; obj.rotY=nq.y; obj.rotZ=nq.z; obj.rotW=nq.w;
     }
+    state.mapDirty = true;
 }
 
 void ScaleSelectedObjectsAroundPivot(EditorState& state, const EditVec3& pivot, float factor) {
@@ -1393,6 +1394,7 @@ void ScaleSelectedObjectsAroundPivot(EditorState& state, const EditVec3& pivot, 
         obj.posZ=pivot.z+(obj.posZ-pivot.z)*factor;
         obj.scale=std::clamp(obj.scale*factor,0.01f,100.0f);
     }
+    state.mapDirty = true;
 }
 
 void CopySelectedObjects(EditorState& state) {
