@@ -155,6 +155,9 @@ Bis zu einer expliziten Ergänzung bleiben hierfür die bestehenden funktionalen
 - [ ] alle Runtime-Raster nach `assets/ui/icons/png/` übernehmen (die aktuell verwendeten 16/24/32-px-Assets sind bereits eingecheckt; Rest folgt bedarfsweise/über Importer).
 - [x] NG Branding in der App-Topbar über das finale 32-px-Paketasset aktiviert.
 - [x] App-Shell-Aktionen Neu / Öffnen / Speichern nutzen die finalen Paketicons in einer kompakten Icon+Text-Darstellung.
+- [x] Primäre Navigation Karte / Spieldaten / Animationen / Projekt ist als kompakte Icon+Text-Navigation mit klarer Active-Linie umgesetzt.
+- [x] Project-Hub-Karten sind an die semantischen Final-Icons angebunden; fehlende Runtime-Größen fallen auf den nächstgelegenen freigegebenen Export zurück.
+- [x] Custom NPC und Custom Mob besitzen im Spieldaten-Launcher getrennte, echte Final-Paket-Icons und führen weiterhin in denselben funktionalen Wizard mit passend gesetztem Modus.
 - [ ] echte NG-SVG-Quelle nach `assets/ui/branding/` übernehmen und Windows-ICO final aus dem Final-Paket regenerieren.
 - [x] 14 neue Additional-UI-Icons an reale Controls angebunden (2D/3D, KFM, AI, XP, Preise, Eye, Lock/Unlock, Copy, Duplicate, Delete, Command Palette, Recent Projects).
 - [x] zentrale Map-Panel-Header (Outliner, Asset Browser, Properties, Visibility, Layer/Tools) sowie Settings/Help auf Paketicons migriert.
