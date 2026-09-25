@@ -199,7 +199,8 @@ Noch offen für spätere Ausbaustufen:
 - eigenständiger AI Workspace im Spieldatenbereich: rekursiver Lua-/PineScript-Katalog, Suche, Volltexteditor, Dirty-State, Reload/Verwerfen und sicheres Speichern; bestehende NPC-/Mob-Kontextaktionen verwenden denselben Editor-Unterbau.
 - Skill-, Quest- und Custom NPC/Mob-Editor verwenden inzwischen durchgängig dieselbe DE/EN-Panel-Sprache; verbleibende tiefe Spezialdialoge können schrittweise nachgezogen werden;
 - gespeicherte Map-Workspace-Presets sind umgesetzt: Standard, 3D-Fokus, Terrain/2D und Daten/Szene; die Auswahl bleibt über `workspace.txt` erhalten und das danach frei angepasste Dock-Layout weiterhin über `layout.ini`;
-- zukünftige Interface-/Drop-Table-/NIF-Material-Editoren; AI Workspace ist umgesetzt. Der Drop-Table-Editor bleibt zurückgestellt, bis die bekannten ShineText-Kanten der 270+ Spalten breiten `ItemDropTable.txt` belastbar behoben sind.
+- NIF-Materialinspektor im Asset Browser ist read-only umgesetzt: Mesh-/Materialdaten, Textur-Slots, DDS/TGA-/Embedded-Vorschauen, gecachte Pfadauflösung sowie Filter/Diagnose für fehlende Texturdateien. Schreibende NIF-Materialbearbeitung bleibt bewusst zurückgestellt, bis ein verlustfreier Writer belegt ist.
+- zukünftige Interface-/Drop-Table-Editoren sowie schreibendes NIF-Material-Editing; AI Workspace ist umgesetzt. Der Drop-Table-Editor bleibt zurückgestellt, bis die bekannten ShineText-Kanten der 270+ Spalten breiten `ItemDropTable.txt` belastbar behoben sind.
 
 ## 9. Aktuelles Arbeitsziel
 
