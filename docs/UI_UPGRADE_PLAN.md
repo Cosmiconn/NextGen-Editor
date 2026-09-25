@@ -1,5 +1,8 @@
 # NextGen Editor – UI Upgrade Plan
 
+> **VISUAL SOURCE OF TRUTH:** Für alle neuen UI-Arbeiten gilt verbindlich [docs/ui-vision/README.md](ui-vision/README.md). Mockups, Tokens, Icon-Quellen und Abnahmekriterien definieren das Zielbild.
+
+
 > Branch: `ui-upgrade`  
 > Ziel: moderne, übersichtliche und erweiterbare Oberfläche, ohne bestehende Fiesta-Editor-Funktionalität zu verlieren.
 

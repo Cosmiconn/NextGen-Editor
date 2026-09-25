@@ -1,0 +1,46 @@
+# 05 – Modul-Blueprints
+
+## Topbar
+Kompakte Markenleiste, Menüs, Projekt/Map-Kontext, Settings. NG-Small-Mark links.
+
+## Primary Toolbar
+Transform-Gruppe dominant; World/Gameplay klar getrennt; identische Button-Geometrie.
+
+## 3D Viewport
+Hero-Fläche, kompakte Overlaybar, FPS/Objektstatus unten rechts, keine permanente Hilfe.
+
+## 2D / Minimap
+Gleiche Header/Overlaybuttons, klare Layer-/Walk-Legende.
+
+## Scene Outliner
+Eye/Lock/Semantic Icon/Name/Badge. Gruppen + Suche ohne visuelle Unruhe.
+
+## Inspector
+Transform zuerst, dann Modell/Daten, Anzeige, Spezial. Klickbare Referenzen statt Textwüste.
+
+## Asset Browser
+Folder Tree links, Grid/List rechts, Suche oben, große Thumbnail-Cards, klarer Drag-State.
+
+## Terrain
+Brush Preview + Radius/Strength/Hardness kompakt. Raise/Lower/Smooth/Flatten als Toolstrip.
+
+## Layers
+42–52 px Thumbnail, Eye/Lock, Name, UV/Blend-Meta, DnD-Reorder.
+
+## Block & Walk
+Rot/Grün-Legende, Brush/Rectangle, sichtbares Undo/Redo, Footprint→Walk prominent.
+
+## SHN
+Daten-IDE statt Roh-Tabelle: Dokumentkopf, Dirty, Filter, Referenz-/Error-Hinweise, Save-Bar.
+
+## Quest
+General / Requirements / Objectives / Rewards / Dialogs / Scripts. Referenzen als Links. Später Flow View als Tab.
+
+## Skill
+Serie links, Stufe/Detail rechts, Animation/VFX als echte Picker-Chips, Preview-Link.
+
+## KFM
+Assetliste + Preview-Viewport + Transport + Timeline + Trackliste. Danach Skeleton/Mesh Playback.
+
+## AI / Interface / Drops
+Gleiche Shell, Komponenten und Zustandslogik; keine optischen Mikrowelten.
