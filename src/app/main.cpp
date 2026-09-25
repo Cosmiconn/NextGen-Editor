@@ -8015,16 +8015,16 @@ void DrawCustomCreatureEditor(EditorState& state) {
 
     // --- 1. Vorlage
     if (w.step == 0) {
-    ImGui::SeparatorText("Vorlage");
+    ImGui::SeparatorText(L("Vorlage", "Template"));
     const int mi = FindOrLoadShnDoc(state, "MobInfo.shn", EditorState::ShnSource::Client);
     if (mi < 0) {
-        ImGui::TextWrapped("MobInfo.shn (Client) nicht geladen - Client-Ordner im Projekt prüfen.");
+        ImGui::TextWrapped("%s", L("MobInfo.shn (Client) nicht geladen - Client-Ordner im Projekt prüfen.", "MobInfo.shn (client) is not loaded - check the client folder in the project."));
     } else {
     auto& mobInfo = state.shnFiles[static_cast<std::size_t>(mi)].file;
     ImGui::SetNextItemWidth(260.0f);
-    UI::InputTextWithHint("##tplfilter", "Vorlage suchen (Name/InxName)", w.templateFilter, sizeof(w.templateFilter));
+    UI::InputTextWithHint("##tplfilter", L("Vorlage suchen (Name/InxName)", "Search template (name/InxName)"), w.templateFilter, sizeof(w.templateFilter));
     ImGui::SameLine();
-    ImGui::TextDisabled(w.templateId >= 0 ? "gewählt: %s (#%lld)" : "noch keine Vorlage", w.templateInx.c_str(), w.templateId);
+    ImGui::TextDisabled(w.templateId >= 0 ? L("gewählt: %s (#%lld)", "selected: %s (#%lld)") : L("noch keine Vorlage", "no template selected"), w.templateInx.c_str(), w.templateId);
     ImGui::BeginChild("##tpllist", ImVec2(0.0f, 130.0f), true);
     {
         const std::string needle = LowerAscii(w.templateFilter);
@@ -8059,27 +8059,27 @@ void DrawCustomCreatureEditor(EditorState& state) {
 
     // --- 2. Werte
     if (w.step == 1) {
-    ImGui::SeparatorText("Identität & Werte");
-    ImGui::SetNextItemWidth(220.0f); UI::InputText("InxName (eindeutig)", w.newInx, sizeof(w.newInx));
-    ImGui::SetNextItemWidth(220.0f); UI::InputText("Anzeigename", w.displayName, sizeof(w.displayName));
-    UI::Checkbox("ID automatisch (erste freie im größten freien Block, in allen Tabellen frei)", &w.autoId);
+    ImGui::SeparatorText(L("Identität & Werte", "Identity & values"));
+    ImGui::SetNextItemWidth(220.0f); UI::InputText(L("InxName (eindeutig)", "InxName (unique)"), w.newInx, sizeof(w.newInx));
+    ImGui::SetNextItemWidth(220.0f); UI::InputText(L("Anzeigename", "Display name"), w.displayName, sizeof(w.displayName));
+    UI::Checkbox(L("ID automatisch (erste freie im größten freien Block, in allen Tabellen frei)", "Automatic ID (first free in the largest free block, available in all tables)"), &w.autoId);
     if (!w.autoId) { ImGui::SetNextItemWidth(160.0f); UI::InputInt("ID", &w.manualId); }
     if (!w.isNpc) {
         ImGui::SetNextItemWidth(160.0f); UI::InputInt("Level", &w.level);
-        ImGui::SetNextItemWidth(160.0f); UI::InputInt("Max. HP", &w.maxHp);
-        ImGui::SetNextItemWidth(160.0f); UI::InputInt("Gehtempo", &w.walkSpeed);
-        ImGui::SetNextItemWidth(160.0f); UI::InputInt("Lauftempo", &w.runSpeed);
-        ImGui::SetNextItemWidth(160.0f); UI::InputInt("Größe", &w.size);
-        ImGui::TextDisabled("Alle weiteren Werte (EXP, Widerstände, Waffen ...) stammen von der Vorlage und lassen sich danach im Single SHN Editor ändern.");
+        ImGui::SetNextItemWidth(160.0f); UI::InputInt(L("Max. HP", "Max HP"), &w.maxHp);
+        ImGui::SetNextItemWidth(160.0f); UI::InputInt(L("Gehtempo", "Walk speed"), &w.walkSpeed);
+        ImGui::SetNextItemWidth(160.0f); UI::InputInt(L("Lauftempo", "Run speed"), &w.runSpeed);
+        ImGui::SetNextItemWidth(160.0f); UI::InputInt(L("Größe", "Size"), &w.size);
+        ImGui::TextDisabled("%s", L("Alle weiteren Werte (EXP, Widerstände, Waffen ...) stammen von der Vorlage und lassen sich danach im Single SHN Editor ändern.", "All other values (EXP, resistances, weapons ...) are inherited from the template and can be changed later in the Single SHN Editor."));
     }
     }
 
     // --- 3. Aussehen
     if (w.step == 2) {
-    ImGui::SeparatorText("Aussehen");
-    UI::RadioButton("Wie Vorlage", &w.lookMode, 0);
-    ImGui::SameLine(); UI::RadioButton("Anderes Modell", &w.lookMode, 1);
-    if (w.isNpc) { ImGui::SameLine(); UI::RadioButton("Spieler-Avatar mit Rüstung", &w.lookMode, 2); }
+    ImGui::SeparatorText(L("Aussehen", "Appearance"));
+    UI::RadioButton(L("Wie Vorlage", "Like template"), &w.lookMode, 0);
+    ImGui::SameLine(); UI::RadioButton(L("Anderes Modell", "Different model"), &w.lookMode, 1);
+    if (w.isNpc) { ImGui::SameLine(); UI::RadioButton(L("Spieler-Avatar mit Rüstung", "Player avatar with equipment"), &w.lookMode, 2); }
     if (w.lookMode == 1) {
         static std::vector<std::string> models;
         static bool modelsBuilt = false;
@@ -8093,34 +8093,34 @@ void DrawCustomCreatureEditor(EditorState& state) {
                 modelsBuilt = true;
             }
         }
-        ImGui::Text("Modell: %s", w.modelFile[0] ? w.modelFile : "(wie Vorlage)");
+        ImGui::Text(L("Modell: %s", "Model: %s"), w.modelFile[0] ? w.modelFile : L("(wie Vorlage)", "(like template)"));
         ImGui::SameLine();
-        if (UI::Button("Modell wählen...")) { w.modelFilter[0] = '\0'; ImGui::OpenPopup("Modell wählen##wiz"); }
+        if (UI::Button(L("Modell wählen...", "Choose model..."))) { w.modelFilter[0] = '\0'; ImGui::OpenPopup("Modell wählen##wiz"); }
         std::string chosen;
         if (StringPickerPopup("Modell wählen##wiz", models, w.modelFilter, sizeof(w.modelFilter), chosen)) std::snprintf(w.modelFile, sizeof(w.modelFile), "%s", chosen == "-" ? "" : chosen.c_str());
     }
     if (w.isNpc && w.lookMode == 2) {
         ImGui::BeginGroup();
-        ImGui::SetNextItemWidth(120.0f); UI::InputInt("Klasse (0-5)", &w.avClass);
+        ImGui::SetNextItemWidth(120.0f); UI::InputInt(L("Klasse (0-5)", "Class (0-5)"), &w.avClass);
         w.avClass = std::clamp(w.avClass, 0, 5);
-        ImGui::SameLine(); ImGui::SetNextItemWidth(120.0f); UI::InputInt("Geschlecht (1=männl., 0=weibl.)", &w.avGender);
+        ImGui::SameLine(); ImGui::SetNextItemWidth(120.0f); UI::InputInt(L("Geschlecht (1=männl., 0=weibl.)", "Gender (1=male, 0=female)"), &w.avGender);
         w.avGender = std::clamp(w.avGender, 0, 1);
-        ImGui::SetNextItemWidth(120.0f); UI::InputInt("Gesicht", &w.avFace);
-        ImGui::SameLine(); ImGui::SetNextItemWidth(120.0f); UI::InputInt("Frisur", &w.avHairType);
-        ImGui::SameLine(); ImGui::SetNextItemWidth(120.0f); UI::InputInt("Haarfarbe", &w.avHairColor);
+        ImGui::SetNextItemWidth(120.0f); UI::InputInt(L("Gesicht", "Face"), &w.avFace);
+        ImGui::SameLine(); ImGui::SetNextItemWidth(120.0f); UI::InputInt(L("Frisur", "Hair style"), &w.avHairType);
+        ImGui::SameLine(); ImGui::SetNextItemWidth(120.0f); UI::InputInt(L("Haarfarbe", "Hair color"), &w.avHairColor);
         w.avFace = std::max(0, w.avFace); w.avHairType = std::max(0, w.avHairType); w.avHairColor = std::max(0, w.avHairColor);
-        ImGui::TextDisabled("Ausrüstung (Slot klicken = Item wählen aus ItemInfo, Rechtsklick = leeren):");
+        ImGui::TextDisabled("%s", L("Ausrüstung (Slot klicken = Item wählen aus ItemInfo, Rechtsklick = leeren):", "Equipment (click slot = choose item from ItemInfo, right-click = clear):"));
         if (ImGui::BeginTable("##equ", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg, ImVec2(620.0f, 0.0f))) { // feste Breite: rechts daneben die Vorschau
             for (int i = 0; i < 19; ++i) {
                 ImGui::TableNextColumn();
                 ImGui::PushID(i);
-                ImGui::Text("%s", kAvatarSlotNames[i]);
+                ImGui::Text("%s", app::CurrentLanguage() == app::Language::German ? kAvatarSlotNames[i] : kAvatarSlotNamesEn[i]);
                 ImGui::SameLine(140.0f);
                 std::string& v = w.equ[static_cast<std::size_t>(i)];
                 const bool empty = v.empty() || v == "-";
                 const bool known = empty || state.itemByInx.count(v) || state.itemEntries.empty();
                 if (!known) ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(150, 40, 40, 255));
-                if (UI::Button((empty ? std::string("(leer)") : v).c_str(), ImVec2(150.0f, 0.0f))) { w.pickSlot = i; w.itemFilter[0] = '\0'; w.pickRequested = true; }
+                if (UI::Button((empty ? std::string(L("(leer)", "(empty)")) : v).c_str(), ImVec2(150.0f, 0.0f))) { w.pickSlot = i; w.itemFilter[0] = '\0'; w.pickRequested = true; }
                 if (!known) ImGui::PopStyleColor();
                 if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) v = "-";
                 ImGui::PopID();
@@ -8146,60 +8146,60 @@ void DrawCustomCreatureEditor(EditorState& state) {
 
     // --- 4. NPC-Extras
     if (w.step == 3) {
-        ImGui::SeparatorText("Rolle & Platzierung");
+        ImGui::SeparatorText(L("Rolle & Platzierung", "Role & placement"));
         if (w.isNpc) {
-        UI::Checkbox("Dialog der Vorlage kopieren (NpcDialogData)", &w.copyDialog);
-        UI::Checkbox("Auf der offenen Karte platzieren (World/NPC.txt)", &w.placeOnMap);
+        UI::Checkbox(L("Dialog der Vorlage kopieren (NpcDialogData)", "Copy dialog from template (NpcDialogData)"), &w.copyDialog);
+        UI::Checkbox(L("Auf der offenen Karte platzieren (World/NPC.txt)", "Place on the open map (World/NPC.txt)"), &w.placeOnMap);
         if (w.placeOnMap) {
             if (state.legacySaveStem[0] == '\0') {
-                ImGui::TextDisabled("Keine Karte offen - im Map-Editor eine Karte öffnen.");
+                ImGui::TextDisabled("%s", L("Keine Karte offen - im Map-Editor eine Karte öffnen.", "No map is open - open a map in the map editor."));
             } else {
-                ImGui::Text("Karte: %s", state.legacySaveStem);
+                ImGui::Text(L("Karte: %s", "Map: %s"), state.legacySaveStem);
                 ImGui::SetNextItemWidth(120.0f); UI::InputInt("X", &w.placeX);
                 ImGui::SameLine(); ImGui::SetNextItemWidth(120.0f); UI::InputInt("Y", &w.placeY);
-                ImGui::SameLine(); ImGui::SetNextItemWidth(120.0f); UI::InputInt("Richtung", &w.placeDir);
-                if (UI::SmallButton("Kartenmitte")) {
+                ImGui::SameLine(); ImGui::SetNextItemWidth(120.0f); UI::InputInt(L("Richtung", "Direction"), &w.placeDir);
+                if (UI::SmallButton(L("Kartenmitte", "Map center"))) {
                     w.placeX = static_cast<int>((state.heightmap.Width() - 1) * state.heightmap.BlockWidth() * 0.5f);
                     w.placeY = static_cast<int>((state.heightmap.Height() - 1) * state.heightmap.BlockHeight() * 0.5f);
                 }
                 ImGui::SetNextItemWidth(180.0f);
-                UI::Combo("Rolle", &w.roleIdx, kNpcRoles, 6);
+                UI::Combo(L("Rolle", "Role"), &w.roleIdx, kNpcRoles, 6);
                 ImGui::SetNextItemWidth(180.0f);
-                UI::InputText("Rollenargument (z.B. Quest, Item, Weapon, Skill)", w.roleArg, sizeof(w.roleArg));
+                UI::InputText(L("Rollenargument (z.B. Quest, Item, Weapon, Skill)", "Role argument (e.g. Quest, Item, Weapon, Skill)"), w.roleArg, sizeof(w.roleArg));
                 if (std::string(kNpcRoles[std::clamp(w.roleIdx, 0, 5)]) == "Merchant")
-                    ImGui::TextDisabled("Händler: danach im NPC-Tab 'Händler-Inventar bearbeiten' (legt NPCItemList/<InxName>.txt an).");
+                    ImGui::TextDisabled("%s", L("Händler: danach im NPC-Tab 'Händler-Inventar bearbeiten' (legt NPCItemList/<InxName>.txt an).", "Merchant: afterwards use 'Edit merchant inventory' in the NPC tab (creates NPCItemList/<InxName>.txt)."));
             }
         }
         } else {
-            ImGui::TextWrapped("Monster werden über die SHN-Tabellen angelegt. Die eigentliche Spawn-Zone "
-                               "wird anschließend im Karteneditor unter 'Mobs' erstellt und positioniert.");
+            ImGui::TextWrapped("%s", L("Monster werden über die SHN-Tabellen angelegt. Die eigentliche Spawn-Zone wird anschließend im Karteneditor unter 'Mobs' erstellt und positioniert.",
+                                          "Monsters are created through the SHN tables. The actual spawn zone is then created and positioned in the map editor under 'Mobs'."));
         }
     }
 
     // --- Anlegen / Speichern
     if (w.step == 4) {
-    ImGui::SeparatorText("Zusammenfassung & Anlegen");
-    ImGui::TextDisabled("Typ");
-    ImGui::Text("%s", w.isNpc ? "NPC" : "Monster");
-    ImGui::TextDisabled("Vorlage");
-    ImGui::Text("%s%s%lld", w.templateInx.empty() ? "(keine)" : w.templateInx.c_str(),
+    ImGui::SeparatorText(L("Zusammenfassung & Anlegen", "Summary & create"));
+    ImGui::TextDisabled("%s", L("Typ", "Type"));
+    ImGui::Text("%s", w.isNpc ? "NPC" : L("Monster", "Monster"));
+    ImGui::TextDisabled("%s", L("Vorlage", "Template"));
+    ImGui::Text("%s%s%lld", w.templateInx.empty() ? L("(keine)", "(none)") : w.templateInx.c_str(),
                 w.templateId >= 0 ? "  ·  #" : "", w.templateId >= 0 ? w.templateId : 0);
-    ImGui::TextDisabled("Neue Identität");
-    ImGui::Text("%s  ·  %s", w.newInx[0] ? w.newInx : "(InxName fehlt)",
-                w.displayName[0] ? w.displayName : "(Name fehlt)");
+    ImGui::TextDisabled("%s", L("Neue Identität", "New identity"));
+    ImGui::Text("%s  ·  %s", w.newInx[0] ? w.newInx : L("(InxName fehlt)", "(InxName missing)"),
+                w.displayName[0] ? w.displayName : L("(Name fehlt)", "(name missing)"));
     ImGui::TextDisabled("ID");
-    ImGui::Text("%s", w.autoId ? "automatisch – erste konsistent freie ID" : std::to_string(w.manualId).c_str());
-    ImGui::TextDisabled("Aussehen");
-    ImGui::Text("%s", w.lookMode == 0 ? "wie Vorlage" : w.lookMode == 1 ? "anderes Modell" : "Spieler-Avatar");
+    ImGui::Text("%s", w.autoId ? L("automatisch – erste konsistent freie ID", "automatic – first consistently free ID") : std::to_string(w.manualId).c_str());
+    ImGui::TextDisabled("%s", L("Aussehen", "Appearance"));
+    ImGui::Text("%s", w.lookMode == 0 ? L("wie Vorlage", "like template") : w.lookMode == 1 ? L("anderes Modell", "different model") : L("Spieler-Avatar", "player avatar"));
     if (w.isNpc) {
-        ImGui::TextDisabled("Kartenplatzierung");
-        ImGui::Text("%s", w.placeOnMap ? "wird angelegt" : "keine");
-        if (w.placeOnMap) ImGui::Text("X %d · Y %d · Richtung %d", w.placeX, w.placeY, w.placeDir);
+        ImGui::TextDisabled("%s", L("Kartenplatzierung", "Map placement"));
+        ImGui::Text("%s", w.placeOnMap ? L("wird angelegt", "will be created") : L("keine", "none"));
+        if (w.placeOnMap) ImGui::Text(L("X %d · Y %d · Richtung %d", "X %d · Y %d · direction %d"), w.placeX, w.placeY, w.placeDir);
     }
     ImGui::Separator();
-    if (UI::Button("Anlegen", ImVec2(160.0f, 0.0f))) RunCreateCreature(state);
+    if (UI::Button(L("Anlegen", "Create"), ImVec2(160.0f, 0.0f))) RunCreateCreature(state);
     ImGui::SameLine();
-    if (UI::Button("Alle geänderten SHN speichern")) {
+    if (UI::Button(L("Alle geänderten SHN speichern", "Save all changed SHN"))) {
         int saved = 0, failed = 0;
         for (auto& d : state.shnFiles) {
             if (!d.dirty) continue;
@@ -8220,15 +8220,15 @@ void DrawCustomCreatureEditor(EditorState& state) {
     const bool canAdvance =
         !(w.step == 0 && w.templateId < 0) &&
         !(w.step == 1 && (w.newInx[0] == '\0' || w.displayName[0] == '\0'));
-    if (w.step > 0 && UI::Button("← Zurück", ImVec2(120,0))) --w.step;
+    if (w.step > 0 && UI::Button(L("← Zurück", "← Back"), ImVec2(120,0))) --w.step;
     if (w.step > 0 && w.step < 4) ImGui::SameLine();
     if (w.step < 4) {
         ImGui::BeginDisabled(!canAdvance);
-        if (UI::Button("Weiter →", ImVec2(120,0))) ++w.step;
+        if (UI::Button(L("Weiter →", "Next →"), ImVec2(120,0))) ++w.step;
         ImGui::EndDisabled();
         if (!canAdvance) {
             ImGui::SameLine();
-            ImGui::TextDisabled(w.step == 0 ? "Zuerst eine Vorlage wählen." : "InxName und Anzeigename angeben.");
+            ImGui::TextDisabled("%s", w.step == 0 ? L("Zuerst eine Vorlage wählen.", "Choose a template first.") : L("InxName und Anzeigename angeben.", "Enter InxName and display name."));
         }
     }
 
