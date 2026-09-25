@@ -4172,6 +4172,15 @@ void DrawShnGrid(EditorState& state) {
             }
         }
 
+        if (state.shnFilterActive || !columnFilterKey.empty()) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f),"%zu/%zu",
+                               state.shnVisibleRows.size(),file.rows.size());
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextDisabled("%s",L("gefilterte Zeilen","filtered rows"));
+        }
+
         ImGuiListClipper clipper;
         clipper.Begin(static_cast<int>(state.shnVisibleRows.size()));
         while (clipper.Step()) {
@@ -5037,10 +5046,17 @@ void DrawShnEditor(EditorState& state) {
                 }
             }
             ImGui::Separator();
-            UI::InputText("Suche",state.shnSearch,sizeof(state.shnSearch));
-            UI::Checkbox("Spalten durchsuchen",&state.shnSearchColumns);
-            UI::Checkbox("Werte durchsuchen",&state.shnSearchValues);
-            ImGui::TextDisabled("Filter wird %s angewendet.", state.shnFilterActive ? "automatisch" : "nicht");
+            if (UI::InputTextWithHint("##shnSearch",L("Zeilen durchsuchen...","Search rows..."),
+                                      state.shnSearch,sizeof(state.shnSearch))) {
+                state.shnVisibleKey.clear();
+            }
+            state.shnFilterActive = state.shnSearch[0] != '\0';
+            UI::Checkbox(L("Spaltennamen","Column names"),&state.shnSearchColumns);
+            ImGui::SameLine();
+            UI::Checkbox(L("Werte","Values"),&state.shnSearchValues);
+            ImGui::TextDisabled("%s",state.shnFilterActive
+                ? L("Suche filtert die Zeilen sofort.","Search filters rows immediately.")
+                : L("Zusätzliche Filter stehen direkt unter den Spaltenüberschriften.","Additional filters are below the column headers."));
             ImGui::Separator();
             if(state.shnSelectedRow>=0 && state.shnSelectedColumn>=0 &&
                state.shnSelectedColumn<static_cast<int>(f.columns.size())) {
