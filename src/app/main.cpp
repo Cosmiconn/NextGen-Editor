@@ -351,6 +351,8 @@ struct EditorState {
     bool walkRectActive = false;
     ImVec2 walkRectStart{};
     bool walkPreviewDirty = true;
+    bool walkFootprintPreviewActive = false;
+    bool walkFootprintPreviewBlocked = true;
     char walkLegacyPath[512] = "";
     int walkLegacyWidth = 512;
     int walkLegacyHeight = 512;
@@ -10812,6 +10814,7 @@ void DrawCommandPalette(EditorState& state) {
 }
 
 static void DrawVisibilityPanel(EditorState& state);
+static std::vector<std::vector<std::pair<float, float>>> CollectVisibleObjectFootprints(EditorState& state);
 static void StampObjectFootprints(EditorState& state, bool blocked);
 static void RefreshObjectVisibility(EditorState& state);
 static bool IsObjectHidden(const EditorState& state, std::size_t i);
@@ -10955,32 +10958,75 @@ void DrawToolsContent(EditorState& state) {
         const float footprintButtonW=std::max(120.0f,(ImGui::GetContentRegionAvail().x-8.0f)*0.5f);
         ImGui::PushStyleColor(ImGuiCol_Button,IM_COL32(112,39,48,220));
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered,IM_COL32(170,52,64,235));
-        if (UI::Button(L("Grundflächen sperren","Block footprints"),ImVec2(footprintButtonW,34.0f)))
-            StampObjectFootprints(state, true);
+        if (UI::Button(L("Vorschau: sperren","Preview: block"),ImVec2(footprintButtonW,34.0f))) {
+            state.walkFootprintPreviewActive = true;
+            state.walkFootprintPreviewBlocked = true;
+        }
         ImGui::PopStyleColor(2);
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button,IM_COL32(20,101,72,220));
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered,IM_COL32(26,145,98,235));
-        if (UI::Button(L("Grundflächen freigeben","Make footprints walkable"),ImVec2(footprintButtonW,34.0f)))
-            StampObjectFootprints(state, false);
+        if (UI::Button(L("Vorschau: freigeben","Preview: walkable"),ImVec2(footprintButtonW,34.0f))) {
+            state.walkFootprintPreviewActive = true;
+            state.walkFootprintPreviewBlocked = false;
+        }
         ImGui::PopStyleColor(2);
+
+        if (state.walkFootprintPreviewActive) {
+            const auto previewPolygons = CollectVisibleObjectFootprints(state);
+            const ImVec4 previewColor = state.walkFootprintPreviewBlocked
+                ? ImVec4(1.0f,0.38f,0.38f,1.0f)
+                : ImVec4(0.32f,0.90f,0.58f,1.0f);
+            ImGui::TextColored(previewColor, L("Vorschau aktiv: %zu Grundflächen → %s",
+                                               "Preview active: %zu footprints → %s"),
+                               previewPolygons.size(),
+                               state.walkFootprintPreviewBlocked ? L("blockiert","blocked")
+                                                                 : L("begehbar","walkable"));
+            ImGui::TextDisabled("%s",L("Die farbigen Polygone im 2D-View zeigen exakt die Geometrie, die angewendet wird.",
+                                       "The colored polygons in the 2D view show exactly the geometry that will be applied."));
+            const float actionW=std::max(100.0f,(ImGui::GetContentRegionAvail().x-8.0f)*0.5f);
+            ImGui::BeginDisabled(previewPolygons.empty());
+            if (DrawCompactIconTextButton("applyFootprints", L("Anwenden","Apply"), DrawIconSave,
+                                          "panel.validation", true,
+                                          L("Vorschau als einen Undo-Schritt anwenden",
+                                            "Apply preview as one undo step"))) {
+                StampObjectFootprints(state, state.walkFootprintPreviewBlocked);
+                state.walkFootprintPreviewActive = false;
+            }
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            if (DrawCompactIconTextButton("cancelFootprints", L("Abbrechen","Cancel"), DrawIconDelete,
+                                          "edit.delete", true,
+                                          L("Vorschau verwerfen, Gitter unverändert lassen",
+                                            "Discard preview and leave grid unchanged"))) {
+                state.walkFootprintPreviewActive = false;
+                state.statusMessage = L("Grundflächen-Vorschau verworfen.",
+                                        "Footprint preview discarded.");
+            }
+        } else {
+            ImGui::TextDisabled("%s",L("Erst Vorschau wählen, im 2D-View prüfen und dann anwenden.",
+                                       "Choose a preview first, inspect it in the 2D view, then apply."));
+        }
+
         ImGui::TextDisabled("%s",L("Wirkt nur auf aktuell sichtbare Kategorien – ideal für Gebäude, Deko oder einzelne Gruppen.",
                                    "Affects only currently visible categories – ideal for buildings, decoration or selected groups."));
         ImGui::TextDisabled(L("Zellen im Gitter: %u x %u (%.0f x %.0f Einheiten)","Grid cells: %u x %u (%.0f x %.0f units)"), state.walkGrid.Cols(), state.walkGrid.Rows(),
                             state.walkGrid.Cols() * WalkGridCellSize(), state.walkGrid.Rows() * WalkGridCellSize());
 
-        ImGui::Separator();
-        ImGui::BeginDisabled(!state.walkUndo.CanUndo());
-        if (UI::Button(L("Rückgängig (Walk)","Undo (Walk)"))) {
+        ImGui::SeparatorText(L("Historie","History"));
+        if (DrawCompactIconTextButton("walkUndo", L("Rückgängig","Undo"), DrawIconUndo,
+                                      "history.undo", state.walkUndo.CanUndo(),
+                                      L("Letzte Walk-/Block-Aktion rückgängig machen",
+                                        "Undo last Walk/Block action"))) {
             if (state.walkUndo.Undo(state.walkGrid)) { state.walkPreviewDirty = true; state.mapDirty = true; }
         }
-        ImGui::EndDisabled();
         ImGui::SameLine();
-        ImGui::BeginDisabled(!state.walkUndo.CanRedo());
-        if (UI::Button(L("Wiederholen (Walk)","Redo (Walk)"))) {
+        if (DrawCompactIconTextButton("walkRedo", L("Wiederholen","Redo"), DrawIconRedo,
+                                      "history.redo", state.walkUndo.CanRedo(),
+                                      L("Letzte Walk-/Block-Aktion wiederholen",
+                                        "Redo last Walk/Block action"))) {
             if (state.walkUndo.Redo(state.walkGrid)) { state.walkPreviewDirty = true; state.mapDirty = true; }
         }
-        ImGui::EndDisabled();
     } else if (state.editMode == EditMode::ObjectPlacement) {
         ImGui::Text("%s",L("Klick im Editor (2D) unten:","Click in the 2D editor below:"));
         UI::RadioButton(L("Platzieren","Place"), &state.objectPlaceMode, 1);
@@ -11599,32 +11645,48 @@ const EditorState::ObjectFootprint& GetOrComputeFootprint(EditorState& state, co
 // Bounding-Box), gedreht/skaliert/verschoben wie das Objekt im 3D-View.
 static std::vector<std::pair<float, float>> ObjectFootprintWorldPolygon(EditorState& state, const core::PlacedObject& obj);
 
-static void StampObjectFootprints(EditorState& state, bool blocked) {
+static std::vector<std::vector<std::pair<float, float>>> CollectVisibleObjectFootprints(EditorState& state) {
+    std::vector<std::vector<std::pair<float, float>>> polygons;
     RefreshObjectVisibility(state);
-    core::WalkUndoPatch patch;
-    std::vector<std::uint64_t> seen;
-    int used = 0;
+    polygons.reserve(state.placementSet.Count() + state.shmdCategoryRenderSet.Count());
+
     for (std::size_t i = 0; i < state.placementSet.Count(); ++i) {
         if (IsObjectHidden(state, i)) continue;
-        const auto polygon = ObjectFootprintWorldPolygon(state, state.placementSet.At(i));
-        if (polygon.size() < 3) continue;
-        core::ApplyWalkConvexPolygon(state.walkGrid, polygon, blocked, patch, seen);
-        ++used;
+        auto polygon = ObjectFootprintWorldPolygon(state, state.placementSet.At(i));
+        if (polygon.size() >= 3) polygons.push_back(std::move(polygon));
     }
+
     RefreshShmdCategoryVisibility(state);
     for (std::size_t i = 0; i < state.shmdCategoryRenderSet.Count(); ++i) {
         if (i < state.shmdCategoryHidden.size() && state.shmdCategoryHidden[i]) continue;
-        const auto polygon = ObjectFootprintWorldPolygon(state, state.shmdCategoryRenderSet.At(i));
-        if (polygon.size() < 3) continue;
-        core::ApplyWalkConvexPolygon(state.walkGrid, polygon, blocked, patch, seen);
-        ++used;
+        auto polygon = ObjectFootprintWorldPolygon(state, state.shmdCategoryRenderSet.At(i));
+        if (polygon.size() >= 3) polygons.push_back(std::move(polygon));
     }
+    return polygons;
+}
+
+static void StampObjectFootprints(EditorState& state, bool blocked) {
+    const auto polygons = CollectVisibleObjectFootprints(state);
+    core::WalkUndoPatch patch;
+    std::vector<std::uint64_t> seen;
+    for (const auto& polygon : polygons)
+        core::ApplyWalkConvexPolygon(state.walkGrid, polygon, blocked, patch, seen);
+
     if (!patch.entries.empty()) {
+        // All visible footprints are deliberately aggregated into one patch: Apply is one
+        // semantic user action and therefore exactly one undo step.
         state.walkUndo.Push(std::move(patch));
         state.walkPreviewDirty = true;
         state.mapDirty = true;
+        state.statusMessage = std::to_string(polygons.size()) +
+            (blocked ? L(" Objekt-Grundflächen gesperrt. Ein Undo-Schritt.",
+                         " object footprints blocked. One undo step.")
+                     : L(" Objekt-Grundflächen freigegeben. Ein Undo-Schritt.",
+                         " object footprints made walkable. One undo step."));
+    } else {
+        state.statusMessage = L("Keine Walk-/Block-Zellen durch die sichtbaren Grundflächen geändert.",
+                                "No Walk/Block cells changed by the visible footprints.");
     }
-    state.statusMessage = std::to_string(used) + " Objekt-Grundflächen " + (blocked ? "gesperrt" : "freigegeben") + " (Rückgängig möglich).";
 }
 
 void DrawObjectFootprint2D(EditorState& state, const core::PlacedObject& obj, ImDrawList* drawList,
@@ -11673,6 +11735,34 @@ static std::vector<std::pair<float, float>> ObjectFootprintWorldPolygon(EditorSt
         world.emplace_back(obj.posX + (sx * c + sz * s), obj.posZ + (-sx * s + sz * c));
     }
     return world;
+}
+
+static void DrawWalkFootprintPreview(EditorState& state, ImDrawList* drawList,
+                                     const ImVec2& mapOrigin, const ImVec2& mapSize,
+                                     float spanX, float spanZ) {
+    if (!state.walkFootprintPreviewActive || spanX <= 0.0f || spanZ <= 0.0f) return;
+
+    const auto polygons = CollectVisibleObjectFootprints(state);
+    const ImU32 fill = state.walkFootprintPreviewBlocked
+        ? IM_COL32(245,85,85,58)
+        : IM_COL32(80,220,145,58);
+    const ImU32 edge = state.walkFootprintPreviewBlocked
+        ? IM_COL32(255,104,104,245)
+        : IM_COL32(92,235,158,245);
+
+    for (const auto& polygon : polygons) {
+        std::vector<ImVec2> screen;
+        screen.reserve(polygon.size());
+        for (const auto& [wx,wz] : polygon) {
+            const float u = wx / spanX;
+            const float v = 1.0f - wz / spanZ;
+            screen.emplace_back(mapOrigin.x + u * mapSize.x, mapOrigin.y + v * mapSize.y);
+        }
+        if (screen.size() < 3) continue;
+        drawList->AddConvexPolyFilled(screen.data(), static_cast<int>(screen.size()), fill);
+        drawList->AddPolyline(screen.data(), static_cast<int>(screen.size()), edge,
+                              ImDrawFlags_Closed, 2.2f);
+    }
 }
 
 void DrawMinimapPreviewContent(EditorState& state) {
@@ -11957,6 +12047,10 @@ void DrawEditor2DContent(EditorState& state) {
                 }
             }
         }
+    }
+    if (walkMode && state.walkFootprintPreviewActive) {
+        DrawWalkFootprintPreview(state, ImGui::GetWindowDrawList(),
+                                 cursorScreenPos, imageSize, spanX, spanZ);
     }
     if (state.editMode == EditMode::Npcs && state.npcTextLoaded && state.legacySaveStem[0] != '\0') {
         // NPC-Marker als Quadrate (statt Kreise wie bei Objekten) - selbe Weiß/Blau-Logik,
