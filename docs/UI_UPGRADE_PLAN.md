@@ -402,4 +402,4 @@ Dieser Abschnitt ist der verbindliche Ausbau-Fahrplan für den laufenden Branch 
 
 ### Priorität
 Die unmittelbare Reihenfolge ist:
-**Icon-/UI-Vision festziehen → App-Shell/Map-UI-Retrofit → Minimap-Metadaten + Editor-Preview (erreicht; Exportformat weiter gesperrt) → Walk/Block-Footprints (Preview/Apply erreicht) → SHN-Referenzen → Skill Animation/VFX → KFM-Playback → Quest-Flow optional → globale QA/Politur.**
+**Icon-/UI-Vision festziehen → App-Shell/Map-UI-Retrofit → Minimap-Metadaten + Editor-Preview (erreicht; Exportformat weiter gesperrt) → Walk/Block-Footprints (Preview/Apply erreicht) → SHN-Referenzen (verifizierte Kernfamilien erreicht; weitere Semantik nur nach Evidenz) → Skill Animation/VFX → KFM-Playback → Quest-Flow optional → globale QA/Politur.**
