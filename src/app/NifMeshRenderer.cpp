@@ -642,8 +642,23 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                         return t;
                     };
                     auto findTexturePath = [&](const std::string& textureName) -> std::optional<std::filesystem::path> {
+                        // NIF texture references are not consistently rooted at the map directory.
+                        // Many assets use a path relative to the NIF itself, so try that first
+                        // (case-insensitive, component by component) before the shared resmap search.
+                        if (!modelDir.empty()) {
+                            const auto native = core::legacy::LegacyPathToNative(textureName);
+                            if (auto local = core::legacy::ResolveCaseInsensitivePath(modelDir, native)) return local;
+                            const auto stripped = core::legacy::StripResmapPrefix(native);
+                            if (stripped != native) {
+                                if (auto local = core::legacy::ResolveCaseInsensitivePath(modelDir, stripped)) return local;
+                            }
+                        }
+
                         auto texPath = core::legacy::ResolveLegacyAssetPath(mapDir, textureName);
                         if (texPath || modelDir.empty()) return texPath;
+
+                        // Last local fallback: basename beside the NIF. This also handles exporter
+                        // paths whose directory prefix no longer exists in the installed client.
                         std::string want = textureName;
                         if (const auto slash = want.find_last_of("\\/"); slash != std::string::npos) want = want.substr(slash + 1);
                         const std::string wantLower = lowerOf(want);
@@ -676,8 +691,18 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
 
                         const bool hasSlotUvs = src.uvSet < part.uvSets.size() &&
                                                 part.uvSets[src.uvSet].size() == part.positions.size();
-                        const bool hasBaseFallbackUvs = src.uvSet == 0 && part.uvs.size() == part.positions.size();
-                        if (!hasSlotUvs && !hasBaseFallbackUvs) continue;
+                        const bool hasBaseFallbackUvs = part.uvs.size() == part.positions.size();
+                        if (!hasSlotUvs && hasBaseFallbackUvs) {
+                            // Some Fiesta exports reference an unavailable secondary UV set even
+                            // though UV0 is valid. Dropping the complete texture made whole material
+                            // layers disappear; render with UV0 as a deterministic fallback.
+                            dst.uvSet = 0;
+                        } else if (!hasSlotUvs) {
+                            std::fprintf(stderr,
+                                "[NifMeshRenderer] Textur-Slot %zu ohne brauchbares UV-Set (%u): %s\n",
+                                slotIndex, src.uvSet, obj.modelPath.c_str());
+                            continue;
+                        }
 
                         if (src.embeddedTexture) {
                             const std::string cacheKey = key + "#embedded:" + std::to_string(slotIndex) + ":" + src.texture;
