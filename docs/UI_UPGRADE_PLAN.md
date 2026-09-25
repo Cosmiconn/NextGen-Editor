@@ -210,6 +210,7 @@ Noch offen für spätere Ausbaustufen:
 ## Minimap / Overview – verifizierungsgebundener Ausbau
 
 - eigener Roadmap-Punkt, nicht nur Dekoration des 2D-Views;
+- **Editor-Preview umgesetzt:** eigener Minimap-Dock mit unabhängigem Top-Down-FBO, Whole-Map-Fit, optionalem Objekt-Overlay, 2D-Viewport-Rahmen und Klick-zum-Zentrieren;
 - zuerst echte Fiesta-Beispiele aus Client-/Map-Daten vergleichen;
 - Dateiname, Pfad, Format, Auflösung, Alpha und Orientierung werden in [MINIMAP_FORMAT.md](MINIMAP_FORMAT.md) dokumentiert;
 - vor Formatverifikation ist nur eine editorinterne Top-Down-Preview zulässig;
@@ -400,4 +401,4 @@ Dieser Abschnitt ist der verbindliche Ausbau-Fahrplan für den laufenden Branch 
 
 ### Priorität
 Die unmittelbare Reihenfolge ist:
-**Icon-/UI-Vision festziehen → App-Shell/Map-UI-Retrofit → Minimap-Format verifizieren + Preview → Walk/Block-Footprints → SHN-Referenzen → Skill Animation/VFX → KFM-Playback → Quest-Flow optional → globale QA/Politur.**
+**Icon-/UI-Vision festziehen → App-Shell/Map-UI-Retrofit → Minimap-Metadaten + Editor-Preview (erreicht; Exportformat weiter gesperrt) → Walk/Block-Footprints → SHN-Referenzen → Skill Animation/VFX → KFM-Playback → Quest-Flow optional → globale QA/Politur.**
