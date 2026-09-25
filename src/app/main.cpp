@@ -5475,7 +5475,12 @@ void DrawProjectHub(EditorState& state) {
         else if (i == 2) ImGui::Dummy(ImVec2(0.0f, gap));
     }
 
-    ImGui::SeparatorText("Zuletzt verwendete Projekte");
+    ImGui::Separator();
+    DrawInlineIcon("recentProjectsHeader", DrawIconTable, IM_COL32(100,205,255,245), nullptr,
+                   ImVec2(18.0f,18.0f), "system.recent_projects");
+    ImGui::SameLine(0.0f, 5.0f);
+    ImGui::TextColored(UiTheme::AccentCyan, "%s", L("ZULETZT VERWENDETE PROJEKTE","RECENT PROJECTS"));
+    ImGui::Separator();
     if (state.recentProjects.empty()) {
         ImGui::TextDisabled("Noch keine Projekte geöffnet.");
     } else {
@@ -5727,7 +5732,10 @@ void DrawMapEditorLauncher(EditorState& state) {
                 state.screen = AppScreen::NewProjectConfig;
         } else {
             if (!state.recentMaps.empty()) {
-                ImGui::TextColored(UiTheme::AccentCyan, "ZULETZT GEÖFFNET");
+                DrawInlineIcon("recentMapsHeader", DrawIconTable, IM_COL32(100,205,255,245), nullptr,
+                               ImVec2(18.0f,18.0f), "system.recent_projects");
+                ImGui::SameLine(0.0f, 5.0f);
+                ImGui::TextColored(UiTheme::AccentCyan, "%s", L("ZULETZT GEÖFFNET","RECENTLY OPENED"));
                 const std::size_t showCount = std::min<std::size_t>(5, state.recentMaps.size());
                 for (std::size_t i = 0; i < showCount; ++i) {
                     const auto& recent = state.recentMaps[i];
@@ -13643,6 +13651,9 @@ void DrawSceneOutlinerPanel(EditorState& state) {
     ImGui::TextDisabled(L("%zu gewählt","%zu selected"), state.selectedObjects.size());
 
     if (!state.selectedObjects.empty()) {
+        if (DrawTinyIconButton("outlinerCopy",DrawIconDuplicate,false,L("Kopieren (Strg+C)","Copy (Ctrl+C)"),ImVec2(22,22),"edit.copy"))
+            CopySelectedObjects(state);
+        ImGui::SameLine();
         if (DrawTinyIconButton("outlinerDuplicate",DrawIconDuplicate,false,L("Duplizieren (Strg+D)","Duplicate (Ctrl+D)"),ImVec2(22,22),"edit.duplicate"))
             DuplicateSelectedObjects(state);
         ImGui::SameLine();
@@ -16050,6 +16061,9 @@ int main() {
                 DrawTopNav(state, "Animationen");
                 ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
                 ImGui::BeginChild("##kfmWorkspace", ImVec2(0,0), false);
+                DrawInlineIcon("kfmWorkspaceHeader", DrawIconClapper, IM_COL32(100,205,255,245), nullptr,
+                               ImVec2(18.0f,18.0f), "module.kfm");
+                ImGui::SameLine(0.0f, 5.0f);
                 ImGui::TextColored(UiTheme::AccentCyan, "Animationen / KFM");
                 ImGui::SameLine();
                 ImGui::TextDisabled("Katalog · Übergänge · Dateiverweise · Kopie-Export");
