@@ -650,6 +650,7 @@ struct EditorState {
     std::string roamOverlayKey;
     std::vector<RoamOverlayRoute> roamOverlayRoutes;
     bool showRoamRoutes = true;
+    bool showAllRoamRoutes = false; // false = nur aktuelle Auswahl, true = alle Routen des aktuellen NPC-/Mob-Kontexts
 
     // Grundfläche (Bounding-Box in X/Z, aus den echten NIF-Vertex-Positionen) für die
     // 2D-Anzeige - siehe CHANGELOG [0.44.24]. Schlüssel: PlacedObject::modelPath (innerhalb
@@ -10586,32 +10587,50 @@ std::optional<EditorState::RoamOverlayRoute> LoadRoamOverlayRoute(
 
 void RefreshRoamOverlayRoutes(EditorState& state) {
     std::vector<std::string> names;
-    std::string key = state.shnServerRoot + "|" + std::to_string(static_cast<int>(state.editMode)) + "|";
+    std::unordered_set<std::string> unique;
+    const auto addName = [&](const std::string& name) {
+        if (!name.empty() && unique.insert(name).second) names.push_back(name);
+    };
 
-    if (state.editMode == EditMode::Npcs && state.npcTextLoaded && state.selectedNpcRecordIdx >= 0) {
+    std::string key = state.shnServerRoot + "|" + std::to_string(static_cast<int>(state.editMode)) +
+                      "|" + (state.showAllRoamRoutes ? "all" : "selected") + "|";
+
+    if (state.editMode == EditMode::Npcs && state.npcTextLoaded) {
         if (auto* table = state.npcTextFile.FindTable("ShineNPC")) {
-            const auto idx = static_cast<std::size_t>(state.selectedNpcRecordIdx);
-            if (idx < table->records.size() && !table->records[idx].values.empty()) {
-                names.push_back(table->records[idx].values[0]);
-                key += names.back();
+            if (state.showAllRoamRoutes) {
+                for (const std::size_t idx : NpcRecordsForCurrentMap(state)) {
+                    if (idx < table->records.size() && !table->records[idx].values.empty())
+                        addName(table->records[idx].values[0]);
+                }
+            } else if (state.selectedNpcRecordIdx >= 0) {
+                const auto idx = static_cast<std::size_t>(state.selectedNpcRecordIdx);
+                if (idx < table->records.size() && !table->records[idx].values.empty())
+                    addName(table->records[idx].values[0]);
             }
         }
-    } else if (state.editMode == EditMode::Mobs && state.mobRegenTextLoaded && state.selectedMobZoneIdx >= 0) {
+    } else if (state.editMode == EditMode::Mobs && state.mobRegenTextLoaded) {
         auto* zones = state.mobRegenTextFile.FindTable("MobRegenGroup");
         auto* spawns = state.mobRegenTextFile.FindTable("MobRegen");
-        const auto zi = static_cast<std::size_t>(state.selectedMobZoneIdx);
-        if (zones && spawns && zi < zones->records.size() && !zones->records[zi].values.empty()) {
-            const std::string zoneName = zones->records[zi].values[0];
-            key += zoneName;
-            std::unordered_set<std::string> unique;
-            for (const auto& rec : spawns->records) {
-                if (rec.values.size() < 2 || rec.values[0] != zoneName || rec.values[1].empty()) continue;
-                if (unique.insert(rec.values[1]).second) names.push_back(rec.values[1]);
+        if (spawns) {
+            if (state.showAllRoamRoutes) {
+                for (const auto& rec : spawns->records) {
+                    if (rec.values.size() >= 2) addName(rec.values[1]);
+                }
+            } else if (state.selectedMobZoneIdx >= 0) {
+                const auto zi = static_cast<std::size_t>(state.selectedMobZoneIdx);
+                if (zones && zi < zones->records.size() && !zones->records[zi].values.empty()) {
+                    const std::string zoneName = zones->records[zi].values[0];
+                    for (const auto& rec : spawns->records) {
+                        if (rec.values.size() < 2 || rec.values[0] != zoneName) continue;
+                        addName(rec.values[1]);
+                    }
+                }
             }
-            std::sort(names.begin(), names.end());
-            for (const auto& n : names) key += "|" + n;
         }
     }
+
+    std::sort(names.begin(), names.end());
+    for (const auto& n : names) key += "|" + n;
 
     if (key == state.roamOverlayKey) return;
     state.roamOverlayKey = key;
@@ -11456,6 +11475,17 @@ void DrawSceneOutlinerPanel(EditorState& state) {
         if (!table) { ImGui::TextDisabled("ShineNPC-Tabelle fehlt."); return; }
         const auto indices = NpcRecordsForCurrentMap(state);
         ImGui::TextDisabled("%zu NPCs", indices.size());
+        ImGui::SameLine();
+        if (DrawTinyIconButton("npcRouteOverlayVisible", DrawIconRoute, state.showRoamRoutes,
+                               state.showRoamRoutes ? "Routen-Overlay ausblenden" : "Routen-Overlay einblenden")) {
+            state.showRoamRoutes = !state.showRoamRoutes;
+            state.roamOverlayKey.clear();
+        }
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!state.showRoamRoutes);
+        if (UI::Checkbox("Alle Routen##npcRouteOverlayAll", &state.showAllRoamRoutes))
+            state.roamOverlayKey.clear();
+        ImGui::EndDisabled();
         ImGui::BeginChild("##sceneNpcList", ImVec2(0,0), true);
         for (std::size_t idx : indices) {
             auto& rec = table->records[idx];
@@ -11478,11 +11508,14 @@ void DrawSceneOutlinerPanel(EditorState& state) {
             const bool selected = state.selectedNpcRecordIdx == static_cast<int>(idx);
             if (UI::Selectable((label + "##npcScene").c_str(), selected)) {
                 state.selectedNpcRecordIdx = static_cast<int>(idx);
-                state.roamOverlayKey.clear();
+                if (!state.showAllRoamRoutes) state.roamOverlayKey.clear();
             }
             if (selected) {
                 RefreshRoamOverlayRoutes(state);
-                if (!state.roamOverlayRoutes.empty()) {
+                const bool hasSelectedRoute = std::any_of(
+                    state.roamOverlayRoutes.begin(), state.roamOverlayRoutes.end(),
+                    [&](const EditorState::RoamOverlayRoute& route) { return route.name == rec.values[0]; });
+                if (hasSelectedRoute) {
                     ImGui::SameLine();
                     DrawInlineIcon("route", DrawIconRoute, IM_COL32(90,220,255,245),
                                    "MobRoam-Route vorhanden");
@@ -11509,6 +11542,17 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                 if (!rec.values.empty()) ++groupCounts[rec.values[0]];
         }
         ImGui::TextDisabled("%zu Spawn-Zonen", zones->records.size());
+        ImGui::SameLine();
+        if (DrawTinyIconButton("mobRouteOverlayVisible", DrawIconRoute, state.showRoamRoutes,
+                               state.showRoamRoutes ? "Routen-Overlay ausblenden" : "Routen-Overlay einblenden")) {
+            state.showRoamRoutes = !state.showRoamRoutes;
+            state.roamOverlayKey.clear();
+        }
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!state.showRoamRoutes);
+        if (UI::Checkbox("Alle Routen##mobRouteOverlayAll", &state.showAllRoamRoutes))
+            state.roamOverlayKey.clear();
+        ImGui::EndDisabled();
         ImGui::BeginChild("##sceneMobZoneList", ImVec2(0,0), true);
         for (std::size_t i = 0; i < zones->records.size(); ++i) {
             auto& rec = zones->records[i];
@@ -11524,11 +11568,22 @@ void DrawSceneOutlinerPanel(EditorState& state) {
             const bool selected = state.selectedMobZoneIdx == static_cast<int>(i);
             if (UI::Selectable((label + "##mobScene").c_str(), selected)) {
                 state.selectedMobZoneIdx = static_cast<int>(i);
-                state.roamOverlayKey.clear();
+                if (!state.showAllRoamRoutes) state.roamOverlayKey.clear();
             }
             if (selected) {
                 RefreshRoamOverlayRoutes(state);
-                if (!state.roamOverlayRoutes.empty()) {
+                bool hasSelectedRoute = false;
+                if (spawns) {
+                    std::unordered_set<std::string> zoneNames;
+                    for (const auto& spawn : spawns->records) {
+                        if (spawn.values.size() >= 2 && spawn.values[0] == rec.values[0] && !spawn.values[1].empty())
+                            zoneNames.insert(spawn.values[1]);
+                    }
+                    hasSelectedRoute = std::any_of(
+                        state.roamOverlayRoutes.begin(), state.roamOverlayRoutes.end(),
+                        [&](const EditorState::RoamOverlayRoute& route) { return zoneNames.count(route.name) != 0; });
+                }
+                if (hasSelectedRoute) {
                     ImGui::SameLine();
                     DrawInlineIcon("route", DrawIconRoute, IM_COL32(90,220,255,245),
                                    "Mindestens eine MobRoam-Route vorhanden");
