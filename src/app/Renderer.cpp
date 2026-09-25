@@ -280,6 +280,12 @@ void HeightmapRenderer::Shutdown() {
     fbo2dColorTex_ = fbo2dDepthRbo_ = fbo2d_ = 0;
     fbo2dWidth_ = fbo2dHeight_ = 0;
 
+    if (fboOverviewColorTex_) glDeleteTextures(1, &fboOverviewColorTex_);
+    if (fboOverviewDepthRbo_) glDeleteRenderbuffers(1, &fboOverviewDepthRbo_);
+    if (fboOverview_) glDeleteFramebuffers(1, &fboOverview_);
+    fboOverviewColorTex_ = fboOverviewDepthRbo_ = fboOverview_ = 0;
+    fboOverviewWidth_ = fboOverviewHeight_ = 0;
+
     if (overlayVbo_) glDeleteBuffers(1, &overlayVbo_);
     if (overlayVao_) glDeleteVertexArrays(1, &overlayVao_);
     if (overlayShaderProgram_) glDeleteProgram(overlayShaderProgram_);
@@ -587,6 +593,61 @@ void HeightmapRenderer::EnsureFramebuffer2d(int width, int height) {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     fbo2dWidth_ = width;
     fbo2dHeight_ = height;
+}
+
+void HeightmapRenderer::EnsureFramebufferOverview(int width, int height) {
+    if (fboOverview_ != 0 && width == fboOverviewWidth_ && height == fboOverviewHeight_) return;
+
+    if (fboOverviewColorTex_) glDeleteTextures(1, &fboOverviewColorTex_);
+    if (fboOverviewDepthRbo_) glDeleteRenderbuffers(1, &fboOverviewDepthRbo_);
+    if (fboOverview_) glDeleteFramebuffers(1, &fboOverview_);
+
+    glGenFramebuffers(1, &fboOverview_);
+    glBindFramebuffer(GL_FRAMEBUFFER, fboOverview_);
+
+    glGenTextures(1, &fboOverviewColorTex_);
+    glBindTexture(GL_TEXTURE_2D, fboOverviewColorTex_);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, fboOverviewColorTex_, 0);
+
+    glGenRenderbuffers(1, &fboOverviewDepthRbo_);
+    glBindRenderbuffer(GL_RENDERBUFFER, fboOverviewDepthRbo_);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, fboOverviewDepthRbo_);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        std::fprintf(stderr, "[Renderer] Overview-Framebuffer unvollständig!\\n");
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    fboOverviewWidth_ = width;
+    fboOverviewHeight_ = height;
+}
+
+std::uint32_t HeightmapRenderer::RenderTopDownOverview(int width, int height) {
+    if (width <= 0 || height <= 0) return 0;
+    EnsureFramebufferOverview(width, height);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, fboOverview_);
+    glViewport(0, 0, width, height);
+    glEnable(GL_DEPTH_TEST);
+    glClearColor(0.10f, 0.11f, 0.13f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    if (indexCount_ > 0) {
+        const float centerX = mapSpanX_ * 0.5f;
+        const float centerZ = mapSpanZ_ * 0.5f;
+        const float halfW = std::max(mapSpanX_ * 0.5f, 1.0f);
+        const float halfH = std::max(mapSpanZ_ * 0.5f, 1.0f);
+        const float eyeHeight = maxHeight_ + 500.0f;
+        DrawTerrainMesh(OrthoTopDownViewProj(centerX, centerZ, halfW, halfH, eyeHeight), false);
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    return fboOverviewColorTex_;
 }
 
 void HeightmapRenderer::BeginTopDownScene(int width, int height) {
