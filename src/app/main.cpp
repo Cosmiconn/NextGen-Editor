@@ -10627,13 +10627,20 @@ ImU32 ActiveBrushColor(const EditorState& state, int alpha = 235);
 
 void DrawToolsContent(EditorState& state) {
     if (state.editMode == EditMode::Heightmap) {
-        ImGui::Text("%s",L("Pinselmodus","Brush mode"));
-        UI::RadioButton(L("Anheben","Raise"), reinterpret_cast<int*>(&state.brushMode), static_cast<int>(core::BrushMode::Raise));
-        UI::RadioButton(L("Absenken","Lower"), reinterpret_cast<int*>(&state.brushMode), static_cast<int>(core::BrushMode::Lower));
-        UI::RadioButton(L("Glätten","Smooth"), reinterpret_cast<int*>(&state.brushMode), static_cast<int>(core::BrushMode::Smooth));
-        UI::RadioButton(L("Einebnen","Flatten"), reinterpret_cast<int*>(&state.brushMode), static_cast<int>(core::BrushMode::Flatten));
+        ImGui::TextDisabled("%s",L("PINSELMODUS","BRUSH MODE"));
+        if (SceneQuickFilterButton("terrainRaise",L("Anheben","Raise"),state.brushMode==core::BrushMode::Raise))
+            state.brushMode=core::BrushMode::Raise;
+        ImGui::SameLine();
+        if (SceneQuickFilterButton("terrainLower",L("Absenken","Lower"),state.brushMode==core::BrushMode::Lower))
+            state.brushMode=core::BrushMode::Lower;
+        ImGui::SameLine();
+        if (SceneQuickFilterButton("terrainSmooth",L("Glätten","Smooth"),state.brushMode==core::BrushMode::Smooth))
+            state.brushMode=core::BrushMode::Smooth;
+        ImGui::SameLine();
+        if (SceneQuickFilterButton("terrainFlatten",L("Einebnen","Flatten"),state.brushMode==core::BrushMode::Flatten))
+            state.brushMode=core::BrushMode::Flatten;
 
-        ImGui::Separator();
+        ImGui::SeparatorText(L("Pinsel","Brush"));
         UI::SliderFloat("Radius", &state.brush.radius, 10.0f, 2000.0f);
         ImGui::TextDisabled("%s",L("Radius-Presets","Radius presets"));
         for (float preset : {50.0f,100.0f,250.0f,500.0f}) {
@@ -10690,13 +10697,12 @@ void DrawToolsContent(EditorState& state) {
         }
         ImGui::TextDisabled("%s",L("Hinweis: Anwenden setzt die Layer-Gewichte auf dem neuen Raster zurück.","Note: applying the resolution resets layer weights on the new grid."));
 
-        ImGui::Separator();
-        ImGui::Text("%s",L("Pinselmodus (Textur)","Brush mode (texture)"));
-        int paintModeInt = static_cast<int>(state.paintMode);
-        UI::RadioButton(L("Erhöhen","Increase"), &paintModeInt, static_cast<int>(core::PaintMode::Increase));
+        ImGui::SeparatorText(L("Pinsel","Brush"));
+        if (SceneQuickFilterButton("textureIncrease",L("Auftragen","Paint"),state.paintMode==core::PaintMode::Increase))
+            state.paintMode=core::PaintMode::Increase;
         ImGui::SameLine();
-        UI::RadioButton(L("Senken","Decrease"), &paintModeInt, static_cast<int>(core::PaintMode::Decrease));
-        state.paintMode = static_cast<core::PaintMode>(paintModeInt);
+        if (SceneQuickFilterButton("textureDecrease",L("Abtragen","Erase"),state.paintMode==core::PaintMode::Decrease))
+            state.paintMode=core::PaintMode::Decrease;
         UI::SliderFloat("Radius##tex", &state.paintSettings.radius, 10.0f, 2000.0f);
         ImGui::TextDisabled("Radius-Presets");
         for (float preset : {50.0f,100.0f,250.0f,500.0f}) {
@@ -10741,10 +10747,9 @@ void DrawToolsContent(EditorState& state) {
         ImGui::TextColored(ImVec4(1.0f,0.38f,0.38f,1.0f),"%s",L("● blockiert","● blocked"));
         ImGui::SameLine();
         ImGui::TextColored(ImVec4(0.32f,0.90f,0.58f,1.0f),"%s",L("● begehbar","● walkable"));
-        int mode = state.walkBlockMode ? 0 : 1;
-        if (UI::RadioButton(L("Sperren (blockiert)","Block"), &mode, 0)) state.walkBlockMode = true;
+        if (SceneQuickFilterButton("walkBlock",L("Sperren","Block"),state.walkBlockMode)) state.walkBlockMode=true;
         ImGui::SameLine();
-        if (UI::RadioButton(L("Freigeben (begehbar)","Unblock (walkable)"), &mode, 1)) state.walkBlockMode = false;
+        if (SceneQuickFilterButton("walkOpen",L("Freigeben","Walkable"),!state.walkBlockMode)) state.walkBlockMode=false;
         UI::SliderFloat("Radius##walk", &state.walkSettings.radius, 1.0f, 1000.0f, "%.1f", ImGuiSliderFlags_Logarithmic);
         ImGui::TextDisabled("Radius-Presets");
         for (float preset : {6.25f,25.0f,50.0f,100.0f,250.0f}) {
@@ -10752,10 +10757,21 @@ void DrawToolsContent(EditorState& state) {
             char label[32]; std::snprintf(label,sizeof(label),"%.0f##walkRadius",preset);
             if (UI::SmallButton(label)) state.walkSettings.radius=preset;
         }
-        ImGui::SeparatorText(L("Aus Objekten","From objects"));
-        if (UI::Button(L("Grundflächen sichtbarer Objekte SPERREN","BLOCK footprints of visible objects"))) StampObjectFootprints(state, true);
-        if (UI::Button(L("Grundflächen sichtbarer Objekte FREIGEBEN","UNBLOCK footprints of visible objects"))) StampObjectFootprints(state, false);
-        ImGui::TextDisabled("%s",L("Nutzt die Sichtbarkeit (Kategorien): z.B. nur 'Gebäude' einblenden, dann sperren.","Uses visibility categories: for example, show only 'Buildings', then block."));
+        ImGui::SeparatorText(L("Aus sichtbaren Objekten","From visible objects"));
+        const float footprintButtonW=std::max(120.0f,(ImGui::GetContentRegionAvail().x-8.0f)*0.5f);
+        ImGui::PushStyleColor(ImGuiCol_Button,IM_COL32(112,39,48,220));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered,IM_COL32(170,52,64,235));
+        if (UI::Button(L("Grundflächen sperren","Block footprints"),ImVec2(footprintButtonW,34.0f)))
+            StampObjectFootprints(state, true);
+        ImGui::PopStyleColor(2);
+        ImGui::SameLine();
+        ImGui::PushStyleColor(ImGuiCol_Button,IM_COL32(20,101,72,220));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered,IM_COL32(26,145,98,235));
+        if (UI::Button(L("Grundflächen freigeben","Make footprints walkable"),ImVec2(footprintButtonW,34.0f)))
+            StampObjectFootprints(state, false);
+        ImGui::PopStyleColor(2);
+        ImGui::TextDisabled("%s",L("Wirkt nur auf aktuell sichtbare Kategorien – ideal für Gebäude, Deko oder einzelne Gruppen.",
+                                   "Affects only currently visible categories – ideal for buildings, decoration or selected groups."));
         ImGui::TextDisabled(L("Zellen im Gitter: %u x %u (%.0f x %.0f Einheiten)","Grid cells: %u x %u (%.0f x %.0f units)"), state.walkGrid.Cols(), state.walkGrid.Rows(),
                             state.walkGrid.Cols() * WalkGridCellSize(), state.walkGrid.Rows() * WalkGridCellSize());
 
@@ -15483,51 +15499,93 @@ void DrawWorkspaceAssetBrowser(EditorState& state) {
 
     const bool showNifInspector = objectMode && !state.nifInspectorAsset.empty();
     const float assetListHeight = showNifInspector
-        ? std::max(160.0f, ImGui::GetContentRegionAvail().y * 0.48f)
+        ? std::max(190.0f, ImGui::GetContentRegionAvail().y * 0.52f)
         : 0.0f;
     ImGui::BeginChild("##workspaceAssetList", ImVec2(0,assetListHeight), true);
-    constexpr float thumbSize = 38.0f;
+
+    constexpr float cardW = 108.0f;
+    constexpr float cardH = 104.0f;
+    constexpr float cardGap = 8.0f;
+    constexpr float thumbSize = 68.0f;
+    const float availableW = std::max(cardW, ImGui::GetContentRegionAvail().x);
+    const int columns = std::max(1, static_cast<int>((availableW + cardGap) / (cardW + cardGap)));
+    const int rowCount = static_cast<int>((matching.size() + static_cast<std::size_t>(columns) - 1) /
+                                          static_cast<std::size_t>(columns));
     ImGuiListClipper clipper;
-    clipper.Begin(static_cast<int>(matching.size()));
+    clipper.Begin(rowCount, cardH + cardGap);
     while (clipper.Step()) {
-        for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row) {
-            const std::size_t index = matching[static_cast<std::size_t>(row)];
-            const std::string& rel = files[index];
-            ImGui::PushID(static_cast<int>(index));
-            const auto thumb = GetOrLoadAssetThumbnail(
-                state, root / rel, objectMode, objectMode ? state.resmapRootForThumbnails : std::filesystem::path{});
-            if (thumb.tex) {
-                ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(thumb.tex)), ImVec2(thumbSize,thumbSize));
-            } else {
-                ImGui::Dummy(ImVec2(thumbSize,thumbSize));
-            }
-            ImGui::SameLine();
-            const bool inspected = objectMode && state.nifInspectorAsset == rel;
-            if (UI::Selectable(rel.c_str(), inspected, 0, ImVec2(0,thumbSize))) {
-                if (objectMode) {
-                    const std::string legacy = ToLegacyResmapModelPath(rel);
-                    std::snprintf(state.newObjectModelPath, sizeof(state.newObjectModelPath), "%s", legacy.c_str());
-                    LoadNifAssetInspector(state, root / rel, rel);
-                    state.statusMessage = L("Objekt-Asset gewählt: ","Object asset selected: ") + legacy;
+        for (int gridRow = clipper.DisplayStart; gridRow < clipper.DisplayEnd; ++gridRow) {
+            for (int col = 0; col < columns; ++col) {
+                const std::size_t matchPos = static_cast<std::size_t>(gridRow * columns + col);
+                if (matchPos >= matching.size()) break;
+                const std::size_t index = matching[matchPos];
+                const std::string& rel = files[index];
+                const std::string filename = std::filesystem::path(rel).filename().string();
+                std::string shortName = filename;
+                if (shortName.size() > 17) shortName = shortName.substr(0,14) + "...";
+
+                ImGui::PushID(static_cast<int>(index));
+                const ImVec2 p = ImGui::GetCursorScreenPos();
+                const bool inspected = objectMode ? state.nifInspectorAsset == rel
+                                                  : std::string(state.newLayerDiffuse) == rel;
+                const bool clicked = ImGui::InvisibleButton("##assetCard", ImVec2(cardW,cardH));
+                const bool hovered = ImGui::IsItemHovered();
+                ImDrawList* dl=ImGui::GetWindowDrawList();
+                dl->AddRectFilled(ImVec2(p.x,p.y+2.0f),ImVec2(p.x+cardW,p.y+cardH+2.0f),
+                                  IM_COL32(0,3,10,100),7.0f);
+                dl->AddRectFilled(p,ImVec2(p.x+cardW,p.y+cardH),
+                                  inspected?IM_COL32(9,55,101,245):hovered?IM_COL32(14,47,75,245):IM_COL32(9,25,40,245),7.0f);
+                dl->AddRect(p,ImVec2(p.x+cardW,p.y+cardH),
+                            inspected?IM_COL32(32,221,242,245):hovered?IM_COL32(19,140,255,190):IM_COL32(31,62,88,235),
+                            7.0f,0,inspected?1.6f:1.0f);
+
+                const auto thumb = GetOrLoadAssetThumbnail(
+                    state, root / rel, objectMode, objectMode ? state.resmapRootForThumbnails : std::filesystem::path{});
+                const ImVec2 imageMin(p.x+(cardW-thumbSize)*0.5f,p.y+8.0f);
+                const ImVec2 imageMax(imageMin.x+thumbSize,imageMin.y+thumbSize);
+                dl->AddRectFilled(imageMin,imageMax,IM_COL32(5,15,24,255),5.0f);
+                if (thumb.tex) {
+                    dl->AddImage(static_cast<ImTextureID>(static_cast<intptr_t>(thumb.tex)),imageMin,imageMax);
                 } else {
-                    std::snprintf(state.newLayerDiffuse, sizeof(state.newLayerDiffuse), "%s", rel.c_str());
-                    state.statusMessage = L("Textur-Asset gewählt: ","Texture asset selected: ") + rel;
+                    const ImVec2 cc((imageMin.x+imageMax.x)*0.5f,(imageMin.y+imageMax.y)*0.5f);
+                    DrawIconCube(dl,cc,14.0f,IM_COL32(78,116,145,210));
                 }
-            }
-            if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
-                if (objectMode) {
-                    const std::string legacy=ToLegacyResmapModelPath(rel);
-                    ImGui::SetDragDropPayload("NEXTGEN_NIF_ASSET",legacy.c_str(),legacy.size()+1);
-                    ImGui::Text("%s",L("NIF platzieren","Place NIF"));
-                    ImGui::TextDisabled("%s",legacy.c_str());
-                } else {
-                    ImGui::SetDragDropPayload("NEXTGEN_DDS_ASSET",rel.c_str(),rel.size()+1);
-                    ImGui::Text("%s",L("Textur zuweisen","Assign texture"));
-                    ImGui::TextDisabled("%s",rel.c_str());
+
+                const ImVec2 ts=ImGui::CalcTextSize(shortName.c_str());
+                dl->AddText(ImVec2(p.x+(cardW-ts.x)*0.5f,p.y+82.0f),
+                            inspected?IM_COL32(238,249,255,255):IM_COL32(181,205,223,245),shortName.c_str());
+                if (inspected)
+                    dl->AddRectFilled(ImVec2(p.x+14.0f,p.y+cardH-3.0f),ImVec2(p.x+cardW-14.0f,p.y+cardH-1.0f),
+                                      IM_COL32(32,221,242,255),1.0f);
+
+                if (clicked) {
+                    if (objectMode) {
+                        const std::string legacy = ToLegacyResmapModelPath(rel);
+                        std::snprintf(state.newObjectModelPath, sizeof(state.newObjectModelPath), "%s", legacy.c_str());
+                        LoadNifAssetInspector(state, root / rel, rel);
+                        state.statusMessage = L("Objekt-Asset gewählt: ","Object asset selected: ") + legacy;
+                    } else {
+                        std::snprintf(state.newLayerDiffuse, sizeof(state.newLayerDiffuse), "%s", rel.c_str());
+                        state.statusMessage = L("Textur-Asset gewählt: ","Texture asset selected: ") + rel;
+                    }
                 }
-                ImGui::EndDragDropSource();
+                if (hovered) ImGui::SetTooltip("%s",rel.c_str());
+                if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
+                    if (objectMode) {
+                        const std::string legacy=ToLegacyResmapModelPath(rel);
+                        ImGui::SetDragDropPayload("NEXTGEN_NIF_ASSET",legacy.c_str(),legacy.size()+1);
+                        ImGui::Text("%s",L("NIF platzieren","Place NIF"));
+                        ImGui::TextDisabled("%s",legacy.c_str());
+                    } else {
+                        ImGui::SetDragDropPayload("NEXTGEN_DDS_ASSET",rel.c_str(),rel.size()+1);
+                        ImGui::Text("%s",L("Textur zuweisen","Assign texture"));
+                        ImGui::TextDisabled("%s",rel.c_str());
+                    }
+                    ImGui::EndDragDropSource();
+                }
+                ImGui::PopID();
+                if (col + 1 < columns && matchPos + 1 < matching.size()) ImGui::SameLine(0.0f,cardGap);
             }
-            ImGui::PopID();
         }
     }
     ImGui::EndChild();
