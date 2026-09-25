@@ -2329,6 +2329,9 @@ void DrawAdvancedFileOps(EditorState& state) {
             auto result = core::legacy::SaveLegacyMap(project, state.legacySaveDir, state.legacySaveStem);
             if (result) {
                 state.legacyIniMeta = project.ini; // ExportLegacyTextureSet aktualisiert z.B. Layer-Metadaten
+                state.mapDirty = false;
+                TouchRecentMap(state, (std::filesystem::path(state.legacySaveDir) /
+                                      (std::string(state.legacySaveStem) + ".ini")).string());
                 state.statusMessage = "Karte gespeichert nach: " + std::string(state.legacySaveDir);
             } else {
                 state.statusMessage = "Karte speichern fehlgeschlagen: " + result.error();
@@ -10458,6 +10461,9 @@ void DrawWorkspaceTabBar(EditorState& state) {
         auto result = core::legacy::SaveLegacyMap(project, state.legacySaveDir, state.legacySaveStem);
         if (result) {
             state.legacyIniMeta = project.ini;
+            state.mapDirty = false;
+            TouchRecentMap(state, (std::filesystem::path(state.legacySaveDir) /
+                                  (std::string(state.legacySaveStem) + ".ini")).string());
             state.statusMessage = std::string(T("workspace.savedas")) + state.legacySaveDir;
         } else {
             state.statusMessage = "Fehler: " + result.error();
@@ -11235,8 +11241,15 @@ void DrawMapEditorWorkspace(EditorState& state) {
             if (UI::Button(T("workspace.save"))) {
                 auto project = BuildProjectFromState(state);
                 auto result = core::legacy::SaveLegacyMap(project, state.legacySaveDir, state.legacySaveStem);
-                state.statusMessage = result ? std::string(T("workspace.savedas")) + state.legacySaveDir
-                                             : "Fehler: " + result.error();
+                if (result) {
+                    state.legacyIniMeta = project.ini;
+                    state.mapDirty = false;
+                    TouchRecentMap(state, (std::filesystem::path(state.legacySaveDir) /
+                                          (std::string(state.legacySaveStem) + ".ini")).string());
+                    state.statusMessage = std::string(T("workspace.savedas")) + state.legacySaveDir;
+                } else {
+                    state.statusMessage = "Fehler: " + result.error();
+                }
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
@@ -11271,8 +11284,9 @@ void DrawMapEditorWorkspace(EditorState& state) {
     ImGui::PopStyleColor();
 
     ImGui::Separator();
-    ImGui::TextDisabled("Map: %s  |  Werkzeug: %s  |  Auswahl: %zu  |  %.0f FPS",
+    ImGui::TextDisabled("Map: %s%s  |  Werkzeug: %s  |  Auswahl: %zu  |  %.0f FPS",
                         state.legacySaveStem[0] ? state.legacySaveStem : "-",
+                        state.mapDirty ? " *" : "",
                         modeName(), state.selectedObjects.size(), ImGui::GetIO().Framerate);
     if (state.selectedObject != kNoObjectSelection) {
         if (const auto* selected = EditableObject(state, state.selectedObject)) {
