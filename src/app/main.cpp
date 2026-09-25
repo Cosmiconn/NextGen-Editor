@@ -5390,11 +5390,28 @@ EditorState::AssetThumbnail GetOrLoadAssetThumbnail(EditorState& state,
     }
 
     EditorState::AssetThumbnail thumb;
-    if (!isNif) {
-        if (auto dds = core::LoadDdsImage(resolvedPath)) {
-            thumb.tex = UploadThumbnailTexture(dds->rgba, dds->width, dds->height);
-            if (thumb.tex && dds->height > 0) thumb.aspect = static_cast<float>(dds->width) / static_cast<float>(dds->height);
+    const auto loadTextureThumbnail = [&](const std::filesystem::path& texturePath) {
+        const std::string ext = LowerAscii(texturePath.extension().string());
+        if (ext == ".tga") {
+            if (auto image = core::LoadTgaImage(texturePath)) {
+                thumb.tex = UploadThumbnailTexture(image->rgba, image->width, image->height);
+                if (thumb.tex && image->height > 0)
+                    thumb.aspect = static_cast<float>(image->width) / static_cast<float>(image->height);
+                return thumb.tex != 0;
+            }
+            return false;
         }
+        if (auto image = core::LoadDdsImage(texturePath)) {
+            thumb.tex = UploadThumbnailTexture(image->rgba, image->width, image->height);
+            if (thumb.tex && image->height > 0)
+                thumb.aspect = static_cast<float>(image->width) / static_cast<float>(image->height);
+            return thumb.tex != 0;
+        }
+        return false;
+    };
+
+    if (!isNif) {
+        loadTextureThumbnail(resolvedPath);
     } else if (auto model = core::LoadNifMesh(resolvedPath)) {
         // Zwei-Ebenen-tiefer "Fake"-Kartenordner unter resmapRoot: ResolveLegacyAssetPath leitet
         // den Asset-Root aus mapDir.parent_path().parent_path() her (Layout <AssetRoot>/field/
@@ -5414,11 +5431,7 @@ EditorState::AssetThumbnail GetOrLoadAssetThumbnail(EditorState& state,
             }
             if (!part.diffuseTexture.empty()) {
                 if (auto texPath = core::legacy::ResolveLegacyAssetPath(fakeMapDir, part.diffuseTexture)) {
-                    if (auto dds = core::LoadDdsImage(*texPath)) {
-                        thumb.tex = UploadThumbnailTexture(dds->rgba, dds->width, dds->height);
-                        if (thumb.tex && dds->height > 0) thumb.aspect = static_cast<float>(dds->width) / static_cast<float>(dds->height);
-                        break;
-                    }
+                    if (loadTextureThumbnail(*texPath)) break;
                 }
             }
         }
@@ -13046,6 +13059,48 @@ void LoadNifAssetInspector(EditorState& state, const std::filesystem::path& path
     }
 }
 
+std::optional<std::filesystem::path> ResolveNifInspectorTexturePath(
+    const std::filesystem::path& root, const std::string& relativeAsset,
+    const std::string& textureName) {
+    if (textureName.empty()) return std::nullopt;
+
+    // Gleiches Legacy-Layout wie der Renderer: aus einem fiktiven Feld-Verzeichnis
+    // kann ResolveLegacyAssetPath auf fieldTexture und andere resmap-Bereiche aufloesen.
+    const std::filesystem::path fakeMapDir = root / "field" / "_nif_inspector";
+    if (auto resolved = core::legacy::ResolveLegacyAssetPath(fakeMapDir, textureName))
+        return resolved;
+
+    // Manche NIFs referenzieren nur einen Dateinamen neben dem Modell. Dieser Fallback
+    // arbeitet absichtlich case-insensitiv, da die Originaldaten haeufig Windows-Pfade sind.
+    const std::filesystem::path modelDir = (root / relativeAsset).parent_path();
+    std::string leaf = textureName;
+    if (const auto slash = leaf.find_last_of("\\/"); slash != std::string::npos)
+        leaf = leaf.substr(slash + 1);
+    const std::string wanted = LowerAscii(leaf);
+    std::error_code ec;
+    for (const auto& entry : std::filesystem::directory_iterator(modelDir, ec)) {
+        if (ec) break;
+        if (!entry.is_regular_file(ec)) continue;
+        if (LowerAscii(entry.path().filename().string()) == wanted) return entry.path();
+    }
+    return std::nullopt;
+}
+
+EditorState::AssetThumbnail GetOrLoadEmbeddedNifInspectorThumbnail(
+    EditorState& state, const core::NifEmbeddedTexture& image,
+    std::size_t partIndex, std::size_t slotIndex) {
+    const std::string key = "nif-embedded://" + state.nifInspectorAsset + "#" +
+                            std::to_string(partIndex) + "/" + std::to_string(slotIndex);
+    if (const auto it = state.assetThumbnails.find(key); it != state.assetThumbnails.end())
+        return it->second;
+
+    EditorState::AssetThumbnail thumb;
+    thumb.tex = UploadThumbnailTexture(image.rgba, image.width, image.height);
+    if (thumb.tex && image.height > 0)
+        thumb.aspect = static_cast<float>(image.width) / static_cast<float>(image.height);
+    return state.assetThumbnails.emplace(key, thumb).first->second;
+}
+
 void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root) {
     if (state.nifInspectorAsset.empty()) return;
 
@@ -13118,11 +13173,43 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                 anyTexture=true;
                 ImGui::PushID(static_cast<int>(si));
                 ImGui::SeparatorText(NifTextureSlotLabel(si));
+
+                EditorState::AssetThumbnail preview;
+                std::optional<std::filesystem::path> resolvedTexture;
+                if (slot.embeddedTexture) {
+                    preview = GetOrLoadEmbeddedNifInspectorThumbnail(
+                        state, *slot.embeddedTexture, pi, si);
+                } else if (!slot.texture.empty()) {
+                    resolvedTexture = ResolveNifInspectorTexturePath(
+                        root, state.nifInspectorAsset, slot.texture);
+                    if (resolvedTexture)
+                        preview = GetOrLoadAssetThumbnail(state, *resolvedTexture, false);
+                }
+
+                if (preview.tex) {
+                    constexpr float kPreviewMax = 64.0f;
+                    ImVec2 previewSize(kPreviewMax, kPreviewMax);
+                    if (preview.aspect > 1.0f) previewSize.y /= preview.aspect;
+                    else if (preview.aspect > 0.0f) previewSize.x *= preview.aspect;
+                    ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(preview.tex)),
+                                 previewSize);
+                    ImGui::SameLine();
+                }
+                ImGui::BeginGroup();
                 if (slot.embeddedTexture) {
                     ImGui::Text("Eingebettet · %u × %u",
                                 slot.embeddedTexture->width, slot.embeddedTexture->height);
                 } else {
                     ImGui::TextWrapped("%s", slot.texture.empty() ? "(keine externe Datei)" : slot.texture.c_str());
+                    if (!slot.texture.empty()) {
+                        if (resolvedTexture) {
+                            ImGui::TextDisabled("Datei: %s", resolvedTexture->filename().string().c_str());
+                            if (ImGui::IsItemHovered())
+                                ImGui::SetTooltip("%s", resolvedTexture->string().c_str());
+                        } else {
+                            ImGui::TextDisabled("Texturdatei nicht gefunden");
+                        }
+                    }
                 }
                 ImGui::TextDisabled("UV %u · Clamp %u · Filter %u",
                                     slot.uvSet, slot.clampMode, slot.filterMode);
@@ -13131,6 +13218,7 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                                         slot.translation.u,slot.translation.v,
                                         slot.scale.u,slot.scale.v,slot.rotation);
                 }
+                ImGui::EndGroup();
                 ImGui::PopID();
             }
             if (!anyTexture) ImGui::TextDisabled("Keine NiTexturingProperty-Slots.");
