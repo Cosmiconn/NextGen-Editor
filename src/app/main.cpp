@@ -10680,7 +10680,8 @@ void DrawEditor2DContent(EditorState& state) {
             } else if (state.editMode == EditMode::Portals) {
                 // Klick setzt entweder die Position des gewaehlten Ziels (Pick-Modus) oder
                 // waehlt das naechste Ziel aus. Darf NIE die Heightmap bearbeiten.
-                if (state.portalPickMode && state.selectedPortalKind != kPortalKindNone) {
+                if (state.portalPickMode &&
+                    (state.selectedPortalKind == kPortalKindTown || state.selectedPortalKind == kPortalKindRecall)) {
                     SetSelectedPortalPosition(state, std::llround(worldX), std::llround(worldZ));
                 } else {
                     const float tolerance = spanX * 0.02f / zoom;
@@ -11436,36 +11437,88 @@ void DrawPreview3DContent(EditorState& state) {
     DrawObjectGizmoToolbar(state, imageScreenPos);
     DrawNpcOverlay3D(state, imageScreenPos, w, h);
 
-    // Direktes 3D-Picking: nächster projizierter Objektursprung unter dem Mauszeiger.
+    // Direktes 3D-Picking: echte NIF-Dreiecke haben Vorrang. Nur Objekte ohne
+    // ladbares Mesh fallen weiterhin auf den projizierten Ursprung/Footprint zurück.
     if (state.editMode==EditMode::ObjectPlacement && viewImageHovered && !gizmoCapturing &&
         ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
         const ImVec2 mouse=ImGui::GetMousePos();
-        float best=18.0f;
         int bestId=kNoObjectSelection;
+        float bestRay=std::numeric_limits<float>::infinity();
+
+        const auto nearP=Unproject3D(state,imageScreenPos,w,h,mouse,-1.0f);
+        const auto farP=Unproject3D(state,imageScreenPos,w,h,mouse,1.0f);
+        std::array<float,3> rayOrigin{}, rayDir{};
+        bool rayValid=false;
+        if(nearP&&farP) {
+            rayOrigin={nearP->x,nearP->y,nearP->z};
+            rayDir={farP->x-nearP->x,farP->y-nearP->y,farP->z-nearP->z};
+            const float len=std::sqrt(rayDir[0]*rayDir[0]+rayDir[1]*rayDir[1]+rayDir[2]*rayDir[2]);
+            if(len>1.0e-6f) {
+                for(float& v:rayDir) v/=len;
+                rayValid=true;
+            }
+        }
+
         RefreshObjectVisibility(state);
-        for(std::size_t i=0;i<state.placementSet.Count();++i) {
-            if(IsObjectHidden(state,i)||IsObjectEditorLocked(state,static_cast<int>(i))) continue;
-            const auto& obj=state.placementSet.At(i);
-            ImVec2 p;
-            if(!ProjectWorldTo3DView(state,imageScreenPos,w,h,{obj.posX,obj.posY,obj.posZ},p)) continue;
-            const float dx=p.x-mouse.x,dy=p.y-mouse.y;
-            const float d=std::sqrt(dx*dx+dy*dy);
-            if(d<best){best=d;bestId=static_cast<int>(i);}
+        if(rayValid&&state.showObjectMeshes) {
+            for(std::size_t i=0;i<state.placementSet.Count();++i) {
+                if(IsObjectHidden(state,i)||IsObjectEditorLocked(state,static_cast<int>(i))||
+                   !state.nifMeshRenderer.HasRealMesh(i)) continue;
+                if(const auto hit=state.nifMeshRenderer.RaycastObject(
+                       state.placementSet,i,state.camera,rayOrigin,rayDir);
+                   hit&&*hit<bestRay) {
+                    bestRay=*hit;
+                    bestId=static_cast<int>(i);
+                }
+            }
         }
+
         RefreshShmdCategoryVisibility(state);
-        for(std::size_t i=0;i<state.shmdCategoryRenderSet.Count();++i) {
-            if(i<state.shmdCategoryHidden.size()&&state.shmdCategoryHidden[i]) continue;
-            const auto poly=ObjectFootprintWorldPolygon(state,state.shmdCategoryRenderSet.At(i));
-            if(poly.empty()) continue;
-            float x=0.0f,z=0.0f;
-            for(const auto& q:poly){x+=q.first;z+=q.second;}
-            x/=static_cast<float>(poly.size());z/=static_cast<float>(poly.size());
-            ImVec2 p;
-            if(!ProjectWorldTo3DView(state,imageScreenPos,w,h,{x,state.heightmap.SampleWorld(x,z),z},p)) continue;
-            const float dx=p.x-mouse.x,dy=p.y-mouse.y;
-            const float d=std::sqrt(dx*dx+dy*dy);
-            if(d<best){best=d;bestId=ShmdSelectionId(i);}
+        if(rayValid&&state.showObjectMeshes) {
+            for(std::size_t i=0;i<state.shmdCategoryRenderSet.Count();++i) {
+                const int id=ShmdSelectionId(i);
+                if((i<state.shmdCategoryHidden.size()&&state.shmdCategoryHidden[i])||
+                   IsObjectEditorLocked(state,id)||!state.shmdCategoryMeshRenderer.HasRealMesh(i)) continue;
+                if(const auto hit=state.shmdCategoryMeshRenderer.RaycastObject(
+                       state.shmdCategoryRenderSet,i,state.camera,rayOrigin,rayDir);
+                   hit&&*hit<bestRay) {
+                    bestRay=*hit;
+                    bestId=id;
+                }
+            }
         }
+
+        // Kein Geometrietreffer: Marker-/Ursprungs-Fallback ausschließlich für Modelle,
+        // deren NIF nicht geladen werden konnte.
+        if(bestId==kNoObjectSelection) {
+            float bestScreen=18.0f;
+            for(std::size_t i=0;i<state.placementSet.Count();++i) {
+                if(IsObjectHidden(state,i)||IsObjectEditorLocked(state,static_cast<int>(i))||
+                   state.nifMeshRenderer.HasRealMesh(i)) continue;
+                const auto& obj=state.placementSet.At(i);
+                ImVec2 p;
+                if(!ProjectWorldTo3DView(state,imageScreenPos,w,h,{obj.posX,obj.posY,obj.posZ},p)) continue;
+                const float dx=p.x-mouse.x,dy=p.y-mouse.y;
+                const float d=std::sqrt(dx*dx+dy*dy);
+                if(d<bestScreen){bestScreen=d;bestId=static_cast<int>(i);}
+            }
+            for(std::size_t i=0;i<state.shmdCategoryRenderSet.Count();++i) {
+                const int id=ShmdSelectionId(i);
+                if((i<state.shmdCategoryHidden.size()&&state.shmdCategoryHidden[i])||
+                   IsObjectEditorLocked(state,id)||state.shmdCategoryMeshRenderer.HasRealMesh(i)) continue;
+                const auto poly=ObjectFootprintWorldPolygon(state,state.shmdCategoryRenderSet.At(i));
+                if(poly.empty()) continue;
+                float x=0.0f,z=0.0f;
+                for(const auto& q:poly){x+=q.first;z+=q.second;}
+                x/=static_cast<float>(poly.size());z/=static_cast<float>(poly.size());
+                ImVec2 p;
+                if(!ProjectWorldTo3DView(state,imageScreenPos,w,h,{x,state.heightmap.SampleWorld(x,z),z},p)) continue;
+                const float dx=p.x-mouse.x,dy=p.y-mouse.y;
+                const float d=std::sqrt(dx*dx+dy*dy);
+                if(d<bestScreen){bestScreen=d;bestId=id;}
+            }
+        }
+
         if(bestId!=kNoObjectSelection) {
             state.objectPlaceMode=0;
             SelectObjectOnCanvas(state,bestId,ImGui::GetIO().KeyCtrl);
