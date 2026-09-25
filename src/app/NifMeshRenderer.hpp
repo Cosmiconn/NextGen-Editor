@@ -16,8 +16,10 @@
 #include "Camera.hpp"
 #include "mapeditor/core/NifModel.hpp"
 #include "mapeditor/core/ObjectPlacement.hpp"
+#include "mapeditor/core/DdsImage.hpp"
 
 #include <array>
+#include <expected>
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -26,6 +28,12 @@
 #include <vector>
 
 namespace theseed::mapeditor::app {
+
+// Plattform-Rasterdecoder für Editor-Vorschauen. Unter Windows nutzt er denselben WIC-Pfad
+// wie der NIF-Renderer (PNG/JPG/BMP), auf anderen Plattformen liefert er einen klaren Fehler.
+// Dadurch braucht der Interface-Browser keine zweite Bildbibliothek.
+std::expected<core::DdsImage, std::string> LoadPlatformRasterImage(
+    const std::filesystem::path& file);
 
 class NifMeshRenderer {
 public:
