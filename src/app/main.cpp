@@ -824,6 +824,9 @@ struct EditorState {
     // (Größe/Position) nicht bei jedem Frame zurückgesetzt werden.
     bool mapEditorDockspaceBuilt = false;
     bool resetMapDockLayout = false;
+    bool workspacePresetLoaded = false;
+    int mapWorkspacePreset = 0;        // 0 Standard, 1 3D-Fokus, 2 Terrain/2D, 3 Daten/Szene
+    int pendingMapWorkspacePreset = -1;
     std::string nifPrecacheDoneForRoot; // resmapRoot, für den die Vorladung zuletzt komplett durchlief
     std::vector<std::string> nifPrecacheQueue; // Kopie von availableNifFiles zum Abarbeiten
     std::size_t nifPrecacheCursor = 0;
@@ -844,6 +847,44 @@ std::filesystem::path NextGenUserSettingsDir() {
         if (ec) base = ".";
     }
     return base / "NextGen-Editor";
+}
+
+const char* MapWorkspacePresetName(int preset) {
+    switch (preset) {
+        case 1: return "3D-Fokus";
+        case 2: return "Terrain / 2D";
+        case 3: return "Daten / Szene";
+        default: return "Standard";
+    }
+}
+
+void SaveWorkspaceSettings(const EditorState& state) {
+    const auto dir = NextGenUserSettingsDir();
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    if (ec) return;
+    std::ofstream out(dir / "workspace.txt", std::ios::binary | std::ios::trunc);
+    if (!out) return;
+    out << "map_preset=" << std::clamp(state.mapWorkspacePreset,0,3) << "\n";
+}
+
+void LoadWorkspaceSettings(EditorState& state) {
+    if (state.workspacePresetLoaded) return;
+    state.workspacePresetLoaded = true;
+    std::ifstream in(NextGenUserSettingsDir() / "workspace.txt", std::ios::binary);
+    if (!in) return;
+    std::string line;
+    while (std::getline(in,line)) {
+        constexpr std::string_view prefix="map_preset=";
+        if (line.rfind(prefix,0) != 0) continue;
+        state.mapWorkspacePreset=std::clamp(std::atoi(line.c_str()+static_cast<std::ptrdiff_t>(prefix.size())),0,3);
+    }
+}
+
+void RequestMapWorkspacePreset(EditorState& state,int preset) {
+    state.pendingMapWorkspacePreset=std::clamp(preset,0,3);
+    state.statusMessage=std::string("Workspace-Preset wird angewendet: ")+
+                        MapWorkspacePresetName(state.pendingMapWorkspacePreset);
 }
 
 std::string NormalizedRecentPath(const std::string& input) {
@@ -3204,6 +3245,7 @@ bool DrawEditorCard(const char* id, ImVec2 size, ImU32 bodyColor, ImU32 headerCo
 void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
     LoadRecentEntries(state);
     LoadShortcutSettings(state);
+    LoadWorkspaceSettings(state);
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(11.0f, 7.0f));
 
     ImGui::TextColored(ImVec4(0.20f, 0.72f, 1.0f, 1.0f), "NG");
