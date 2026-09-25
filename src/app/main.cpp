@@ -9957,58 +9957,58 @@ ImU32 ActiveBrushColor(const EditorState& state, int alpha = 235);
 
 void DrawToolsContent(EditorState& state) {
     if (state.editMode == EditMode::Heightmap) {
-        ImGui::Text("Pinselmodus");
-        UI::RadioButton("Anheben", reinterpret_cast<int*>(&state.brushMode), static_cast<int>(core::BrushMode::Raise));
-        UI::RadioButton("Absenken", reinterpret_cast<int*>(&state.brushMode), static_cast<int>(core::BrushMode::Lower));
-        UI::RadioButton("Glätten", reinterpret_cast<int*>(&state.brushMode), static_cast<int>(core::BrushMode::Smooth));
-        UI::RadioButton("Einebnen", reinterpret_cast<int*>(&state.brushMode), static_cast<int>(core::BrushMode::Flatten));
+        ImGui::Text("%s",L("Pinselmodus","Brush mode"));
+        UI::RadioButton(L("Anheben","Raise"), reinterpret_cast<int*>(&state.brushMode), static_cast<int>(core::BrushMode::Raise));
+        UI::RadioButton(L("Absenken","Lower"), reinterpret_cast<int*>(&state.brushMode), static_cast<int>(core::BrushMode::Lower));
+        UI::RadioButton(L("Glätten","Smooth"), reinterpret_cast<int*>(&state.brushMode), static_cast<int>(core::BrushMode::Smooth));
+        UI::RadioButton(L("Einebnen","Flatten"), reinterpret_cast<int*>(&state.brushMode), static_cast<int>(core::BrushMode::Flatten));
 
         ImGui::Separator();
         UI::SliderFloat("Radius", &state.brush.radius, 10.0f, 2000.0f);
-        ImGui::TextDisabled("Radius-Presets");
+        ImGui::TextDisabled("%s",L("Radius-Presets","Radius presets"));
         for (float preset : {50.0f,100.0f,250.0f,500.0f}) {
             ImGui::SameLine();
             const std::string label=std::to_string(static_cast<int>(preset))+"##terrainRadius";
             if (UI::SmallButton(label.c_str())) state.brush.radius=preset;
         }
-        UI::SliderFloat("Stärke", &state.brush.strength, 0.1f, 100.0f);
-        ImGui::TextDisabled("Stärke-Presets");
+        UI::SliderFloat(L("Stärke","Strength"), &state.brush.strength, 0.1f, 100.0f);
+        ImGui::TextDisabled("%s",L("Stärke-Presets","Strength presets"));
         for (float preset : {1.0f,5.0f,10.0f,25.0f}) {
             ImGui::SameLine();
             const std::string label=std::to_string(static_cast<int>(preset))+"##terrainStrength";
             if (UI::SmallButton(label.c_str())) state.brush.strength=preset;
         }
         if (state.brushMode == core::BrushMode::Flatten) {
-            UI::InputFloat("Zielhöhe", &state.brush.flattenTarget);
+            UI::InputFloat(L("Zielhöhe","Target height"), &state.brush.flattenTarget);
         }
 
         ImGui::Separator();
         ImGui::BeginDisabled(!state.undo.CanUndo());
-        if (UI::Button("Rückgängig (Strg+Z)")) {
+        if (UI::Button(L("Rückgängig (Strg+Z)","Undo (Ctrl+Z)"))) {
             if (state.undo.Undo(state.heightmap)) { state.meshDirty = true; state.mapDirty = true; }
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
         ImGui::BeginDisabled(!state.undo.CanRedo());
-        if (UI::Button("Wiederholen (Strg+Y)")) {
+        if (UI::Button(L("Wiederholen (Strg+Y)","Redo (Ctrl+Y)"))) {
             if (state.undo.Redo(state.heightmap)) { state.meshDirty = true; state.mapDirty = true; }
         }
         ImGui::EndDisabled();
 
         ImGui::Separator();
         const auto [lo, hi] = state.heightmap.MinMax();
-        ImGui::Text("Gitter: %u x %u", state.heightmap.Width(), state.heightmap.Height());
-        ImGui::Text("Höhen-Range: [%.2f, %.2f]", lo, hi);
+        ImGui::Text(L("Gitter: %u x %u","Grid: %u x %u"), state.heightmap.Width(), state.heightmap.Height());
+        ImGui::Text(L("Höhen-Range: [%.2f, %.2f]","Height range: [%.2f, %.2f]"), lo, hi);
     } else if (state.editMode == EditMode::TexturePaint) {
-        ImGui::TextDisabled("Layer-Auswahl und Layer-Verwaltung befinden sich im separaten Layer-Dock.");
+        ImGui::TextDisabled("%s",L("Layer-Auswahl und Layer-Verwaltung befinden sich im separaten Layer-Dock.","Layer selection and management are available in the separate Layer dock."));
         ImGui::Separator();
-        ImGui::Text("Textur-Rasterauflösung");
-        UI::InputInt("Breite##texResolution", &state.textureResolutionWidth);
-        UI::InputInt("Höhe##texResolution", &state.textureResolutionHeight);
+        ImGui::Text("%s",L("Textur-Rasterauflösung","Texture grid resolution"));
+        UI::InputInt(L("Breite##texResolution","Width##texResolution"), &state.textureResolutionWidth);
+        UI::InputInt(L("Höhe##texResolution","Height##texResolution"), &state.textureResolutionHeight);
         state.textureResolutionWidth = std::clamp(state.textureResolutionWidth, 64, 4096);
         state.textureResolutionHeight = std::clamp(state.textureResolutionHeight, 64, 4096);
         ImGui::SameLine();
-        if (UI::Button("Auflösung anwenden##texResolution")) {
+        if (UI::Button(L("Auflösung anwenden##texResolution","Apply resolution##texResolution"))) {
             if (state.textureStack.Width() != static_cast<std::uint32_t>(state.textureResolutionWidth) ||
                 state.textureStack.Height() != static_cast<std::uint32_t>(state.textureResolutionHeight)) {
                 state.textureStack.Resize(static_cast<std::uint32_t>(state.textureResolutionWidth),
@@ -10018,14 +10018,14 @@ void DrawToolsContent(EditorState& state) {
                 state.renderer.UpdateBlendTextures(state.textureStack);
             }
         }
-        ImGui::TextDisabled("Hinweis: Anwenden setzt die Layer-Gewichte auf dem neuen Raster zurück.");
+        ImGui::TextDisabled("%s",L("Hinweis: Anwenden setzt die Layer-Gewichte auf dem neuen Raster zurück.","Note: applying the resolution resets layer weights on the new grid."));
 
         ImGui::Separator();
-        ImGui::Text("Pinselmodus (Textur)");
+        ImGui::Text("%s",L("Pinselmodus (Textur)","Brush mode (texture)"));
         int paintModeInt = static_cast<int>(state.paintMode);
-        UI::RadioButton("Erhöhen", &paintModeInt, static_cast<int>(core::PaintMode::Increase));
+        UI::RadioButton(L("Erhöhen","Increase"), &paintModeInt, static_cast<int>(core::PaintMode::Increase));
         ImGui::SameLine();
-        UI::RadioButton("Senken", &paintModeInt, static_cast<int>(core::PaintMode::Decrease));
+        UI::RadioButton(L("Senken","Decrease"), &paintModeInt, static_cast<int>(core::PaintMode::Decrease));
         state.paintMode = static_cast<core::PaintMode>(paintModeInt);
         UI::SliderFloat("Radius##tex", &state.paintSettings.radius, 10.0f, 2000.0f);
         ImGui::TextDisabled("Radius-Presets");
@@ -10034,7 +10034,7 @@ void DrawToolsContent(EditorState& state) {
             const std::string label=std::to_string(static_cast<int>(preset))+"##textureRadius";
             if (UI::SmallButton(label.c_str())) state.paintSettings.radius=preset;
         }
-        UI::SliderFloat("Stärke##tex", &state.paintSettings.strength, 0.01f, 1.0f);
+        UI::SliderFloat(L("Stärke##tex","Strength##tex"), &state.paintSettings.strength, 0.01f, 1.0f);
         ImGui::TextDisabled("Stärke-Presets");
         for (float preset : {0.10f,0.25f,0.50f,1.00f}) {
             ImGui::SameLine();
@@ -10044,7 +10044,7 @@ void DrawToolsContent(EditorState& state) {
 
         ImGui::Separator();
         ImGui::BeginDisabled(!state.textureUndo.CanUndo());
-        if (UI::Button("Rückgängig (Textur)")) {
+        if (UI::Button(L("Rückgängig (Textur)","Undo (texture)"))) {
             if (state.textureUndo.Undo(state.textureStack)) {
                 state.layerPreviewDirty = true;
                 state.renderer.UpdateBlendTextures(state.textureStack);
@@ -10053,7 +10053,7 @@ void DrawToolsContent(EditorState& state) {
         ImGui::EndDisabled();
         ImGui::SameLine();
         ImGui::BeginDisabled(!state.textureUndo.CanRedo());
-        if (UI::Button("Wiederholen (Textur)")) {
+        if (UI::Button(L("Wiederholen (Textur)","Redo (texture)"))) {
             if (state.textureUndo.Redo(state.textureStack)) {
                 state.layerPreviewDirty = true;
                 state.renderer.UpdateBlendTextures(state.textureStack);
@@ -10063,18 +10063,18 @@ void DrawToolsContent(EditorState& state) {
 
         if (state.selectedLayer >= 0) {
             ImGui::Separator();
-            ImGui::Text("Gewichtssumme (Zelle 0,0): %.3f (sollte ~1.0 sein)", state.textureStack.WeightSumAt(0, 0));
+            ImGui::Text(L("Gewichtssumme (Zelle 0,0): %.3f (sollte ~1.0 sein)","Weight sum (cell 0,0): %.3f (should be ~1.0)"), state.textureStack.WeightSumAt(0, 0));
         }
     } else if (state.editMode == EditMode::BlockWalk) {
-        ImGui::TextWrapped("Block & Walk: jede Zelle (6.25 Einheiten) ist blockiert (rot) oder begehbar. "
-                           "Klick/Ziehen im 2D-View setzt Zellen im Kreis um den Mauszeiger.");
-        ImGui::TextColored(ImVec4(1.0f,0.38f,0.38f,1.0f),"● blockiert");
+        ImGui::TextWrapped("%s",L("Block & Walk: jede Zelle (6.25 Einheiten) ist blockiert (rot) oder begehbar. Klick/Ziehen im 2D-View setzt Zellen im Kreis um den Mauszeiger.",
+                                "Block & Walk: each cell (6.25 units) is blocked (red) or walkable. Click/drag in the 2D view paints cells in a circle around the cursor."));
+        ImGui::TextColored(ImVec4(1.0f,0.38f,0.38f,1.0f),"%s",L("● blockiert","● blocked"));
         ImGui::SameLine();
-        ImGui::TextColored(ImVec4(0.32f,0.90f,0.58f,1.0f),"● begehbar");
+        ImGui::TextColored(ImVec4(0.32f,0.90f,0.58f,1.0f),"%s",L("● begehbar","● walkable"));
         int mode = state.walkBlockMode ? 0 : 1;
-        if (UI::RadioButton("Sperren (blockiert)", &mode, 0)) state.walkBlockMode = true;
+        if (UI::RadioButton(L("Sperren (blockiert)","Block"), &mode, 0)) state.walkBlockMode = true;
         ImGui::SameLine();
-        if (UI::RadioButton("Freigeben (begehbar)", &mode, 1)) state.walkBlockMode = false;
+        if (UI::RadioButton(L("Freigeben (begehbar)","Unblock (walkable)"), &mode, 1)) state.walkBlockMode = false;
         UI::SliderFloat("Radius##walk", &state.walkSettings.radius, 1.0f, 1000.0f, "%.1f", ImGuiSliderFlags_Logarithmic);
         ImGui::TextDisabled("Radius-Presets");
         for (float preset : {6.25f,25.0f,50.0f,100.0f,250.0f}) {
@@ -10082,22 +10082,22 @@ void DrawToolsContent(EditorState& state) {
             char label[32]; std::snprintf(label,sizeof(label),"%.0f##walkRadius",preset);
             if (UI::SmallButton(label)) state.walkSettings.radius=preset;
         }
-        ImGui::SeparatorText("Aus Objekten");
-        if (UI::Button("Grundflächen sichtbarer Objekte SPERREN")) StampObjectFootprints(state, true);
-        if (UI::Button("Grundflächen sichtbarer Objekte FREIGEBEN")) StampObjectFootprints(state, false);
-        ImGui::TextDisabled("Nutzt die Sichtbarkeit (Kategorien): z.B. nur 'Gebäude' einblenden, dann sperren.");
-        ImGui::TextDisabled("Zellen im Gitter: %u x %u (%.0f x %.0f Einheiten)", state.walkGrid.Cols(), state.walkGrid.Rows(),
+        ImGui::SeparatorText(L("Aus Objekten","From objects"));
+        if (UI::Button(L("Grundflächen sichtbarer Objekte SPERREN","BLOCK footprints of visible objects"))) StampObjectFootprints(state, true);
+        if (UI::Button(L("Grundflächen sichtbarer Objekte FREIGEBEN","UNBLOCK footprints of visible objects"))) StampObjectFootprints(state, false);
+        ImGui::TextDisabled("%s",L("Nutzt die Sichtbarkeit (Kategorien): z.B. nur 'Gebäude' einblenden, dann sperren.","Uses visibility categories: for example, show only 'Buildings', then block."));
+        ImGui::TextDisabled(L("Zellen im Gitter: %u x %u (%.0f x %.0f Einheiten)","Grid cells: %u x %u (%.0f x %.0f units)"), state.walkGrid.Cols(), state.walkGrid.Rows(),
                             state.walkGrid.Cols() * WalkGridCellSize(), state.walkGrid.Rows() * WalkGridCellSize());
 
         ImGui::Separator();
         ImGui::BeginDisabled(!state.walkUndo.CanUndo());
-        if (UI::Button("Rückgängig (Walk)")) {
+        if (UI::Button(L("Rückgängig (Walk)","Undo (Walk)"))) {
             if (state.walkUndo.Undo(state.walkGrid)) { state.walkPreviewDirty = true; state.mapDirty = true; }
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
         ImGui::BeginDisabled(!state.walkUndo.CanRedo());
-        if (UI::Button("Wiederholen (Walk)")) {
+        if (UI::Button(L("Wiederholen (Walk)","Redo (Walk)"))) {
             if (state.walkUndo.Redo(state.walkGrid)) { state.walkPreviewDirty = true; state.mapDirty = true; }
         }
         ImGui::EndDisabled();
