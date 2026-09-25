@@ -746,6 +746,11 @@ struct EditorState {
     int interfaceSelectedAsset = -1;
     char interfaceAssetFilter[128] = "";
     bool interfaceOverridesOnly = false;
+    bool interfaceChangedOverridesOnly = false;
+    // lower-case relativer resmenu-Pfad -> InterfaceOverrideState als int.
+    // Der Cache wird beim Scan aufgebaut und nach Create/Replace/Remove gezielt aktualisiert,
+    // damit keine Dateivergleiche in jedem UI-Frame stattfinden.
+    std::unordered_map<std::string, int> interfaceOverrideStateByAsset;
 
     // --- Drop Table Browser -------------------------------------------------
     // Semantische Ansicht von Server/9Data/Shine/World/ItemDropTable.txt. Die Datei ist
@@ -1364,6 +1369,9 @@ void SyncProjectRoots(EditorState& state) {
     state.interfaceAssets.clear();
     state.interfaceSelectedAsset = -1;
     state.interfaceAssetFilter[0] = '\0';
+    state.interfaceOverridesOnly = false;
+    state.interfaceChangedOverridesOnly = false;
+    state.interfaceOverrideStateByAsset.clear();
     state.dropTableLoaded = false;
     state.dropTableDirty = false;
     state.dropTableFile = core::legacy::ShineTextFile{};
@@ -5083,7 +5091,7 @@ void DrawProjectHub(EditorState& state) {
          {"KFM-Katalog", "Übergänge", "Dateiverweise prüfen", "verlustfreie Kopie exportieren"},
          DrawIconClapper, HubAction::Kfm, true},
         {"hub.interface", "Interface Browser",
-         {"resmenu-Assets durchsuchen", "TGA/DDS-Vorschau", "UI-NIF / Material analysieren", "read-only, ohne Format-Risiko"},
+         {"resmenu-Assets durchsuchen", "Bildformate vorschauen", "UI-NIF / Material analysieren", "Projekt-Overrides sicher verwalten"},
          DrawIconMonitorEye, HubAction::Interface, true},
     };
 
@@ -13982,6 +13990,78 @@ bool IsRegularFileNoThrow(const std::filesystem::path& path) {
     return std::filesystem::is_regular_file(path, ec) && !ec;
 }
 
+enum class InterfaceOverrideState {
+    None = 0,
+    Identical = 1,
+    Modified = 2,
+    ProjectOnly = 3,
+};
+
+bool BinaryFilesEqualNoThrow(const std::filesystem::path& a, const std::filesystem::path& b) {
+    std::error_code ecA, ecB;
+    const auto sizeA = std::filesystem::file_size(a, ecA);
+    const auto sizeB = std::filesystem::file_size(b, ecB);
+    if (ecA || ecB || sizeA != sizeB) return false;
+
+    std::ifstream left(a, std::ios::binary);
+    std::ifstream right(b, std::ios::binary);
+    if (!left || !right) return false;
+
+    std::array<char, 64 * 1024> leftBuf{};
+    std::array<char, 64 * 1024> rightBuf{};
+    while (true) {
+        left.read(leftBuf.data(), static_cast<std::streamsize>(leftBuf.size()));
+        right.read(rightBuf.data(), static_cast<std::streamsize>(rightBuf.size()));
+        const std::streamsize leftCount = left.gcount();
+        const std::streamsize rightCount = right.gcount();
+        if (leftCount != rightCount) return false;
+        if (leftCount == 0) return true;
+        if (!std::equal(leftBuf.data(), leftBuf.data() + leftCount, rightBuf.data())) return false;
+    }
+}
+
+InterfaceOverrideState InspectInterfaceOverride(const EditorState& state,
+                                                const std::filesystem::path& sourceRoot,
+                                                const std::string& rel) {
+    const auto projectPath = InterfaceProjectOverridePath(state, rel);
+    if (!IsRegularFileNoThrow(projectPath)) return InterfaceOverrideState::None;
+
+    const auto sourcePath = sourceRoot / std::filesystem::path(rel);
+    if (!IsRegularFileNoThrow(sourcePath)) return InterfaceOverrideState::ProjectOnly;
+    return BinaryFilesEqualNoThrow(sourcePath, projectPath)
+        ? InterfaceOverrideState::Identical
+        : InterfaceOverrideState::Modified;
+}
+
+InterfaceOverrideState CachedInterfaceOverrideState(const EditorState& state,
+                                                    const std::string& rel) {
+    const auto it = state.interfaceOverrideStateByAsset.find(LowerAscii(rel));
+    return it == state.interfaceOverrideStateByAsset.end()
+        ? InterfaceOverrideState::None
+        : static_cast<InterfaceOverrideState>(it->second);
+}
+
+void RefreshInterfaceOverrideState(EditorState& state, const std::string& rel) {
+    if (state.interfaceRoot.empty()) {
+        state.interfaceOverrideStateByAsset.erase(LowerAscii(rel));
+        return;
+    }
+    const auto status = InspectInterfaceOverride(state, std::filesystem::path(state.interfaceRoot), rel);
+    if (status == InterfaceOverrideState::None)
+        state.interfaceOverrideStateByAsset.erase(LowerAscii(rel));
+    else
+        state.interfaceOverrideStateByAsset[LowerAscii(rel)] = static_cast<int>(status);
+}
+
+void RebuildInterfaceOverrideStates(EditorState& state, const std::filesystem::path& sourceRoot) {
+    state.interfaceOverrideStateByAsset.clear();
+    for (const auto& rel : state.interfaceAssets) {
+        const auto status = InspectInterfaceOverride(state, sourceRoot, rel);
+        if (status != InterfaceOverrideState::None)
+            state.interfaceOverrideStateByAsset[LowerAscii(rel)] = static_cast<int>(status);
+    }
+}
+
 std::filesystem::path InterfaceEffectiveAssetPath(const EditorState& state,
                                                   const std::filesystem::path& sourceRoot,
                                                   const std::string& rel) {
@@ -14023,6 +14103,7 @@ bool CreateInterfaceProjectOverride(EditorState& state,
         return false;
     }
     InvalidateInterfaceAssetPreview(state, sourcePath, projectPath);
+    RefreshInterfaceOverrideState(state, rel);
     state.statusMessage = L("Projekt-Override erstellt: ","Project override created: ") + projectPath.string();
     return true;
 }
@@ -14039,6 +14120,7 @@ bool RemoveInterfaceProjectOverride(EditorState& state,
         return false;
     }
     InvalidateInterfaceAssetPreview(state, sourcePath, projectPath);
+    state.interfaceOverrideStateByAsset.erase(LowerAscii(rel));
     if (!IsRegularFileNoThrow(sourcePath)) {
         // War die Datei nur im Projekt vorhanden, darf der inzwischen gelöschte Eintrag nicht
         // als tote Zeile bis zum nächsten manuellen Rescan im Katalog stehen bleiben.
@@ -14100,6 +14182,7 @@ void DrawInterfaceWorkspace(EditorState& state) {
             }
         }
 
+        RebuildInterfaceOverrideStates(state, root);
         state.interfaceAssetsScanned = true;
         if (state.interfaceSelectedAsset >= static_cast<int>(state.interfaceAssets.size()))
             state.interfaceSelectedAsset = -1;
@@ -14111,6 +14194,7 @@ void DrawInterfaceWorkspace(EditorState& state) {
         state.interfaceAssets.clear();
         state.interfaceSelectedAsset = -1;
         state.interfaceAssetFilter[0] = '\0';
+        state.interfaceOverrideStateByAsset.clear();
         state.nifInspectorAsset.clear();
         state.nifInspectorModel.reset();
         state.nifInspectorError.clear();
@@ -14123,30 +14207,49 @@ void DrawInterfaceWorkspace(EditorState& state) {
                           state.interfaceAssetFilter, sizeof(state.interfaceAssetFilter));
     UI::Checkbox(L("Nur Projekt-Overrides##interface","Project overrides only##interface"),
                  &state.interfaceOverridesOnly);
+    ImGui::SameLine();
+    UI::Checkbox(L("Nur Abweichungen##interface","Changed only##interface"),
+                 &state.interfaceChangedOverridesOnly);
 
     std::size_t imageCount = 0;
     std::size_t nifCount = 0;
-    std::size_t overrideCount = 0;
+    std::size_t identicalOverrideCount = 0;
+    std::size_t modifiedOverrideCount = 0;
+    std::size_t projectOnlyCount = 0;
     for (const auto& rel : state.interfaceAssets) {
         const std::string ext = LowerAscii(std::filesystem::path(rel).extension().string());
         if (ext == ".nif") ++nifCount;
         else ++imageCount;
-        if (IsRegularFileNoThrow(InterfaceProjectOverridePath(state, rel))) ++overrideCount;
+        switch (CachedInterfaceOverrideState(state, rel)) {
+            case InterfaceOverrideState::Identical: ++identicalOverrideCount; break;
+            case InterfaceOverrideState::Modified: ++modifiedOverrideCount; break;
+            case InterfaceOverrideState::ProjectOnly: ++projectOnlyCount; break;
+            default: break;
+        }
     }
+    const std::size_t overrideCount =
+        identicalOverrideCount + modifiedOverrideCount + projectOnlyCount;
 
     const std::string needle = LowerAscii(state.interfaceAssetFilter);
     std::vector<std::size_t> matching;
     matching.reserve(state.interfaceAssets.size());
     for (std::size_t i = 0; i < state.interfaceAssets.size(); ++i) {
         const std::string& rel = state.interfaceAssets[i];
-        if (state.interfaceOverridesOnly &&
-            !IsRegularFileNoThrow(InterfaceProjectOverridePath(state, rel))) continue;
+        const auto overrideState = CachedInterfaceOverrideState(state, rel);
+        if (state.interfaceOverridesOnly && overrideState == InterfaceOverrideState::None) continue;
+        if (state.interfaceChangedOverridesOnly &&
+            overrideState != InterfaceOverrideState::Modified &&
+            overrideState != InterfaceOverrideState::ProjectOnly) continue;
         if (needle.empty() || LowerAscii(rel).find(needle) != std::string::npos)
             matching.push_back(i);
     }
 
     ImGui::TextDisabled("%zu / %zu Assets · %zu Bilder · %zu NIF · %zu Overrides",
                         matching.size(), state.interfaceAssets.size(), imageCount, nifCount, overrideCount);
+    if (overrideCount > 0) {
+        ImGui::TextDisabled("%zu geändert · %zu identisch · %zu nur im Projekt",
+                            modifiedOverrideCount, identicalOverrideCount, projectOnlyCount);
+    }
     ImGui::Separator();
 
     const ImVec2 avail = ImGui::GetContentRegionAvail();
@@ -14175,12 +14278,30 @@ void DrawInterfaceWorkspace(EditorState& state) {
                                        ? ImVec4(0.35f,0.78f,1.0f,1.0f)
                                        : ImVec4(0.55f,0.86f,0.66f,1.0f),
                                    "%s", badge);
-                const bool rowHasOverride = IsRegularFileNoThrow(InterfaceProjectOverridePath(state, rel));
-                if (rowHasOverride) {
+                const auto rowOverrideState = CachedInterfaceOverrideState(state, rel);
+                if (rowOverrideState != InterfaceOverrideState::None) {
                     ImGui::SameLine(0, 4);
-                    ImGui::TextColored(ImVec4(0.42f,0.86f,0.62f,1.0f), "OVR");
-                    if (ImGui::IsItemHovered())
-                        ImGui::SetTooltip("%s",L("Projekt-Override aktiv","Project override active"));
+                    const char* overrideBadge =
+                        rowOverrideState == InterfaceOverrideState::Identical ? "OVR=" :
+                        rowOverrideState == InterfaceOverrideState::Modified ? "OVR*" : "NEW";
+                    const ImVec4 overrideColor =
+                        rowOverrideState == InterfaceOverrideState::Identical
+                            ? ImVec4(0.50f,0.66f,0.76f,1.0f)
+                            : rowOverrideState == InterfaceOverrideState::Modified
+                                ? ImVec4(1.0f,0.72f,0.30f,1.0f)
+                                : ImVec4(0.42f,0.86f,0.62f,1.0f);
+                    ImGui::TextColored(overrideColor, "%s", overrideBadge);
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::SetTooltip("%s",
+                            rowOverrideState == InterfaceOverrideState::Identical
+                                ? L("Projektkopie ist byte-identisch zum Original",
+                                    "Project copy is byte-identical to source")
+                                : rowOverrideState == InterfaceOverrideState::Modified
+                                    ? L("Projektkopie weicht vom Original ab",
+                                        "Project copy differs from source")
+                                    : L("Asset existiert nur im Projekt",
+                                        "Asset exists only in the project"));
+                    }
                 }
                 ImGui::SameLine(0, 6);
 
@@ -14216,6 +14337,7 @@ void DrawInterfaceWorkspace(EditorState& state) {
     const std::filesystem::path projectPath = InterfaceProjectOverridePath(state, rel);
     const bool sourceExists = IsRegularFileNoThrow(sourcePath);
     const bool hasProjectOverride = IsRegularFileNoThrow(projectPath);
+    const auto overrideState = CachedInterfaceOverrideState(state, rel);
     const std::filesystem::path path = hasProjectOverride ? projectPath : sourcePath;
     const std::string ext = LowerAscii(path.extension().string());
 
@@ -14225,9 +14347,19 @@ void DrawInterfaceWorkspace(EditorState& state) {
     if (!ec) ImGui::TextDisabled("%llu Bytes", static_cast<unsigned long long>(bytes));
     ImGui::SameLine();
     if (hasProjectOverride) {
-        ImGui::TextColored(ImVec4(0.42f,0.86f,0.62f,1.0f), "%s",
-                           sourceExists ? L("· Projekt-Override","· project override")
-                                        : L("· nur im Projekt","· project only"));
+        const ImVec4 statusColor =
+            overrideState == InterfaceOverrideState::Identical
+                ? ImVec4(0.50f,0.66f,0.76f,1.0f)
+                : overrideState == InterfaceOverrideState::Modified
+                    ? ImVec4(1.0f,0.72f,0.30f,1.0f)
+                    : ImVec4(0.42f,0.86f,0.62f,1.0f);
+        const char* statusText =
+            overrideState == InterfaceOverrideState::Identical
+                ? L("· Projekt-Override · byte-identisch","· project override · byte-identical")
+                : overrideState == InterfaceOverrideState::Modified
+                    ? L("· Projekt-Override · geändert","· project override · modified")
+                    : L("· nur im Projekt","· project only");
+        ImGui::TextColored(statusColor, "%s", statusText);
     } else {
         ImGui::TextDisabled("%s", L("· Original","· source"));
     }
