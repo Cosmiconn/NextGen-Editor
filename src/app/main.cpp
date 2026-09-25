@@ -102,6 +102,9 @@ using theseed::mapeditor::app::T;
 
 namespace {
 
+// Gemeinsame DE/EN-Hilfe; Definition steht weiter unten bei den spezialisierten Editoren.
+static const char* L(const char* de, const char* en);
+
 // Einheitliches UI-Farbschema: Schwarz / Grau / Blau / Weiß.
 // Alle normalen ImGui-Controls verwenden diese Palette; einzelne Bereiche dürfen
 // darüber gezielt nur noch die Blau-Abstufungen aus der Palette verwenden.
@@ -5712,8 +5715,6 @@ void DrawResolvedIdLabel(const std::pair<std::string, bool>& resolved) {
     else ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "-> %s", resolved.first.c_str());
 }
 
-static const char* L(const char* de, const char* en);
-
 // Text zu einer Quest-Text-ID; leer, wenn unbekannt oder nur ein Platzhalter aus Strichen ("-----").
 static std::string QuestTextOf(EditorState& state, int textId) {
     if (!state.questDialogLoaded) return {};
@@ -7219,8 +7220,6 @@ void RefreshNpcTransforms(EditorState& state) {
         ApplyNpcRecordToObject(state, table->records[idx], state.npcRenderSet.At(i));
     }
 }
-
-static const char* L(const char* de, const char* en);
 
 // Schaetzt Vorzeichen/Versatz der NPC-Blickrichtung fuer die gerade offene Karte (CHANGELOG
 // [0.44.34]): testet je Kandidat, wie oft ein NPC "vorne" (in Blickrichtung) auf einer begehbaren
