@@ -14039,8 +14039,17 @@ bool RemoveInterfaceProjectOverride(EditorState& state,
         return false;
     }
     InvalidateInterfaceAssetPreview(state, sourcePath, projectPath);
-    state.statusMessage = L("Projekt-Override entfernt; Original wird wieder verwendet.",
-                            "Project override removed; source asset is used again.");
+    if (!IsRegularFileNoThrow(sourcePath)) {
+        // War die Datei nur im Projekt vorhanden, darf der inzwischen gelöschte Eintrag nicht
+        // als tote Zeile bis zum nächsten manuellen Rescan im Katalog stehen bleiben.
+        state.interfaceAssetsScanned = false;
+        state.interfaceAssets.clear();
+        state.interfaceSelectedAsset = -1;
+    }
+    state.statusMessage = IsRegularFileNoThrow(sourcePath)
+        ? L("Projekt-Override entfernt; Original wird wieder verwendet.",
+            "Project override removed; source asset is used again.")
+        : L("Projekt-only Asset entfernt.","Project-only asset removed.");
     return true;
 }
 
@@ -14067,8 +14076,30 @@ void DrawInterfaceWorkspace(EditorState& state) {
 
     const std::filesystem::path root = state.interfaceRoot;
     if (!state.interfaceAssetsScanned) {
-        state.interfaceAssets = ListFilesByExtension(
-            root, {".tga", ".dds", ".png", ".jpg", ".jpeg", ".bmp", ".nif"});
+        const std::vector<std::string> extensions =
+            {".tga", ".dds", ".png", ".jpg", ".jpeg", ".bmp", ".nif"};
+        state.interfaceAssets = ListFilesByExtension(root, extensions);
+
+        // Projekt-only Dateien mit aufnehmen: so erscheinen auch extern bearbeitete oder neu
+        // angelegte Overrides nach einem Rescan im selben Katalog wie die Client-Originale.
+        const auto overrideRoot = InterfaceProjectOverrideRoot(state);
+        if (!overrideRoot.empty()) {
+            std::error_code overrideEc;
+            if (std::filesystem::is_directory(overrideRoot, overrideEc) && !overrideEc) {
+                const auto projectAssets = ListFilesByExtension(overrideRoot, extensions);
+                std::unordered_set<std::string> known;
+                known.reserve(state.interfaceAssets.size() + projectAssets.size());
+                for (const auto& rel : state.interfaceAssets) known.insert(LowerAscii(rel));
+                for (const auto& rel : projectAssets) {
+                    if (known.insert(LowerAscii(rel)).second) state.interfaceAssets.push_back(rel);
+                }
+                std::stable_sort(state.interfaceAssets.begin(), state.interfaceAssets.end(),
+                    [](const std::string& a, const std::string& b) {
+                        return LowerAscii(a) < LowerAscii(b);
+                    });
+            }
+        }
+
         state.interfaceAssetsScanned = true;
         if (state.interfaceSelectedAsset >= static_cast<int>(state.interfaceAssets.size()))
             state.interfaceSelectedAsset = -1;
@@ -14183,6 +14214,7 @@ void DrawInterfaceWorkspace(EditorState& state) {
     const std::string& rel = state.interfaceAssets[static_cast<std::size_t>(state.interfaceSelectedAsset)];
     const std::filesystem::path sourcePath = root / rel;
     const std::filesystem::path projectPath = InterfaceProjectOverridePath(state, rel);
+    const bool sourceExists = IsRegularFileNoThrow(sourcePath);
     const bool hasProjectOverride = IsRegularFileNoThrow(projectPath);
     const std::filesystem::path path = hasProjectOverride ? projectPath : sourcePath;
     const std::string ext = LowerAscii(path.extension().string());
@@ -14192,12 +14224,17 @@ void DrawInterfaceWorkspace(EditorState& state) {
     const auto bytes = std::filesystem::file_size(path, ec);
     if (!ec) ImGui::TextDisabled("%llu Bytes", static_cast<unsigned long long>(bytes));
     ImGui::SameLine();
-    if (hasProjectOverride)
-        ImGui::TextColored(ImVec4(0.42f,0.86f,0.62f,1.0f), "%s", L("· Projekt-Override","· project override"));
-    else
+    if (hasProjectOverride) {
+        ImGui::TextColored(ImVec4(0.42f,0.86f,0.62f,1.0f), "%s",
+                           sourceExists ? L("· Projekt-Override","· project override")
+                                        : L("· nur im Projekt","· project only"));
+    } else {
         ImGui::TextDisabled("%s", L("· Original","· source"));
+    }
 
-    const bool canCreateOverride = state.project.projectFolder[0] != '\0' && !hasProjectOverride;
+    const bool canCreateOverride = sourceExists &&
+                                   state.project.projectFolder[0] != '\0' &&
+                                   !hasProjectOverride;
     ImGui::BeginDisabled(!canCreateOverride);
     if (UI::SmallButton(L("In Projekt übernehmen##interfaceOverride",
                           "Create project override##interfaceOverride"))) {
