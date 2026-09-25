@@ -13798,17 +13798,18 @@ void DrawDropTableEditor(EditorState& state) {
         result.missingMob =
             !mob.empty() && mob != "-" && !knownMobs.empty() && knownMobs.count(mob)==0;
 
+        for (std::size_t slot=0; slot<dropItemColumns.size(); ++slot) {
+            const std::string item = ShineRecordValue(candidate,dropItemColumns[slot]);
+            const bool active = !item.empty() && item != "-";
+            if (!active) continue;
+            if (!state.itemEntries.empty() && state.itemByInx.count(item)==0)
+                ++result.missingDropItems;
+            if (invalidOrderedRange(candidate,
+                                    dropUpgradeMinColumns[slot],
+                                    dropUpgradeMaxColumns[slot]))
+                ++result.upgradeRanges;
+        }
         if (!state.itemEntries.empty()) {
-            for (std::size_t slot=0; slot<dropItemColumns.size(); ++slot) {
-                const std::string item = ShineRecordValue(candidate,dropItemColumns[slot]);
-                const bool active = !item.empty() && item != "-";
-                if (!active) continue;
-                if (state.itemByInx.count(item)==0) ++result.missingDropItems;
-                if (invalidOrderedRange(candidate,
-                                        dropUpgradeMinColumns[slot],
-                                        dropUpgradeMaxColumns[slot]))
-                    ++result.upgradeRanges;
-            }
             for (const int col : exclusionColumns) {
                 const std::string item = ShineRecordValue(candidate,col);
                 if (!item.empty() && item != "-" && state.itemByInx.count(item)==0)
