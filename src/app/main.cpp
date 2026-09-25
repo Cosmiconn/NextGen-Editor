@@ -13744,32 +13744,87 @@ void DrawDropTableEditor(EditorState& state) {
     }
 
     std::array<int,45> dropItemColumns{};
+    std::array<int,45> dropUpgradeMinColumns{};
+    std::array<int,45> dropUpgradeMaxColumns{};
     dropItemColumns.fill(-1);
-    for (int slotNo=1; slotNo<=45; ++slotNo)
-        dropItemColumns[static_cast<std::size_t>(slotNo-1)] =
-            FindShineColumn(*table, "DrItem" + std::to_string(slotNo));
+    dropUpgradeMinColumns.fill(-1);
+    dropUpgradeMaxColumns.fill(-1);
+    for (int slotNo=1; slotNo<=45; ++slotNo) {
+        const std::size_t slotIndex = static_cast<std::size_t>(slotNo-1);
+        dropItemColumns[slotIndex] = FindShineColumn(*table, "DrItem" + std::to_string(slotNo));
+        char twoDigit[4];
+        std::snprintf(twoDigit, sizeof(twoDigit), "%02d", slotNo);
+        dropUpgradeMinColumns[slotIndex] =
+            FindShineColumn(*table, "UpGradeMin" + std::string(twoDigit));
+        dropUpgradeMaxColumns[slotIndex] =
+            FindShineColumn(*table, "UpGradeMax" + std::string(twoDigit));
+    }
+    std::array<int,5> exclusionColumns{};
+    exclusionColumns.fill(-1);
+    for (int i=1; i<=5; ++i)
+        exclusionColumns[static_cast<std::size_t>(i-1)] =
+            FindShineColumn(*table, "ExcItem" + std::to_string(i));
 
     UI::InputTextWithHint("##dropFilter", L("Mob, MapArea oder Drop-Item filtern...","Filter mob, MapArea or drop item..."),
                           state.dropTableFilter, sizeof(state.dropTableFilter));
     ImGui::SameLine();
-    UI::Checkbox(L("Nur fehlende Referenzen##dropTable","Missing references only##dropTable"), &state.dropTableProblemsOnly);
+    UI::Checkbox(L("Nur Probleme##dropTable","Problems only##dropTable"), &state.dropTableProblemsOnly);
     const std::string needle = LowerAscii(state.dropTableFilter);
 
-    auto recordReferenceProblem = [&](const core::legacy::ShineRecord& candidate) {
+    struct DropRecordValidation {
+        bool missingMob = false;
+        int missingDropItems = 0;
+        int missingExclusionItems = 0;
+        bool levelRange = false;
+        bool cenRange = false;
+        int upgradeRanges = 0;
+        bool checksum = false;
+        bool Any() const {
+            return missingMob || missingDropItems > 0 || missingExclusionItems > 0 ||
+                   levelRange || cenRange || upgradeRanges > 0 || checksum;
+        }
+    };
+
+    auto invalidOrderedRange = [&](const core::legacy::ShineRecord& candidate, int minCol, int maxCol) {
+        const std::string minText = ShineRecordValue(candidate, minCol);
+        const std::string maxText = ShineRecordValue(candidate, maxCol);
+        return IsDropUnsignedInteger(minText) && IsDropUnsignedInteger(maxText) &&
+               std::atoll(minText.c_str()) > std::atoll(maxText.c_str());
+    };
+
+    auto validateDropRecord = [&](const core::legacy::ShineRecord& candidate) {
+        DropRecordValidation result;
         const std::string mob = ShineRecordValue(candidate,cMob);
-        if (!mob.empty() && mob != "-" && !knownMobs.empty() && knownMobs.count(mob)==0) return true;
+        result.missingMob =
+            !mob.empty() && mob != "-" && !knownMobs.empty() && knownMobs.count(mob)==0;
+
         if (!state.itemEntries.empty()) {
-            for (const int col : dropItemColumns) {
+            for (std::size_t slot=0; slot<dropItemColumns.size(); ++slot) {
+                const std::string item = ShineRecordValue(candidate,dropItemColumns[slot]);
+                const bool active = !item.empty() && item != "-";
+                if (!active) continue;
+                if (state.itemByInx.count(item)==0) ++result.missingDropItems;
+                if (invalidOrderedRange(candidate,
+                                        dropUpgradeMinColumns[slot],
+                                        dropUpgradeMaxColumns[slot]))
+                    ++result.upgradeRanges;
+            }
+            for (const int col : exclusionColumns) {
                 const std::string item = ShineRecordValue(candidate,col);
-                if (!item.empty() && item != "-" && state.itemByInx.count(item)==0) return true;
+                if (!item.empty() && item != "-" && state.itemByInx.count(item)==0)
+                    ++result.missingExclusionItems;
             }
         }
+
+        result.levelRange = invalidOrderedRange(candidate,cMinLevel,cMaxLevel);
+        result.cenRange = invalidOrderedRange(candidate,cMinCen,cMaxCen);
+
         const std::string maxLevelText=ShineRecordValue(candidate,cMaxLevel);
         const std::string checkText=ShineRecordValue(candidate,cChecksum);
-        if (IsDropUnsignedInteger(maxLevelText) && IsDropUnsignedInteger(checkText) &&
-            std::atoi(checkText.c_str()) != std::atoi(maxLevelText.c_str()) + 1)
-            return true;
-        return false;
+        result.checksum =
+            IsDropUnsignedInteger(maxLevelText) && IsDropUnsignedInteger(checkText) &&
+            std::atoi(checkText.c_str()) != std::atoi(maxLevelText.c_str()) + 1;
+        return result;
     };
 
     std::vector<std::size_t> visible;
@@ -13777,7 +13832,7 @@ void DrawDropTableEditor(EditorState& state) {
     std::size_t referenceProblemCount=0;
     for (std::size_t ri = 0; ri < table->records.size(); ++ri) {
         const auto& candidate = table->records[ri];
-        const bool problem=recordReferenceProblem(candidate);
+        const bool problem=validateDropRecord(candidate).Any();
         if(problem) ++referenceProblemCount;
         if(state.dropTableProblemsOnly && !problem) continue;
 
@@ -13794,7 +13849,7 @@ void DrawDropTableEditor(EditorState& state) {
             visible.push_back(ri);
     }
 
-    ImGui::TextDisabled("%zu / %zu Mobs · %zu Schema-Spalten%s · %zu mit fehlenden Referenzen",
+    ImGui::TextDisabled("%zu / %zu Mobs · %zu Schema-Spalten%s · %zu mit Problemen",
                         visible.size(), table->records.size(), table->columns.size(),
                         table->trailingSemicolonSentinel ? " · ; Sentinel normalisiert" : "",
                         referenceProblemCount);
@@ -13812,7 +13867,7 @@ void DrawDropTableEditor(EditorState& state) {
             const std::string map = ShineRecordValue(record, cMap);
             std::string label = mob.empty() ? ("Record " + std::to_string(ri)) : mob;
             if (!map.empty() && map != "-") label += "  ·  " + map;
-            if (recordReferenceProblem(record)) label = "!  " + label;
+            if (validateDropRecord(record).Any()) label = "!  " + label;
             if (UI::Selectable((label + "##dropMob").c_str(),
                                state.dropTableSelectedRecord == static_cast<int>(ri))) {
                 state.dropTableSelectedRecord = static_cast<int>(ri);
@@ -13855,6 +13910,33 @@ void DrawDropTableEditor(EditorState& state) {
     ImGui::SameLine();
     if (cChecksum >= 0)
         ImGui::TextDisabled("· CheckSum %s", ShineRecordValue(record,cChecksum).c_str());
+
+    const DropRecordValidation selectedValidation = validateDropRecord(record);
+    if (selectedValidation.Any()) {
+        ImGui::SeparatorText(L("Validierung","Validation"));
+        const ImVec4 issueColor(1.0f,0.48f,0.34f,1.0f);
+        if (selectedValidation.missingMob)
+            ImGui::TextColored(issueColor,"%s",L("MobId fehlt in MobViewInfo.shn","MobId is missing from MobViewInfo.shn"));
+        if (selectedValidation.missingDropItems > 0)
+            ImGui::TextColored(issueColor,L("%d Drop-Item-Referenz(en) fehlen in ItemInfo.shn",
+                                             "%d drop item reference(s) are missing from ItemInfo.shn"),
+                               selectedValidation.missingDropItems);
+        if (selectedValidation.missingExclusionItems > 0)
+            ImGui::TextColored(issueColor,L("%d Ausschluss-Item-Referenz(en) fehlen in ItemInfo.shn",
+                                             "%d exclusion item reference(s) are missing from ItemInfo.shn"),
+                               selectedValidation.missingExclusionItems);
+        if (selectedValidation.levelRange)
+            ImGui::TextColored(issueColor,"%s",L("MinLevel ist größer als MaxLevel","MinLevel is greater than MaxLevel"));
+        if (selectedValidation.cenRange)
+            ImGui::TextColored(issueColor,"%s",L("MinCen ist größer als MaxCen","MinCen is greater than MaxCen"));
+        if (selectedValidation.upgradeRanges > 0)
+            ImGui::TextColored(issueColor,L("%d Upgrade-Spanne(n) haben Min > Max",
+                                             "%d upgrade range(s) have min > max"),
+                               selectedValidation.upgradeRanges);
+        if (selectedValidation.checksum)
+            ImGui::TextColored(issueColor,"%s",L("CheckSum entspricht nicht MaxLevel + 1",
+                                                  "CheckSum does not equal MaxLevel + 1"));
+    }
 
     if (UI::CollapsingHeader(L("Basiswerte##dropTableBase","Base values##dropTableBase"))) {
         const struct BaseField { const char* label; int col; float width; } fields[] = {
@@ -13992,15 +14074,22 @@ void DrawDropTableEditor(EditorState& state) {
     }
 
     std::vector<std::string> exclusions;
-    for (int i = 1; i <= 5; ++i) {
-        const std::string value = ShineRecordValue(record, FindShineColumn(*table, "ExcItem" + std::to_string(i)));
+    for (const int col : exclusionColumns) {
+        const std::string value = ShineRecordValue(record, col);
         if (!value.empty() && value != "-") exclusions.push_back(value);
     }
     if (!exclusions.empty()) {
         ImGui::SeparatorText(L("Ausgeschlossene Items","Excluded items"));
         for (std::size_t i = 0; i < exclusions.size(); ++i) {
             if (i) ImGui::SameLine();
-            ImGui::TextDisabled("%s%s", i ? "· " : "", exclusions[i].c_str());
+            const bool known = state.itemEntries.empty() || state.itemByInx.count(exclusions[i]) != 0;
+            if (known)
+                ImGui::TextDisabled("%s%s", i ? "· " : "", exclusions[i].c_str());
+            else
+                ImGui::TextColored(ImVec4(1.0f,0.48f,0.34f,1.0f),"%s%s",
+                                   i ? "· " : "", exclusions[i].c_str());
+            if (!known && ImGui::IsItemHovered())
+                ImGui::SetTooltip("%s",L("Nicht in ItemInfo.shn","Missing from ItemInfo.shn"));
         }
     }
     ImGui::EndChild();
