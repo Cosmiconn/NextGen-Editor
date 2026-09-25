@@ -8557,14 +8557,14 @@ void DrawGlobalHelpBar(EditorState& state, const ImVec2& displaySize) {
 void HandleGlobalShortcuts(EditorState& state) {
     ImGuiIO& io = ImGui::GetIO();
     if (ImGui::IsKeyPressed(ImGuiKey_F1, false)) state.manualOpen = !state.manualOpen;
-    if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_P, false)) {
+    if (ShortcutPressed(state.shortcutPalette)) {
         state.commandPaletteOpen = true;
         state.commandPaletteSelection = 0;
     }
 
     if (io.WantTextInput || state.screen != AppScreen::MapEditorWorkspace) return;
 
-    if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S, false) &&
+    if (ShortcutPressed(state.shortcutSave) &&
         state.legacySaveDir[0] != '\0' && state.legacySaveStem[0] != '\0') {
         auto project = BuildProjectFromState(state);
         auto result = core::legacy::SaveLegacyMap(project, state.legacySaveDir, state.legacySaveStem);
@@ -8582,11 +8582,23 @@ void HandleGlobalShortcuts(EditorState& state) {
     if (state.editMode == EditMode::ObjectPlacement) {
         if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_C, false)) CopySelectedObjects(state);
         if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_V, false)) PasteObjectClipboard(state);
-        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_D, false)) DuplicateSelectedObjects(state);
-        if (!io.KeyCtrl && !io.KeyAlt && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_F, false))
-            FocusSelectedObjects(state);
-        if (ImGui::IsKeyPressed(ImGuiKey_End, false)) GroundSelectedObjects(state);
-        if (ImGui::IsKeyPressed(ImGuiKey_Delete, false)) DeleteSelectedObjects(state);
+        if (ShortcutPressed(state.shortcutDuplicate)) DuplicateSelectedObjects(state);
+        if (ShortcutPressed(state.shortcutFocus)) FocusSelectedObjects(state);
+        if (ShortcutPressed(state.shortcutGround)) GroundSelectedObjects(state);
+        if (ShortcutPressed(state.shortcutDelete)) DeleteSelectedObjects(state);
+
+        if (ShortcutPressed(state.shortcutGizmoMove)) {
+            state.objectGizmoOperation = 0;
+            state.objectGizmoMatrixValid = false;
+        }
+        if (ShortcutPressed(state.shortcutGizmoRotate)) {
+            state.objectGizmoOperation = 1;
+            state.objectGizmoMatrixValid = false;
+        }
+        if (ShortcutPressed(state.shortcutGizmoScale)) {
+            state.objectGizmoOperation = 2;
+            state.objectGizmoMatrixValid = false;
+        }
     }
 
     const bool undo = io.KeyCtrl && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z, false);
@@ -8619,6 +8631,107 @@ void HandleGlobalShortcuts(EditorState& state) {
     }
 }
 
+void DrawSettingsWindow(EditorState& state) {
+    if (!state.settingsOpen) return;
+
+    ImGui::SetNextWindowSize(ImVec2(760.0f, 560.0f), ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Einstellungen##nextgenSettings", &state.settingsOpen)) {
+        ImGui::End();
+        return;
+    }
+
+    ImGui::TextColored(ImVec4(0.30f,0.78f,1.0f,1.0f), "SHORTCUTS");
+    ImGui::SameLine();
+    ImGui::TextDisabled("werden unter %s gespeichert",
+                        (NextGenUserSettingsDir() / "shortcuts.txt").string().c_str());
+    ImGui::Separator();
+
+    struct ShortcutRow {
+        const char* label;
+        EditorState::ShortcutBinding* binding;
+    };
+    const std::array<ShortcutRow,9> rows = {{
+        {"Befehlspalette", &state.shortcutPalette},
+        {"Karte speichern", &state.shortcutSave},
+        {"Gizmo: Move", &state.shortcutGizmoMove},
+        {"Gizmo: Rotate", &state.shortcutGizmoRotate},
+        {"Gizmo: Scale", &state.shortcutGizmoScale},
+        {"Auswahl fokussieren", &state.shortcutFocus},
+        {"Auf Terrain setzen", &state.shortcutGround},
+        {"Objekte duplizieren", &state.shortcutDuplicate},
+        {"Objekte löschen", &state.shortcutDelete},
+    }};
+
+    bool changed = false;
+    if (ImGui::BeginTable("##shortcutSettings", 6,
+            ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn("Aktion", ImGuiTableColumnFlags_WidthStretch, 1.8f);
+        ImGui::TableSetupColumn("Strg", ImGuiTableColumnFlags_WidthFixed, 50.0f);
+        ImGui::TableSetupColumn("Shift", ImGuiTableColumnFlags_WidthFixed, 55.0f);
+        ImGui::TableSetupColumn("Alt", ImGuiTableColumnFlags_WidthFixed, 45.0f);
+        ImGui::TableSetupColumn("Taste", ImGuiTableColumnFlags_WidthFixed, 120.0f);
+        ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed, 100.0f);
+        ImGui::TableHeadersRow();
+
+        for (std::size_t i=0;i<rows.size();++i) {
+            auto& row = rows[i];
+            auto& binding = *row.binding;
+            bool conflict = false;
+            for (std::size_t j=0;j<rows.size();++j) {
+                if (i != j && SameShortcut(binding,*rows[j].binding)) { conflict=true; break; }
+            }
+
+            ImGui::PushID(static_cast<int>(i));
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn(); ImGui::TextUnformatted(row.label);
+            ImGui::TableNextColumn(); changed |= ImGui::Checkbox("##ctrl",&binding.ctrl);
+            ImGui::TableNextColumn(); changed |= ImGui::Checkbox("##shift",&binding.shift);
+            ImGui::TableNextColumn(); changed |= ImGui::Checkbox("##alt",&binding.alt);
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-1.0f);
+            if (ImGui::BeginCombo("##key", ShortcutKeyName(binding.key))) {
+                for (const auto& option : ShortcutKeyOptions()) {
+                    const bool selected = binding.key == option.key;
+                    if (ImGui::Selectable(option.name,selected)) {
+                        binding.key = option.key;
+                        changed = true;
+                    }
+                    if (selected) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::TableNextColumn();
+            if (conflict)
+                ImGui::TextColored(ImVec4(1.0f,0.45f,0.35f,1.0f),"Konflikt");
+            else
+                ImGui::TextColored(ImVec4(0.45f,0.85f,0.60f,1.0f),"OK");
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+
+    if (changed) SaveShortcutSettings(state);
+
+    ImGui::Separator();
+    if (UI::Button("Shortcuts zurücksetzen")) {
+        ResetShortcutSettings(state);
+        SaveShortcutSettings(state);
+        state.statusMessage = "Shortcuts auf Standard zurückgesetzt.";
+    }
+    ImGui::SameLine();
+    if (UI::Button("Map-Workspace zurücksetzen")) {
+        state.resetMapDockLayout = true;
+        state.statusMessage = "Map-Workspace auf Standardlayout zurückgesetzt.";
+    }
+
+    ImGui::SeparatorText("Workspace");
+    ImGui::TextWrapped("Dock-Größen und Positionen werden automatisch zwischen Sitzungen gespeichert.");
+    ImGui::TextDisabled("%s", (NextGenUserSettingsDir() / "layout.ini").string().c_str());
+    ImGui::TextWrapped("Gizmo-Shortcuts verwenden standardmäßig 1 / 2 / 3, damit sie nicht mit der WASD-Kamera kollidieren.");
+
+    ImGui::End();
+}
+
 void DrawCommandPalette(EditorState& state) {
     struct Command {
         std::string label;
@@ -8649,6 +8762,7 @@ void DrawCommandPalette(EditorState& state) {
     add("Spieldaten: Skill Editor", "", [&] { state.shnSubTab = 7; state.screen = AppScreen::ShnEditor; });
     add("Animationen: KFM", "", [&] { state.screen = AppScreen::KfmBrowser; });
     add("Hilfe: Handbuch", "F1", [&] { state.manualOpen = true; });
+    add("Einstellungen: Shortcuts & Workspace", "", [&] { state.settingsOpen = true; });
 
     if (state.hasLegacyIniMeta || state.legacySaveStem[0] != '\0') {
         add("Karte: Terrain-Werkzeug", "", [&] {
@@ -8669,7 +8783,7 @@ void DrawCommandPalette(EditorState& state) {
         add("Karte: Portale", "", [&] { state.editMode = EditMode::Portals; state.screen = AppScreen::MapEditorWorkspace; });
 
         if (state.legacySaveDir[0] != '\0' && state.legacySaveStem[0] != '\0') {
-            add("Karte: Speichern", "Strg+S", [&] {
+            add("Karte: Speichern", ShortcutLabel(state.shortcutSave), [&] {
                 auto project = BuildProjectFromState(state);
                 auto result = core::legacy::SaveLegacyMap(project, state.legacySaveDir, state.legacySaveStem);
                 if (result) {
@@ -8686,11 +8800,11 @@ void DrawCommandPalette(EditorState& state) {
     }
 
     if (!state.selectedObjects.empty()) {
-        add("Objekte: Auswahl fokussieren", "F", [&] { FocusSelectedObjects(state); });
-        add("Objekte: Auf Terrain setzen", "Ende", [&] { GroundSelectedObjects(state); });
-        add("Objekte: Duplizieren", "Strg+D", [&] { DuplicateSelectedObjects(state); });
+        add("Objekte: Auswahl fokussieren", ShortcutLabel(state.shortcutFocus), [&] { FocusSelectedObjects(state); });
+        add("Objekte: Auf Terrain setzen", ShortcutLabel(state.shortcutGround), [&] { GroundSelectedObjects(state); });
+        add("Objekte: Duplizieren", ShortcutLabel(state.shortcutDuplicate), [&] { DuplicateSelectedObjects(state); });
         add("Objekte: Kopieren", "Strg+C", [&] { CopySelectedObjects(state); });
-        add("Objekte: Löschen", "Entf", [&] { DeleteSelectedObjects(state); });
+        add("Objekte: Löschen", ShortcutLabel(state.shortcutDelete), [&] { DeleteSelectedObjects(state); });
     }
 
     if (DirtyShnDocumentCount(state) > 0) {
