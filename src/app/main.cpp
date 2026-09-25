@@ -6810,7 +6810,13 @@ bool LoadAiScriptFile(EditorState& state, const std::filesystem::path& path,
         state.statusMessage = "KI-Skript nicht gefunden: " + path.string();
         return false;
     }
-    if (!discardDirty && state.aiScriptDirty && state.aiScriptEditorPath != path.string()) {
+    if (!discardDirty && state.aiScriptDirty) {
+        if (state.aiScriptEditorPath == path.string()) {
+            // Dasselbe Skript erneut anzuklicken darf den geänderten Puffer nicht verwerfen.
+            // Ein Kontextaufruf darf lediglich denselben Puffer zusätzlich im Popup zeigen.
+            if (openPopup) state.aiScriptEditorOpen=true;
+            return true;
+        }
         state.statusMessage = "KI-Skript hat ungespeicherte Änderungen. Erst speichern oder neu laden.";
         return false;
     }
