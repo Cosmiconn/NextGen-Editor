@@ -9437,6 +9437,11 @@ void DrawSkillEditor(EditorState& state) {
     }
     BuildSkillPickerOptions(state, d);
     auto& asf = state.shnFiles[static_cast<std::size_t>(d.skillC)].file;
+    if (d.skillS < 0 || d.viewS < 0) {
+        ImGui::TextColored(ImVec4(1.0f,0.68f,0.25f,1.0f),"%s",L(
+            "⚠ Mindestens eine Server-Kopie (ActiveSkill / ActiveSkillView) fehlt. Der Sync-Filter zeigt deshalb alle betroffenen Skills.",
+            "⚠ At least one server copy (ActiveSkill / ActiveSkillView) is missing. The sync filter therefore shows all affected skills."));
+    }
 
     // Toolbar: speichern
     if (UI::Button(L("Alle geänderten SHN speichern", "Save all changed SHN")) ||
@@ -9465,7 +9470,9 @@ void DrawSkillEditor(EditorState& state) {
         const std::string needle = LowerAscii(ed.filter);
 
         std::unordered_set<long long> modifiedIds;
-        std::unordered_set<long long> viewIds;
+        std::unordered_set<long long> skillServerIds;
+        std::unordered_set<long long> viewClientIds;
+        std::unordered_set<long long> viewServerIds;
         std::unordered_set<long long> serverIds;
         auto collectIds = [&](int docIdx, std::unordered_set<long long>& ids, bool dirtyOnly) {
             if (docIdx < 0 || docIdx >= static_cast<int>(state.shnFiles.size())) return;
@@ -9486,9 +9493,19 @@ void DrawSkillEditor(EditorState& state) {
             collectIds(d.viewC,modifiedIds,true);
             collectIds(d.server,modifiedIds,true);
         } else if (ed.quickFilter == 2) {
-            collectIds(d.viewC,viewIds,false);
+            collectIds(d.skillS,skillServerIds,false);
+            collectIds(d.viewC,viewClientIds,false);
+            collectIds(d.viewS,viewServerIds,false);
             collectIds(d.server,serverIds,false);
         }
+
+        const auto syncProblem = [&](long long id) {
+            if (d.skillS < 0 || !skillServerIds.contains(id)) return true;
+            if (d.viewC < 0 || !viewClientIds.contains(id)) return true;
+            if (d.viewS < 0 || !viewServerIds.contains(id)) return true;
+            if (d.server < 0 || !serverIds.contains(id)) return true;
+            return false;
+        };
 
         for (std::size_t r = 0; r < asf.rows.size(); ++r) {
             const std::string idText = ShnCellText(asf,r,"ID");
@@ -9498,7 +9515,7 @@ void DrawSkillEditor(EditorState& state) {
                 if (hay.find(needle) == std::string::npos) continue;
             }
             if (ed.quickFilter == 1 && !modifiedIds.contains(id)) continue;
-            if (ed.quickFilter == 2 && viewIds.contains(id) && serverIds.contains(id)) continue;
+            if (ed.quickFilter == 2 && !syncProblem(id)) continue;
             ed.visible.push_back(r);
         }
     }
@@ -9567,9 +9584,12 @@ void DrawSkillEditor(EditorState& state) {
                     std::string label =
                         std::string("Stufe ") + std::to_string(step) + "  ·  #" + std::to_string(id) +
                         (name.empty() ? std::string() : "  " + name);
-                    if (d.viewC >= 0 && d.server >= 0 &&
-                        (SkillRowIn(state,d.viewC,id) < 0 || SkillRowIn(state,d.server,id) < 0))
-                        label += L("  ⚠ Sync","  ⚠ Sync");
+                    const bool rowSyncProblem =
+                        d.skillS < 0 || SkillRowIn(state,d.skillS,id) < 0 ||
+                        d.viewC < 0 || SkillRowIn(state,d.viewC,id) < 0 ||
+                        d.viewS < 0 || SkillRowIn(state,d.viewS,id) < 0 ||
+                        d.server < 0 || SkillRowIn(state,d.server,id) < 0;
+                    if (rowSyncProblem) label += L("  ⚠ Sync","  ⚠ Sync");
                     if (UI::Selectable((label + "##skillStep" + std::to_string(row)).c_str(), ed.selectedId == id)) {
                         ed.selectedId = id;
                         ed.report.clear();
