@@ -1,6 +1,6 @@
 # NextGen Editor – UI Upgrade Plan
 
-> **VISUAL SOURCE OF TRUTH:** Für alle neuen UI-Arbeiten gilt verbindlich [docs/ui-vision/README.md](ui-vision/README.md). Mockups, Tokens, Icon-Quellen und Abnahmekriterien definieren das Zielbild. Das hochgeladene Paket `NextGen_Icons_Complete_PNG_SVG.zip` ist die verbindliche Artwork-Quelle für Icons und ersetzt das vorherige Icon-Paket; Mapping und Migrationsstatus stehen in [docs/ui-vision/ICON_INVENTORY.md](ui-vision/ICON_INVENTORY.md).
+> **VISUAL SOURCE OF TRUTH:** Für alle neuen UI-Arbeiten gilt verbindlich [docs/ui-vision/README.md](ui-vision/README.md). Mockups, Tokens, Icon-Quellen und Abnahmekriterien definieren das Zielbild. Für Icons gelten die technisch verifizierten, komplementären Quellen: `NextGen_Icons_True_Vector_Set_With_Sizes.zip` liefert die echten Vector-Master und Small-Size-PNGs; `NextGen_Icons_Complete_PNG_SVG.zip` liefert die hochwertige Raster-/Appearance-Referenz; Mapping und Migrationsstatus stehen in [docs/ui-vision/ICON_INVENTORY.md](ui-vision/ICON_INVENTORY.md).
 
 
 > Branch: `ui-upgrade`  
