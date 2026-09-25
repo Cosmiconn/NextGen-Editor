@@ -5627,7 +5627,7 @@ std::pair<std::string, bool> ResolveItemNameForQuest(EditorState& state, int id)
             }
         }
     }
-    return {"nicht gefunden", false};
+    return {L("nicht gefunden", "not found"), false};
 }
 
 // Dito für Mob-/NPC-IDs über das ohnehin für die NPC-3D-Auflösung geladene MobViewInfo.shn
@@ -5645,7 +5645,7 @@ std::pair<std::string, bool> ResolveMobNameForQuest(EditorState& state, int id) 
             }
         }
     }
-    return {"nicht gefunden", false};
+    return {L("nicht gefunden", "not found"), false};
 }
 
 // Zeigt eine ID + ihren aufgelösten Namen (grün=gefunden, rot=nicht gefunden) direkt hinter
@@ -5655,6 +5655,8 @@ void DrawResolvedIdLabel(const std::pair<std::string, bool>& resolved) {
     if (resolved.second) ImGui::TextColored(ImVec4(0.5f, 0.9f, 0.5f, 1.0f), "-> %s", resolved.first.c_str());
     else ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "-> %s", resolved.first.c_str());
 }
+
+static const char* L(const char* de, const char* en);
 
 // Text zu einer Quest-Text-ID; leer, wenn unbekannt oder nur ein Platzhalter aus Strichen ("-----").
 static std::string QuestTextOf(EditorState& state, int textId) {
@@ -5681,28 +5683,28 @@ void DrawQuestEditor(EditorState& state) {
     EnsureQuestDialogLoaded(state);
     if (!state.questDataLoaded) {
         if (state.shnServerRoot.empty()) {
-            ImGui::TextWrapped("Kein Server-Ordner bekannt - in den Projekt-Einstellungen den Server-Ordner setzen (Server/9Data/Shine wird automatisch gefunden).");
+            ImGui::TextWrapped("%s", L("Kein Server-Ordner bekannt - in den Projekt-Einstellungen den Server-Ordner setzen (Server/9Data/Shine wird automatisch gefunden).", "No server folder is known - set the server folder in project settings (Server/9Data/Shine is detected automatically)."));
         } else {
-            ImGui::TextWrapped("QuestData.shn konnte unter '%s' nicht geladen werden.", state.shnServerRoot.c_str());
+            ImGui::TextWrapped(L("QuestData.shn konnte unter '%s' nicht geladen werden.", "QuestData.shn could not be loaded from '%s'."), state.shnServerRoot.c_str());
         }
         return;
     }
     auto& quests = state.questDataFile.records;
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "QUEST EDITOR");
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s", L("QUEST EDITOR", "QUEST EDITOR"));
     ImGui::SameLine();
-    ImGui::TextDisabled("%zu Quests%s", quests.size(),
-                        state.questDialogLoaded ? "" : " · QuestDialog fehlt");
+    ImGui::TextDisabled(L("%zu Quests%s", "%zu quests%s"), quests.size(),
+                        state.questDialogLoaded ? "" : L(" · QuestDialog fehlt", " · QuestDialog missing"));
     const float questSaveW = 190.0f;
     ImGui::SameLine(std::max(ImGui::GetCursorPosX() + 8.0f,
                              ImGui::GetWindowContentRegionMax().x - questSaveW));
-    if (UI::Button("QuestData speichern", ImVec2(questSaveW, 0))) {
+    if (UI::Button(L("QuestData speichern", "Save QuestData"), ImVec2(questSaveW, 0))) {
         auto path = std::filesystem::path(state.shnServerRoot) / "QuestData.shn";
         auto saved = core::legacy::SaveQuestData(state.questDataFile, path);
         state.statusMessage = saved ? std::string("QuestData.shn gespeichert.") : "Fehler: " + saved.error();
     }
     ImGui::Separator();
     ImGui::SetNextItemWidth(430.0f);
-    UI::InputTextWithHint("##questsearch", "Quest-ID oder Titeltext suchen...",
+    UI::InputTextWithHint("##questsearch", L("Quest-ID oder Titeltext suchen...", "Search quest ID or title text..."),
                           state.questSearch, sizeof(state.questSearch));
 
     // Listen-Beschriftungen und Filter nur bei Aenderung neu berechnen.
@@ -5716,7 +5718,7 @@ void DrawQuestEditor(EditorState& state) {
         for (std::size_t i = 0; i < quests.size(); ++i) {
             std::string title = QuestTextOf(state, quests[i].title);
             if (title.empty()) title = QuestTextOf(state, quests[i].description); // viele Quests haben nur eine Beschreibung
-            if (title.empty()) title = "(ohne Text)";
+            if (title.empty()) title = L("(ohne Text)", "(no text)");
             state.questLabels[i] = "#" + std::to_string(quests[i].id) + "  " + title;
             if (needle.empty() || LowerAscii(state.questLabels[i]).find(needle) != std::string::npos) state.questVisible.push_back(i);
         }
@@ -5724,9 +5726,9 @@ void DrawQuestEditor(EditorState& state) {
 
     const float listWidth = std::clamp(ImGui::GetContentRegionAvail().x * 0.30f, 310.0f, 430.0f);
     ImGui::BeginChild("QuestList", ImVec2(listWidth, 0.0f), true);
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "QUESTS");
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s", L("QUESTS", "QUESTS"));
     ImGui::SameLine();
-    ImGui::TextDisabled("%zu sichtbar", state.questVisible.size());
+    ImGui::TextDisabled(L("%zu sichtbar", "%zu visible"), state.questVisible.size());
     ImGui::Separator();
     {
         ImGuiListClipper clipper;
@@ -5743,10 +5745,10 @@ void DrawQuestEditor(EditorState& state) {
     ImGui::EndChild();
     ImGui::SameLine();
     ImGui::BeginChild("QuestDetail", ImVec2(0.0f, 0.0f), true);
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "EIGENSCHAFTEN");
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s", L("EIGENSCHAFTEN", "PROPERTIES"));
     ImGui::Separator();
     if (state.selectedQuestIdx < 0 || static_cast<std::size_t>(state.selectedQuestIdx) >= quests.size()) {
-        ImGui::TextDisabled("Quest links auswählen.");
+        ImGui::TextDisabled("%s", L("Quest links auswählen.", "Choose a quest on the left."));
         ImGui::EndChild();
         return;
     }
@@ -5782,62 +5784,62 @@ void DrawQuestEditor(EditorState& state) {
         if (UI::InputInt(id, &v, 0, 0)) { value = static_cast<std::uint16_t>(std::clamp(v, 0, maxValue)); ++state.questRevision; }
     };
 
-    ImGui::Text("Quest #%d", q.id);
+    ImGui::Text(L("Quest #%d", "Quest #%d"), q.id);
     ImGui::SameLine();
     ImGui::TextColored(kDim, "%s", QuestTextOf(state, q.title).c_str());
     ImGui::Separator();
 
-    if (UI::CollapsingHeader("Allgemein", ImGuiTreeNodeFlags_DefaultOpen) &&
+    if (UI::CollapsingHeader(L("Allgemein", "General"), ImGuiTreeNodeFlags_DefaultOpen) &&
         beginForm("##qGeneral")) {
-        u16Row("Quest-ID", "##id", q.id);
-        u16Row("Titel-Text-ID", "##title", q.title);
+        u16Row(L("Quest-ID", "Quest ID"), "##id", q.id);
+        u16Row(L("Titel-Text-ID", "Title text ID"), "##title", q.title);
         {
             const std::string t = QuestTextOf(state, q.title);
-            infoText(t.empty() ? "(kein Text)" : t, !t.empty());
+            infoText(t.empty() ? L("(kein Text)", "(no text)") : t, !t.empty());
         }
-        u16Row("Beschreibung-Text-ID", "##desc", q.description);
+        u16Row(L("Beschreibung-Text-ID", "Description text ID"), "##desc", q.description);
         {
             const std::string t = QuestTextOf(state, q.description);
-            infoText(t.empty() ? "(kein Text)" : t, !t.empty());
+            infoText(t.empty() ? L("(kein Text)", "(no text)") : t, !t.empty());
         }
-        u16Row("Start-NPC (Mob-ID)", "##startnpc", q.startingNpc);
+        u16Row(L("Start-NPC (Mob-ID)", "Starting NPC (mob ID)"), "##startnpc", q.startingNpc);
         {
             auto r = ResolveMobNameForQuest(state, q.startingNpc);
             infoText(r.first == "-" ? std::string() : r.first, r.second);
             if (r.second && q.startingNpc != 0) {
                 ImGui::SameLine();
-                if (UI::SmallButton("Öffnen##startNpcRef"))
+                if (UI::SmallButton(L("Öffnen##startNpcRef", "Open##startNpcRef")))
                     OpenShnRecordById(state, {"MobInfo.shn","MobViewInfo.shn"},
                                       EditorState::ShnSource::Client, q.startingNpc);
             }
         }
-        rowLabel("Aktiviert");
+        rowLabel(L("Aktiviert", "Enabled"));
         { bool enable = q.enableQuest != 0; if (UI::Checkbox("##enable", &enable)) q.enableQuest = enable ? 1 : 0; }
-        rowLabel("Tägliche Quest");
+        rowLabel(L("Tägliche Quest", "Daily quest"));
         { bool daily = q.dailyQuest != 0; if (UI::Checkbox("##daily", &daily)) q.dailyQuest = daily ? 1 : 0; }
         ImGui::EndTable();
     }
 
-    if (UI::CollapsingHeader("Voraussetzungen", ImGuiTreeNodeFlags_DefaultOpen) &&
+    if (UI::CollapsingHeader(L("Voraussetzungen", "Requirements"), ImGuiTreeNodeFlags_DefaultOpen) &&
         beginForm("##qRequirements")) {
-        rowLabel("Mindest-Level");
+        rowLabel(L("Mindest-Level", "Minimum level"));
         { int v = q.minLevel; if (UI::InputInt("##minlv", &v, 0, 0)) q.minLevel = static_cast<std::uint8_t>(std::clamp(v, 0, 255)); }
-        rowLabel("Maximal-Level");
+        rowLabel(L("Maximal-Level", "Maximum level"));
         { int v = q.maxLevel; if (UI::InputInt("##maxlv", &v, 0, 0)) q.maxLevel = static_cast<std::uint8_t>(std::clamp(v, 0, 255)); }
 
         if (q.needItem != 0) {
-            u16Row("Benötigtes Item (ID)", "##reqitem", q.itemId);
+            u16Row(L("Benötigtes Item (ID)", "Required item (ID)"), "##reqitem", q.itemId);
             auto r = ResolveItemNameForQuest(state, q.itemId);
             infoText(r.first == "-" ? std::string() : r.first, r.second);
             if (r.second && q.itemId != 0) {
                 ImGui::SameLine();
-                if (UI::SmallButton("Öffnen##requiredItemRef"))
+                if (UI::SmallButton(L("Öffnen##requiredItemRef", "Open##requiredItemRef")))
                     OpenShnRecordById(state, {"ItemInfo.shn"}, EditorState::ShnSource::Server, q.itemId);
             }
         }
 
         if (q.needPred != 0) {
-            u16Row("Vorgänger-Quest (ID)", "##pred", q.predecessor);
+            u16Row(L("Vorgänger-Quest (ID)", "Predecessor quest (ID)"), "##pred", q.predecessor);
             bool found = false;
             std::size_t predecessorIndex = 0;
             std::string predTitle;
@@ -5848,11 +5850,11 @@ void DrawQuestEditor(EditorState& state) {
                 predTitle = QuestTextOf(state, quests[oi].title);
                 break;
             }
-            infoText(found ? (predTitle.empty() ? std::string("gefunden") : predTitle)
-                           : std::string("Quest-ID nicht gefunden"), found);
+            infoText(found ? (predTitle.empty() ? std::string(L("gefunden", "found")) : predTitle)
+                           : std::string(L("Quest-ID nicht gefunden", "Quest ID not found")), found);
             if (found) {
                 ImGui::SameLine();
-                if (UI::SmallButton("Öffnen##predecessorQuestRef"))
+                if (UI::SmallButton(L("Öffnen##predecessorQuestRef", "Open##predecessorQuestRef")))
                     state.selectedQuestIdx = static_cast<int>(predecessorIndex);
             }
         }
@@ -5860,12 +5862,12 @@ void DrawQuestEditor(EditorState& state) {
     }
 
     ImGui::Spacing();
-    if (UI::CollapsingHeader("Ziele · Monster", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (UI::CollapsingHeader(L("Ziele · Monster", "Objectives · Monsters"), ImGuiTreeNodeFlags_DefaultOpen)) {
         if (ImGui::BeginTable("##qmobs", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit)) {
-            ImGui::TableSetupColumn("Aktiv", ImGuiTableColumnFlags_WidthFixed, 46.0f);
-            ImGui::TableSetupColumn("Mob-ID", ImGuiTableColumnFlags_WidthFixed, 90.0f);
-            ImGui::TableSetupColumn("Anzahl", ImGuiTableColumnFlags_WidthFixed, 80.0f);
-            ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn(L("Aktiv", "Active"), ImGuiTableColumnFlags_WidthFixed, 46.0f);
+            ImGui::TableSetupColumn(L("Mob-ID", "Mob ID"), ImGuiTableColumnFlags_WidthFixed, 90.0f);
+            ImGui::TableSetupColumn(L("Anzahl", "Amount"), ImGuiTableColumnFlags_WidthFixed, 80.0f);
+            ImGui::TableSetupColumn(L("Name", "Name"), ImGuiTableColumnFlags_WidthStretch);
             ImGui::TableSetupColumn("##sp", ImGuiTableColumnFlags_WidthFixed, 1.0f);
             ImGui::TableHeadersRow();
             for (std::size_t mi = 0; mi < q.mobs.size(); ++mi) {
@@ -5881,7 +5883,7 @@ void DrawQuestEditor(EditorState& state) {
                     ImGui::TextColored(r.second ? kOk : kBad, "%s", r.first.c_str());
                     if (r.second && m.id != 0) {
                         ImGui::SameLine();
-                        if (UI::SmallButton("Öffnen##mobQuestRef"))
+                        if (UI::SmallButton(L("Öffnen##mobQuestRef", "Open##mobQuestRef")))
                             OpenShnRecordById(state, {"MobInfo.shn","MobViewInfo.shn"},
                                               EditorState::ShnSource::Client, m.id);
                     }
@@ -5891,12 +5893,12 @@ void DrawQuestEditor(EditorState& state) {
             ImGui::EndTable();
         }
     }
-    if (UI::CollapsingHeader("Ziele · Items", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (UI::CollapsingHeader(L("Ziele · Items", "Objectives · Items"), ImGuiTreeNodeFlags_DefaultOpen)) {
         if (ImGui::BeginTable("##qitems", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit)) {
-            ImGui::TableSetupColumn("Aktiv", ImGuiTableColumnFlags_WidthFixed, 46.0f);
-            ImGui::TableSetupColumn("Item-ID", ImGuiTableColumnFlags_WidthFixed, 90.0f);
-            ImGui::TableSetupColumn("Anzahl", ImGuiTableColumnFlags_WidthFixed, 80.0f);
-            ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn(L("Aktiv", "Active"), ImGuiTableColumnFlags_WidthFixed, 46.0f);
+            ImGui::TableSetupColumn(L("Item-ID", "Item ID"), ImGuiTableColumnFlags_WidthFixed, 90.0f);
+            ImGui::TableSetupColumn(L("Anzahl", "Amount"), ImGuiTableColumnFlags_WidthFixed, 80.0f);
+            ImGui::TableSetupColumn(L("Name", "Name"), ImGuiTableColumnFlags_WidthStretch);
             ImGui::TableSetupColumn("##sp", ImGuiTableColumnFlags_WidthFixed, 1.0f);
             ImGui::TableHeadersRow();
             for (std::size_t ii = 0; ii < q.items.size(); ++ii) {
@@ -5912,7 +5914,7 @@ void DrawQuestEditor(EditorState& state) {
                     ImGui::TextColored(r.second ? kOk : kBad, "%s", r.first.c_str());
                     if (r.second && it.id != 0) {
                         ImGui::SameLine();
-                        if (UI::SmallButton("Öffnen##itemQuestRef"))
+                        if (UI::SmallButton(L("Öffnen##itemQuestRef", "Open##itemQuestRef")))
                             OpenShnRecordById(state, {"ItemInfo.shn"}, EditorState::ShnSource::Server, it.id);
                     }
                 }
@@ -5921,15 +5923,15 @@ void DrawQuestEditor(EditorState& state) {
             ImGui::EndTable();
         }
     }
-    if (UI::CollapsingHeader("Ziele · Drops", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (UI::CollapsingHeader(L("Ziele · Drops", "Objectives · Drops"), ImGuiTreeNodeFlags_DefaultOpen)) {
         int removeIdx = -1;
         if (ImGui::BeginTable("##qdrops", 7, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit)) {
-            ImGui::TableSetupColumn("Mob-ID", ImGuiTableColumnFlags_WidthFixed, 86.0f);
-            ImGui::TableSetupColumn("Item-ID", ImGuiTableColumnFlags_WidthFixed, 86.0f);
-            ImGui::TableSetupColumn("Menge", ImGuiTableColumnFlags_WidthFixed, 66.0f);
-            ImGui::TableSetupColumn("Rate", ImGuiTableColumnFlags_WidthFixed, 76.0f);
-            ImGui::TableSetupColumn("Mob", ImGuiTableColumnFlags_WidthStretch);
-            ImGui::TableSetupColumn("Item", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn(L("Mob-ID", "Mob ID"), ImGuiTableColumnFlags_WidthFixed, 86.0f);
+            ImGui::TableSetupColumn(L("Item-ID", "Item ID"), ImGuiTableColumnFlags_WidthFixed, 86.0f);
+            ImGui::TableSetupColumn(L("Menge", "Amount"), ImGuiTableColumnFlags_WidthFixed, 66.0f);
+            ImGui::TableSetupColumn(L("Rate", "Rate"), ImGuiTableColumnFlags_WidthFixed, 76.0f);
+            ImGui::TableSetupColumn(L("Mob", "Mob"), ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn(L("Item", "Item"), ImGuiTableColumnFlags_WidthStretch);
             ImGui::TableSetupColumn("##x", ImGuiTableColumnFlags_WidthFixed, 26.0f);
             ImGui::TableHeadersRow();
             for (std::size_t di = 0; di < q.drops.size(); ++di) {
@@ -5947,7 +5949,7 @@ void DrawQuestEditor(EditorState& state) {
                 ImGui::TextColored(mobName.second ? kOk : kBad, "%s", mobName.first.c_str());
                 if (mobName.second && mobId != 0) {
                     ImGui::SameLine();
-                    if (UI::SmallButton("Öffnen##dropMobRef"))
+                    if (UI::SmallButton(L("Öffnen##dropMobRef", "Open##dropMobRef")))
                         OpenShnRecordById(state, {"MobInfo.shn","MobViewInfo.shn"},
                                           EditorState::ShnSource::Client, mobId);
                 }
@@ -5955,7 +5957,7 @@ void DrawQuestEditor(EditorState& state) {
                 ImGui::TextColored(itemName.second ? kOk : kBad, "%s", itemName.first.c_str());
                 if (itemName.second && itemId != 0) {
                     ImGui::SameLine();
-                    if (UI::SmallButton("Öffnen##dropItemRef"))
+                    if (UI::SmallButton(L("Öffnen##dropItemRef", "Open##dropItemRef")))
                         OpenShnRecordById(state, {"ItemInfo.shn"}, EditorState::ShnSource::Server, itemId);
                 }
                 ImGui::TableSetColumnIndex(6); if (UI::SmallButton("X")) removeIdx = static_cast<int>(di);
@@ -5964,33 +5966,33 @@ void DrawQuestEditor(EditorState& state) {
             ImGui::EndTable();
         }
         if (removeIdx >= 0) q.drops.erase(q.drops.begin() + removeIdx);
-        if (q.drops.size() < 11 && UI::Button("+ Drop hinzufügen")) q.drops.push_back({});
+        if (q.drops.size() < 11 && UI::Button(L("+ Drop hinzufügen", "+ Add drop"))) q.drops.push_back({});
     }
 
     ImGui::Spacing();
-    if (UI::CollapsingHeader("Belohnungen")) {
-        ImGui::TextDisabled("144 Byte Belohnungsdaten sind noch nicht semantisch kartiert.");
-        ImGui::TextWrapped("Der Editor bewahrt diesen Bereich beim Speichern unverändert auf, statt unbekannte Felder zu erraten.");
+    if (UI::CollapsingHeader(L("Belohnungen", "Rewards"))) {
+        ImGui::TextDisabled("%s", L("144 Byte Belohnungsdaten sind noch nicht semantisch kartiert.", "144 bytes of reward data are not semantically mapped yet."));
+        ImGui::TextWrapped("%s", L("Der Editor bewahrt diesen Bereich beim Speichern unverändert auf, statt unbekannte Felder zu erraten.", "The editor preserves this area unchanged when saving instead of guessing unknown fields."));
     }
 
-    if (UI::CollapsingHeader("Dialoge")) {
+    if (UI::CollapsingHeader(L("Dialoge", "Dialogs"))) {
         const std::string titleText = QuestTextOf(state, q.title);
         const std::string descriptionText = QuestTextOf(state, q.description);
-        ImGui::TextDisabled("Titel");
-        ImGui::TextWrapped("%s", titleText.empty() ? "(kein Text)" : titleText.c_str());
-        ImGui::TextDisabled("Beschreibung");
-        ImGui::TextWrapped("%s", descriptionText.empty() ? "(kein Text)" : descriptionText.c_str());
+        ImGui::TextDisabled("%s", L("Titel", "Title"));
+        ImGui::TextWrapped("%s", titleText.empty() ? L("(kein Text)", "(no text)") : titleText.c_str());
+        ImGui::TextDisabled("%s", L("Beschreibung", "Description"));
+        ImGui::TextWrapped("%s", descriptionText.empty() ? L("(kein Text)", "(no text)") : descriptionText.c_str());
         ImGui::Separator();
         static char lookupBuf[16] = "";
         ImGui::SetNextItemWidth(120.0f);
-        UI::InputText("SAY-Text-ID", lookupBuf, sizeof(lookupBuf), ImGuiInputTextFlags_CharsDecimal);
+        UI::InputText(L("SAY-Text-ID", "SAY text ID"), lookupBuf, sizeof(lookupBuf), ImGuiInputTextFlags_CharsDecimal);
         if (lookupBuf[0] != '\0') {
             const std::string t = QuestTextOf(state, std::atoi(lookupBuf));
-            ImGui::TextWrapped("%s", t.empty() ? "(kein Text)" : t.c_str());
+            ImGui::TextWrapped("%s", t.empty() ? L("(kein Text)", "(no text)") : t.c_str());
         }
     }
 
-    if (UI::CollapsingHeader("Scripts", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (UI::CollapsingHeader(L("Scripts", "Scripts"), ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::TextDisabled("SAY / IF / GOTO / ACCEPT / CREATE_ITEM / …");
         auto scriptEditor = [&](const char* label, core::legacy::QuestScript& script) {
             ImGui::TextColored(kDim, "%s", label);
@@ -6001,9 +6003,9 @@ void DrawQuestEditor(EditorState& state) {
                 script.text.assign(buf.data());
             }
         };
-        scriptEditor("Start", q.start);
-        scriptEditor("Action", q.action);
-        scriptEditor("Finish", q.finish);
+        scriptEditor(L("Start", "Start"), q.start);
+        scriptEditor(L("Action", "Action"), q.action);
+        scriptEditor(L("Finish", "Finish"), q.finish);
     }
     ImGui::EndChild();
 }
