@@ -111,8 +111,12 @@ namespace UiTheme {
 const ImVec4 Root          = ImVec4(0.031f, 0.071f, 0.114f, 1.0f); // #08121D
 const ImVec4 Panel         = ImVec4(0.051f, 0.106f, 0.165f, 1.0f); // #0D1B2A
 const ImVec4 PanelAlt      = ImVec4(0.063f, 0.137f, 0.220f, 1.0f); // #102338
+const ImVec4 PanelRaised   = ImVec4(0.055f, 0.157f, 0.247f, 1.0f); // premium raised chrome
+const ImVec4 PanelDeep     = ImVec4(0.020f, 0.055f, 0.094f, 1.0f); // deep shell/header
 const ImVec4 Input         = ImVec4(0.039f, 0.086f, 0.137f, 1.0f); // #0A1623
 const ImVec4 Border        = ImVec4(0.125f, 0.231f, 0.333f, 1.0f); // #203B55
+const ImVec4 BorderStrong  = ImVec4(0.078f, 0.400f, 0.680f, 0.95f);
+const ImVec4 GlowBlue      = ImVec4(0.078f, 0.710f, 1.000f, 0.32f);
 const ImVec4 AccentBlue    = ImVec4(0.075f, 0.549f, 1.000f, 1.0f); // #138CFF
 const ImVec4 AccentCyan    = ImVec4(0.125f, 0.867f, 0.949f, 1.0f); // #20DDF2
 const ImVec4 AccentDeep    = ImVec4(0.043f, 0.373f, 0.843f, 1.0f); // #0B5FD7
@@ -126,12 +130,12 @@ const ImVec4 Purple        = ImVec4(0.584f, 0.412f, 1.000f, 1.0f); // #9569FF
 
 void ApplyEditorTheme() {
     ImGuiStyle& style = ImGui::GetStyle();
-    style.WindowRounding = 6.0f;
-    style.ChildRounding = 6.0f;
+    style.WindowRounding = 8.0f;
+    style.ChildRounding = 7.0f;
     style.FrameRounding = 5.0f;
-    style.PopupRounding = 7.0f;
-    style.GrabRounding = 5.0f;
-    style.ScrollbarRounding = 6.0f;
+    style.PopupRounding = 8.0f;
+    style.GrabRounding = 6.0f;
+    style.ScrollbarRounding = 8.0f;
     style.TabRounding = 5.0f;
     style.WindowBorderSize = 1.0f;
     style.ChildBorderSize = 1.0f;
@@ -140,24 +144,29 @@ void ApplyEditorTheme() {
     style.ItemSpacing = ImVec2(8.0f, 7.0f);
     style.ItemInnerSpacing = ImVec2(6.0f, 5.0f);
     style.FramePadding = ImVec2(9.0f, 7.0f);
-    style.WindowPadding = ImVec2(11.0f, 10.0f);
-    style.ScrollbarSize = 12.0f;
-    style.GrabMinSize = 11.0f;
+    style.WindowPadding = ImVec2(10.0f, 9.0f);
+    style.ScrollbarSize = 11.0f;
+    style.GrabMinSize = 12.0f;
+    style.IndentSpacing = 18.0f;
+    style.SeparatorTextBorderSize = 1.0f;
+    style.SeparatorTextPadding = ImVec2(16.0f, 6.0f);
+    style.WindowMenuButtonPosition = ImGuiDir_None;
 
     ImVec4* c = style.Colors;
     c[ImGuiCol_Text]                 = UiTheme::TextPrimary;
     c[ImGuiCol_TextDisabled]         = UiTheme::TextSecondary;
     c[ImGuiCol_WindowBg]             = UiTheme::Root;
     c[ImGuiCol_ChildBg]              = UiTheme::Panel;
-    c[ImGuiCol_PopupBg]              = ImVec4(0.039f, 0.086f, 0.137f, 0.99f);
+    c[ImGuiCol_PopupBg]              = ImVec4(0.026f, 0.073f, 0.118f, 0.995f);
     c[ImGuiCol_Border]               = UiTheme::Border;
     c[ImGuiCol_BorderShadow]         = ImVec4(0, 0, 0, 0);
     c[ImGuiCol_FrameBg]              = UiTheme::Input;
     c[ImGuiCol_FrameBgHovered]       = ImVec4(0.063f, 0.137f, 0.220f, 1.0f);
     c[ImGuiCol_FrameBgActive]        = ImVec4(0.055f, 0.190f, 0.310f, 1.0f);
-    c[ImGuiCol_TitleBg]              = ImVec4(0.024f, 0.059f, 0.094f, 1.0f);
-    c[ImGuiCol_TitleBgActive]        = UiTheme::PanelAlt;
-    c[ImGuiCol_MenuBarBg]            = ImVec4(0.027f, 0.075f, 0.118f, 1.0f);
+    c[ImGuiCol_TitleBg]              = UiTheme::PanelDeep;
+    c[ImGuiCol_TitleBgActive]        = ImVec4(0.035f, 0.122f, 0.200f, 1.0f);
+    c[ImGuiCol_TitleBgCollapsed]     = UiTheme::PanelDeep;
+    c[ImGuiCol_MenuBarBg]            = UiTheme::PanelDeep;
     c[ImGuiCol_ScrollbarBg]          = UiTheme::Root;
     c[ImGuiCol_ScrollbarGrab]        = ImVec4(0.125f, 0.231f, 0.333f, 0.90f);
     c[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.075f, 0.360f, 0.560f, 1.0f);
@@ -165,19 +174,19 @@ void ApplyEditorTheme() {
     c[ImGuiCol_CheckMark]            = UiTheme::AccentCyan;
     c[ImGuiCol_SliderGrab]           = UiTheme::AccentBlue;
     c[ImGuiCol_SliderGrabActive]     = UiTheme::AccentCyan;
-    c[ImGuiCol_Button]               = UiTheme::PanelAlt;
-    c[ImGuiCol_ButtonHovered]        = ImVec4(0.055f, 0.245f, 0.400f, 1.0f);
-    c[ImGuiCol_ButtonActive]         = UiTheme::AccentDeep;
+    c[ImGuiCol_Button]               = ImVec4(0.047f, 0.122f, 0.192f, 1.0f);
+    c[ImGuiCol_ButtonHovered]        = ImVec4(0.055f, 0.255f, 0.425f, 1.0f);
+    c[ImGuiCol_ButtonActive]         = ImVec4(0.035f, 0.360f, 0.720f, 1.0f);
     c[ImGuiCol_Header]               = ImVec4(0.047f, 0.220f, 0.365f, 0.78f);
     c[ImGuiCol_HeaderHovered]        = ImVec4(0.055f, 0.350f, 0.570f, 0.92f);
     c[ImGuiCol_HeaderActive]         = ImVec4(0.075f, 0.430f, 0.720f, 1.0f);
     c[ImGuiCol_Separator]            = UiTheme::Border;
     c[ImGuiCol_SeparatorHovered]     = UiTheme::AccentBlue;
     c[ImGuiCol_SeparatorActive]      = UiTheme::AccentCyan;
-    c[ImGuiCol_Tab]                  = ImVec4(0.039f, 0.086f, 0.137f, 1.0f);
-    c[ImGuiCol_TabHovered]           = ImVec4(0.055f, 0.300f, 0.480f, 1.0f);
-    c[ImGuiCol_TabActive]            = ImVec4(0.043f, 0.373f, 0.843f, 0.82f);
-    c[ImGuiCol_TabUnfocused]         = UiTheme::Root;
+    c[ImGuiCol_Tab]                  = ImVec4(0.031f, 0.082f, 0.132f, 1.0f);
+    c[ImGuiCol_TabHovered]           = ImVec4(0.047f, 0.275f, 0.465f, 1.0f);
+    c[ImGuiCol_TabActive]            = ImVec4(0.035f, 0.333f, 0.690f, 0.94f);
+    c[ImGuiCol_TabUnfocused]         = UiTheme::PanelDeep;
     c[ImGuiCol_TabUnfocusedActive]   = UiTheme::PanelAlt;
     c[ImGuiCol_DockingPreview]       = ImVec4(0.075f, 0.549f, 1.000f, 0.68f);
     c[ImGuiCol_DockingEmptyBg]       = UiTheme::Root;
@@ -3378,13 +3387,19 @@ bool DrawTinyIconButton(const char* id, IconDrawFn icon, bool active, const char
     const bool clicked=ImGui::InvisibleButton("##tinyIcon",size);
     const bool hovered=ImGui::IsItemHovered();
     ImDrawList* dl=ImGui::GetWindowDrawList();
-    if(active || hovered)
+    if(active || hovered) {
+        dl->AddRectFilled(ImVec2(p.x, p.y + 1.0f), ImVec2(p.x+size.x,p.y+size.y+1.0f),
+                          IM_COL32(0,4,12,110),5.0f);
         dl->AddRectFilled(p,ImVec2(p.x+size.x,p.y+size.y),
-                          active?IM_COL32(11,95,215,225):IM_COL32(16,35,56,235),5.0f);
+                          active?IM_COL32(8,79,176,245):IM_COL32(14,43,68,245),5.0f);
+        dl->AddRect(p,ImVec2(p.x+size.x,p.y+size.y),
+                    active?IM_COL32(43,224,247,245):IM_COL32(32,116,174,190),5.0f,0,1.0f);
+    }
     if(active)
-        dl->AddRect(p,ImVec2(p.x+size.x,p.y+size.y),IM_COL32(32,221,242,230),5.0f,0,1.0f);
-    if(icon) icon(dl,ImVec2(p.x+size.x*0.5f,p.y+size.y*0.5f),7.0f,
-                  active?IM_COL32(237,246,255,255):IM_COL32(159,180,201,245));
+        dl->AddRectFilled(ImVec2(p.x+4.0f,p.y+size.y-2.0f),ImVec2(p.x+size.x-4.0f,p.y+size.y),
+                          IM_COL32(32,221,242,255),1.0f);
+    if(icon) icon(dl,ImVec2(p.x+size.x*0.5f,p.y+size.y*0.5f),7.2f,
+                  active?IM_COL32(244,251,255,255):hovered?IM_COL32(222,241,255,255):IM_COL32(159,180,201,245));
     if(hovered && tooltip) ImGui::SetTooltip("%s",tooltip);
     ImGui::PopID();
     return clicked;
@@ -3399,21 +3414,33 @@ bool DrawIconButton(const char* id, const char* label, IconDrawFn icon, bool act
     ImGui::EndDisabled();
     const bool hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled);
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    const ImU32 bg = active ? IM_COL32(11, 95, 215, 230)
-                     : hovered && enabled ? IM_COL32(16, 52, 82, 255)
-                                          : IM_COL32(13, 27, 42, 255);
-    const ImU32 border = active ? IM_COL32(32, 221, 242, 235)
-                                : hovered && enabled ? IM_COL32(19, 140, 255, 190)
-                                                     : IM_COL32(32, 59, 85, 255);
-    const ImU32 fg = enabled ? (active ? IM_COL32(237, 246, 255, 255)
-                                       : hovered ? IM_COL32(237, 246, 255, 255)
-                                                 : IM_COL32(159, 180, 201, 255))
-                             : IM_COL32(95, 112, 128, 170);
-    dl->AddRectFilled(p, ImVec2(p.x + size.x, p.y + size.y), bg, 6.0f);
-    dl->AddRect(p, ImVec2(p.x + size.x, p.y + size.y), border, 6.0f, 0, active ? 1.5f : 1.0f);
-    if (icon) icon(dl, ImVec2(p.x + size.x * 0.5f, p.y + 21.0f), 10.0f, fg);
+
+    const ImU32 bg = active ? IM_COL32(7, 63, 143, 250)
+                     : hovered && enabled ? IM_COL32(13, 48, 78, 255)
+                                          : IM_COL32(10, 27, 43, 255);
+    const ImU32 border = active ? IM_COL32(32, 221, 242, 245)
+                                : hovered && enabled ? IM_COL32(19, 140, 255, 205)
+                                                     : IM_COL32(31, 62, 88, 255);
+    const ImU32 fg = enabled ? (active ? IM_COL32(247, 252, 255, 255)
+                                       : hovered ? IM_COL32(230, 245, 255, 255)
+                                                 : IM_COL32(169, 195, 216, 255))
+                             : IM_COL32(88, 108, 126, 145);
+
+    dl->AddRectFilled(ImVec2(p.x, p.y + 2.0f), ImVec2(p.x + size.x, p.y + size.y + 2.0f),
+                      IM_COL32(0, 3, 10, active ? 145 : 90), 7.0f);
+    dl->AddRectFilled(p, ImVec2(p.x + size.x, p.y + size.y), bg, 7.0f);
+    dl->AddRect(p, ImVec2(p.x + size.x, p.y + size.y), border, 7.0f, 0, active ? 1.6f : 1.0f);
+    dl->AddLine(ImVec2(p.x + 7.0f, p.y + 1.0f), ImVec2(p.x + size.x - 7.0f, p.y + 1.0f),
+                active ? IM_COL32(151, 248, 255, 205) : IM_COL32(55, 101, 135, 105), 1.0f);
+    if (active) {
+        dl->AddRectFilled(ImVec2(p.x + 9.0f, p.y + size.y - 3.0f),
+                          ImVec2(p.x + size.x - 9.0f, p.y + size.y - 1.0f),
+                          IM_COL32(32, 221, 242, 255), 1.0f);
+    }
+
+    if (icon) icon(dl, ImVec2(p.x + size.x * 0.5f, p.y + 21.0f), 10.8f, fg);
     const ImVec2 ts = ImGui::CalcTextSize(label);
-    dl->AddText(ImVec2(p.x + (size.x - ts.x) * 0.5f, p.y + size.y - 19.0f), fg, label);
+    dl->AddText(ImVec2(p.x + (size.x - ts.x) * 0.5f, p.y + size.y - 18.0f), fg, label);
     if (hovered) ImGui::SetTooltip("%s", label);
     ImGui::PopID();
     return clicked && enabled;
@@ -3472,22 +3499,40 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
     LoadShortcutSettings(state);
     LoadWorkspaceSettings(state);
 
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::PanelDeep);
     ImGui::PushStyleColor(ImGuiCol_Border, UiTheme::Border);
-    ImGui::BeginChild("##nextgenTopBar", ImVec2(0.0f, 43.0f), true,
+    ImGui::BeginChild("##nextgenTopBar", ImVec2(0.0f, 50.0f), true,
                       ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(11.0f, 7.0f));
 
-    ImGui::TextColored(UiTheme::AccentCyan, "NG");
-    ImGui::SameLine(0.0f, 7.0f);
+    ImDrawList* topDl = ImGui::GetWindowDrawList();
+    const ImVec2 topMin = ImGui::GetWindowPos();
+    const ImVec2 topMax(topMin.x + ImGui::GetWindowWidth(), topMin.y + ImGui::GetWindowHeight());
+    topDl->AddRectFilledMultiColor(topMin, topMax,
+                                  IM_COL32(5,18,31,255), IM_COL32(8,28,45,255),
+                                  IM_COL32(9,34,53,255), IM_COL32(5,20,34,255));
+    topDl->AddLine(ImVec2(topMin.x + 1.0f, topMax.y - 2.0f),
+                   ImVec2(topMax.x - 1.0f, topMax.y - 2.0f),
+                   IM_COL32(19,140,255,120), 1.0f);
+
+    const ImVec2 brandPos = ImGui::GetCursorScreenPos();
+    ImGui::Dummy(ImVec2(34.0f, 30.0f));
+    topDl->AddRectFilled(ImVec2(brandPos.x, brandPos.y), ImVec2(brandPos.x + 34.0f, brandPos.y + 30.0f),
+                         IM_COL32(5,37,67,255), 7.0f);
+    topDl->AddRect(ImVec2(brandPos.x, brandPos.y), ImVec2(brandPos.x + 34.0f, brandPos.y + 30.0f),
+                   IM_COL32(32,221,242,220), 7.0f, 0, 1.2f);
+    topDl->AddText(ImVec2(brandPos.x + 6.0f, brandPos.y + 7.0f), IM_COL32(222,250,255,255), "NG");
+
+    ImGui::SameLine(0.0f, 9.0f);
+    ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted("NextGen");
     ImGui::SameLine(0.0f, 4.0f);
     ImGui::TextColored(UiTheme::AccentBlue, "Editor");
     if (breadcrumbTitle && breadcrumbTitle[0]) {
         ImGui::SameLine();
-        ImGui::TextDisabled("/ %s", breadcrumbTitle);
+        ImGui::TextDisabled("· %s", breadcrumbTitle);
     }
-    ImGui::SameLine(205.0f);
+    ImGui::SameLine(225.0f);
 
     struct PrimaryNav { const char* key; AppScreen target; };
     const PrimaryNav primary[] = {
@@ -3503,9 +3548,16 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
             (item.target == AppScreen::ProjectHub &&
              (state.screen == AppScreen::ProjectHub || state.screen == AppScreen::NewProjectConfig)) ||
             state.screen == item.target;
-        ImGui::PushStyleColor(ImGuiCol_Button, active ? IM_COL32(11, 95, 215, 235) : IM_COL32(16, 35, 56, 255));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(14, 83, 137, 255));
+        ImGui::PushStyleColor(ImGuiCol_Button, active ? IM_COL32(8, 62, 132, 210) : IM_COL32(8, 25, 40, 120));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(13, 68, 111, 235));
         if (UI::Button(T(item.key))) state.screen = item.target;
+        const ImVec2 navMin = ImGui::GetItemRectMin();
+        const ImVec2 navMax = ImGui::GetItemRectMax();
+        if (active) {
+            ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(navMin.x + 7.0f, navMax.y - 2.0f),
+                                                      ImVec2(navMax.x - 7.0f, navMax.y),
+                                                      IM_COL32(32,221,242,255), 1.0f);
+        }
         ImGui::PopStyleColor(2);
         ImGui::SameLine();
     }
@@ -3563,7 +3615,7 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
         }
     }
 
-    const float rightWidth = 164.0f;
+    const float rightWidth = 176.0f;
     ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - rightWidth);
     if (DrawTinyIconButton("settingsTop", DrawIconGear, state.settingsOpen, "Einstellungen"))
         state.settingsOpen = !state.settingsOpen;
@@ -3579,7 +3631,7 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
     ImGui::PopStyleVar();
     ImGui::EndChild();
     ImGui::PopStyleColor(2);
-    ImGui::Dummy(ImVec2(0.0f, 4.0f));
+    ImGui::Dummy(ImVec2(0.0f, 6.0f));
 }
 
 
@@ -12951,6 +13003,10 @@ void DrawWorkspaceTabBar(EditorState& state) {
         }
     };
 
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::PanelDeep);
+    ImGui::PushStyleColor(ImGuiCol_Border, UiTheme::Border);
+    ImGui::BeginChild("##workspaceCommandBar", ImVec2(0.0f, 70.0f), true,
+                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(5.0f, 5.0f));
     ImGui::BeginGroup();
 
@@ -13006,6 +13062,8 @@ void DrawWorkspaceTabBar(EditorState& state) {
 
     ImGui::EndGroup();
     ImGui::PopStyleVar();
+    ImGui::EndChild();
+    ImGui::PopStyleColor(2);
 }
 
 
@@ -15499,8 +15557,9 @@ void DrawMapEditorWorkspace(EditorState& state) {
         if (buildDefault) {
             // Presets verändern ausschließlich das Dock-Rezept. Danach darf der Nutzer
             // weiterhin frei ziehen; ImGui speichert diese individuellen Anpassungen in layout.ini.
-            float leftRatio=0.18f, inspectorRatio=0.25f, bottomRatio=0.34f;
-            float navigatorRatio=0.34f, assetRatio=0.43f;
+            // Premium default layout: the 3D viewport is intentionally the visual hero.
+            float leftRatio=0.16f, inspectorRatio=0.23f, bottomRatio=0.29f;
+            float navigatorRatio=0.33f, assetRatio=0.43f;
             switch (state.mapWorkspacePreset) {
                 case 1: // 3D-Fokus
                     leftRatio=0.14f; inspectorRatio=0.20f; bottomRatio=0.20f;
@@ -15688,23 +15747,29 @@ void DrawMapEditorWorkspace(EditorState& state) {
     ImGui::End();
     ImGui::PopStyleColor();
 
-    ImGui::Separator();
-    ImGui::TextDisabled(L("Map: %s%s  |  Werkzeug: %s  |  Auswahl: %zu  |  %.0f FPS","Map: %s%s  |  Tool: %s  |  Selection: %zu  |  %.0f FPS"),
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::PanelDeep);
+    ImGui::PushStyleColor(ImGuiCol_Border, UiTheme::Border);
+    ImGui::BeginChild("##mapStatusBar", ImVec2(0.0f, 27.0f), true,
+                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    ImGui::TextColored(state.mapDirty ? UiTheme::Warning : UiTheme::TextSecondary,
+                       "%s", state.mapDirty ? "●" : "●");
+    ImGui::SameLine(0.0f, 6.0f);
+    ImGui::TextDisabled(L("Map: %s  ·  Werkzeug: %s  ·  Auswahl: %zu  ·  %.0f FPS",
+                          "Map: %s  ·  Tool: %s  ·  Selection: %zu  ·  %.0f FPS"),
                         state.legacySaveStem[0] ? state.legacySaveStem : "-",
-                        state.mapDirty ? " *" : "",
                         modeName(), state.selectedObjects.size(), ImGui::GetIO().Framerate);
     if (state.selectedObject != kNoObjectSelection) {
         if (const auto* selected = EditableObject(state, state.selectedObject)) {
             ImGui::SameLine();
-            ImGui::TextDisabled(" | XYZ %.1f / %.1f / %.1f", selected->posX, selected->posY, selected->posZ);
+            ImGui::TextDisabled("  ·  XYZ %.1f / %.1f / %.1f", selected->posX, selected->posY, selected->posZ);
         }
     }
-    if (!state.statusMessage.empty()) {
+    if (!state.statusMessage.empty() && ImGui::GetContentRegionAvail().x > 260.0f) {
         ImGui::SameLine();
-        ImGui::TextDisabled(" | ");
-        ImGui::SameLine();
-        ImGui::TextWrapped("%s", state.statusMessage.c_str());
+        ImGui::TextColored(UiTheme::TextSecondary, "  ·  %s", state.statusMessage.c_str());
     }
+    ImGui::EndChild();
+    ImGui::PopStyleColor(2);
 }
 
 
