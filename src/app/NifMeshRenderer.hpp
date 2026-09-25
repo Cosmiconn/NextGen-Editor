@@ -50,6 +50,13 @@ public:
     [[nodiscard]] bool HasRealMesh(std::size_t objectIndex) const;
     [[nodiscard]] std::size_t RealMeshCount() const;
 
+    // Exaktes Editor-Picking gegen die geladenen NIF-Dreiecke. Liefert die Entfernung
+    // entlang des normalisierten Weltstrahls oder nullopt, wenn dieses Objekt nicht
+    // getroffen wurde. Billboard- und LOD-Transforms entsprechen dem Renderpfad.
+    [[nodiscard]] std::optional<float> RaycastObject(
+        const core::ObjectPlacementSet& set, std::size_t objectIndex, const OrbitCamera& camera,
+        const std::array<float, 3>& rayOrigin, const std::array<float, 3>& rayDirection) const;
+
     // Zeichnet alle Objekte mit erfolgreich geladenem Mesh in den aktuell gebundenen
     // Framebuffer (siehe HeightmapRenderer::BeginScene/EndScene).
     // hidden: optional, je Objektindex != 0 -> Objekt wird nicht gezeichnet (Sichtbarkeit/Kategorien).
@@ -74,6 +81,12 @@ private:
         std::uint32_t vbo = 0;
         std::uint32_t ebo = 0;
         std::uint32_t indexCount = 0;
+        // CPU-Kopie nur fuer Editor-Ray-Picking. Sie liegt im deduplizierten Modell-Cache,
+        // nicht pro platzierter Instanz.
+        std::vector<core::NifVec3> pickPositions;
+        std::vector<std::uint32_t> pickIndices;
+        std::array<float, 3> localBoundsMin{};
+        std::array<float, 3> localBoundsMax{};
         std::array<TextureBinding, 10> textures{};
         std::vector<core::NifTextureTransformAnimation> textureTransformAnimations;
         struct FlipAnimation {
