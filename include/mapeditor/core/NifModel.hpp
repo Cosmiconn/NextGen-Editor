@@ -41,6 +41,10 @@ struct NifVec2 {
     float u = 0.0f, v = 0.0f;
 };
 
+struct NifColor4 {
+    float r = 1.0f, g = 1.0f, b = 1.0f, a = 1.0f;
+};
+
 struct NifMaterial {
     std::array<float, 3> ambient{1.0f, 1.0f, 1.0f};
     std::array<float, 3> diffuse{1.0f, 1.0f, 1.0f};
@@ -118,8 +122,10 @@ struct NifTextureFlipAnimation {
 
 struct NifMeshPart {
     std::string name;
+    std::string shaderName;            // z.B. VCAlphaTextureBlender
     std::vector<NifVec3> positions;
     std::vector<NifVec3> normals;      // leer, falls keine Normalen vorhanden
+    std::vector<NifColor4> vertexColors; // leer => weiss/alpha 1 im Renderer
     std::vector<NifVec2> uvs;          // fuer die Base-Textur ausgewaehltes UV-Set
     std::vector<std::vector<NifVec2>> uvSets; // alle im Geometrieblock vorhandenen UV-Sets
     std::vector<std::uint32_t> triangleIndices; // 3 Indizes pro Dreieck, in `positions` indiziert
