@@ -33,6 +33,7 @@
 - Portal Editor.
 - Custom NPC/Mob Wizard.
 - Skill Editor.
+- AI Workspace für `LuaScript/AIScript/*.lua` und `MobBehaviorDescript/*.ps` mit Suche, Dirty-State und Textbearbeitung.
 - Händler-/Shop-Editor kontextuell am NPC.
 
 ### Animationen
@@ -69,7 +70,7 @@
 
 ### Spieldaten Workspace
 - linker Bereich: Datenquelle / SHN-Dateien.
-- obere Workspace-Tabs: Single, Multi, XP, Preise, Quest, Portale, Custom NPC/Mob, Skill.
+- obere Workspace-Tabs: Single, Multi, XP, Preise, Quest, Portale, Custom NPC/Mob, Skill, AI Scripts.
 - Hauptbereich: Tabelle/Formular.
 - rechts optional: Details/Validierung.
 
@@ -138,7 +139,7 @@ Pflichtsymbole:
 ### Phase D – Erweiterungspunkte
 - Interface Editor.
 - Drop Table Editor.
-- eigener AI Workspace.
+- eigener AI Workspace. **Umgesetzt.**
 - Material/NIF Editing.
 - KFM Playback.
 - Plugins/Tool-Registry.
@@ -195,9 +196,10 @@ Noch offen für spätere Ausbaustufen:
 - Custom NPC/Mob Wizard einschließlich Vorschau, Schrittleiste, Ausrüstung, Rollenplatzierung und Zusammenfassung vollständig an die DE/EN-Sprachumschaltung angebunden.
 - tiefer Quest-Editor (Allgemein, Voraussetzungen, Ziele, Drops, Belohnungen, Dialoge und Scripts) vollständig an die DE/EN-Sprachumschaltung angebunden.
 - persistente Map-Workspace-Presets ergänzt: Standard, 3D-Fokus, Terrain/2D und Daten/Szene; im Navigator, in den Einstellungen und über Strg+P/Command-Palette erreichbar.
+- eigenständiger AI Workspace im Spieldatenbereich: rekursiver Lua-/PineScript-Katalog, Suche, Volltexteditor, Dirty-State, Reload/Verwerfen und sicheres Speichern; bestehende NPC-/Mob-Kontextaktionen verwenden denselben Editor-Unterbau.
 - Skill-, Quest- und Custom NPC/Mob-Editor verwenden inzwischen durchgängig dieselbe DE/EN-Panel-Sprache; verbleibende tiefe Spezialdialoge können schrittweise nachgezogen werden;
 - gespeicherte Map-Workspace-Presets sind umgesetzt: Standard, 3D-Fokus, Terrain/2D und Daten/Szene; die Auswahl bleibt über `workspace.txt` erhalten und das danach frei angepasste Dock-Layout weiterhin über `layout.ini`;
-- zukünftige Interface/Drop-Table/AI/NIF-Material-Editoren.
+- zukünftige Interface-/Drop-Table-/NIF-Material-Editoren; AI Workspace ist umgesetzt. Der Drop-Table-Editor bleibt zurückgestellt, bis die bekannten ShineText-Kanten der 270+ Spalten breiten `ItemDropTable.txt` belastbar behoben sind.
 
 ## 9. Aktuelles Arbeitsziel
 
