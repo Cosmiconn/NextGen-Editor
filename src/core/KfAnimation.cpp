@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <bit>
+#include <cmath>
 #include <fstream>
 #include <limits>
 #include <stdexcept>
