@@ -529,6 +529,7 @@ struct EditorState {
         bool rawOpen = false;
         int scalePercent = 100;
         bool scaleDamage = true, scaleCost = false, scaleCooldown = false, scaleCast = false;
+        int quickFilter = 0; // 0 alle, 1 geändert, 2 Sync-Probleme
         std::vector<std::string> report;
     } skill;
     struct CreatureWizard {
@@ -9226,6 +9227,11 @@ void DrawSkillEditor(EditorState& state) {
     ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s", L("SKILL EDITOR", "SKILL EDITOR"));
     ImGui::SameLine();
     ImGui::TextDisabled("%s", L("Client + Server synchron bearbeiten", "Edit client + server in sync"));
+    const std::size_t dirtySkillDocs = DirtyShnDocumentCount(state);
+    if (dirtySkillDocs > 0) {
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(1.0f,0.68f,0.25f,1.0f), L("● %zu SHN geändert","● %zu SHN modified"), dirtySkillDocs);
+    }
     ImGui::TextWrapped("%s", L("Vorhandene Skills bearbeiten, neue Skills aus Vorlagen klonen und vorhandene Animationen/Effekte zuweisen. Eine Zeile entspricht einer Stufe einer Skillreihe.",
                                "Edit existing skills, clone new skills from templates and assign existing animations/effects. One row represents one step of a skill series."));
     ImGui::Separator();
@@ -9257,18 +9263,56 @@ void DrawSkillEditor(EditorState& state) {
     ImGui::SameLine();
     ImGui::SetNextItemWidth(260.0f);
     UI::InputTextWithHint("##skillfilter", L("Suche: Name oder InxName oder ID", "Search: name, InxName or ID"), ed.filter, sizeof(ed.filter));
+    ImGui::SameLine();
+    if (SceneQuickFilterButton("skillAll",L("Alle","All"),ed.quickFilter==0)) ed.quickFilter=0;
+    ImGui::SameLine();
+    if (SceneQuickFilterButton("skillChanged",L("Geändert","Modified"),ed.quickFilter==1)) ed.quickFilter=1;
+    ImGui::SameLine();
+    if (SceneQuickFilterButton("skillSync",L("Sync-Probleme","Sync issues"),ed.quickFilter==2)) ed.quickFilter=2;
 
     // Liste (Clipper, gecacht)
-    const std::string key = std::string(ed.filter) + "|" + std::to_string(asf.rows.size()) + "|" + std::to_string(state.shnEditCounter);
+    const std::string key = std::string(ed.filter) + "|" + std::to_string(asf.rows.size()) + "|" +
+                            std::to_string(state.shnEditCounter) + "|qf=" + std::to_string(ed.quickFilter);
     if (key != ed.listKey) {
         ed.listKey = key;
         ed.visible.clear();
         const std::string needle = LowerAscii(ed.filter);
+
+        std::unordered_set<long long> modifiedIds;
+        std::unordered_set<long long> viewIds;
+        std::unordered_set<long long> serverIds;
+        auto collectIds = [&](int docIdx, std::unordered_set<long long>& ids, bool dirtyOnly) {
+            if (docIdx < 0 || docIdx >= static_cast<int>(state.shnFiles.size())) return;
+            const auto& doc = state.shnFiles[static_cast<std::size_t>(docIdx)];
+            for (std::size_t row = 0; row < doc.file.rows.size(); ++row) {
+                if (dirtyOnly) {
+                    if (row >= doc.cellDirty.size()) continue;
+                    const bool rowDirty = std::any_of(doc.cellDirty[row].begin(), doc.cellDirty[row].end(),
+                                                      [](std::uint8_t v){ return v != 0; });
+                    if (!rowDirty) continue;
+                }
+                const std::string idText = ShnCellText(doc.file,row,"ID");
+                if (!idText.empty()) ids.insert(std::atoll(idText.c_str()));
+            }
+        };
+        if (ed.quickFilter == 1) {
+            collectIds(d.skillC,modifiedIds,true);
+            collectIds(d.viewC,modifiedIds,true);
+            collectIds(d.server,modifiedIds,true);
+        } else if (ed.quickFilter == 2) {
+            collectIds(d.viewC,viewIds,false);
+            collectIds(d.server,serverIds,false);
+        }
+
         for (std::size_t r = 0; r < asf.rows.size(); ++r) {
+            const std::string idText = ShnCellText(asf,r,"ID");
+            const long long id = std::atoll(idText.c_str());
             if (!needle.empty()) {
-                const std::string hay = LowerAscii(ShnCellText(asf, r, "InxName") + " " + ShnCellText(asf, r, "Name") + " " + ShnCellText(asf, r, "ID"));
+                const std::string hay = LowerAscii(ShnCellText(asf, r, "InxName") + " " + ShnCellText(asf, r, "Name") + " " + idText);
                 if (hay.find(needle) == std::string::npos) continue;
             }
+            if (ed.quickFilter == 1 && !modifiedIds.contains(id)) continue;
+            if (ed.quickFilter == 2 && viewIds.contains(id) && serverIds.contains(id)) continue;
             ed.visible.push_back(r);
         }
     }
@@ -9334,9 +9378,12 @@ void DrawSkillEditor(EditorState& state) {
                     const long long id = std::atoll(ShnCellText(asf, row, "ID").c_str());
                     const int step = std::atoi(ShnCellText(asf, row, "Step").c_str());
                     const std::string name = ShnCellText(asf, row, "Name");
-                    const std::string label =
+                    std::string label =
                         std::string("Stufe ") + std::to_string(step) + "  ·  #" + std::to_string(id) +
                         (name.empty() ? std::string() : "  " + name);
+                    if (d.viewC >= 0 && d.server >= 0 &&
+                        (SkillRowIn(state,d.viewC,id) < 0 || SkillRowIn(state,d.server,id) < 0))
+                        label += L("  ⚠ Sync","  ⚠ Sync");
                     if (UI::Selectable((label + "##skillStep" + std::to_string(row)).c_str(), ed.selectedId == id)) {
                         ed.selectedId = id;
                         ed.report.clear();
