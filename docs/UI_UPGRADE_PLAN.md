@@ -182,6 +182,10 @@ Zusätzlich in der laufenden zweiten Ausbaustufe umgesetzt:
 - Projektkonfiguration sowie Neue-Karte/Karte-öffnen-Flows in die gleiche Dark/Cyan-Designsprache überführt;
 - doppelte schwebende Hilfe-/Sprachleiste entfernt; Hilfe und Sprache sitzen zentral in der Hauptnavigation;
 - NG-Icon auf native Windows-Größen 16/24/32/48/64/128/256 px erweitert.
+- Level-Editor-Werkzeuge aus dem aktuellen Ziel umgesetzt: 3D-Transform-Gizmo mit Move/Rotate/Scale und Snap, Fokus/Boden, Copy/Paste/Duplicate, Lock/Hide, Gruppen/Labels, Kontextmenüs, Rechteck-/Lasso-Auswahl und NIF-Drag&Drop in 3D.
+- Terrain-/Walk-Brush-Overlays und Presets sowie Layer-DnD, DDS-Drop, Duplizieren und größere Thumbnails umgesetzt.
+- Single-SHN modernisiert: sortierbare/fixierte Tabelle, Spaltenfilter, Dirty-/Fehler-Markierungen, Inline-Editing, Copy/Paste, Undo/Redo und Client/Server-Diff.
+- Multi-SHN zu einer Client/Server-Vergleichsansicht mit Schema-/Zeilen-/Zell-Diffs ausgebaut.
 
 Noch offen für spätere Ausbaustufen:
 - spezialisierte NPC-/Mob-/Portal-Outliner statt nur der heutigen kontextuellen Listen;
