@@ -719,6 +719,24 @@ struct EditorState {
     std::vector<std::string> recentProjects;
     std::vector<std::string> recentMaps;
 
+    struct ShortcutBinding {
+        ImGuiKey key = ImGuiKey_None;
+        bool ctrl = false;
+        bool shift = false;
+        bool alt = false;
+    };
+    bool shortcutsLoaded = false;
+    bool settingsOpen = false;
+    ShortcutBinding shortcutPalette{ImGuiKey_P, true, false, false};
+    ShortcutBinding shortcutSave{ImGuiKey_S, true, false, false};
+    ShortcutBinding shortcutGizmoMove{ImGuiKey_1, false, false, false};
+    ShortcutBinding shortcutGizmoRotate{ImGuiKey_2, false, false, false};
+    ShortcutBinding shortcutGizmoScale{ImGuiKey_3, false, false, false};
+    ShortcutBinding shortcutFocus{ImGuiKey_F, false, false, false};
+    ShortcutBinding shortcutGround{ImGuiKey_End, false, false, false};
+    ShortcutBinding shortcutDuplicate{ImGuiKey_D, true, false, false};
+    ShortcutBinding shortcutDelete{ImGuiKey_Delete, false, false, false};
+
     bool commandPaletteOpen = false;
     char commandPaletteQuery[128] = "";
     int commandPaletteSelection = 0;
@@ -892,6 +910,123 @@ bool LoadProjectFolderIntoState(EditorState& state, const std::string& folder) {
     state.screen = AppScreen::ProjectHub;
     return true;
 }
+struct ShortcutKeyOption {
+    ImGuiKey key;
+    const char* name;
+};
+
+const std::vector<ShortcutKeyOption>& ShortcutKeyOptions() {
+    static const std::vector<ShortcutKeyOption> keys = {
+        {ImGuiKey_A,"A"},{ImGuiKey_B,"B"},{ImGuiKey_C,"C"},{ImGuiKey_D,"D"},
+        {ImGuiKey_E,"E"},{ImGuiKey_F,"F"},{ImGuiKey_G,"G"},{ImGuiKey_H,"H"},
+        {ImGuiKey_I,"I"},{ImGuiKey_J,"J"},{ImGuiKey_K,"K"},{ImGuiKey_L,"L"},
+        {ImGuiKey_M,"M"},{ImGuiKey_N,"N"},{ImGuiKey_O,"O"},{ImGuiKey_P,"P"},
+        {ImGuiKey_Q,"Q"},{ImGuiKey_R,"R"},{ImGuiKey_S,"S"},{ImGuiKey_T,"T"},
+        {ImGuiKey_U,"U"},{ImGuiKey_V,"V"},{ImGuiKey_W,"W"},{ImGuiKey_X,"X"},
+        {ImGuiKey_Y,"Y"},{ImGuiKey_Z,"Z"},
+        {ImGuiKey_0,"0"},{ImGuiKey_1,"1"},{ImGuiKey_2,"2"},{ImGuiKey_3,"3"},
+        {ImGuiKey_4,"4"},{ImGuiKey_5,"5"},{ImGuiKey_6,"6"},{ImGuiKey_7,"7"},
+        {ImGuiKey_8,"8"},{ImGuiKey_9,"9"},
+        {ImGuiKey_F2,"F2"},{ImGuiKey_F3,"F3"},{ImGuiKey_F4,"F4"},{ImGuiKey_F5,"F5"},
+        {ImGuiKey_F6,"F6"},{ImGuiKey_F7,"F7"},{ImGuiKey_F8,"F8"},{ImGuiKey_F9,"F9"},
+        {ImGuiKey_F10,"F10"},{ImGuiKey_F11,"F11"},{ImGuiKey_F12,"F12"},
+        {ImGuiKey_Home,"Home"},{ImGuiKey_End,"Ende"},{ImGuiKey_Insert,"Einfg"},
+        {ImGuiKey_Delete,"Entf"},{ImGuiKey_Space,"Leertaste"},{ImGuiKey_Enter,"Enter"}
+    };
+    return keys;
+}
+
+const char* ShortcutKeyName(ImGuiKey key) {
+    for (const auto& option : ShortcutKeyOptions())
+        if (option.key == key) return option.name;
+    return "-";
+}
+
+std::string ShortcutLabel(const EditorState::ShortcutBinding& binding) {
+    std::string out;
+    if (binding.ctrl) out += "Strg+";
+    if (binding.shift) out += "Shift+";
+    if (binding.alt) out += "Alt+";
+    out += ShortcutKeyName(binding.key);
+    return out;
+}
+
+bool SameShortcut(const EditorState::ShortcutBinding& a, const EditorState::ShortcutBinding& b) {
+    return a.key != ImGuiKey_None && a.key == b.key &&
+           a.ctrl == b.ctrl && a.shift == b.shift && a.alt == b.alt;
+}
+
+bool ShortcutPressed(const EditorState::ShortcutBinding& binding) {
+    if (binding.key == ImGuiKey_None) return false;
+    const ImGuiIO& io = ImGui::GetIO();
+    if (io.KeyCtrl != binding.ctrl || io.KeyShift != binding.shift || io.KeyAlt != binding.alt) return false;
+    return ImGui::IsKeyPressed(binding.key, false);
+}
+
+void ResetShortcutSettings(EditorState& state) {
+    state.shortcutPalette = {ImGuiKey_P, true, false, false};
+    state.shortcutSave = {ImGuiKey_S, true, false, false};
+    state.shortcutGizmoMove = {ImGuiKey_1, false, false, false};
+    state.shortcutGizmoRotate = {ImGuiKey_2, false, false, false};
+    state.shortcutGizmoScale = {ImGuiKey_3, false, false, false};
+    state.shortcutFocus = {ImGuiKey_F, false, false, false};
+    state.shortcutGround = {ImGuiKey_End, false, false, false};
+    state.shortcutDuplicate = {ImGuiKey_D, true, false, false};
+    state.shortcutDelete = {ImGuiKey_Delete, false, false, false};
+}
+
+std::array<std::pair<const char*, EditorState::ShortcutBinding*>, 9>
+ShortcutSettings(EditorState& state) {
+    return {{
+        {"palette",&state.shortcutPalette},
+        {"save",&state.shortcutSave},
+        {"gizmo_move",&state.shortcutGizmoMove},
+        {"gizmo_rotate",&state.shortcutGizmoRotate},
+        {"gizmo_scale",&state.shortcutGizmoScale},
+        {"focus",&state.shortcutFocus},
+        {"ground",&state.shortcutGround},
+        {"duplicate",&state.shortcutDuplicate},
+        {"delete",&state.shortcutDelete},
+    }};
+}
+
+void SaveShortcutSettings(EditorState& state) {
+    const auto dir = NextGenUserSettingsDir();
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    if (ec) return;
+    std::ofstream out(dir / "shortcuts.txt", std::ios::binary | std::ios::trunc);
+    if (!out) return;
+    for (const auto& [name, binding] : ShortcutSettings(state)) {
+        out << name << "=" << static_cast<int>(binding->key) << ","
+            << (binding->ctrl ? 1 : 0) << "," << (binding->shift ? 1 : 0) << ","
+            << (binding->alt ? 1 : 0) << "\n";
+    }
+}
+
+void LoadShortcutSettings(EditorState& state) {
+    if (state.shortcutsLoaded) return;
+    state.shortcutsLoaded = true;
+    std::ifstream in(NextGenUserSettingsDir() / "shortcuts.txt", std::ios::binary);
+    if (!in) return;
+    std::unordered_map<std::string, EditorState::ShortcutBinding*> targets;
+    for (const auto& [name, binding] : ShortcutSettings(state)) targets.emplace(name, binding);
+    std::string line;
+    while (std::getline(in, line)) {
+        const auto eq = line.find('=');
+        if (eq == std::string::npos) continue;
+        const auto it = targets.find(line.substr(0, eq));
+        if (it == targets.end()) continue;
+        int key = 0, ctrl = 0, shift = 0, alt = 0;
+        if (std::sscanf(line.c_str() + static_cast<std::ptrdiff_t>(eq + 1),
+                        "%d,%d,%d,%d", &key, &ctrl, &shift, &alt) == 4) {
+            const bool supported = std::any_of(ShortcutKeyOptions().begin(), ShortcutKeyOptions().end(),
+                [&](const auto& option) { return static_cast<int>(option.key) == key; });
+            if (supported) *it->second = {static_cast<ImGuiKey>(key), ctrl != 0, shift != 0, alt != 0};
+        }
+    }
+}
+
 std::string CompactToastText(const std::string& message) {
     std::string text = message;
     if (const auto nl = text.find('\n'); nl != std::string::npos) text.resize(nl);
