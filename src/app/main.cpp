@@ -88,6 +88,7 @@
 #include <deque>
 #include <functional>
 #include <map>
+#include <limits>
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
