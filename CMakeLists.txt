@@ -245,7 +245,10 @@ get_property(editor_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
 foreach(test_target IN LISTS editor_targets)
     if(test_target MATCHES "^test_")
         if(MSVC)
-            target_compile_options(${test_target} PRIVATE /UNDEBUG)
+            # Release fügt /DNDEBUG automatisch hinzu. /UNDEBUG ist hier absichtlich nötig,
+            # damit assert() in den Test-Binaries aktiv bleibt; D9025 meldet nur genau diese
+            # beabsichtigte Überschreibung und wird deshalb lokal für Test-Targets ausgeblendet.
+            target_compile_options(${test_target} PRIVATE /UNDEBUG /wd9025)
         else()
             target_compile_options(${test_target} PRIVATE -UNDEBUG)
         endif()
