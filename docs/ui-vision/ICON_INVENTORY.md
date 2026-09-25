@@ -152,8 +152,14 @@ Bis zu einer expliziten Ergänzung bleiben hierfür die bestehenden funktionalen
 - [x] Runtime-Loader/Cache für semantische IDs vorhanden.
 - [x] Primary Map Toolbar nutzt bereits Paketassets, wenn das jeweilige Runtime-PNG im Repo liegt.
 - [ ] alle 68 SVG-Master nach `assets/ui/icons/svg-master/` übernehmen.
-- [ ] alle Runtime-Raster nach `assets/ui/icons/png/` übernehmen.
-- [ ] NG Branding vollständig nach `assets/ui/branding/` übernehmen und Windows-ICO final regenerieren.
-- [ ] 14 neue Additional-UI-Icons an ihre realen Controls anbinden.
-- [ ] Panel Header und Modul-Launcher vollständig migrieren.
+- [ ] alle Runtime-Raster nach `assets/ui/icons/png/` übernehmen (die aktuell verwendeten 16/24/32-px-Assets sind bereits eingecheckt; Rest folgt bedarfsweise/über Importer).
+- [x] NG Branding in der App-Topbar über das finale 32-px-Paketasset aktiviert.
+- [ ] echte NG-SVG-Quelle nach `assets/ui/branding/` übernehmen und Windows-ICO final aus dem Final-Paket regenerieren.
+- [x] 14 neue Additional-UI-Icons an reale Controls angebunden (2D/3D, KFM, AI, XP, Preise, Eye, Lock/Unlock, Copy, Duplicate, Delete, Command Palette, Recent Projects).
+- [x] zentrale Map-Panel-Header (Outliner, Asset Browser, Properties, Visibility, Layer/Tools) sowie Settings/Help auf Paketicons migriert.
+- [ ] übrige Panel Header und Modul-Launcher vollständig migrieren.
 - [ ] Legacy-DrawList-Symbole nur für die sechs tatsächlich verbleibenden Paketlücken beibehalten.
+
+## Runtime-QA-Hinweis
+
+Windows WIC liefert PNG-Daten für den gemeinsamen Renderer in OpenGL-Bottom-Up-Konvention. Die UI-Icon-Renderer drehen daher die ImGui-UVs explizit (`uv0=(0,1)`, `uv1=(1,0)`), damit die Paketicons im UI nicht vertikal gespiegelt erscheinen. Der Windows-Artefakt-Job paketiert `assets/ui` jetzt zusammen mit `Editor.exe`.
