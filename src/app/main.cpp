@@ -3647,7 +3647,7 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
     const std::string paletteShortcutLabel = ShortcutLabel(state.shortcutPalette);
     const std::string paletteTooltip = std::string(L("Befehlspalette öffnen","Open command palette")) +
                                        " (" + paletteShortcutLabel + ")";
-    if (DrawTinyIconButton("paletteTop", DrawIconSearch, false, paletteTooltip.c_str(),
+    if (DrawTinyIconButton("paletteTop", DrawIconTable, false, paletteTooltip.c_str(),
                            ImVec2(22.0f,22.0f), "system.command_palette")) {
         state.commandPaletteOpen = true;
         state.commandPaletteSelection = 0;
