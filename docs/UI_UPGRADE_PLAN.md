@@ -194,8 +194,9 @@ Noch offen für spätere Ausbaustufen:
 - NPC-/Mob-/Portal-Outliner sind inzwischen spezialisiert: semantische Rollen-/Gruppenicons, Auswahl-Details, direkte Kontextaktionen, Gate-Zielnavigation und Schnellfilter (NPC-Rolle, Mob-Belegung, Portal-Typ); weitere Gruppierungstiefe bleibt optional;
 - Custom NPC/Mob Wizard einschließlich Vorschau, Schrittleiste, Ausrüstung, Rollenplatzierung und Zusammenfassung vollständig an die DE/EN-Sprachumschaltung angebunden.
 - tiefer Quest-Editor (Allgemein, Voraussetzungen, Ziele, Drops, Belohnungen, Dialoge und Scripts) vollständig an die DE/EN-Sprachumschaltung angebunden.
+- persistente Map-Workspace-Presets ergänzt: Standard, 3D-Fokus, Terrain/2D und Daten/Szene; im Navigator, in den Einstellungen und über Strg+P/Command-Palette erreichbar.
 - Skill-, Quest- und Custom NPC/Mob-Editor verwenden inzwischen durchgängig dieselbe DE/EN-Panel-Sprache; verbleibende tiefe Spezialdialoge können schrittweise nachgezogen werden;
-- optional gespeicherte Workspace-Presets;
+- gespeicherte Map-Workspace-Presets sind umgesetzt: Standard, 3D-Fokus, Terrain/2D und Daten/Szene; die Auswahl bleibt über `workspace.txt` erhalten und das danach frei angepasste Dock-Layout weiterhin über `layout.ini`;
 - zukünftige Interface/Drop-Table/AI/NIF-Material-Editoren.
 
 ## 9. Aktuelles Arbeitsziel
