@@ -283,6 +283,7 @@ Bereits umgesetzt:
 - Walk & Block: rot/grün-Legende und Shift-Drag-Rechteckfüllung als einzelner Undo-Schritt.
 - NPC- und Mob-Inspector in fachliche Bereiche gegliedert.
 - NPC-/MobRoam-Routen als 2D-/3D-Overlay, wahlweise nur für die aktuelle Auswahl oder dauerhaft für alle relevanten NPCs/Mobs der Karte.
+- szenenweites Frame Selected: F bzw. Doppelklick im Szene-Outliner fokussiert Objekte, NPCs, Mob-Zonen und Portale im 3D-Viewport.
 - Mob-Spawn-Zonen zusätzlich als 3D-Overlay.
 - Portal-Inspector in Auswahl / Position / Bedingungen / Positionieren / Aktionen gegliedert.
 - TownPortal und RecallCoord zusätzlich mit unterschiedlichen 3D-Markern.
