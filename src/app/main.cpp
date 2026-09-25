@@ -6221,16 +6221,24 @@ void DrawQuestEditor(EditorState& state) {
         auto hasReferenceProblem = [&](const core::legacy::QuestRecord& q) {
             if (q.title != 0 && QuestTextOf(state,q.title).empty()) return true;
             if (q.description != 0 && QuestTextOf(state,q.description).empty()) return true;
-            if (q.startingNpc != 0 && !knownMobs.contains(q.startingNpc)) return true;
-            if (q.needItem != 0 && q.itemId != 0 && !knownItems.contains(q.itemId)) return true;
-            if (q.needPred != 0 && q.predecessor != 0 && !knownQuests.contains(q.predecessor)) return true;
-            for (const auto& m : q.mobs)
-                if (m.active != 0 && m.id != 0 && !knownMobs.contains(m.id)) return true;
-            for (const auto& item : q.items)
-                if (item.active != 0 && item.id != 0 && !knownItems.contains(item.id)) return true;
+            if (q.needLevel != 0 && q.minLevel > q.maxLevel && q.maxLevel != 0) return true;
+            if (q.needNpc != 0 && (q.startingNpc == 0 || !knownMobs.contains(q.startingNpc))) return true;
+            if (q.needItem != 0 && (q.itemId == 0 || !knownItems.contains(q.itemId))) return true;
+            if (q.needPred != 0 &&
+                (q.predecessor == 0 || q.predecessor == q.id || !knownQuests.contains(q.predecessor))) return true;
+            for (const auto& m : q.mobs) {
+                if (m.active == 0) continue;
+                if (m.id == 0 || m.amount == 0 || !knownMobs.contains(m.id)) return true;
+            }
+            for (const auto& item : q.items) {
+                if (item.active == 0) continue;
+                if (item.id == 0 || item.amount == 0 || !knownItems.contains(item.id)) return true;
+            }
             for (const auto& drop : q.drops) {
-                if (drop.mobId != 0 && !knownMobs.contains(static_cast<int>(drop.mobId))) return true;
-                if (drop.itemId != 0 && !knownItems.contains(static_cast<int>(drop.itemId))) return true;
+                if (drop.active == 0) continue;
+                if (drop.mobId == 0 || drop.itemId == 0 || drop.amount == 0) return true;
+                if (!knownMobs.contains(static_cast<int>(drop.mobId))) return true;
+                if (!knownItems.contains(static_cast<int>(drop.itemId))) return true;
             }
             return false;
         };
@@ -6481,7 +6489,8 @@ void DrawQuestEditor(EditorState& state) {
     }
     if (UI::CollapsingHeader(L("Ziele · Drops", "Objectives · Drops"), ImGuiTreeNodeFlags_DefaultOpen)) {
         int removeIdx = -1;
-        if (ImGui::BeginTable("##qdrops", 7, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit)) {
+        if (ImGui::BeginTable("##qdrops", 8, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit)) {
+            ImGui::TableSetupColumn(L("Aktiv","Active"), ImGuiTableColumnFlags_WidthFixed, 48.0f);
             ImGui::TableSetupColumn(L("Mob-ID", "Mob ID"), ImGuiTableColumnFlags_WidthFixed, 86.0f);
             ImGui::TableSetupColumn(L("Item-ID", "Item ID"), ImGuiTableColumnFlags_WidthFixed, 86.0f);
             ImGui::TableSetupColumn(L("Menge", "Amount"), ImGuiTableColumnFlags_WidthFixed, 66.0f);
@@ -6495,13 +6504,15 @@ void DrawQuestEditor(EditorState& state) {
                 auto& d = q.drops[di];
                 int mobId = static_cast<int>(d.mobId), itemId = static_cast<int>(d.itemId), amount = static_cast<int>(d.amount), rate = static_cast<int>(d.rate);
                 ImGui::TableNextRow();
-                ImGui::TableSetColumnIndex(0); ImGui::SetNextItemWidth(76.0f); if (UI::InputInt("##m", &mobId, 0, 0)) { d.mobId = static_cast<std::uint32_t>(std::max(0, mobId)); markQuestChanged(); }
-                ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(76.0f); if (UI::InputInt("##i", &itemId, 0, 0)) { d.itemId = static_cast<std::uint32_t>(std::max(0, itemId)); markQuestChanged(); }
-                ImGui::TableSetColumnIndex(2); ImGui::SetNextItemWidth(56.0f); if (UI::InputInt("##a", &amount, 0, 0)) { d.amount = static_cast<std::uint32_t>(std::max(0, amount)); markQuestChanged(); }
-                ImGui::TableSetColumnIndex(3); ImGui::SetNextItemWidth(66.0f); if (UI::InputInt("##r", &rate, 0, 0)) { d.rate = static_cast<std::uint32_t>(std::max(0, rate)); markQuestChanged(); }
+                ImGui::TableSetColumnIndex(0);
+                { bool active=d.active!=0; if(UI::Checkbox("##active",&active)) { d.active=active?1u:0u; markQuestChanged(); } }
+                ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(76.0f); if (UI::InputInt("##m", &mobId, 0, 0)) { d.mobId = static_cast<std::uint32_t>(std::max(0, mobId)); markQuestChanged(); }
+                ImGui::TableSetColumnIndex(2); ImGui::SetNextItemWidth(76.0f); if (UI::InputInt("##i", &itemId, 0, 0)) { d.itemId = static_cast<std::uint32_t>(std::max(0, itemId)); markQuestChanged(); }
+                ImGui::TableSetColumnIndex(3); ImGui::SetNextItemWidth(56.0f); if (UI::InputInt("##a", &amount, 0, 0)) { d.amount = static_cast<std::uint32_t>(std::max(0, amount)); markQuestChanged(); }
+                ImGui::TableSetColumnIndex(4); ImGui::SetNextItemWidth(66.0f); if (UI::InputInt("##r", &rate, 0, 0)) { d.rate = static_cast<std::uint32_t>(std::max(0, rate)); markQuestChanged(); }
                 auto mobName = ResolveMobNameForQuest(state, mobId);
                 auto itemName = ResolveItemNameForQuest(state, itemId);
-                ImGui::TableSetColumnIndex(4);
+                ImGui::TableSetColumnIndex(5);
                 ImGui::TextColored(mobName.second ? kOk : kBad, "%s", mobName.first.c_str());
                 if (mobName.second && mobId != 0) {
                     ImGui::SameLine();
@@ -6509,14 +6520,14 @@ void DrawQuestEditor(EditorState& state) {
                         OpenShnRecordById(state, {"MobInfo.shn","MobViewInfo.shn"},
                                           EditorState::ShnSource::Client, mobId);
                 }
-                ImGui::TableSetColumnIndex(5);
+                ImGui::TableSetColumnIndex(6);
                 ImGui::TextColored(itemName.second ? kOk : kBad, "%s", itemName.first.c_str());
                 if (itemName.second && itemId != 0) {
                     ImGui::SameLine();
                     if (UI::SmallButton(L("Öffnen##dropItemRef", "Open##dropItemRef")))
                         OpenShnRecordById(state, {"ItemInfo.shn"}, EditorState::ShnSource::Server, itemId);
                 }
-                ImGui::TableSetColumnIndex(6); if (UI::SmallButton("X")) removeIdx = static_cast<int>(di);
+                ImGui::TableSetColumnIndex(7); if (UI::SmallButton("X")) removeIdx = static_cast<int>(di);
                 ImGui::PopID();
             }
             ImGui::EndTable();
