@@ -14167,6 +14167,36 @@ bool RemoveInterfaceProjectOverride(EditorState& state,
     return true;
 }
 
+std::pair<std::size_t, std::size_t> RemoveIdenticalInterfaceOverrides(
+    EditorState& state, const std::filesystem::path& sourceRoot) {
+    std::vector<std::string> identical;
+    for (const auto& rel : state.interfaceAssets) {
+        if (CachedInterfaceOverrideState(state, rel) == InterfaceOverrideState::Identical)
+            identical.push_back(rel);
+    }
+
+    std::size_t removed = 0;
+    std::size_t failed = 0;
+    for (const auto& rel : identical) {
+        const auto sourcePath = sourceRoot / std::filesystem::path(rel);
+        if (RemoveInterfaceProjectOverride(state, sourcePath, rel)) ++removed;
+        else ++failed;
+    }
+
+    if (failed == 0) {
+        state.statusMessage =
+            L("Unveränderte Interface-Overrides bereinigt: ",
+              "Removed unchanged interface overrides: ") + std::to_string(removed);
+    } else {
+        state.statusMessage =
+            L("Interface-Override-Bereinigung: ",
+              "Interface override cleanup: ") +
+            std::to_string(removed) + L(" entfernt, "," removed, ") +
+            std::to_string(failed) + L(" fehlgeschlagen."," failed.");
+    }
+    return {removed, failed};
+}
+
 void DrawInterfaceWorkspace(EditorState& state) {
     if (state.interfaceRoot.empty() && state.project.clientFolder[0] != '\0') {
         if (auto found = FindDirBreadthFirst(state.project.clientFolder, "resmenu", 3, nullptr))
@@ -14281,6 +14311,14 @@ void DrawInterfaceWorkspace(EditorState& state) {
     if (overrideCount > 0) {
         ImGui::TextDisabled("%zu geändert · %zu identisch · %zu nur im Projekt",
                             modifiedOverrideCount, identicalOverrideCount, projectOnlyCount);
+        if (identicalOverrideCount > 0) {
+            ImGui::SameLine();
+            const std::string cleanupLabel =
+                L("Identische bereinigen##interface","Clean identical##interface") +
+                std::string(" (") + std::to_string(identicalOverrideCount) + ")";
+            if (UI::SmallButton(cleanupLabel.c_str()))
+                RemoveIdenticalInterfaceOverrides(state, root);
+        }
     }
     ImGui::Separator();
 
