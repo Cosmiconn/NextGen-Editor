@@ -13672,6 +13672,11 @@ void DrawDropTableEditor(EditorState& state) {
                 if (!item.empty() && item != "-" && state.itemByInx.count(item)==0) return true;
             }
         }
+        const std::string maxLevelText=ShineRecordValue(candidate,cMaxLevel);
+        const std::string checkText=ShineRecordValue(candidate,cChecksum);
+        if (IsDropUnsignedInteger(maxLevelText) && IsDropUnsignedInteger(checkText) &&
+            std::atoi(checkText.c_str()) != std::atoi(maxLevelText.c_str()) + 1)
+            return true;
         return false;
     };
 
@@ -13771,13 +13776,31 @@ void DrawDropTableEditor(EditorState& state) {
             ImGui::PushID(field.label);
             ImGui::TextDisabled("%s", field.label);
             ImGui::SameLine(105.0f);
-            if (EditDropTableValue("##value", record.values[static_cast<std::size_t>(field.col)], field.width))
+            if (EditDropTableValue("##value", record.values[static_cast<std::size_t>(field.col)], field.width)) {
                 state.dropTableDirty = true;
+                if (field.col == cMaxLevel && cChecksum >= 0 &&
+                    static_cast<std::size_t>(cChecksum) < record.values.size()) {
+                    const std::string& maxText=record.values[static_cast<std::size_t>(cMaxLevel)];
+                    if (IsDropUnsignedInteger(maxText))
+                        record.values[static_cast<std::size_t>(cChecksum)] =
+                            std::to_string(std::atoi(maxText.c_str()) + 1);
+                }
+            }
             ImGui::PopID();
         }
-        if (cChecksum >= 0 && static_cast<std::size_t>(cChecksum) < record.values.size())
-            ImGui::TextDisabled("CheckSum bleibt bewusst unverändert: %s",
-                                record.values[static_cast<std::size_t>(cChecksum)].c_str());
+        if (cChecksum >= 0 && static_cast<std::size_t>(cChecksum) < record.values.size()) {
+            const std::string maxText=ShineRecordValue(record,cMaxLevel);
+            const std::string checkText=ShineRecordValue(record,cChecksum);
+            const bool checksumMatches =
+                IsDropUnsignedInteger(maxText) && IsDropUnsignedInteger(checkText) &&
+                std::atoi(checkText.c_str()) == std::atoi(maxText.c_str()) + 1;
+            if (checksumMatches)
+                ImGui::TextColored(ImVec4(0.42f,0.86f,0.62f,1.0f),
+                                   "CheckSum %s · NA2016: MaxLevel + 1 ✓",checkText.c_str());
+            else
+                ImGui::TextColored(ImVec4(1.0f,0.48f,0.34f,1.0f),
+                                   "CheckSum %s · erwartet MaxLevel + 1",checkText.c_str());
+        }
     }
 
     UI::Checkbox("Nur belegte Drop-Slots##dropTable", &state.dropTableOnlyActive);
