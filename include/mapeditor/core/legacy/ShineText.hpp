@@ -55,6 +55,11 @@ struct ShineTable {
     // true: vom Editor neu angelegte Tabelle - wird beim Speichern mit Kopf (#Table/#ColumnType/
     // #ColumnName) und "#Record"-Zeilen ans Dateiende geschrieben.
     bool isNew = false;
+    // Einige breite Shine-Tabellen (belegt an World/ItemDropTable.txt) hängen in
+    // #ColumnType/#ColumnName ein zusätzliches "\t;" als Zeilen-/Kommentar-Sentinel an.
+    // Das ist KEINE Datenspalte. Der Loader entfernt es aus columns/records, merkt sich hier
+    // aber die Form, damit SaveShineTextFile bestehende und neue Records formatgetreu schreibt.
+    bool trailingSemicolonSentinel = false;
 };
 
 struct ShineTextFile {
