@@ -566,6 +566,8 @@ struct EditorState {
         std::unordered_map<std::string, std::vector<std::string>> pickerLabels;
         std::string pickerBuiltKey;
         char pickFilter[128] = "";
+        std::string pickerPreviewKey;
+        std::string pickerPreviewValue;
         char newInx[40] = "";
         char newName[64] = "";
         bool makeBook = true;
@@ -9974,37 +9976,217 @@ static bool SkillCellWrite(EditorState& state, const SkillDocs& d, skilled::Doc 
     return any;
 }
 
-// Werte einer Spalte (nach Haeufigkeit) fuer Auswahllisten: Animationen, Effekte, Sounds, Icons, Skills, Zustaende.
+// Datenbelegte Auswahllisten: Animation/VFX/Sound/Icon werden über ALLE Felder derselben
+// Art aggregiert. Dadurch kann z.B. eine SwingAction auch als Referenz für ein anderes
+// Animationsfeld gefunden werden, ohne Asset-Namen zu erfinden. Skill/State-Referenzen bleiben
+// an ihre verifizierten InxName-Tabellen gebunden.
 static void BuildSkillPickerOptions(EditorState& state, const SkillDocs& d) {
     auto& ed = state.skill;
-    const std::string key = std::to_string(state.shnEditCounter) + "|" + std::to_string(d.viewC) + std::to_string(d.skillC);
+    const std::string key = std::to_string(state.shnEditCounter) + "|" + std::to_string(d.viewC) + "|" +
+                            std::to_string(d.skillC) + "|" + std::to_string(d.server);
     if (key == ed.pickerBuiltKey) return;
     ed.pickerBuiltKey = key;
     ed.pickerOptions.clear();
     ed.pickerLabels.clear();
+
+    auto storeCounts = [&](const std::string& mapKey, const std::unordered_map<std::string,int>& counts) {
+        std::vector<std::pair<int,std::string>> sorted;
+        sorted.reserve(counts.size());
+        for (const auto& [value,count] : counts) sorted.emplace_back(count,value);
+        std::sort(sorted.begin(),sorted.end(),[](const auto& a,const auto& b) {
+            return a.first != b.first ? a.first > b.first : a.second < b.second;
+        });
+        auto& opts=ed.pickerOptions[mapKey];
+        auto& labels=ed.pickerLabels[mapKey];
+        for (const auto& [count,value] : sorted) {
+            opts.push_back(value);
+            labels.push_back(value+"   ("+std::to_string(count)+"x)");
+        }
+    };
+
     auto addColumn = [&](int docIdx, const char* col, const std::string& mapKey) {
         if (docIdx < 0) return;
-        const auto& f = state.shnFiles[static_cast<std::size_t>(docIdx)].file;
-        const int c = ShnColumnIndexByName(f, col);
-        if (c < 0) return;
-        std::unordered_map<std::string, int> counts;
-        for (const auto& row : f.rows) counts[core::legacy::ShnValueToString(row.values[static_cast<std::size_t>(c)])]++;
-        std::vector<std::pair<int, std::string>> v;
-        for (auto& [val, n] : counts) v.emplace_back(n, val);
-        std::sort(v.begin(), v.end(), [](const auto& a, const auto& b) { return a.first != b.first ? a.first > b.first : a.second < b.second; });
-        auto& opts = ed.pickerOptions[mapKey];
-        auto& labels = ed.pickerLabels[mapKey];
-        for (auto& [n, val] : v) { opts.push_back(val); labels.push_back(val + "   (" + std::to_string(n) + "x)"); }
+        const auto& file=state.shnFiles[static_cast<std::size_t>(docIdx)].file;
+        const int ci=ShnColumnIndexByName(file,col);
+        if (ci < 0) return;
+        std::unordered_map<std::string,int> counts;
+        for (const auto& row:file.rows) {
+            if (static_cast<std::size_t>(ci) >= row.values.size()) continue;
+            counts[core::legacy::ShnValueToString(row.values[static_cast<std::size_t>(ci)])]++;
+        }
+        storeCounts(mapKey,counts);
     };
-    for (const auto& sec : skilled::kSections) {
-        for (std::size_t i = 0; i < sec.count; ++i) {
-            const auto& fld = sec.fields[i];
-            if (fld.kind == skilled::Kind::Anim || fld.kind == skilled::Kind::Effect || fld.kind == skilled::Kind::Sound || fld.kind == skilled::Kind::Icon) addColumn(d.viewC, fld.col, fld.col);
+
+    auto addKind = [&](skilled::Kind kind,const std::string& mapKey) {
+        if (d.viewC < 0) return;
+        const auto& file=state.shnFiles[static_cast<std::size_t>(d.viewC)].file;
+        std::unordered_map<std::string,int> counts;
+        for (const auto& sec:skilled::kSections) {
+            for (std::size_t i=0;i<sec.count;++i) {
+                const auto& fld=sec.fields[i];
+                if (fld.kind != kind || fld.doc != skilled::Doc::View) continue;
+                const int ci=ShnColumnIndexByName(file,fld.col);
+                if (ci < 0) continue;
+                for (const auto& row:file.rows) {
+                    if (static_cast<std::size_t>(ci) >= row.values.size()) continue;
+                    counts[core::legacy::ShnValueToString(row.values[static_cast<std::size_t>(ci)])]++;
+                }
+            }
+        }
+        storeCounts(mapKey,counts);
+    };
+
+    addKind(skilled::Kind::Anim,"Anim");
+    addKind(skilled::Kind::Effect,"Effect");
+    addKind(skilled::Kind::Sound,"Sound");
+    addKind(skilled::Kind::Icon,"Icon");
+    addColumn(d.skillC,"InxName","SkillRef");
+    const int abState=FindOrLoadShnDoc(state,"AbState.shn",EditorState::ShnSource::Server);
+    addColumn(abState,"InxName","StateRef");
+}
+
+static const char* SkillPickerKey(skilled::Kind kind,const char* column) {
+    using K=skilled::Kind;
+    if (kind == K::Anim) return "Anim";
+    if (kind == K::Effect) return "Effect";
+    if (kind == K::Sound) return "Sound";
+    if (kind == K::Icon) return "Icon";
+    if (kind == K::SkillRef) return "SkillRef";
+    if (kind == K::StateRef) return "StateRef";
+    return column;
+}
+
+// Rich picker for Animation/VFX fields. "Preview" here is deliberately a DATA REFERENCE preview:
+// it shows real existing skills/columns that use the value. Actual KF/NIF playback belongs to the
+// separately verified KFM playback roadmap and is not faked here.
+static bool SkillPresentationPickerPopup(EditorState& state,const SkillDocs& d,
+                                         const skilled::Field& field,const std::string& mapKey,
+                                         const std::string& current,std::string& chosen) {
+    auto& ed=state.skill;
+    bool picked=false;
+    if (!ImGui::BeginPopup("##pick")) return false;
+
+    const std::string popupKey=mapKey+"|"+field.col;
+    if (ImGui::IsWindowAppearing() || ed.pickerPreviewKey != popupKey) {
+        ed.pickerPreviewKey=popupKey;
+        ed.pickerPreviewValue=current;
+    }
+
+    ImGui::TextColored(UiTheme::AccentCyan,"%s",
+                       field.kind == skilled::Kind::Anim ? L("ANIMATION PICKER","ANIMATION PICKER")
+                                                        : L("VFX PICKER","VFX PICKER"));
+    ImGui::SameLine();
+    ImGui::TextDisabled("[%s]",field.col);
+    ImGui::SetNextItemWidth(720.0f);
+    UI::InputTextWithHint("##skillPresentationFilter",L("Wert oder Referenz-Skill suchen","Search value or reference skill"),
+                          ed.pickFilter,sizeof(ed.pickFilter));
+    ImGui::Separator();
+
+    const auto& options=ed.pickerOptions[mapKey];
+    const auto& labels=ed.pickerLabels[mapKey];
+    const std::string needle=LowerAscii(ed.pickFilter);
+
+    ImGui::BeginChild("##skillPickerValues",ImVec2(390.0f,350.0f),true);
+    if (UI::Selectable(L("(leer) -","(empty) -"),ed.pickerPreviewValue=="-"))
+        ed.pickerPreviewValue="-";
+    int shown=0;
+    for (std::size_t i=0;i<options.size();++i) {
+        const std::string& value=options[i];
+        const std::string& label=i<labels.size()?labels[i]:value;
+        if (!needle.empty() && LowerAscii(label).find(needle)==std::string::npos) continue;
+        if (++shown > 400) {
+            ImGui::TextDisabled("%s",L("… weitere Treffer – Suche eingrenzen","… more matches – narrow the search"));
+            break;
+        }
+        if (UI::Selectable((label+"##presentation"+std::to_string(i)).c_str(),
+                           ed.pickerPreviewValue==value,ImGuiSelectableFlags_AllowDoubleClick)) {
+            ed.pickerPreviewValue=value;
+            if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+                chosen=value; picked=true; ImGui::CloseCurrentPopup();
+            }
         }
     }
-    addColumn(d.skillC, "InxName", "SkillRef");
-    const int abState = FindOrLoadShnDoc(state, "AbState.shn", EditorState::ShnSource::Server);
-    addColumn(abState, "InxName", "StateRef");
+    ImGui::EndChild();
+
+    ImGui::SameLine();
+    ImGui::BeginChild("##skillPickerReference",ImVec2(330.0f,350.0f),true);
+    ImGui::TextColored(UiTheme::TextPrimary,"%s",L("Referenz-Vorschau","Reference preview"));
+    ImGui::Separator();
+
+    const std::string preview=ed.pickerPreviewValue;
+    if (preview.empty()) {
+        ImGui::TextDisabled("%s",L("Links einen Wert wählen.","Choose a value on the left."));
+    } else {
+        ImGui::TextWrapped("%s",preview.c_str());
+        ImGui::TextDisabled("%s",field.kind == skilled::Kind::Anim
+            ? L("Animation – aus vorhandenen ActiveSkillView-Werten","Animation – from existing ActiveSkillView values")
+            : L("Effekt/VFX – aus vorhandenen ActiveSkillView-Werten","Effect/VFX – from existing ActiveSkillView values"));
+        ImGui::SeparatorText(L("Verwendet von","Used by"));
+
+        int totalUses=0,shownRefs=0;
+        if (d.viewC >= 0) {
+            const auto& vf=state.shnFiles[static_cast<std::size_t>(d.viewC)].file;
+            for (std::size_t row=0;row<vf.rows.size();++row) {
+                std::vector<std::string> matchedColumns;
+                for (const auto& sec:skilled::kSections) {
+                    for (std::size_t fi=0;fi<sec.count;++fi) {
+                        const auto& candidate=sec.fields[fi];
+                        if (candidate.kind != field.kind || candidate.doc != skilled::Doc::View) continue;
+                        const int ci=ShnColumnIndexByName(vf,candidate.col);
+                        if (ci < 0 || static_cast<std::size_t>(ci)>=vf.rows[row].values.size()) continue;
+                        if (core::legacy::ShnValueToString(vf.rows[row].values[static_cast<std::size_t>(ci)])==preview)
+                            matchedColumns.push_back(candidate.col);
+                    }
+                }
+                if (matchedColumns.empty()) continue;
+                totalUses+=static_cast<int>(matchedColumns.size());
+                if (shownRefs >= 8) continue;
+                const long long id=std::atoll(ShnCellText(vf,row,"ID").c_str());
+                const long long skillRow=SkillRowIn(state,d.skillC,id);
+                const std::string inx=skillRow>=0 ? ShnCellText(state.shnFiles[static_cast<std::size_t>(d.skillC)].file,
+                                                               static_cast<std::size_t>(skillRow),"InxName")
+                                                   : std::string("#")+std::to_string(id);
+                const std::string name=skillRow>=0 ? ShnCellText(state.shnFiles[static_cast<std::size_t>(d.skillC)].file,
+                                                                static_cast<std::size_t>(skillRow),"Name") : std::string();
+                ImGui::PushID(static_cast<int>(row));
+                if (UI::SmallButton((std::string("↗ ")+inx).c_str())) {
+                    state.skill.selectedId=id;
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::SameLine();
+                ImGui::TextDisabled("%s",name.c_str());
+                ImGui::TextDisabled("   %s", [&] {
+                    static std::string cols;
+                    cols.clear();
+                    for (std::size_t k=0;k<matchedColumns.size();++k) {
+                        if (k) cols += ", ";
+                        cols += matchedColumns[k];
+                    }
+                    return cols.c_str();
+                }());
+                ImGui::PopID();
+                ++shownRefs;
+            }
+        }
+        ImGui::TextDisabled(L("%d Verwendung(en) in geladenem ActiveSkillView",
+                              "%d use(s) in loaded ActiveSkillView"),totalUses);
+        if (totalUses==0 && preview!="-")
+            ImGui::TextColored(UiTheme::Warning,"%s",L("Nicht in den geladenen Skill-Darstellungen referenziert.",
+                                                       "Not referenced by the loaded skill presentation data."));
+        ImGui::Separator();
+        ImGui::TextWrapped("%s",L("Dies prüft Referenzen in echten Skilldaten; es behauptet noch nicht, dass eine KF-/NIF-/Effektdatei physisch existiert.",
+                                   "This checks references in real skill data; it does not yet claim that a physical KF/NIF/effect asset exists."));
+    }
+
+    ImGui::SetCursorPosY(std::max(ImGui::GetCursorPosY(),300.0f));
+    ImGui::BeginDisabled(preview.empty());
+    if (UI::Button(L("Wert übernehmen","Use value"),ImVec2(-1.0f,0.0f))) {
+        chosen=preview; picked=true; ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndDisabled();
+    ImGui::EndChild();
+    ImGui::EndPopup();
+    return picked;
 }
 
 // Eine Feldzeile im Formular. Aenderungen werden SOFORT in alle Kopien geschrieben.
@@ -10047,16 +10229,40 @@ static void DrawSkillField(EditorState& state, const SkillDocs& d, const skilled
         buf.resize(std::max<std::size_t>(buf.size() + 1, 256), '\0');
         const bool picker = fld.kind != K::Text;
         ImGui::SetNextItemWidth(picker ? 300.0f : 520.0f);
-        if (UI::InputText("##v", buf.data(), buf.size())) SkillCellWrite(state, d, fld.doc, fld.col, skillId, std::string(buf.data()));
+        if (UI::InputText("##v", buf.data(), buf.size()))
+            SkillCellWrite(state,d,fld.doc,fld.col,skillId,std::string(buf.data()));
         if (picker) {
-            const std::string mapKey = fld.kind == K::SkillRef ? "SkillRef" : fld.kind == K::StateRef ? "StateRef" : fld.col;
+            const std::string mapKey=SkillPickerKey(fld.kind,fld.col);
+            const auto& opts=ed.pickerOptions[mapKey];
+            const bool dataReferenced=current.empty() || current=="-" ||
+                std::find(opts.begin(),opts.end(),current)!=opts.end();
+
             ImGui::SameLine();
-            if (UI::Button(de ? "Auswahl..." : "Choose...")) { ed.pickFilter[0] = '\0'; ImGui::OpenPopup("##pick"); }
-            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) ImGui::SetTooltip("%s", de ? "Aus den in vorhandenen Skills verwendeten Werten wählen (Anzahl der Verwendungen in Klammern)." : "Choose from the values used by existing skills (number of uses in brackets).");
+            if (UI::Button(de ? "Auswahl..." : "Choose...")) {
+                ed.pickFilter[0]='\0';
+                ed.pickerPreviewKey.clear();
+                ImGui::OpenPopup("##pick");
+            }
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                ImGui::SetTooltip("%s",de
+                    ? "Aus real verwendeten Werten wählen. Animation/VFX zeigt zusätzlich Referenz-Skills und die Spalten, in denen der Wert vorkommt."
+                    : "Choose from values used in real data. Animation/VFX also shows reference skills and the columns in which the value occurs.");
+
+            if (!dataReferenced && (fld.kind==K::Anim || fld.kind==K::Effect ||
+                                    fld.kind==K::Sound || fld.kind==K::Icon)) {
+                ImGui::SameLine();
+                ImGui::TextColored(UiTheme::Warning,"⚠");
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("%s",L("Dieser Wert kommt in den geladenen Vergleichsdaten nicht vor. Das ist eine Warnung, kein Beweis für ein fehlendes Asset.",
+                                             "This value does not occur in the loaded reference data. This is a warning, not proof of a missing asset."));
+            }
+
             std::string chosen;
-            const auto& opts = ed.pickerOptions[mapKey];
-            const auto& labels = ed.pickerLabels[mapKey];
-            if (StringPickerPopup("##pick", opts, ed.pickFilter, sizeof(ed.pickFilter), chosen, &labels)) SkillCellWrite(state, d, fld.doc, fld.col, skillId, chosen);
+            const bool richPicker=fld.kind==K::Anim || fld.kind==K::Effect;
+            const bool picked=richPicker
+                ? SkillPresentationPickerPopup(state,d,fld,mapKey,current,chosen)
+                : StringPickerPopup("##pick",opts,ed.pickFilter,sizeof(ed.pickFilter),chosen,&ed.pickerLabels[mapKey]);
+            if (picked) SkillCellWrite(state,d,fld.doc,fld.col,skillId,chosen);
         }
     }
     ImGui::PopID();
