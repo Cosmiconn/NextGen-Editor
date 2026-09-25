@@ -347,11 +347,12 @@ Dieser Abschnitt ist der verbindliche Ausbau-Fahrplan für den laufenden Branch 
 - DDS-Drag&Drop auf bestehenden oder neuen Layer.
 
 ### Walk & Block
-- klare Farblegende;
-- Brush-Overlay;
-- Rechteckfüllung;
-- prominente Aktion aus sichtbaren Objektgrundflächen;
-- Undo/Redo-Zustand sichtbar.
+- klare Farblegende; **umgesetzt**
+- Brush-Overlay; **umgesetzt**
+- Rechteckfüllung; **umgesetzt**
+- sichtbare Objektgrundflächen werden aus NIF-Hull/Bounding-Fallback abgeleitet; **umgesetzt**
+- Footprint-Workflow ist jetzt **Preview → Apply/Cancel**: rote/grüne Polygone zeigen vor dem Schreiben exakt die aktuell sichtbaren Grundflächen; Apply aggregiert alle Polygone zu genau einem Undo-Step; **umgesetzt**
+- Undo/Redo-Zustand als explizite Icon-Aktionen mit Disabled-State sichtbar; **umgesetzt**.
 
 ### Objekte / NPC / Mob / Portale
 - moderner Szene-Outliner mit Icons, Sichtbarkeit und Lock;
@@ -401,4 +402,4 @@ Dieser Abschnitt ist der verbindliche Ausbau-Fahrplan für den laufenden Branch 
 
 ### Priorität
 Die unmittelbare Reihenfolge ist:
-**Icon-/UI-Vision festziehen → App-Shell/Map-UI-Retrofit → Minimap-Metadaten + Editor-Preview (erreicht; Exportformat weiter gesperrt) → Walk/Block-Footprints → SHN-Referenzen → Skill Animation/VFX → KFM-Playback → Quest-Flow optional → globale QA/Politur.**
+**Icon-/UI-Vision festziehen → App-Shell/Map-UI-Retrofit → Minimap-Metadaten + Editor-Preview (erreicht; Exportformat weiter gesperrt) → Walk/Block-Footprints (Preview/Apply erreicht) → SHN-Referenzen → Skill Animation/VFX → KFM-Playback → Quest-Flow optional → globale QA/Politur.**
