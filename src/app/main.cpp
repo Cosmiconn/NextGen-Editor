@@ -12838,30 +12838,30 @@ void DrawSceneOutlinerPanel(EditorState& state) {
 
     const std::size_t shmdSceneCount = state.shmdCategoryRenderSet.Count();
     const std::size_t total = state.placementSet.Count() + shmdSceneCount;
-    ImGui::TextDisabled("%zu Objekte", total);
+    ImGui::TextDisabled(L("%zu Objekte","%zu objects"), total);
 
     if (!ImGui::GetIO().WantTextInput && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
         ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_A, false)) {
         SelectAllNormalObjects(state);
     }
 
-    if (UI::SmallButton("Alle normalen")) SelectAllNormalObjects(state);
+    if (UI::SmallButton(L("Alle normalen","All normal"))) SelectAllNormalObjects(state);
     ImGui::SameLine();
-    if (UI::SmallButton("Auswahl aufheben")) ClearObjectSelection(state);
+    if (UI::SmallButton(L("Auswahl aufheben","Clear selection"))) ClearObjectSelection(state);
     ImGui::SameLine();
-    ImGui::TextDisabled("%zu gewählt", state.selectedObjects.size());
+    ImGui::TextDisabled(L("%zu gewählt","%zu selected"), state.selectedObjects.size());
 
     if (!state.selectedObjects.empty()) {
-        if (DrawTinyIconButton("outlinerDuplicate",DrawIconDuplicate,false,"Duplizieren (Strg+D)"))
+        if (DrawTinyIconButton("outlinerDuplicate",DrawIconDuplicate,false,L("Duplizieren (Strg+D)","Duplicate (Ctrl+D)")))
             DuplicateSelectedObjects(state);
         ImGui::SameLine();
-        if (DrawTinyIconButton("outlinerFocus",DrawIconCube,false,"Auswahl fokussieren (F)"))
+        if (DrawTinyIconButton("outlinerFocus",DrawIconCube,false,L("Auswahl fokussieren (F)","Focus selection (F)")))
             FocusSelectedObjects(state);
         ImGui::SameLine();
-        if (DrawTinyIconButton("outlinerDelete",DrawIconDelete,false,"Auswahl löschen (Entf)"))
+        if (DrawTinyIconButton("outlinerDelete",DrawIconDelete,false,L("Auswahl löschen (Entf)","Delete selection (Del)")))
             DeleteSelectedObjects(state);
         ImGui::SameLine();
-        ImGui::TextDisabled("Strg+C/V · F · Ende=Boden");
+        ImGui::TextDisabled("%s",L("Strg+C/V · F · Ende=Boden","Ctrl+C/V · F · End=Ground"));
     }
 
     SyncObjectEditorMetadata(state);
@@ -12925,7 +12925,7 @@ void DrawSceneOutlinerPanel(EditorState& state) {
     ImGui::BeginChild("##sceneObjectList",ImVec2(0,0),true);
     for(const auto& group:groups) {
         const std::string title=group.name.empty()
-            ? "Ohne Gruppe"
+            ? L("Ohne Gruppe","No group")
             : group.name;
         ImGui::PushID(title.c_str());
         const bool open=UI::CollapsingHeader(
@@ -12946,7 +12946,7 @@ void DrawSceneOutlinerPanel(EditorState& state) {
 
                     const bool hidden=IsObjectEditorHidden(state,id);
                     const bool locked=IsObjectEditorLocked(state,id);
-                    if(DrawTinyIconButton("eye",DrawIconEye,!hidden,hidden?"Einblenden":"Ausblenden")) {
+                    if(DrawTinyIconButton("eye",DrawIconEye,!hidden,hidden?L("Einblenden","Show"):L("Ausblenden","Hide"))) {
                         if(id>=0) {
                             state.objectEditorHidden[static_cast<std::size_t>(id)]=hidden?0:1;
                             state.objectVisKey.clear();
@@ -12959,7 +12959,7 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                         }
                     }
                     ImGui::SameLine(0,2);
-                    if(DrawTinyIconButton("lock",DrawIconLock,locked,locked?"Entsperren":"Sperren")) {
+                    if(DrawTinyIconButton("lock",DrawIconLock,locked,locked?L("Entsperren","Unlock"):L("Sperren","Lock"))) {
                         if(id>=0) state.objectEditorLocked[static_cast<std::size_t>(id)]=locked?0:1;
                         else {
                             const std::string key=ShmdEditorObjectKey(state,id);
@@ -12995,7 +12995,7 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                     if(ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
                         ImGui::SetTooltip("%s%s%s",
                                           entry.modelPath.c_str(),
-                                          entry.group.empty()?"":"\nGruppe: ",
+                                          entry.group.empty()?"":L("\nGruppe: ","\nGroup: "),
                                           entry.group.empty()?"":entry.group.c_str());
 
                     if(ImGui::BeginPopupContextItem("##objectContext")) {
@@ -13011,38 +13011,38 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                         }
 
                         ImGui::TextDisabled("%s",entry.modelPath.c_str());
-                        ImGui::SeparatorText("Editor-Organisation");
-                        UI::InputTextWithHint("Label##objectMeta","frei / leer = Modellname",
+                        ImGui::SeparatorText(L("Editor-Organisation","Editor organization"));
+                        UI::InputTextWithHint("Label##objectMeta",L("frei / leer = Modellname","free / empty = model name"),
                                               state.objectMetaLabelBuffer,sizeof(state.objectMetaLabelBuffer));
-                        if(UI::Button("Label übernehmen##objectMeta",ImVec2(-1,0))) {
+                        if(UI::Button(L("Label übernehmen##objectMeta","Apply label##objectMeta"),ImVec2(-1,0))) {
                             SetObjectEditorLabel(state,id,state.objectMetaLabelBuffer);
-                            state.statusMessage="Editor-Label aktualisiert.";
+                            state.statusMessage=L("Editor-Label aktualisiert.","Editor label updated.");
                         }
-                        UI::InputTextWithHint("Gruppe / Ordner##objectMeta","z.B. Häuser, Deko, Spawn",
+                        UI::InputTextWithHint(L("Gruppe / Ordner##objectMeta","Group / folder##objectMeta"),L("z.B. Häuser, Deko, Spawn","e.g. Houses, Decor, Spawn"),
                                               state.objectMetaGroupBuffer,sizeof(state.objectMetaGroupBuffer));
                         if(UI::Button(state.selectedObjects.size()>1
-                                         ?"Gruppe auf Auswahl anwenden##objectMeta"
-                                         :"Gruppe übernehmen##objectMeta",ImVec2(-1,0))) {
+                                         ?L("Gruppe auf Auswahl anwenden##objectMeta","Apply group to selection##objectMeta")
+                                         :L("Gruppe übernehmen##objectMeta","Apply group##objectMeta"),ImVec2(-1,0))) {
                             const std::string newGroup=state.objectMetaGroupBuffer;
                             if(state.selectedObjects.empty()) SetObjectEditorGroup(state,id,newGroup);
                             else for(const int selectedId:state.selectedObjects)
                                 SetObjectEditorGroup(state,selectedId,newGroup);
                             state.statusMessage=newGroup.empty()
-                                ?"Editor-Gruppe entfernt."
-                                :"Editor-Gruppe gesetzt: "+newGroup;
+                                ?L("Editor-Gruppe entfernt.","Editor group removed.")
+                                :std::string(L("Editor-Gruppe gesetzt: ","Editor group set: "))+newGroup;
                         }
 
                         ImGui::Separator();
-                        if(ImGui::MenuItem("Fokussieren","F")) FocusSelectedObjects(state);
-                        if(ImGui::MenuItem("Auf Terrain setzen","Ende",false,
+                        if(ImGui::MenuItem(L("Fokussieren","Focus"),"F")) FocusSelectedObjects(state);
+                        if(ImGui::MenuItem(L("Auf Terrain setzen","Place on terrain"),L("Ende","End"),false,
                                            id<0||!IsObjectEditorLocked(state,id)))
                             GroundSelectedObjects(state);
-                        if(ImGui::MenuItem("Kopieren","Strg+C")) CopySelectedObjects(state);
-                        if(ImGui::MenuItem("Duplizieren","Strg+D")) DuplicateSelectedObjects(state);
+                        if(ImGui::MenuItem(L("Kopieren","Copy"),L("Strg+C","Ctrl+C"))) CopySelectedObjects(state);
+                        if(ImGui::MenuItem(L("Duplizieren","Duplicate"),L("Strg+D","Ctrl+D"))) DuplicateSelectedObjects(state);
                         {
                             const bool menuHidden=IsObjectEditorHidden(state,id);
                             const bool menuLocked=IsObjectEditorLocked(state,id);
-                            if(ImGui::MenuItem(menuHidden?"Einblenden":"Ausblenden")) {
+                            if(ImGui::MenuItem(menuHidden?L("Einblenden","Show"):L("Ausblenden","Hide"))) {
                                 if(id>=0) {
                                     state.objectEditorHidden[static_cast<std::size_t>(id)]=menuHidden?0:1;
                                     state.objectVisKey.clear();
@@ -13052,7 +13052,7 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                                     else if(!key.empty()) state.shmdEditorHiddenKeys.insert(key);
                                 }
                             }
-                            if(ImGui::MenuItem(menuLocked?"Entsperren":"Sperren")) {
+                            if(ImGui::MenuItem(menuLocked?L("Entsperren","Unlock"):L("Sperren","Lock"))) {
                                 if(id>=0) state.objectEditorLocked[static_cast<std::size_t>(id)]=menuLocked?0:1;
                                 else {
                                     const std::string key=ShmdEditorObjectKey(state,id);
@@ -13062,7 +13062,7 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                             }
                         }
                         ImGui::Separator();
-                        if(ImGui::MenuItem("Löschen","Entf",false,
+                        if(ImGui::MenuItem(L("Löschen","Delete"),L("Entf","Del"),false,
                                            id<0||!IsObjectEditorLocked(state,id)))
                             DeleteSelectedObjects(state);
                         ImGui::EndPopup();
@@ -13073,7 +13073,7 @@ void DrawSceneOutlinerPanel(EditorState& state) {
         }
         ImGui::PopID();
     }
-    if(entries.empty()) ImGui::TextDisabled("Keine passenden Objekte.");
+    if(entries.empty()) ImGui::TextDisabled("%s",L("Keine passenden Objekte.","No matching objects."));
     ImGui::EndChild();
 }
 
