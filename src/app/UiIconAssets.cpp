@@ -84,6 +84,21 @@ constexpr std::array kIconPaths{
     IconPathEntry{"module.custom_npc",     "04_extra_icons",      "07_custom_npc.png"},
     IconPathEntry{"module.custom_mob",     "04_extra_icons",      "08_custom_mob.png"},
     IconPathEntry{"brand.ng",              "04_extra_icons",      "09_ng_icon.png"},
+
+    IconPathEntry{"view.2d",               "05_additional_ui_icons", "01_2d.png"},
+    IconPathEntry{"view.3d",               "05_additional_ui_icons", "02_3d.png"},
+    IconPathEntry{"module.kfm",            "05_additional_ui_icons", "03_kfm.png"},
+    IconPathEntry{"module.ai",             "05_additional_ui_icons", "04_ai.png"},
+    IconPathEntry{"module.xp",             "05_additional_ui_icons", "05_xp.png"},
+    IconPathEntry{"module.prices",         "05_additional_ui_icons", "06_preise.png"},
+    IconPathEntry{"state.visibility",      "05_additional_ui_icons", "07_visibility_eye.png"},
+    IconPathEntry{"state.lock",            "05_additional_ui_icons", "08_lock.png"},
+    IconPathEntry{"state.unlock",          "05_additional_ui_icons", "09_unlock.png"},
+    IconPathEntry{"edit.copy",             "05_additional_ui_icons", "10_copy.png"},
+    IconPathEntry{"edit.duplicate",        "05_additional_ui_icons", "11_duplicate.png"},
+    IconPathEntry{"edit.delete",           "05_additional_ui_icons", "12_delete.png"},
+    IconPathEntry{"system.command_palette","05_additional_ui_icons", "13_command_palette.png"},
+    IconPathEntry{"system.recent_projects","05_additional_ui_icons", "14_recent_projects.png"},
 };
 
 constexpr std::array kSupportedSizes{16, 24, 32, 48, 64, 128};
