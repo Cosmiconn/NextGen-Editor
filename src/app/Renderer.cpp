@@ -53,6 +53,7 @@ uniform float uUvScale[8];
 uniform float uLayerVisible[8]; // 0 = Layer ausgeblendet (Map-Editor "Sichtbarkeit")
 uniform vec4 uLayerRegion[8]; // Welt-X/Z-Start, Welt-Breite/Tiefe der Region, die die Blend-Map des Layers abdeckt
 uniform vec2 uMapSpan;
+uniform vec2 uBlockSize;
 
 uniform sampler2D uDiffuse0;
 uniform sampler2D uBlend0;
@@ -78,18 +79,15 @@ vec3 SampleLayer(sampler2D diffuseTex, sampler2D blendTex, float uvScale, vec4 r
     vec2 mapUv = (vWorldPos.xz - region.xy) / region.zw;
     if (mapUv.x < 0.0 || mapUv.y < 0.0 || mapUv.x > 1.0 || mapUv.y > 1.0) return vec3(0.0);
     float weight = texture(blendTex, mapUv).r;
-    // KORRIGIERT (zurückgenommen): der vorherige "finale" V-Flip nur für die Diffuse-Textur
-    // (relativ zur Blend-Achse) hat das Problem NICHT gelöst - Nutzer-Rückmeldung mit
-    // Vergleichs-Screenshots (2D View mit rotem Block/Walk-Overlay vs. Nahaufnahme derselben
-    // Steintextur) zeigt: das rote Block/Walk-Overlay ist korrekt ausgerichtet ("richtig
-    // rum"), aber die Diffuse-Textur ist weiterhin oben/unten vertauscht - GENAU das Symptom,
-    // das der vorherige Flip eigentlich beheben sollte. Da Block/Walk dieselbe mapUv-Achse wie
-    // Blend nutzt (beide nachweislich korrekt), war der Flip demnach die falsche Richtung -
-    // jetzt wieder auf direkte Übernahme von mapUv umgestellt, wie beim Blend-Lookup. Falls
-    // die Textur danach WEITERHIN falsch orientiert ist, liegt die Ursache vermutlich nicht in
-    // der UV-Zuordnung, sondern in der Zeilenreihenfolge beim DDS-Dekodieren selbst (siehe
-    // DdsImage.cpp) - das wäre der nächste Verdächtige, siehe HANDOFF.md.
-    vec2 diffuseUv = mapUv * uvScale;
+    // Diffuse detail density is a WORLD-space property, not a map-size property.
+    // The previous mapUv*uvScale interpretation made one ground tile span thousands of
+    // world units on large maps. Legacy maps use 50-unit terrain blocks by default; the
+    // earlier renderer's 500-unit reference therefore corresponds to ten terrain blocks.
+    // Keeping that reference relative to the actual block size preserves scale on maps
+    // with non-default block dimensions while still honoring UVScaleDiffuse.
+    vec2 localWorld = vWorldPos.xz - region.xy;
+    vec2 referenceTile = max(uBlockSize * 10.0, vec2(1.0));
+    vec2 diffuseUv = (localWorld / referenceTile) * max(uvScale, 0.0001);
     vec3 diffuseColor = texture(diffuseTex, diffuseUv).rgb;
     return diffuseColor * weight;
 }
@@ -100,14 +98,9 @@ void main() {
     vec3 baseColor;
 
     if (uUseTextures && uLayerCount > 0) {
-        // KORRIGIERT: uvScale ist die Anzahl Wiederholungen ÜBER DIE GESAMTE KARTENFLÄCHE
-        // (Standard-Konvention), nicht - wie zuvor angenommen - ein Kehrwert einer festen
-        // Welteinheiten-Periode. Beleg: echte .ini-Werte für UVScaleDiffuse liegen bei 4-5
-        // (siehe docs/MAP_FORMAT.md) - mit der alten "/500"-Formel hätte sich eine Textur auf
-        // einer 12800 Einheiten breiten Karte ca. 128x statt der vermutlich beabsichtigten 4-5x
-        // wiederholt. Das erklärt eher ein vom Nutzer gemeldetes "Emblem erscheint mehrfach"
-        // als eine reine Spiegelung. mapUv (0..1 über die Kartenfläche) ist dieselbe Basis wie
-        // beim Blend-Lookup, nur zusätzlich mit uvScale multipliziert.
+        // Blend weights remain normalized to each layer region. Diffuse textures are
+        // intentionally sampled in world scale inside SampleLayer(), so visual texel size does
+        // not grow with the overall map dimensions.
         vec3 color = vec3(0.0);
         if (uLayerCount > 0) color += SampleLayer(uDiffuse0, uBlend0, uUvScale[0], uLayerRegion[0]) * uLayerVisible[0];
         if (uLayerCount > 1) color += SampleLayer(uDiffuse1, uBlend1, uUvScale[1], uLayerRegion[1]) * uLayerVisible[1];
@@ -501,6 +494,8 @@ void HeightmapRenderer::DrawTerrainMesh(const Mat4& viewProj, bool wireframe) {
     glUniform1f(glGetUniformLocation(shaderProgram_, "uMaxHeight"), maxHeight_);
     glUniform1i(glGetUniformLocation(shaderProgram_, "uUseTextures"), textureLayerCount_ > 0 ? 1 : 0);
     glUniform2f(glGetUniformLocation(shaderProgram_, "uMapSpan"), mapSpanX_, mapSpanZ_);
+    glUniform2f(glGetUniformLocation(shaderProgram_, "uBlockSize"),
+                std::max(blockW_, 0.001f), std::max(blockH_, 0.001f));
 
     glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
     glBindVertexArray(vao_);
