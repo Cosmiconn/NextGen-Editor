@@ -3399,6 +3399,27 @@ void DrawInlineIcon(const char* id, IconDrawFn icon, ImU32 color,
     ImGui::PopID();
 }
 
+void DrawPanelHeader(const char* id, const char* title, IconDrawFn fallbackIcon,
+                     const char* semanticIcon, const char* subtitle = nullptr) {
+    DrawInlineIcon(id, fallbackIcon, IM_COL32(100,205,255,245), nullptr,
+                   ImVec2(18.0f,18.0f), semanticIcon);
+    ImGui::SameLine(0.0f, 5.0f);
+    ImGui::TextColored(UiTheme::AccentCyan, "%s", title);
+    if (subtitle && *subtitle) {
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s", subtitle);
+    }
+
+    const ImVec2 min = ImGui::GetCursorScreenPos();
+    const float width = ImGui::GetContentRegionAvail().x;
+    ImGui::Dummy(ImVec2(0.0f, 2.0f));
+    ImGui::GetWindowDrawList()->AddLine(
+        ImVec2(min.x, min.y + 1.0f),
+        ImVec2(min.x + std::max(0.0f, width), min.y + 1.0f),
+        IM_COL32(25,92,132,145), 1.0f);
+    ImGui::Dummy(ImVec2(0.0f, 3.0f));
+}
+
 bool DrawTinyIconButton(const char* id, IconDrawFn icon, bool active, const char* tooltip,
                         ImVec2 size = ImVec2(22.0f,22.0f), const char* semanticIcon = nullptr) {
     ImGui::PushID(id);
@@ -13302,18 +13323,12 @@ void DrawWorkspaceTabBar(EditorState& state) {
 
 
 void DrawSceneOutlinerPanel(EditorState& state) {
-    DrawInlineIcon("sceneOutlinerHeader", DrawIconGrid, IM_COL32(100,205,255,245), nullptr,
-                   ImVec2(18.0f,18.0f), "panel.outliner");
-    ImGui::SameLine(0.0f, 5.0f);
-    ImGui::TextColored(UiTheme::AccentCyan, L("SZENE","SCENE"));
-    ImGui::SameLine();
-
     const char* context = L("Objekte","Objects");
     if (state.editMode == EditMode::Npcs) context = "NPCs";
     else if (state.editMode == EditMode::Mobs) context = L("Mob-Zonen","Mob zones");
     else if (state.editMode == EditMode::Portals) context = L("Portale","Portals");
-    ImGui::TextDisabled("%s", context);
-    ImGui::Separator();
+    DrawPanelHeader("sceneOutlinerHeader", L("SZENE","SCENE"), DrawIconGrid,
+                    "panel.outliner", context);
 
     UI::InputTextWithHint("##objectOutlinerFilter", L("Szene filtern...","Filter scene..."),
                           state.objectOutlinerFilter, sizeof(state.objectOutlinerFilter));
@@ -14001,13 +14016,9 @@ void DrawSceneOutlinerPanel(EditorState& state) {
 }
 
 void DrawLayerManagerPanel(EditorState& state) {
-    DrawInlineIcon("layerPanelHeader", DrawIconLayers, IM_COL32(100,205,255,245), nullptr,
-                   ImVec2(18.0f,18.0f), "panel.tools");
-    ImGui::SameLine(0.0f, 5.0f);
-    ImGui::TextColored(UiTheme::AccentCyan, "LAYER");
-    ImGui::SameLine();
-    ImGui::TextDisabled("%zu / %d", state.textureStack.LayerCount(), app::HeightmapRenderer::kMaxTextureLayers);
-    ImGui::Separator();
+    const std::string layerCount = std::to_string(state.textureStack.LayerCount()) + " / " +
+                                   std::to_string(app::HeightmapRenderer::kMaxTextureLayers);
+    DrawPanelHeader("layerPanelHeader", "LAYER", DrawIconLayers, "world.layers", layerCount.c_str());
 
     if (state.textureAssetRoot.empty()) {
         if (const auto resmapRoot = FindResmapRootForAssets(state.project.clientFolder)) {
@@ -15689,13 +15700,11 @@ void DrawWorkspaceAssetBrowser(EditorState& state) {
         }
     }
 
-    DrawInlineIcon("assetBrowserHeader", DrawIconCube, IM_COL32(100,205,255,245), nullptr,
-                   ImVec2(18.0f,18.0f), "panel.asset_browser");
-    ImGui::SameLine(0.0f, 5.0f);
-    ImGui::TextColored(UiTheme::AccentCyan, "ASSET BROWSER");
-    ImGui::SameLine();
-    ImGui::TextDisabled(objectMode ? L("NIF Modelle","NIF models") : textureMode ? L("Texturen","Textures") : L("kontextsensitiv","context-sensitive"));
-    ImGui::Separator();
+    const char* assetContext = objectMode ? L("NIF Modelle","NIF models")
+                                           : textureMode ? L("Texturen","Textures")
+                                                         : L("kontextsensitiv","context-sensitive");
+    DrawPanelHeader("assetBrowserHeader", "ASSET BROWSER", DrawIconCube,
+                    "panel.asset_browser", assetContext);
 
     if (!objectMode && !textureMode) {
         ImGui::TextWrapped("%s",L("Der Asset Browser wird bei 'Objekte' und 'Textur' aktiv. Weitere Asset-Typen können später hier ergänzt werden.",
@@ -15961,11 +15970,8 @@ void DrawMapEditorWorkspace(EditorState& state) {
 
     ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
     ImGui::Begin("Sichtbarkeit##visibilityPanel");
-    DrawInlineIcon("visibilityHeader", DrawIconEye, IM_COL32(100,205,255,245), nullptr,
-                   ImVec2(18.0f,18.0f), "state.visibility");
-    ImGui::SameLine(0.0f, 5.0f);
-    ImGui::TextColored(UiTheme::AccentCyan, "%s",L("SICHTBARKEIT","VISIBILITY"));
-    ImGui::Separator();
+    DrawPanelHeader("visibilityHeader", L("SICHTBARKEIT","VISIBILITY"),
+                    DrawIconEye, "state.visibility");
     DrawVisibilityPanel(state);
     ImGui::SeparatorText(L("Ansicht","View"));
     UI::Checkbox(T("workspace.wireframe"), &state.wireframe);
@@ -15980,12 +15986,8 @@ void DrawMapEditorWorkspace(EditorState& state) {
 
     ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
     ImGui::Begin("Eigenschaften##fileToolsCol");
-    DrawInlineIcon("propertiesHeader", DrawIconGear, IM_COL32(100,205,255,245), nullptr,
-                   ImVec2(18.0f,18.0f), "panel.properties");
-    ImGui::SameLine(0.0f, 5.0f);
-    ImGui::TextColored(UiTheme::AccentCyan, "%s",L("EIGENSCHAFTEN","PROPERTIES"));
-    ImGui::SameLine(); ImGui::TextDisabled("%s", modeName());
-    ImGui::Separator();
+    DrawPanelHeader("propertiesHeader", L("EIGENSCHAFTEN","PROPERTIES"),
+                    DrawIconGear, "panel.properties", modeName());
     DrawToolsContent(state);
 
     if (UI::CollapsingHeader(L("Datei & Fiesta Import/Export","File & Fiesta Import/Export"))) {
@@ -16017,12 +16019,8 @@ void DrawMapEditorWorkspace(EditorState& state) {
 
     ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
     ImGui::Begin("3D-Ansicht##view3d");
-    DrawInlineIcon("view3dHeader", DrawIconCube, IM_COL32(100,205,255,245), nullptr,
-                   ImVec2(18.0f,18.0f), "view.3d");
-    ImGui::SameLine(0.0f, 5.0f);
-    ImGui::TextColored(UiTheme::AccentCyan, "%s",L("3D ANSICHT","3D VIEW"));
-    ImGui::SameLine(); ImGui::TextDisabled("%s", modeName());
-    ImGui::Separator();
+    DrawPanelHeader("view3dHeader", L("3D ANSICHT","3D VIEW"),
+                    DrawIconCube, "view.3d", modeName());
     DrawPreview3DContent(state);
     ImGui::End();
     ImGui::PopStyleColor();
@@ -16035,12 +16033,8 @@ void DrawMapEditorWorkspace(EditorState& state) {
 
     ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
     ImGui::Begin("2D-Ansicht##view2d");
-    DrawInlineIcon("view2dHeader", DrawIconGrid, IM_COL32(100,205,255,245), nullptr,
-                   ImVec2(18.0f,18.0f), "view.2d");
-    ImGui::SameLine(0.0f, 5.0f);
-    ImGui::TextColored(UiTheme::AccentCyan, "%s",L("2D DRAUFSICHT","2D TOP VIEW"));
-    ImGui::SameLine(); ImGui::TextDisabled("%s",L("Nord oben","North up"));
-    ImGui::Separator();
+    DrawPanelHeader("view2dHeader", L("2D DRAUFSICHT","2D TOP VIEW"),
+                    DrawIconGrid, "view.2d", L("Nord oben","North up"));
     DrawEditor2DContent(state);
     ImGui::End();
     ImGui::PopStyleColor();
@@ -16182,13 +16176,9 @@ int main() {
                 DrawTopNav(state, "Animationen");
                 ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
                 ImGui::BeginChild("##kfmWorkspace", ImVec2(0,0), false);
-                DrawInlineIcon("kfmWorkspaceHeader", DrawIconClapper, IM_COL32(100,205,255,245), nullptr,
-                               ImVec2(18.0f,18.0f), "module.kfm");
-                ImGui::SameLine(0.0f, 5.0f);
-                ImGui::TextColored(UiTheme::AccentCyan, "Animationen / KFM");
-                ImGui::SameLine();
-                ImGui::TextDisabled("Katalog · Übergänge · Dateiverweise · Kopie-Export");
-                ImGui::Separator();
+                DrawPanelHeader("kfmWorkspaceHeader", "Animationen / KFM",
+                                DrawIconClapper, "module.kfm",
+                                "Katalog · Übergänge · Dateiverweise · Kopie-Export");
 #ifdef _WIN32
                 state.kfmPanel.Draw([] { return BrowseForShnFileWindows("Fiesta KFM", true); });
 #else
