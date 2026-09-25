@@ -143,10 +143,17 @@ int main(int argc, char** argv) {
         }
     }
     if (plane == nullptr) {
-        std::cerr << "No Plane* track with 2-key XYZ rotation found. Tracks:";
-        for (const auto& track : effect->sequence.transformTracks)
-            std::cerr << " [" << track.nodeName << "]";
-        std::cerr << "\n";
+        std::cerr << "No Plane* track with 2-key XYZ rotation found. Tracks:\n";
+        for (const auto& track : effect->sequence.transformTracks) {
+            std::cerr << "  [" << track.nodeName << "] compressed=" << track.compressedSpline
+                      << " rotationType=" << track.keys.rotationType
+                      << " quat=" << track.keys.quaternionRotation.size()
+                      << " xyz=(" << track.keys.xyzRotation[0].keys.size()
+                      << "," << track.keys.xyzRotation[1].keys.size()
+                      << "," << track.keys.xyzRotation[2].keys.size() << ")"
+                      << " translation=" << track.keys.translation.keys.size()
+                      << " scale=" << track.keys.scale.keys.size() << "\n";
+        }
         return 2;
     }
     assert(!plane->compressedSpline);
