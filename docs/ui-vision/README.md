@@ -7,7 +7,7 @@ Diese Dateien sind die visuelle Source of Truth. Der Editor soll als **hochwerti
 
 ## Qualitätsregel
 
-Die **fünf vom Nutzer gelieferten Referenzbilder** sind die primäre visuelle Referenz. Ihre exakten Dateinamen und Rollen sind unter [references/README.md](references/README.md) dokumentiert.
+Die vom Nutzer gelieferten Referenzbilder sind die primäre visuelle Referenz. Ihre bekannten Dateinamen, Rollen und der tatsächliche Git-Archivierungsstatus sind unter [references/README.md](references/README.md) dokumentiert.
 
 Programmatische Wireframes oder vereinfachte Mockups dürfen Struktur erklären, sind aber **niemals** die Qualitätsreferenz für das finale UI.
 
@@ -48,7 +48,8 @@ Die genaue Zuordnung steht in [references/README.md](references/README.md).
 - `src/app/resources/nextgen.ico` enthält jetzt ein echtes NG-Markenicon in allen Windows-Größen.
 - Das Windows-Fenster setzt Ressource 101 zusätzlich explizit für Titlebar/Alt-Tab/Taskleiste.
 - `src/app/resources/branding/ng-app-icon-master.svg` ist die editierbare Produktionsquelle der derzeit eingebauten NG-Fassung.
-- `src/app/resources/icons/*.svg` enthält das versionierte Icon-Inventar.
+- `docs/ui-vision/ICON_INVENTORY.md` definiert die Migration auf das freigegebene 54-Icon-Paket; die bisherigen `src/app/resources/icons/*.svg` sind nur Legacy-Migrationsbestand.
+- Die Rasterreferenzen sind im Manifest erfasst, aber ihre Binärdateien sind im Branch noch nicht vollständig archiviert.
 
 ## Referenzhierarchie
 
