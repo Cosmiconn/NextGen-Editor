@@ -135,6 +135,55 @@ int main() {
               "Gruppenskalierung skaliert Abstand zum Pivot und Objektmaß gemeinsam");
     }
 
+    std::printf("\n== AI Workspace: Scan, Dirty-Schutz und Speichern ==\n");
+    {
+        const auto root=std::filesystem::temp_directory_path()/"nextgen_editor_ai_workspace_test";
+        std::error_code ec;
+        std::filesystem::remove_all(root,ec);
+        std::filesystem::create_directories(root/"LuaScript"/"AIScript",ec);
+        std::filesystem::create_directories(root/"MobBehaviorDescript"/"nested",ec);
+        {
+            std::ofstream out(root/"LuaScript"/"AIScript"/"TestMob.lua",std::ios::binary);
+            out << "function AI()\n  return 1\nend\n";
+        }
+        {
+            std::ofstream out(root/"MobBehaviorDescript"/"nested"/"Guard.ps",std::ios::binary);
+            out << "state idle\n";
+        }
+
+        EditorState st;
+        st.shnServerRoot=root.string();
+        ScanAiWorkspace(st);
+        Check(st.aiWorkspaceFiles.size()==2 && st.aiWorkspaceLabels.size()==2,
+              "AI Workspace findet Lua- und PineScript-Dateien rekursiv");
+        Check(std::any_of(st.aiWorkspaceLabels.begin(),st.aiWorkspaceLabels.end(),
+                         [](const std::string& x){ return x.find("Lua")!=std::string::npos && x.find("TestMob.lua")!=std::string::npos; }),
+              "Lua-AIScript erhält einen eindeutigen Bibliotheksnamen");
+        Check(std::any_of(st.aiWorkspaceLabels.begin(),st.aiWorkspaceLabels.end(),
+                         [](const std::string& x){ return x.find("Pine")!=std::string::npos && x.find("Guard.ps")!=std::string::npos; }),
+              "PineScript erhält einen eindeutigen Bibliotheksnamen");
+
+        const auto luaPath=root/"LuaScript"/"AIScript"/"TestMob.lua";
+        const auto pinePath=root/"MobBehaviorDescript"/"nested"/"Guard.ps";
+        Check(LoadAiScriptFile(st,luaPath,"TestMob.lua",false) &&
+              st.aiScriptEditorText.find("function AI")!=std::string::npos,
+              "AI-Skript wird als Text geladen");
+        st.aiScriptEditorText="changed\n";
+        st.aiScriptDirty=true;
+        Check(!LoadAiScriptFile(st,pinePath,"Guard.ps",false),
+              "Dirty-Schutz verhindert versehentlichen Skriptwechsel");
+        Check(SaveAiScript(st) && !st.aiScriptDirty,
+              "AI-Skript speichert Änderungen und löscht Dirty-State");
+        std::ifstream saved(luaPath,std::ios::binary);
+        const std::string savedText((std::istreambuf_iterator<char>(saved)),std::istreambuf_iterator<char>());
+        Check(savedText=="changed\n","Gespeicherter AI-Text entspricht dem Editorinhalt");
+        Check(LoadAiScriptFile(st,pinePath,"Guard.ps",false) &&
+              st.aiScriptEditorText.find("state idle")!=std::string::npos,
+              "Nach dem Speichern kann auf PineScript gewechselt werden");
+
+        std::filesystem::remove_all(root,ec);
+    }
+
     std::printf("\n%d Fehler.\n", g_failures);
     return g_failures == 0 ? 0 : 1;
 }
