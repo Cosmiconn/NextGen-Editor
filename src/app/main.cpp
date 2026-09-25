@@ -13170,6 +13170,9 @@ void DrawWorkspaceTabBar(EditorState& state) {
 
 
 void DrawSceneOutlinerPanel(EditorState& state) {
+    DrawInlineIcon("sceneOutlinerHeader", DrawIconGrid, IM_COL32(100,205,255,245), nullptr,
+                   ImVec2(18.0f,18.0f), "panel.outliner");
+    ImGui::SameLine(0.0f, 5.0f);
     ImGui::TextColored(UiTheme::AccentCyan, L("SZENE","SCENE"));
     ImGui::SameLine();
 
@@ -13863,6 +13866,9 @@ void DrawSceneOutlinerPanel(EditorState& state) {
 }
 
 void DrawLayerManagerPanel(EditorState& state) {
+    DrawInlineIcon("layerPanelHeader", DrawIconLayers, IM_COL32(100,205,255,245), nullptr,
+                   ImVec2(18.0f,18.0f), "panel.tools");
+    ImGui::SameLine(0.0f, 5.0f);
     ImGui::TextColored(UiTheme::AccentCyan, "LAYER");
     ImGui::SameLine();
     ImGui::TextDisabled("%zu / %d", state.textureStack.LayerCount(), app::HeightmapRenderer::kMaxTextureLayers);
@@ -15548,6 +15554,9 @@ void DrawWorkspaceAssetBrowser(EditorState& state) {
         }
     }
 
+    DrawInlineIcon("assetBrowserHeader", DrawIconCube, IM_COL32(100,205,255,245), nullptr,
+                   ImVec2(18.0f,18.0f), "panel.asset_browser");
+    ImGui::SameLine(0.0f, 5.0f);
     ImGui::TextColored(UiTheme::AccentCyan, "ASSET BROWSER");
     ImGui::SameLine();
     ImGui::TextDisabled(objectMode ? L("NIF Modelle","NIF models") : textureMode ? L("Texturen","Textures") : L("kontextsensitiv","context-sensitive"));
@@ -15817,6 +15826,9 @@ void DrawMapEditorWorkspace(EditorState& state) {
 
     ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
     ImGui::Begin("Sichtbarkeit##visibilityPanel");
+    DrawInlineIcon("visibilityHeader", DrawIconEye, IM_COL32(100,205,255,245), nullptr,
+                   ImVec2(18.0f,18.0f), "state.visibility");
+    ImGui::SameLine(0.0f, 5.0f);
     ImGui::TextColored(UiTheme::AccentCyan, "%s",L("SICHTBARKEIT","VISIBILITY"));
     ImGui::Separator();
     DrawVisibilityPanel(state);
@@ -15833,6 +15845,9 @@ void DrawMapEditorWorkspace(EditorState& state) {
 
     ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
     ImGui::Begin("Eigenschaften##fileToolsCol");
+    DrawInlineIcon("propertiesHeader", DrawIconGear, IM_COL32(100,205,255,245), nullptr,
+                   ImVec2(18.0f,18.0f), "panel.properties");
+    ImGui::SameLine(0.0f, 5.0f);
     ImGui::TextColored(UiTheme::AccentCyan, "%s",L("EIGENSCHAFTEN","PROPERTIES"));
     ImGui::SameLine(); ImGui::TextDisabled("%s", modeName());
     ImGui::Separator();
