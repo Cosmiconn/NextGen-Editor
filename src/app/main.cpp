@@ -10718,7 +10718,7 @@ void DrawObjectGizmoToolbar(EditorState& state, const ImVec2& imageScreenPos) {
     ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(11, 27, 41, 235));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(18, 67, 104, 245));
 
-    auto opButton = [&](const char* label, int op) {
+    auto opButton = [&](const char* label, int op, const EditorState::ShortcutBinding& shortcut) {
         const bool active = state.objectGizmoOperation == op;
         if (active) ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(12, 100, 165, 245));
         if (UI::SmallButton(label)) {
@@ -10726,11 +10726,15 @@ void DrawObjectGizmoToolbar(EditorState& state, const ImVec2& imageScreenPos) {
             state.objectGizmoMatrixValid = false;
         }
         if (active) ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered()) {
+            const std::string hint = std::string(label) + " · " + ShortcutLabel(shortcut);
+            ImGui::SetTooltip("%s",hint.c_str());
+        }
         ImGui::SameLine();
     };
-    opButton("Move",0);
-    opButton("Rotate",1);
-    opButton("Scale",2);
+    opButton("Move",0,state.shortcutGizmoMove);
+    opButton("Rotate",1,state.shortcutGizmoRotate);
+    opButton("Scale",2,state.shortcutGizmoScale);
 
     if (UI::SmallButton(state.objectGizmoLocal ? "Local" : "World")) {
         state.objectGizmoLocal = !state.objectGizmoLocal;
@@ -11972,6 +11976,7 @@ int main() {
 
         HandleGlobalShortcuts(state);
         DrawCommandPalette(state);
+        DrawSettingsWindow(state);
         DrawManualWindow(state);
         SyncStatusToast(state);
         DrawToasts(state);
