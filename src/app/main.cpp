@@ -13539,6 +13539,12 @@ std::string ShineRecordValue(const core::legacy::ShineRecord& record, int column
     return record.values[static_cast<std::size_t>(column)];
 }
 
+bool IsDropUnsignedInteger(const std::string& value) {
+    return !value.empty() && std::all_of(value.begin(), value.end(), [](unsigned char ch) {
+        return ch >= '0' && ch <= '9';
+    });
+}
+
 void EnsureDropTableLoaded(EditorState& state) {
     if (state.dropTableLoaded || !state.dropTableLoadError.empty()) return;
     if (state.shineTextRoot.empty()) {
