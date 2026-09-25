@@ -3388,7 +3388,8 @@ void DrawInlineIcon(const char* id, IconDrawFn icon, ImU32 color,
             const ImVec2 half(iconSize * 0.5f, iconSize * 0.5f);
             dl->AddImage(static_cast<ImTextureID>(static_cast<intptr_t>(tex)),
                          ImVec2(center.x - half.x, center.y - half.y),
-                         ImVec2(center.x + half.x, center.y + half.y));
+                         ImVec2(center.x + half.x, center.y + half.y),
+                         ImVec2(0,1), ImVec2(1,0));
             drewApprovedIcon = true;
         }
     }
@@ -3424,7 +3425,8 @@ bool DrawTinyIconButton(const char* id, IconDrawFn icon, bool active, const char
             const ImVec2 half(iconSize * 0.5f, iconSize * 0.5f);
             dl->AddImage(static_cast<ImTextureID>(static_cast<intptr_t>(tex)),
                          ImVec2(center.x - half.x, center.y - half.y),
-                         ImVec2(center.x + half.x, center.y + half.y));
+                         ImVec2(center.x + half.x, center.y + half.y),
+                         ImVec2(0,1), ImVec2(1,0));
             drewApprovedIcon = true;
         }
     }
@@ -3479,7 +3481,7 @@ bool DrawIconButton(const char* id, const char* label, IconDrawFn icon, bool act
             dl->AddImage(static_cast<ImTextureID>(static_cast<intptr_t>(tex)),
                          ImVec2(center.x - half.x, center.y - half.y),
                          ImVec2(center.x + half.x, center.y + half.y),
-                         ImVec2(0,0), ImVec2(1,1), tint);
+                         ImVec2(0,1), ImVec2(1,0), tint);
             drewApprovedIcon = true;
         }
     }
@@ -3570,7 +3572,8 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
     if (const std::uint32_t brandTex = gUiIcons.Texture("brand.ng", 32); brandTex != 0) {
         topDl->AddImage(static_cast<ImTextureID>(static_cast<intptr_t>(brandTex)),
                         ImVec2(brandPos.x + 2.0f, brandPos.y),
-                        ImVec2(brandPos.x + 32.0f, brandPos.y + 30.0f));
+                        ImVec2(brandPos.x + 32.0f, brandPos.y + 30.0f),
+                        ImVec2(0,1), ImVec2(1,0));
     } else {
         // Functional fallback for development builds without copied assets.
         topDl->AddText(ImVec2(brandPos.x + 6.0f, brandPos.y + 7.0f),
