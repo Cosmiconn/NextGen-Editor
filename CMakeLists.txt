@@ -5,16 +5,17 @@ cmake_minimum_required(VERSION 3.21)
 # toolchain automatically so a normal CMake configure can build the GUI
 # instead of silently producing only the headless/core targets.
 if(CMAKE_HOST_WIN32 AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
-    foreach(_vcpkg_env VCPKG_ROOT VCPKG_INSTALLATION_ROOT)
-        if(DEFINED ENV{${_vcpkg_env}} AND
-           EXISTS "$ENV{${_vcpkg_env}}/scripts/buildsystems/vcpkg.cmake")
-            set(CMAKE_TOOLCHAIN_FILE
-                "$ENV{${_vcpkg_env}}/scripts/buildsystems/vcpkg.cmake"
-                CACHE FILEPATH "vcpkg toolchain")
-            break()
-        endif()
-    endforeach()
-    unset(_vcpkg_env)
+    if(DEFINED ENV{VCPKG_ROOT} AND
+       EXISTS "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake")
+        set(CMAKE_TOOLCHAIN_FILE
+            "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+            CACHE FILEPATH "vcpkg toolchain")
+    elseif(DEFINED ENV{VCPKG_INSTALLATION_ROOT} AND
+           EXISTS "$ENV{VCPKG_INSTALLATION_ROOT}/scripts/buildsystems/vcpkg.cmake")
+        set(CMAKE_TOOLCHAIN_FILE
+            "$ENV{VCPKG_INSTALLATION_ROOT}/scripts/buildsystems/vcpkg.cmake"
+            CACHE FILEPATH "vcpkg toolchain")
+    endif()
 endif()
 
 project(TheSeedMapEditor LANGUAGES CXX)
