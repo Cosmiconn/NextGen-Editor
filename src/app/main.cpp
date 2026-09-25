@@ -634,7 +634,17 @@ struct EditorState {
     std::string aiScriptEditorPath;
     std::string aiScriptEditorText;
     std::string aiScriptEditorName;
+    bool aiScriptDirty = false;
     char aiScriptLookupBuf[128] = "";
+
+    // Eigenständiger AI-Workspace: katalogisiert die bereits unterstützten/verifizierten
+    // LuaScript/AIScript/*.lua- und MobBehaviorDescript/*.ps-Dateien des Server-Shine-Baums.
+    std::string aiWorkspaceScanKey;
+    std::vector<std::filesystem::path> aiWorkspaceFiles;
+    std::vector<std::string> aiWorkspaceLabels;
+    std::vector<int> aiWorkspaceKinds; // 0 Lua, 1 PineScript
+    char aiWorkspaceFilter[128] = "";
+    int aiWorkspaceSelected = -1;
 
     // Patrouillenrouten-Editor (MobRoam/<Name>.txt, Server) - siehe CHANGELOG [0.44.23].
     bool patrolEditorOpen = false;
