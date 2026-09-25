@@ -8323,6 +8323,12 @@ static std::vector<std::size_t> CloneRowsById(EditorState& state, const char* fi
     if (!created.empty()) {
         doc.dirty = true;
         EnsureCellStatusSize(doc);
+        // Eine neu geklonte Zeile ist vollständig ungespeichert. Alle Zellen markieren,
+        // damit Rohgrid und semantische Editoren denselben Dirty-Zustand anzeigen.
+        for (const std::size_t nr : created) {
+            if (nr < doc.cellDirty.size())
+                std::fill(doc.cellDirty[nr].begin(),doc.cellDirty[nr].end(),1);
+        }
         ++state.shnEditCounter;
         report.push_back("+ " + label + ": " + std::to_string(created.size()) + " Zeile(n) angelegt");
     } else {
