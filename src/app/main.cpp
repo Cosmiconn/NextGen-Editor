@@ -2894,6 +2894,44 @@ void DrawIconRoute(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
     dl->AddCircleFilled(p0,r*0.20f,col); dl->AddCircleFilled(p1,r*0.20f,col); dl->AddCircleFilled(p2,r*0.20f,col);
     dl->AddTriangleFilled(ImVec2(p2.x+r*0.05f,p2.y-r*0.38f),ImVec2(p2.x+r*0.45f,p2.y),ImVec2(p2.x-r*0.05f,p2.y+r*0.20f),col);
 }
+void DrawIconDialog(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
+    dl->AddRect(ImVec2(c.x-r,c.y-r*0.7f),ImVec2(c.x+r,c.y+r*0.45f),col,3.0f,0,2.0f);
+    const ImVec2 tail[3]={ImVec2(c.x-r*0.35f,c.y+r*0.45f),ImVec2(c.x-r*0.60f,c.y+r),ImVec2(c.x+r*0.05f,c.y+r*0.45f)};
+    dl->AddPolyline(tail,3,col,ImDrawFlags_None,2.0f);
+    dl->AddLine(ImVec2(c.x-r*0.60f,c.y-r*0.25f),ImVec2(c.x+r*0.55f,c.y-r*0.25f),col,1.5f);
+    dl->AddLine(ImVec2(c.x-r*0.60f,c.y+r*0.05f),ImVec2(c.x+r*0.25f,c.y+r*0.05f),col,1.5f);
+}
+void DrawIconCode(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
+    dl->AddLine(ImVec2(c.x-r*0.9f,c.y),ImVec2(c.x-r*0.35f,c.y-r*0.55f),col,2.2f);
+    dl->AddLine(ImVec2(c.x-r*0.9f,c.y),ImVec2(c.x-r*0.35f,c.y+r*0.55f),col,2.2f);
+    dl->AddLine(ImVec2(c.x+r*0.9f,c.y),ImVec2(c.x+r*0.35f,c.y-r*0.55f),col,2.2f);
+    dl->AddLine(ImVec2(c.x+r*0.9f,c.y),ImVec2(c.x+r*0.35f,c.y+r*0.55f),col,2.2f);
+    dl->AddLine(ImVec2(c.x+r*0.18f,c.y-r*0.85f),ImVec2(c.x-r*0.18f,c.y+r*0.85f),col,2.0f);
+}
+void DrawIconMove(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
+    dl->AddLine(ImVec2(c.x-r,c.y),ImVec2(c.x+r,c.y),col,2.0f);
+    dl->AddLine(ImVec2(c.x,c.y-r),ImVec2(c.x,c.y+r),col,2.0f);
+    dl->AddTriangleFilled(ImVec2(c.x+r,c.y),ImVec2(c.x+r*0.55f,c.y-r*0.28f),ImVec2(c.x+r*0.55f,c.y+r*0.28f),col);
+    dl->AddTriangleFilled(ImVec2(c.x-r,c.y),ImVec2(c.x-r*0.55f,c.y-r*0.28f),ImVec2(c.x-r*0.55f,c.y+r*0.28f),col);
+    dl->AddTriangleFilled(ImVec2(c.x,c.y-r),ImVec2(c.x-r*0.28f,c.y-r*0.55f),ImVec2(c.x+r*0.28f,c.y-r*0.55f),col);
+    dl->AddTriangleFilled(ImVec2(c.x,c.y+r),ImVec2(c.x-r*0.28f,c.y+r*0.55f),ImVec2(c.x+r*0.28f,c.y+r*0.55f),col);
+}
+void DrawIconRotate(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
+    dl->PathClear(); dl->PathArcTo(c,r*0.72f,-2.55f,2.45f,28); dl->PathStroke(col,0,2.2f);
+    dl->AddTriangleFilled(ImVec2(c.x-r*0.78f,c.y-r*0.52f),ImVec2(c.x-r*0.15f,c.y-r*0.62f),ImVec2(c.x-r*0.48f,c.y-r*0.02f),col);
+}
+void DrawIconScale(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
+    dl->AddRect(ImVec2(c.x-r*0.85f,c.y-r*0.85f),ImVec2(c.x+r*0.35f,c.y+r*0.35f),col,1.5f,0,1.8f);
+    dl->AddLine(ImVec2(c.x-r*0.15f,c.y+r*0.15f),ImVec2(c.x+r*0.85f,c.y-r*0.85f),col,2.2f);
+    dl->AddTriangleFilled(ImVec2(c.x+r*0.85f,c.y-r*0.85f),ImVec2(c.x+r*0.25f,c.y-r*0.78f),ImVec2(c.x+r*0.78f,c.y-r*0.25f),col);
+}
+void DrawIconSnap(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
+    dl->PathClear(); dl->PathArcTo(ImVec2(c.x,c.y+r*0.05f),r*0.65f,0.0f,3.14159265f,20); dl->PathStroke(col,0,2.5f);
+    dl->AddLine(ImVec2(c.x-r*0.65f,c.y+r*0.05f),ImVec2(c.x-r*0.65f,c.y+r*0.85f),col,2.5f);
+    dl->AddLine(ImVec2(c.x+r*0.65f,c.y+r*0.05f),ImVec2(c.x+r*0.65f,c.y+r*0.85f),col,2.5f);
+    dl->AddLine(ImVec2(c.x-r*0.65f,c.y+r*0.85f),ImVec2(c.x-r*0.25f,c.y+r*0.85f),col,2.5f);
+    dl->AddLine(ImVec2(c.x+r*0.25f,c.y+r*0.85f),ImVec2(c.x+r*0.65f,c.y+r*0.85f),col,2.5f);
+}
 void DrawIconPortal(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
     dl->AddEllipse(c,ImVec2(r*0.82f,r),col,0.0f,28,3.0f);
     dl->AddEllipse(c,ImVec2(r*0.42f,r*0.58f),col,0.0f,24,2.0f);
@@ -9233,14 +9271,23 @@ void DrawToolsContent(EditorState& state) {
         SyncSelectedObjectModelPath(state);
         if (auto* obj = EditableObject(state, state.selectedObject)) {
             ImGui::SeparatorText("Transform-Werkzeug");
-            if (UI::RadioButton("Move##gizmoProps",&state.objectGizmoOperation,0)) state.objectGizmoMatrixValid=false;
+            if (DrawIconButton("gizmoMoveProps","Move",DrawIconMove,state.objectGizmoOperation==0,ImVec2(72,52))) {
+                state.objectGizmoOperation=0; state.objectGizmoMatrixValid=false;
+            }
             ImGui::SameLine();
-            if (UI::RadioButton("Rotate##gizmoProps",&state.objectGizmoOperation,1)) state.objectGizmoMatrixValid=false;
+            if (DrawIconButton("gizmoRotateProps","Rotate",DrawIconRotate,state.objectGizmoOperation==1,ImVec2(72,52))) {
+                state.objectGizmoOperation=1; state.objectGizmoMatrixValid=false;
+            }
             ImGui::SameLine();
-            if (UI::RadioButton("Scale##gizmoProps",&state.objectGizmoOperation,2)) state.objectGizmoMatrixValid=false;
+            if (DrawIconButton("gizmoScaleProps","Scale",DrawIconScale,state.objectGizmoOperation==2,ImVec2(72,52))) {
+                state.objectGizmoOperation=2; state.objectGizmoMatrixValid=false;
+            }
+            ImGui::SameLine();
+            if (DrawTinyIconButton("gizmoSnapProps",DrawIconSnap,state.objectGizmoSnap,
+                                   state.objectGizmoSnap ? "Snap deaktivieren" : "Snap aktivieren",
+                                   ImVec2(28,28)))
+                state.objectGizmoSnap=!state.objectGizmoSnap;
             if (UI::Checkbox("Local##gizmoProps",&state.objectGizmoLocal)) state.objectGizmoMatrixValid=false;
-            ImGui::SameLine();
-            UI::Checkbox("Snap##gizmoProps",&state.objectGizmoSnap);
             if (state.objectGizmoSnap) {
                 if (state.objectGizmoOperation==0) {
                     UI::InputFloat("Grid-Snap",&state.objectMoveSnap,10.0f,50.0f,"%.1f");
@@ -9459,19 +9506,19 @@ void DrawToolsContent(EditorState& state) {
                                 }
                             }
                         }
-                        ImGui::SeparatorText("Dialog");
-                        if (UI::Button("Dialog bearbeiten",ImVec2(-1,0)))
+                        ImGui::SeparatorText("Dialog · AI · Route");
+                        if (DrawIconButton("npcDialogAction","Dialog",DrawIconDialog,false,ImVec2(86,56)))
                             OpenNpcDialogEditor(state,rec.values[0]);
-
-                        ImGui::SeparatorText("AI / Lua & Route");
-                        if (UI::Button("KI-Skript (Lua) bearbeiten",ImVec2(-1,0)))
+                        ImGui::SameLine();
+                        if (DrawIconButton("npcLuaAction","Lua / AI",DrawIconCode,false,ImVec2(86,56)))
                             OpenAiScriptEditor(state,rec.values[0]);
-                        if (UI::Button("Patrouillenroute bearbeiten",ImVec2(-1,0)))
+                        ImGui::SameLine();
+                        if (DrawIconButton("npcRouteAction","Route",DrawIconRoute,false,ImVec2(86,56)))
                             OpenPatrolRouteEditor(state,rec.values[0]);
 
                         if (rec.values[6] == "Merchant") {
-                            ImGui::SeparatorText("Händler");
-                            if (UI::Button("Händler-Inventar bearbeiten",ImVec2(-1,0))) {
+                            ImGui::SameLine();
+                            if (DrawIconButton("npcShopAction","Shop",DrawIconShop,false,ImVec2(86,56))) {
                                 EnsureShopTextLoaded(state,rec.values[0]);
                                 state.shopEditorOpen=true;
                             }
@@ -9569,9 +9616,11 @@ void DrawToolsContent(EditorState& state) {
                                     const std::string header = sr.values[1] + " x" + sr.values[2] + "##spawn";
                                     if (UI::CollapsingHeader(header.c_str())) {
                                         DrawShineRecordFields(sr.values, spawnTable->columns, 1);
-                                        if (UI::SmallButton("KI")) OpenAiScriptEditor(state, sr.values[1]);
-                                        ImGui::SameLine();
-                                        if (UI::SmallButton("Route")) OpenPatrolRouteEditor(state, sr.values[1]);
+                                        if (DrawTinyIconButton("mobLua",DrawIconCode,false,"KI / Lua bearbeiten"))
+                                            OpenAiScriptEditor(state,sr.values[1]);
+                                        ImGui::SameLine(0,3);
+                                        if (DrawTinyIconButton("mobRoute",DrawIconRoute,false,"MobRoam-Route bearbeiten"))
+                                            OpenPatrolRouteEditor(state,sr.values[1]);
                                         ImGui::SameLine();
                                         if (state.mobDeleteArmed && UI::SmallButton("Monster entfernen")) removeSpawn = static_cast<int>(si);
                                     }
