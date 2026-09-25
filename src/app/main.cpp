@@ -3380,9 +3380,11 @@ bool DrawTinyIconButton(const char* id, IconDrawFn icon, bool active, const char
     ImDrawList* dl=ImGui::GetWindowDrawList();
     if(active || hovered)
         dl->AddRectFilled(p,ImVec2(p.x+size.x,p.y+size.y),
-                          active?IM_COL32(12,92,150,210):IM_COL32(28,55,78,190),4.0f);
+                          active?IM_COL32(11,95,215,225):IM_COL32(16,35,56,235),5.0f);
+    if(active)
+        dl->AddRect(p,ImVec2(p.x+size.x,p.y+size.y),IM_COL32(32,221,242,230),5.0f,0,1.0f);
     if(icon) icon(dl,ImVec2(p.x+size.x*0.5f,p.y+size.y*0.5f),7.0f,
-                  active?IM_COL32(125,220,255,255):IM_COL32(180,198,215,240));
+                  active?IM_COL32(237,246,255,255):IM_COL32(159,180,201,245));
     if(hovered && tooltip) ImGui::SetTooltip("%s",tooltip);
     ImGui::PopID();
     return clicked;
@@ -3397,14 +3399,18 @@ bool DrawIconButton(const char* id, const char* label, IconDrawFn icon, bool act
     ImGui::EndDisabled();
     const bool hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled);
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    const ImU32 bg = active ? IM_COL32(10, 91, 151, 255)
-                     : hovered && enabled ? IM_COL32(20, 57, 86, 255)
-                                          : IM_COL32(10, 25, 38, 255);
-    const ImU32 border = active ? IM_COL32(45, 168, 245, 255) : IM_COL32(28, 54, 76, 255);
-    const ImU32 fg = enabled ? (active ? IM_COL32(120, 218, 255, 255) : IM_COL32(214, 229, 244, 255))
-                             : IM_COL32(100, 112, 126, 255);
-    dl->AddRectFilled(p, ImVec2(p.x + size.x, p.y + size.y), bg, 5.0f);
-    dl->AddRect(p, ImVec2(p.x + size.x, p.y + size.y), border, 5.0f, 0, active ? 1.7f : 1.0f);
+    const ImU32 bg = active ? IM_COL32(11, 95, 215, 230)
+                     : hovered && enabled ? IM_COL32(16, 52, 82, 255)
+                                          : IM_COL32(13, 27, 42, 255);
+    const ImU32 border = active ? IM_COL32(32, 221, 242, 235)
+                                : hovered && enabled ? IM_COL32(19, 140, 255, 190)
+                                                     : IM_COL32(32, 59, 85, 255);
+    const ImU32 fg = enabled ? (active ? IM_COL32(237, 246, 255, 255)
+                                       : hovered ? IM_COL32(237, 246, 255, 255)
+                                                 : IM_COL32(159, 180, 201, 255))
+                             : IM_COL32(95, 112, 128, 170);
+    dl->AddRectFilled(p, ImVec2(p.x + size.x, p.y + size.y), bg, 6.0f);
+    dl->AddRect(p, ImVec2(p.x + size.x, p.y + size.y), border, 6.0f, 0, active ? 1.5f : 1.0f);
     if (icon) icon(dl, ImVec2(p.x + size.x * 0.5f, p.y + 21.0f), 10.0f, fg);
     const ImVec2 ts = ImGui::CalcTextSize(label);
     dl->AddText(ImVec2(p.x + (size.x - ts.x) * 0.5f, p.y + size.y - 19.0f), fg, label);
@@ -4272,7 +4278,7 @@ void DrawShnGrid(EditorState& state) {
         if (state.shnFilterActive || !columnFilterKey.empty()) {
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
-            ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f),"%zu/%zu",
+            ImGui::TextColored(UiTheme::AccentCyan,"%zu/%zu",
                                state.shnVisibleRows.size(),file.rows.size());
             ImGui::TableSetColumnIndex(1);
             ImGui::TextDisabled("%s",L("gefilterte Zeilen","filtered rows"));
@@ -4717,7 +4723,7 @@ void DrawShnSourceList(EditorState& state, EditorState::ShnSource source, const 
 }
 
 void DrawShnMultiProfiles(EditorState& state) {
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "MULTI SHN");
+    ImGui::TextColored(UiTheme::AccentCyan, "MULTI SHN");
     ImGui::SameLine();
     ImGui::TextDisabled("Client / Server vergleichen");
     ImGui::TextWrapped("Die Aufgabe filtert passende Tabellen. Dateien mit gleichem Namen werden "
@@ -5131,9 +5137,9 @@ void DrawShnEditor(EditorState& state) {
         }
     }
     DrawTopNav(state, "Spieldaten");
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(8, 20, 31, 255));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
     ImGui::BeginChild("##shnEditor", ImVec2(0,0), false);
-    ImGui::TextColored(ImVec4(0.40f,0.72f,0.96f,1.0f), "Spieldaten");
+    ImGui::TextColored(UiTheme::AccentCyan, "Spieldaten");
     ImGui::SameLine(); ImGui::TextDisabled("SHN · Quest · Portale · Custom NPC/Mob · Skills · AI · Interface · Drops");
     const std::size_t dataDirtyShn = DirtyShnDocumentCount(state);
     if (dataDirtyShn > 0 || state.questDirty || state.townPortalDirty || state.recallCoordDirty) {
@@ -5379,7 +5385,7 @@ void DrawProjectHub(EditorState& state) {
 void DrawNewProjectConfig(EditorState& state) {
     DrawTopNav(state, "Projekt");
 
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "PROJEKT KONFIGURIEREN");
+    ImGui::TextColored(UiTheme::AccentCyan, "PROJEKT KONFIGURIEREN");
     ImGui::SameLine();
     ImGui::TextDisabled("Client, Server und Arbeitsordner einmal zentral festlegen");
     ImGui::Dummy(ImVec2(0,8));
@@ -5473,7 +5479,7 @@ void AdvanceNifPrecache(EditorState& state, int filesPerFrame);
 void DrawMapEditorLauncher(EditorState& state) {
     DrawTopNav(state, L("Karte","Map"));
 
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "KARTEN");
+    ImGui::TextColored(UiTheme::AccentCyan, "KARTEN");
     ImGui::SameLine();
     ImGui::TextDisabled("Neue Karte anlegen oder vorhandene Fiesta-Karte öffnen");
     ImGui::Dummy(ImVec2(0,6));
@@ -5520,7 +5526,7 @@ void DrawMapEditorLauncher(EditorState& state) {
         const float frac = totalQ == 0 ? 1.0f
             : static_cast<float>(state.nifPrecacheCursor) / static_cast<float>(totalQ);
         ImGui::BeginChild("##assetPreparation", ImVec2(std::min(680.0f, ImGui::GetContentRegionAvail().x), 150.0f), true);
-        ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "ASSET-BIBLIOTHEK");
+        ImGui::TextColored(UiTheme::AccentCyan, "ASSET-BIBLIOTHEK");
         ImGui::TextWrapped("NIF-Vorschaubilder werden einmalig vorbereitet. Danach öffnet sich der Asset Browser ohne Erstlade-Ruckler.");
         ImGui::ProgressBar(frac, ImVec2(-1.0f, 0.0f));
         ImGui::TextDisabled("%zu / %zu Modelle", state.nifPrecacheCursor, totalQ);
@@ -5532,7 +5538,7 @@ void DrawMapEditorLauncher(EditorState& state) {
 
     if (onNewMap) {
         ImGui::BeginChild("##createNewMap", ImVec2(panelW, 0), true);
-        ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "NEUE KARTE");
+        ImGui::TextColored(UiTheme::AccentCyan, "NEUE KARTE");
         ImGui::SameLine();
         ImGui::TextDisabled("Grunddaten festlegen");
         ImGui::Separator();
@@ -5584,7 +5590,7 @@ void DrawMapEditorLauncher(EditorState& state) {
 
     if (onBrowse) {
         ImGui::BeginChild("##browseMaps", ImVec2(panelW, 0), true);
-        ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "KARTE ÖFFNEN");
+        ImGui::TextColored(UiTheme::AccentCyan, "KARTE ÖFFNEN");
         ImGui::SameLine();
         ImGui::TextDisabled("%zu gefunden", state.discoveredMaps.size());
         ImGui::Separator();
@@ -5595,7 +5601,7 @@ void DrawMapEditorLauncher(EditorState& state) {
                 state.screen = AppScreen::NewProjectConfig;
         } else {
             if (!state.recentMaps.empty()) {
-                ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "ZULETZT GEÖFFNET");
+                ImGui::TextColored(UiTheme::AccentCyan, "ZULETZT GEÖFFNET");
                 const std::size_t showCount = std::min<std::size_t>(5, state.recentMaps.size());
                 for (std::size_t i = 0; i < showCount; ++i) {
                     const auto& recent = state.recentMaps[i];
@@ -6234,7 +6240,7 @@ void DrawQuestEditor(EditorState& state) {
                             L(". Text-/Reward-Referenzen wurden bewusst aus der Vorlage übernommen.",
                               ". Text/reward references were intentionally copied from the template.");
     };
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s", L("QUEST EDITOR", "QUEST EDITOR"));
+    ImGui::TextColored(UiTheme::AccentCyan, "%s", L("QUEST EDITOR", "QUEST EDITOR"));
     ImGui::SameLine();
     ImGui::TextDisabled(L("%zu Quests%s", "%zu quests%s"), quests.size(),
                         state.questDialogLoaded ? "" : L(" · QuestDialog fehlt", " · QuestDialog missing"));
@@ -6351,7 +6357,7 @@ void DrawQuestEditor(EditorState& state) {
 
     const float listWidth = std::clamp(ImGui::GetContentRegionAvail().x * 0.30f, 310.0f, 430.0f);
     ImGui::BeginChild("QuestList", ImVec2(listWidth, 0.0f), true);
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s", L("QUESTS", "QUESTS"));
+    ImGui::TextColored(UiTheme::AccentCyan, "%s", L("QUESTS", "QUESTS"));
     ImGui::SameLine();
     ImGui::TextDisabled(L("%zu sichtbar", "%zu visible"), state.questVisible.size());
     ImGui::Separator();
@@ -6370,7 +6376,7 @@ void DrawQuestEditor(EditorState& state) {
     ImGui::EndChild();
     ImGui::SameLine();
     ImGui::BeginChild("QuestDetail", ImVec2(0.0f, 0.0f), true);
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s", L("EIGENSCHAFTEN", "PROPERTIES"));
+    ImGui::TextColored(UiTheme::AccentCyan, "%s", L("EIGENSCHAFTEN", "PROPERTIES"));
     ImGui::Separator();
     if (state.selectedQuestIdx < 0 || static_cast<std::size_t>(state.selectedQuestIdx) >= quests.size()) {
         ImGui::TextDisabled("%s", L("Quest links auswählen.", "Choose a quest on the left."));
@@ -6761,7 +6767,7 @@ void DrawPortalEditor(EditorState& state) {
     EnsureTownPortalLoaded(state);
     EnsureRecallCoordLoaded(state);
 
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "PORTAL-DATEN");
+    ImGui::TextColored(UiTheme::AccentCyan, "PORTAL-DATEN");
     ImGui::SameLine();
     ImGui::TextDisabled("Client- und Server-Ziele");
     ImGui::SeparatorText("TownPortal · Skill/Menü");
@@ -7267,7 +7273,7 @@ void DrawPortalsToolsPanel(EditorState& state) {
         const char* kindText = m.kind == kPortalKindTown ? L("TownPortal · auswählbares Ziel","TownPortal · selectable target")
                              : m.kind == kPortalKindRecall ? L("RecallCoord · festes Schriftrollen-Ziel","RecallCoord · fixed scroll target")
                              : L("World/NPC.txt · ausgehende Gate-Verknüpfung","World/NPC.txt · outbound gate link");
-        ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s", m.label.c_str());
+        ImGui::TextColored(UiTheme::AccentCyan, "%s", m.label.c_str());
         ImGui::TextDisabled("%s",kindText);
         ImGui::SeparatorText(m.kind == kPortalKindGateLink ? L("Ausgangspunkt","Origin") : "Position");
         int x = static_cast<int>(m.x), y = static_cast<int>(m.y);
@@ -7701,7 +7707,7 @@ void DrawAiScriptEditorPopup(EditorState& state) {
 void DrawAiWorkspace(EditorState& state) {
     ScanAiWorkspace(state);
 
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f),"%s",L("AI WORKSPACE","AI WORKSPACE"));
+    ImGui::TextColored(UiTheme::AccentCyan,"%s",L("AI WORKSPACE","AI WORKSPACE"));
     ImGui::SameLine();
     ImGui::TextDisabled(L("%zu Skripte · Lua + PineScript","%zu scripts · Lua + PineScript"),
                         state.aiWorkspaceFiles.size());
@@ -8877,7 +8883,7 @@ static void UpdateAvatarPreview(EditorState& state) {
 void DrawCreatureWizardPreview(EditorState& state) {
     auto& w = state.wiz;
     ImGui::BeginChild("##creatureWizardPreview", ImVec2(0,0), true);
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s", L("VORSCHAU", "PREVIEW"));
+    ImGui::TextColored(UiTheme::AccentCyan, "%s", L("VORSCHAU", "PREVIEW"));
     ImGui::SameLine();
     ImGui::TextDisabled("%s", w.isNpc ? "NPC" : L("Monster", "Monster"));
     ImGui::Separator();
@@ -8973,7 +8979,7 @@ void DrawCreatureWizardPreview(EditorState& state) {
 void DrawCustomCreatureEditor(EditorState& state) {
     auto& w = state.wiz;
     EnsureItemLookup(state);
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "CUSTOM NPC / MOB");
+    ImGui::TextColored(UiTheme::AccentCyan, "CUSTOM NPC / MOB");
     ImGui::SameLine();
     ImGui::TextDisabled("%s", L("Vorlage klonen · Werte anpassen · Aussehen wählen · optional platzieren", "Clone template · adjust values · choose appearance · optionally place"));
     ImGui::Separator();
@@ -9679,7 +9685,7 @@ void DrawSkillEditor(EditorState& state) {
     const bool de = app::CurrentLanguage() == app::Language::German;
     const ImVec4 dim(0.60f, 0.66f, 0.74f, 1.0f);
     const SkillDocs d = ResolveSkillDocs(state);
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s", L("SKILL EDITOR", "SKILL EDITOR"));
+    ImGui::TextColored(UiTheme::AccentCyan, "%s", L("SKILL EDITOR", "SKILL EDITOR"));
     ImGui::SameLine();
     ImGui::TextDisabled("%s", L("Client + Server synchron bearbeiten", "Edit client + server in sync"));
     const std::size_t dirtySkillDocs = DirtyShnDocumentCount(state);
@@ -9796,7 +9802,7 @@ void DrawSkillEditor(EditorState& state) {
     }
     const float skillListW = std::clamp(ImGui::GetContentRegionAvail().x * 0.29f, 320.0f, 430.0f);
     ImGui::BeginChild("##skilllist", ImVec2(skillListW, 0.0f), true);
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s", L("SKILLS", "SKILLS"));
+    ImGui::TextColored(UiTheme::AccentCyan, "%s", L("SKILLS", "SKILLS"));
     ImGui::SameLine();
     ImGui::TextDisabled("%zu / %zu · %s: %zu", ed.visible.size(), asf.rows.size(),
                         L("Sync-Probleme","Sync issues"), ed.syncIssues.size());
@@ -9874,7 +9880,7 @@ void DrawSkillEditor(EditorState& state) {
     ImGui::EndChild();
     ImGui::SameLine();
     ImGui::BeginChild("##skilldetail", ImVec2(0.0f, 0.0f), true);
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s", L("EIGENSCHAFTEN", "PROPERTIES"));
+    ImGui::TextColored(UiTheme::AccentCyan, "%s", L("EIGENSCHAFTEN", "PROPERTIES"));
     ImGui::Separator();
     const long long sel = ed.selectedId;
     const long long selRow = sel >= 0 ? SkillRowIn(state, d.skillC, sel) : -1;
@@ -10914,7 +10920,7 @@ void DrawToolsContent(EditorState& state) {
                     auto& rec = table->records[static_cast<std::size_t>(state.selectedNpcRecordIdx)];
                     if (rec.values.size() >= 8) {
                         ImGui::Separator();
-                        ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f),"%s",rec.values[0].c_str());
+                        ImGui::TextColored(UiTheme::AccentCyan,"%s",rec.values[0].c_str());
                         ImGui::SeparatorText("Transform");
                         int x = std::atoi(rec.values[2].c_str());
                         int y = std::atoi(rec.values[3].c_str());
@@ -11085,7 +11091,7 @@ void DrawToolsContent(EditorState& state) {
                         auto& zone = zoneTable->records[static_cast<std::size_t>(state.selectedMobZoneIdx)];
                         if (zone.values.size() >= 7) {
                             ImGui::SeparatorText("Zone");
-                            ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f),"Zone: %s",zone.values[0].c_str());
+                            ImGui::TextColored(UiTheme::AccentCyan,"Zone: %s",zone.values[0].c_str());
                             ImGui::TextDisabled("%s",L("Position, Ausdehnung, Spawn-Radius und weitere Zonenwerte.","Position, extent, spawn radius and other zone values."));
                             DrawShineRecordFields(zone.values, zoneTable->columns, 1);
                             if (spawnTable) {
@@ -12997,7 +13003,7 @@ void DrawWorkspaceTabBar(EditorState& state) {
 
 
 void DrawSceneOutlinerPanel(EditorState& state) {
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), L("SZENE","SCENE"));
+    ImGui::TextColored(UiTheme::AccentCyan, L("SZENE","SCENE"));
     ImGui::SameLine();
 
     const char* context = L("Objekte","Objects");
@@ -13690,7 +13696,7 @@ void DrawSceneOutlinerPanel(EditorState& state) {
 }
 
 void DrawLayerManagerPanel(EditorState& state) {
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "LAYER");
+    ImGui::TextColored(UiTheme::AccentCyan, "LAYER");
     ImGui::SameLine();
     ImGui::TextDisabled("%zu / %d", state.textureStack.LayerCount(), app::HeightmapRenderer::kMaxTextureLayers);
     ImGui::Separator();
@@ -14013,7 +14019,7 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
     if (state.nifInspectorAsset.empty()) return;
 
     ImGui::Separator();
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "NIF / MATERIAL");
+    ImGui::TextColored(UiTheme::AccentCyan, "NIF / MATERIAL");
     ImGui::SameLine();
     ImGui::TextDisabled("%s",L("nur lesen","read-only"));
     ImGui::SameLine();
@@ -14401,7 +14407,7 @@ bool EditDropTableValue(const char* id, std::string& value, float width = 0.0f) 
 
 void DrawDropTableEditor(EditorState& state) {
     EnsureDropTableLoaded(state);
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "DROP TABLE / ITEMGROUP");
+    ImGui::TextColored(UiTheme::AccentCyan, "DROP TABLE / ITEMGROUP");
     ImGui::SameLine();
     ImGui::TextDisabled(state.dropTableDirty ? L("geändert *","modified *") : L("290-Spalten-Schema","290-column schema"));
     ImGui::SameLine();
@@ -15048,7 +15054,7 @@ void DrawInterfaceWorkspace(EditorState& state) {
             state.interfaceRoot = found->string();
     }
 
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "INTERFACE / RESMENU");
+    ImGui::TextColored(UiTheme::AccentCyan, "INTERFACE / RESMENU");
     ImGui::SameLine();
     ImGui::TextDisabled("%s",L("Originale nur lesen · Projekt-Overrides aktiv",
                                "sources read-only · project overrides enabled"));
@@ -15375,7 +15381,7 @@ void DrawWorkspaceAssetBrowser(EditorState& state) {
         }
     }
 
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "ASSET BROWSER");
+    ImGui::TextColored(UiTheme::AccentCyan, "ASSET BROWSER");
     ImGui::SameLine();
     ImGui::TextDisabled(objectMode ? L("NIF Modelle","NIF models") : textureMode ? L("Texturen","Textures") : L("kontextsensitiv","context-sensitive"));
     ImGui::Separator();
@@ -15553,9 +15559,9 @@ void DrawMapEditorWorkspace(EditorState& state) {
         return L("Werkzeug","Tool");
     };
 
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(7, 18, 28, 255));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
     ImGui::Begin("Navigator##mapNavigator");
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s",L("KARTE","MAP"));
+    ImGui::TextColored(UiTheme::AccentCyan, "%s",L("KARTE","MAP"));
     ImGui::Separator();
     ImGui::Text("%s", state.legacySaveStem[0] ? state.legacySaveStem : L("(keine Karte)","(no map)"));
     if (state.legacySaveDir[0]) ImGui::TextDisabled("%s", state.legacySaveDir);
@@ -15567,7 +15573,7 @@ void DrawMapEditorWorkspace(EditorState& state) {
     ImGui::TextDisabled("%s",L("Objekte","Objects"));
     ImGui::Text("%zu", state.placementSet.Count() + state.shmdCategoryRenderSet.Count());
     ImGui::Separator();
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s",L("AKTIVES WERKZEUG","ACTIVE TOOL"));
+    ImGui::TextColored(UiTheme::AccentCyan, "%s",L("AKTIVES WERKZEUG","ACTIVE TOOL"));
     ImGui::TextWrapped("%s", modeName());
     ImGui::Dummy(ImVec2(0,6));
     if (UI::Button(L("Karte wechseln","Change map"), ImVec2(-1,0))) state.screen = AppScreen::MapEditorLauncher;
@@ -15587,21 +15593,21 @@ void DrawMapEditorWorkspace(EditorState& state) {
     ImGui::End();
     ImGui::PopStyleColor();
 
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(7, 18, 28, 255));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
     ImGui::Begin("Szene##sceneOutliner");
     DrawSceneOutlinerPanel(state);
     ImGui::End();
     ImGui::PopStyleColor();
 
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(7, 18, 28, 255));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
     ImGui::Begin("Layer##layerManager");
     DrawLayerManagerPanel(state);
     ImGui::End();
     ImGui::PopStyleColor();
 
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(7, 18, 28, 255));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
     ImGui::Begin("Sichtbarkeit##visibilityPanel");
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s",L("SICHTBARKEIT","VISIBILITY"));
+    ImGui::TextColored(UiTheme::AccentCyan, "%s",L("SICHTBARKEIT","VISIBILITY"));
     ImGui::Separator();
     DrawVisibilityPanel(state);
     ImGui::SeparatorText(L("Ansicht","View"));
@@ -15615,9 +15621,9 @@ void DrawMapEditorWorkspace(EditorState& state) {
     ImGui::End();
     ImGui::PopStyleColor();
 
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(8, 20, 31, 255));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
     ImGui::Begin("Eigenschaften##fileToolsCol");
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s",L("EIGENSCHAFTEN","PROPERTIES"));
+    ImGui::TextColored(UiTheme::AccentCyan, "%s",L("EIGENSCHAFTEN","PROPERTIES"));
     ImGui::SameLine(); ImGui::TextDisabled("%s", modeName());
     ImGui::Separator();
     DrawToolsContent(state);
@@ -15649,24 +15655,24 @@ void DrawMapEditorWorkspace(EditorState& state) {
     ImGui::End();
     ImGui::PopStyleColor();
 
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(7, 17, 27, 255));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
     ImGui::Begin("3D-Ansicht##view3d");
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s",L("3D ANSICHT","3D VIEW"));
+    ImGui::TextColored(UiTheme::AccentCyan, "%s",L("3D ANSICHT","3D VIEW"));
     ImGui::SameLine(); ImGui::TextDisabled("%s", modeName());
     ImGui::Separator();
     DrawPreview3DContent(state);
     ImGui::End();
     ImGui::PopStyleColor();
 
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(7, 17, 27, 255));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
     ImGui::Begin("Asset Browser##assetBrowser");
     DrawWorkspaceAssetBrowser(state);
     ImGui::End();
     ImGui::PopStyleColor();
 
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(7, 17, 27, 255));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
     ImGui::Begin("2D-Ansicht##view2d");
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s",L("2D DRAUFSICHT","2D TOP VIEW"));
+    ImGui::TextColored(UiTheme::AccentCyan, "%s",L("2D DRAUFSICHT","2D TOP VIEW"));
     ImGui::SameLine(); ImGui::TextDisabled("%s",L("Nord oben","North up"));
     ImGui::Separator();
     DrawEditor2DContent(state);
@@ -15785,9 +15791,9 @@ int main() {
             case AppScreen::ShnEditor: DrawShnEditor(state); break;
             case AppScreen::KfmBrowser:
                 DrawTopNav(state, "Animationen");
-                ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(8, 20, 31, 255));
+                ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
                 ImGui::BeginChild("##kfmWorkspace", ImVec2(0,0), false);
-                ImGui::TextColored(ImVec4(0.40f,0.72f,0.96f,1.0f), "Animationen / KFM");
+                ImGui::TextColored(UiTheme::AccentCyan, "Animationen / KFM");
                 ImGui::SameLine();
                 ImGui::TextDisabled("Katalog · Übergänge · Dateiverweise · Kopie-Export");
                 ImGui::Separator();
