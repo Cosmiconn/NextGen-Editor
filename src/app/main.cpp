@@ -12315,10 +12315,6 @@ void DrawSceneOutlinerPanel(EditorState& state) {
         return;
     }
 
-    if (state.editMode == EditMode::Mobs) {        ImGui::EndChild();
-        return;
-    }
-
     if (state.editMode == EditMode::Mobs) {
         EnsureMobRegenLoaded(state);
         if (!state.mobRegenTextLoaded || state.legacySaveStem[0] == '\0') {
@@ -12484,10 +12480,6 @@ void DrawSceneOutlinerPanel(EditorState& state) {
         }
         if (mobEntries.empty()) ImGui::TextDisabled("Keine passenden Spawn-Zonen.");
         ImGui::EndChild();
-        return;
-    }
-
-    if (state.editMode == EditMode::Portals) {        ImGui::EndChild();
         return;
     }
 
