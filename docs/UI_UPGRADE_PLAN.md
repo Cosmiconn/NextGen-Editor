@@ -269,7 +269,7 @@ Bereits umgesetzt:
 - Mehrfachauswahl transformiert um einen gemeinsamen Pivot; Lock wird respektiert.
 - vollständige XYZ-Rotation auch numerisch im Eigenschaften-Inspector.
 - Auswahl fokussieren und Auswahl auf Terrain setzen.
-- 3D-Picking für sichtbare, entsperrte Objekte.
+- 3D-Picking für sichtbare, entsperrte Objekte; geladene NIFs werden exakt gegen ihre Dreiecksgeometrie geraycastet.
 - Rechteckauswahl in 2D mit Shift; Strg+Shift erweitert die bestehende Auswahl.
 - Lasso-Auswahl in 2D mit Alt+Shift; Strg+Alt+Shift erweitert die bestehende Auswahl.
 - freie Editor-Labels und einklappbare Editor-Gruppen/Ordner im Szene-Outliner; Metadaten folgen Löschen, Duplizieren, Copy/Paste und SHMD-Promotion.
@@ -292,7 +292,7 @@ Bereits umgesetzt:
 
 Noch offen innerhalb von Priorität 1/2:
 - freie Editor-Labels sowie einklappbare Gruppen/Ordner im Objekt-Outliner (reine Editor-Metadaten).
-- optional echtes Geometrie-Ray-Picking statt des derzeitigen projizierten Objektursprungs.
+- echtes Geometrie-Ray-Picking für geladene NIF-Dreiecke ist umgesetzt; nur nicht ladbare NIFs verwenden noch den projizierten Marker-Fallback.
 - noch tiefere NPC-/Mob-Rollenicons; Route/Roam-Overlays sind inzwischen für Auswahl oder gesamten Kartenkontext verfügbar.
 - belastbare Zielkarten-Verknüpfung ist für NPC-Gates belegt und umgesetzt (`RoleArg0 -> LinkTable.argument`); TownPortal/RecallCoord bleiben korrekt als Ziel-/Ankunftsdaten behandelt und werden nicht fälschlich als Outbound-Link interpretiert.
 
