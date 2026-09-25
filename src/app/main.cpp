@@ -9601,7 +9601,7 @@ static void DrawVisibilityPanel(EditorState& state) {
 
     UI::Checkbox("NPC-Modelle (3D)", &state.showNpcModels);
     UI::Checkbox("NPC-Namen und Blickpfeile (3D, NPC-Modus)", &state.showNpcLabels);
-    UI::Checkbox("Patrouillen-/Roam-Routen (3D, Auswahl)", &state.showRoamRoutes);
+    UI::Checkbox("Patrouillen-/Roam-Routen (2D/3D, Auswahl)", &state.showRoamRoutes);
     if (state.npcModelsMissing > 0) {
         ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.35f, 1.0f), "%d NPC(s) ohne Modell (Platzhalter fehlen):", state.npcModelsMissing);
         for (const auto& n : state.npcModelsMissingNames) ImGui::BulletText("%s", n.c_str());
@@ -9739,6 +9739,11 @@ void DrawObjectFootprint2D(EditorState& state, const core::PlacedObject& obj, Im
     drawList->AddPolyline(screenCorners.data(), static_cast<int>(screenCorners.size()), color, ImDrawFlags_Closed, thickness);
 }
 
+void RefreshRoamOverlayRoutes(EditorState& state);
+void DrawRoamRoutes2D(EditorState& state, ImDrawList* drawList,
+                      const ImVec2& mapOrigin, const ImVec2& mapSize,
+                      float spanX, float spanZ);
+
 static std::vector<std::pair<float, float>> ObjectFootprintWorldPolygon(EditorState& state, const core::PlacedObject& obj) {
     const auto& fp = GetOrComputeFootprint(state, obj.modelPath);
     if (!fp.valid) return {};
@@ -9873,6 +9878,8 @@ void DrawEditor2DContent(EditorState& state) {
     // Alles Folgende (Marker, Fussabdruecke, Pinsel) wird auf den Viewport beschnitten.
     ImGui::GetWindowDrawList()->PushClipRect(viewMin, ImVec2(viewMin.x + viewSize.x, viewMin.y + viewSize.y), true);
     struct ClipPop { ~ClipPop() { ImGui::GetWindowDrawList()->PopClipRect(); } } clipPop;
+
+    DrawRoamRoutes2D(state, ImGui::GetWindowDrawList(), cursorScreenPos, imageSize, spanX, spanZ);
 
     if (hoveredView && (state.editMode==EditMode::Heightmap || texMode || walkMode)) {
         const float radius=ActiveWorldBrushRadius(state);
@@ -10469,6 +10476,75 @@ void RefreshRoamOverlayRoutes(EditorState& state) {
     for (const auto& name : names) {
         if (auto route = LoadRoamOverlayRoute(state, name))
             state.roamOverlayRoutes.push_back(std::move(*route));
+    }
+}
+
+void DrawRoamRoutes2D(EditorState& state, ImDrawList* drawList,
+                      const ImVec2& mapOrigin, const ImVec2& mapSize,
+                      float spanX, float spanZ) {
+    if (!drawList || !state.showRoamRoutes ||
+        (state.editMode != EditMode::Npcs && state.editMode != EditMode::Mobs) ||
+        spanX <= 0.0f || spanZ <= 0.0f)
+        return;
+
+    RefreshRoamOverlayRoutes(state);
+    if (state.roamOverlayRoutes.empty()) return;
+
+    static const ImU32 kRouteColors[] = {
+        IM_COL32(80, 220, 255, 235),
+        IM_COL32(255, 190, 80, 235),
+        IM_COL32(170, 120, 255, 235),
+        IM_COL32(90, 235, 150, 235),
+    };
+
+    auto toScreen = [&](float x, float z) {
+        const float u = x / spanX;
+        const float v = 1.0f - z / spanZ;
+        return ImVec2(mapOrigin.x + u * mapSize.x,
+                      mapOrigin.y + v * mapSize.y);
+    };
+
+    for (std::size_t ri = 0; ri < state.roamOverlayRoutes.size(); ++ri) {
+        const auto& route = state.roamOverlayRoutes[ri];
+        const ImU32 col = kRouteColors[ri % std::size(kRouteColors)];
+        std::vector<ImVec2> points;
+        points.reserve(route.points.size() + (route.returnsToStart ? 1u : 0u));
+        for (const auto& [x,z] : route.points) points.push_back(toScreen(x,z));
+        if (route.returnsToStart && points.size() > 1) points.push_back(points.front());
+
+        if (points.size() >= 2)
+            drawList->AddPolyline(points.data(), static_cast<int>(points.size()),
+                                  col, ImDrawFlags_None, 2.0f);
+
+        const std::size_t realCount = route.points.size();
+        for (std::size_t pi = 0; pi < realCount; ++pi) {
+            const float radius = pi == 0 ? 4.5f : 3.0f;
+            drawList->AddCircleFilled(points[pi], radius, col);
+            if (pi + 1 < realCount) {
+                const ImVec2 a = points[pi], b = points[pi + 1];
+                const float dx = b.x - a.x, dy = b.y - a.y;
+                const float len = std::sqrt(dx*dx + dy*dy);
+                if (len > 16.0f) {
+                    const float ux = dx / len, uy = dy / len;
+                    const ImVec2 mid(a.x + dx * 0.5f, a.y + dy * 0.5f);
+                    const ImVec2 tip(mid.x + ux * 5.0f, mid.y + uy * 5.0f);
+                    const ImVec2 left(mid.x - ux * 4.0f - uy * 3.0f,
+                                      mid.y - uy * 4.0f + ux * 3.0f);
+                    const ImVec2 right(mid.x - ux * 4.0f + uy * 3.0f,
+                                       mid.y - uy * 4.0f - ux * 3.0f);
+                    drawList->AddTriangleFilled(tip, left, right, col);
+                }
+            }
+        }
+
+        if (!points.empty()) {
+            const ImVec2 p(points.front().x + 7.0f, points.front().y - 10.0f);
+            const ImVec2 ts = ImGui::CalcTextSize(route.name.c_str());
+            drawList->AddRectFilled(ImVec2(p.x-3.0f,p.y-2.0f),
+                                    ImVec2(p.x+ts.x+3.0f,p.y+ts.y+2.0f),
+                                    IM_COL32(10,16,24,190),3.0f);
+            drawList->AddText(p,col,route.name.c_str());
+        }
     }
 }
 
