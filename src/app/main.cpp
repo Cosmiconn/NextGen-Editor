@@ -320,6 +320,8 @@ struct EditorState {
     bool objectDragActive = false;
     bool objectBoxSelectActive = false;
     ImVec2 objectBoxSelectStart{};
+    bool objectLassoSelectActive = false;
+    std::vector<ImVec2> objectLassoPoints;
     char selectedObjectModelPath[512] = "";
     int selectedObjectModelPathFor = -1;
     bool selectedObjectModelPathDirty = false;
@@ -8953,15 +8955,60 @@ void DrawEditor2DContent(EditorState& state) {
     const bool hovered = hoveredView;
     if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) state.objectDragActive = false;
 
-    // Shift + Ziehen = Rechteckauswahl. Strg+Shift fügt zur bestehenden Auswahl hinzu.
+    // Shift + Ziehen = Rechteckauswahl. Alt+Shift + Ziehen = Lasso.
+    // Strg erweitert jeweils die bestehende Auswahl.
     bool suppressObjectClickForBox = false;
     if (objectMode && !state.objectPlaceMode) {
         const ImGuiIO& ioBox=ImGui::GetIO();
         if (hovered && ioBox.KeyShift && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-            state.objectBoxSelectActive=true;
-            state.objectBoxSelectStart=ImGui::GetMousePos();
             state.objectDragActive=false;
+            if (ioBox.KeyAlt) {
+                state.objectLassoSelectActive=true;
+                state.objectBoxSelectActive=false;
+                state.objectLassoPoints.clear();
+                state.objectLassoPoints.push_back(ImGui::GetMousePos());
+            } else {
+                state.objectBoxSelectActive=true;
+                state.objectLassoSelectActive=false;
+                state.objectLassoPoints.clear();
+                state.objectBoxSelectStart=ImGui::GetMousePos();
+            }
         }
+
+        auto applyAreaSelection = [&](const auto& inside, const char* kind) {
+            std::vector<int> hits;
+            RefreshObjectVisibility(state);
+            for(std::size_t i=0;i<state.placementSet.Count();++i) {
+                if(IsObjectHidden(state,i)||IsObjectEditorLocked(state,static_cast<int>(i))) continue;
+                const auto& obj=state.placementSet.At(i);
+                const float ou=spanX>0.0f?obj.posX/spanX:0.0f;
+                const float ov=1.0f-(spanZ>0.0f?obj.posZ/spanZ:0.0f);
+                const ImVec2 p(cursorScreenPos.x+ou*imageSize.x,cursorScreenPos.y+ov*imageSize.y);
+                if(inside(p)) hits.push_back(static_cast<int>(i));
+            }
+            RefreshShmdCategoryVisibility(state);
+            for(std::size_t i=0;i<state.shmdCategoryRenderSet.Count();++i) {
+                if(i<state.shmdCategoryHidden.size()&&state.shmdCategoryHidden[i]) continue;
+                if(IsObjectEditorLocked(state,ShmdSelectionId(i))) continue;
+                const auto poly=ObjectFootprintWorldPolygon(state,state.shmdCategoryRenderSet.At(i));
+                if(poly.empty()) continue;
+                float cx=0.0f,cz=0.0f;
+                for(const auto& p:poly){cx+=p.first;cz+=p.second;}
+                cx/=static_cast<float>(poly.size());cz/=static_cast<float>(poly.size());
+                const ImVec2 p(cursorScreenPos.x+(cx/spanX)*imageSize.x,
+                               cursorScreenPos.y+(1.0f-cz/spanZ)*imageSize.y);
+                if(inside(p)) hits.push_back(ShmdSelectionId(i));
+            }
+            if(!ioBox.KeyCtrl) state.selectedObjects.clear();
+            for(const int id:hits)
+                if(std::find(state.selectedObjects.begin(),state.selectedObjects.end(),id)==state.selectedObjects.end())
+                    state.selectedObjects.push_back(id);
+            state.selectedObject=state.selectedObjects.empty()?kNoObjectSelection:state.selectedObjects.back();
+            state.selectedObjectModelPathFor=kNoObjectSelection;
+            state.objectGizmoMatrixValid=false;
+            state.statusMessage=std::to_string(hits.size())+" Objekt(e) per "+kind+" ausgewählt.";
+        };
+
         if (state.objectBoxSelectActive) {
             suppressObjectClickForBox=true;
             const ImVec2 cur=ImGui::GetMousePos();
@@ -8972,38 +9019,54 @@ void DrawEditor2DContent(EditorState& state) {
             dl->AddRect(lo,hi,IM_COL32(80,190,255,235),0.0f,0,1.5f);
 
             if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-                std::vector<int> hits;
-                RefreshObjectVisibility(state);
-                auto inside=[&](const ImVec2& p){return p.x>=lo.x&&p.x<=hi.x&&p.y>=lo.y&&p.y<=hi.y;};
-                for(std::size_t i=0;i<state.placementSet.Count();++i) {
-                    if(IsObjectHidden(state,i)||IsObjectEditorLocked(state,static_cast<int>(i))) continue;
-                    const auto& obj=state.placementSet.At(i);
-                    const float ou=spanX>0.0f?obj.posX/spanX:0.0f;
-                    const float ov=1.0f-(spanZ>0.0f?obj.posZ/spanZ:0.0f);
-                    const ImVec2 p(cursorScreenPos.x+ou*imageSize.x,cursorScreenPos.y+ov*imageSize.y);
-                    if(inside(p)) hits.push_back(static_cast<int>(i));
-                }
-                RefreshShmdCategoryVisibility(state);
-                for(std::size_t i=0;i<state.shmdCategoryRenderSet.Count();++i) {
-                    if(i<state.shmdCategoryHidden.size()&&state.shmdCategoryHidden[i]) continue;
-                    const auto poly=ObjectFootprintWorldPolygon(state,state.shmdCategoryRenderSet.At(i));
-                    if(poly.empty()) continue;
-                    float cx=0.0f,cz=0.0f;
-                    for(const auto& p:poly){cx+=p.first;cz+=p.second;}
-                    cx/=static_cast<float>(poly.size());cz/=static_cast<float>(poly.size());
-                    const ImVec2 p(cursorScreenPos.x+(cx/spanX)*imageSize.x,
-                                   cursorScreenPos.y+(1.0f-cz/spanZ)*imageSize.y);
-                    if(inside(p)) hits.push_back(ShmdSelectionId(i));
-                }
-                if(!ioBox.KeyCtrl) state.selectedObjects.clear();
-                for(const int id:hits)
-                    if(std::find(state.selectedObjects.begin(),state.selectedObjects.end(),id)==state.selectedObjects.end())
-                        state.selectedObjects.push_back(id);
-                state.selectedObject=state.selectedObjects.empty()?kNoObjectSelection:state.selectedObjects.back();
-                state.selectedObjectModelPathFor=kNoObjectSelection;
-                state.objectGizmoMatrixValid=false;
+                applyAreaSelection([&](const ImVec2& p){
+                    return p.x>=lo.x&&p.x<=hi.x&&p.y>=lo.y&&p.y<=hi.y;
+                },"Rechteck");
                 state.objectBoxSelectActive=false;
-                state.statusMessage=std::to_string(hits.size())+" Objekt(e) im Rechteck ausgewählt.";
+            }
+        }
+
+        if (state.objectLassoSelectActive) {
+            suppressObjectClickForBox=true;
+            const ImVec2 cur=ImGui::GetMousePos();
+            if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+                if (state.objectLassoPoints.empty()) {
+                    state.objectLassoPoints.push_back(cur);
+                } else {
+                    const ImVec2 last=state.objectLassoPoints.back();
+                    const float dx=cur.x-last.x, dy=cur.y-last.y;
+                    if (dx*dx+dy*dy>=25.0f) state.objectLassoPoints.push_back(cur);
+                }
+            }
+
+            ImDrawList* dl=ImGui::GetWindowDrawList();
+            if (state.objectLassoPoints.size()>=2)
+                dl->AddPolyline(state.objectLassoPoints.data(),static_cast<int>(state.objectLassoPoints.size()),
+                                IM_COL32(80,210,255,245),ImDrawFlags_None,2.0f);
+            if (!state.objectLassoPoints.empty())
+                dl->AddLine(state.objectLassoPoints.back(),cur,IM_COL32(80,210,255,180),1.4f);
+
+            if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+                if (state.objectLassoPoints.size()>=3) {
+                    const auto points=state.objectLassoPoints;
+                    auto inside=[&](const ImVec2& p) {
+                        bool result=false;
+                        std::size_t j=points.size()-1;
+                        for(std::size_t i=0;i<points.size();j=i++) {
+                            const ImVec2& a=points[i];
+                            const ImVec2& b=points[j];
+                            const bool crosses=((a.y>p.y)!=(b.y>p.y)) &&
+                                (p.x < (b.x-a.x)*(p.y-a.y)/(b.y-a.y)+a.x);
+                            if(crosses) result=!result;
+                        }
+                        return result;
+                    };
+                    applyAreaSelection(inside,"Lasso");
+                } else {
+                    state.statusMessage="Lasso verworfen: zu wenige Punkte.";
+                }
+                state.objectLassoSelectActive=false;
+                state.objectLassoPoints.clear();
             }
         }
     }
