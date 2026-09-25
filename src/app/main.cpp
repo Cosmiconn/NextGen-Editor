@@ -9137,7 +9137,18 @@ static bool SkillCellWrite(EditorState& state, const SkillDocs& d, skilled::Doc 
         const long long row = SkillRowIn(state, di, skillId);
         if (row < 0) continue;
         auto& doc = state.shnFiles[static_cast<std::size_t>(di)];
-        if (SetShnCellText(doc.file, static_cast<std::size_t>(row), col, text)) { doc.dirty = true; any = true; }
+        const int column = ShnColumnIndexByName(doc.file,col);
+        if (column < 0) continue;
+        const std::size_t r = static_cast<std::size_t>(row);
+        const std::size_t ci = static_cast<std::size_t>(column);
+        if (r >= doc.file.rows.size() || ci >= doc.file.rows[r].values.size()) continue;
+        if (core::legacy::ShnValueToString(doc.file.rows[r].values[ci]) == text) continue;
+        if (SetShnCellText(doc.file,r,col,text)) {
+            doc.dirty = true;
+            EnsureCellStatusSize(doc);
+            doc.cellDirty[r][ci] = 1;
+            any = true;
+        }
     }
     if (any) ++state.shnEditCounter;
     return any;
