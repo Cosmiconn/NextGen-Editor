@@ -3748,6 +3748,20 @@ void ClearShnDirtyCells(EditorState::ShnDocument& doc) {
     for (auto& row : doc.cellDirty) std::fill(row.begin(), row.end(), 0);
 }
 
+bool SaveShnDocument(EditorState& state,int document) {
+    if (document < 0 || document >= static_cast<int>(state.shnFiles.size())) return false;
+    auto& doc=state.shnFiles[static_cast<std::size_t>(document)];
+    auto result=core::legacy::SaveShnFile(doc.file,doc.file.path);
+    if (result) {
+        doc.dirty=false;
+        ClearShnDirtyCells(doc);
+        state.shnStatus=std::string(ShnSourceName(doc.source))+" gespeichert: "+doc.file.FileName();
+        return true;
+    }
+    state.shnStatus="Speichern fehlgeschlagen: "+result.error();
+    return false;
+}
+
 std::pair<std::size_t,std::size_t> SaveAllDirtyShnDocuments(EditorState& state) {
     std::size_t saved = 0, failed = 0;
     for (auto& doc : state.shnFiles) {
@@ -4011,14 +4025,22 @@ void DrawShnGrid(EditorState& state) {
     ImGui::SameLine();
     ImGui::Text("%s", file.FileName().c_str());
     if (doc.dirty) {
+        std::size_t dirtyCells=0;
+        for (const auto& row:doc.cellDirty)
+            dirtyCells+=static_cast<std::size_t>(std::count_if(row.begin(),row.end(),[](std::uint8_t v){return v!=0;}));
         ImGui::SameLine();
-        ImGui::TextColored(ImVec4(0.20f,0.75f,1.0f,1.0f), "● GEÄNDERT");
+        ImGui::TextColored(ImVec4(1.0f,0.68f,0.25f,1.0f),
+                           L("● geändert · %zu Zellen","● modified · %zu cells"),dirtyCells);
     }
     ImGui::SameLine();
     ImGui::TextDisabled("%zu Zeilen · %zu Spalten · V%u · %s",
                         file.rows.size(), file.columns.size(), file.version,
                         file.encrypted ? "verschlüsselt" : "raw");
 
+    ImGui::BeginDisabled(!doc.dirty);
+    if (UI::Button(L("Speichern##shnGrid","Save##shnGrid"))) SaveShnDocument(state,state.shnSelectedFile);
+    ImGui::EndDisabled();
+    ImGui::SameLine();
     if (UI::Button("+ Neue Zeile")) AddRowWithPropagation(state, state.shnSelectedFile);
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Legt eine neue Zeile an und propagiert sie – soweit erkannt – in geladene Familienmitglieder.");
@@ -4062,6 +4084,7 @@ void DrawShnGrid(EditorState& state) {
 
     if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && !ImGui::GetIO().WantTextInput) {
         const bool ctrl = ImGui::GetIO().KeyCtrl;
+        if (ShortcutPressed(state.shortcutSave) && doc.dirty) SaveShnDocument(state,state.shnSelectedFile);
         if (ctrl && ImGui::IsKeyPressed(ImGuiKey_C, false)) CopySelectedShnCell(state);
         if (ctrl && ImGui::IsKeyPressed(ImGuiKey_V, false)) PasteSelectedShnCell(state);
         if (ctrl && ImGui::IsKeyPressed(ImGuiKey_Z, false)) UndoShnCellEdit(state);
@@ -4537,6 +4560,7 @@ void AddRowWithPropagation(EditorState& state, int docIndex) {
     srcDoc.dirty = true;
     EnsureCellStatusSize(srcDoc);
     const std::size_t newRowIdx = srcDoc.file.rows.size() - 1;
+    std::fill(srcDoc.cellDirty.back().begin(),srcDoc.cellDirty.back().end(),1);
     if (idCol >= 0 && newId >= 0) srcDoc.cellStatus.back()[static_cast<std::size_t>(idCol)] = kShnCellAutoFilled;
     int propagated = 0;
     for (int p : peers) {
@@ -4573,6 +4597,7 @@ void AddRowWithPropagation(EditorState& state, int docIndex) {
         peerDoc.dirty = true;
         EnsureCellStatusSize(peerDoc);
         peerDoc.cellStatus.back() = peerRowStatus;
+        std::fill(peerDoc.cellDirty.back().begin(),peerDoc.cellDirty.back().end(),1);
         ++propagated;
     }
 
@@ -4588,15 +4613,20 @@ void AddRowWithPropagation(EditorState& state, int docIndex) {
 void DrawShnSourceList(EditorState& state, EditorState::ShnSource source, const char* id) {
     ImGui::TextColored(ShnSourceColor(source), "%s", ShnSourceName(source));
     ImGui::SameLine();
-    std::size_t count = 0, visibleCount = 0;
+    std::size_t count = 0, visibleCount = 0, dirtyCount = 0;
     const std::string fileNeedle = LowerAscii(state.shnFileFilter);
     for (const auto& d : state.shnFiles) {
         if (d.source != source) continue;
         ++count;
+        if (d.dirty) ++dirtyCount;
         if (fileNeedle.empty() || LowerAscii(d.file.FileName()).find(fileNeedle) != std::string::npos) ++visibleCount;
     }
     if (fileNeedle.empty()) ImGui::TextDisabled(L("(%zu Dateien)","(%zu files)"),count);
     else ImGui::TextDisabled("%zu / %zu",visibleCount,count);
+    if (dirtyCount > 0) {
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(1.0f,0.68f,0.25f,1.0f),"*%zu",dirtyCount);
+    }
     ImGui::BeginChild(id, ImVec2(0, 170), true);
     for (int i : ShnIndicesForSource(state, source)) {
         auto& doc = state.shnFiles[static_cast<std::size_t>(i)];
@@ -5060,15 +5090,10 @@ void DrawShnEditor(EditorState& state) {
         if (state.shnSelectedFile>=0 && state.shnSelectedFile<static_cast<int>(state.shnFiles.size())) {
             auto& doc=state.shnFiles[static_cast<std::size_t>(state.shnSelectedFile)];
             auto& f=doc.file;
-            if(UI::Button("Speichern",ImVec2(-1,0))) {
-                auto r=core::legacy::SaveShnFile(f,f.path);
-                state.shnStatus=r?(std::string(ShnSourceName(doc.source))+" gespeichert: "+f.FileName())
-                                 :"Speichern fehlgeschlagen: "+r.error();
-                if(r) {
-                    doc.dirty=false;
-                    ClearShnDirtyCells(doc);
-                }
-            }
+            ImGui::BeginDisabled(!doc.dirty);
+            if(UI::Button(doc.dirty?L("Speichern *","Save *"):L("Speichern","Save"),ImVec2(-1,0)))
+                SaveShnDocument(state,state.shnSelectedFile);
+            ImGui::EndDisabled();
             ImGui::Separator();
             if (UI::InputTextWithHint("##shnSearch",L("Zeilen durchsuchen...","Search rows..."),
                                       state.shnSearch,sizeof(state.shnSearch))) {
