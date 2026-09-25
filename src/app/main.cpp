@@ -9109,22 +9109,34 @@ static std::vector<int> SkillDocsOf(const SkillDocs& d, skilled::Doc kind) {
     return out;
 }
 
-// Zeile eines Skills (per ID) in einer Tabelle - lineare Suche mit Cache je Dokument.
+// Zeile eines Skills (per ID) in einer Tabelle - Suche mit Cache je Dokument.
+// Neben der Zeilenanzahl muessen auch Datei und Edit-Revision Teil des Cache-Schluessels sein:
+// eine im Rohgrid geaenderte ID darf nicht bis zum naechsten Zeilen-Insert auf eine alte Zeile zeigen.
 static long long SkillRowIn(EditorState& state, int docIdx, long long skillId) {
-    static std::unordered_map<int, std::pair<std::size_t, std::unordered_map<long long, std::size_t>>> cache;
+    struct SkillRowCache {
+        std::size_t rowCount = 0;
+        std::uint64_t revision = std::numeric_limits<std::uint64_t>::max();
+        std::string path;
+        std::unordered_map<long long,std::size_t> rows;
+    };
+    static std::unordered_map<int,SkillRowCache> cache;
     auto& f = state.shnFiles[static_cast<std::size_t>(docIdx)].file;
     auto& entry = cache[docIdx];
-    if (entry.first != f.rows.size() || entry.second.empty()) {
-        entry.second.clear();
+    const std::string path = f.path.string();
+    if (entry.rowCount != f.rows.size() || entry.revision != state.shnEditCounter ||
+        entry.path != path || entry.rows.empty()) {
+        entry.rows.clear();
         const int cId = ShnColumnIndexByName(f, "ID");
         for (std::size_t r = 0; r < f.rows.size() && cId >= 0; ++r) {
             long long id = 0;
-            if (ShnValueAsInt(f.rows[r].values[static_cast<std::size_t>(cId)], id)) entry.second.emplace(id, r);
+            if (ShnValueAsInt(f.rows[r].values[static_cast<std::size_t>(cId)], id)) entry.rows.emplace(id,r);
         }
-        entry.first = f.rows.size();
+        entry.rowCount = f.rows.size();
+        entry.revision = state.shnEditCounter;
+        entry.path = path;
     }
-    const auto it = entry.second.find(skillId);
-    return it == entry.second.end() ? -1 : static_cast<long long>(it->second);
+    const auto it = entry.rows.find(skillId);
+    return it == entry.rows.end() ? -1 : static_cast<long long>(it->second);
 }
 
 static std::string SkillCellRead(EditorState& state, const SkillDocs& d, skilled::Doc kind, const char* col, long long skillId) {
