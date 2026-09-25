@@ -75,6 +75,7 @@
 #include "ObjectMarkerRenderer.hpp"
 #include "NifMeshRenderer.hpp"
 #include "Renderer.hpp"
+#include "UiIconAssets.hpp"
 
 #include <algorithm>
 #include <array>
@@ -104,6 +105,10 @@ namespace {
 
 // Gemeinsame DE/EN-Hilfe; Definition steht weiter unten bei den spezialisierten Editoren.
 static const char* L(const char* de, const char* en);
+
+// Approved package icon cache. Missing package assets are non-fatal and fall back to the
+// existing DrawList glyph for that action until the migration of that icon is complete.
+app::UiIconAssets gUiIcons;
 
 // Verbindliche Design-Tokens aus docs/ui-vision/01_BRAND_AND_THEME.md.
 // UI-Code soll semantisch auf diese Palette zurückgreifen statt lokale Blau-/Grautöne zu erfinden.
@@ -3381,7 +3386,7 @@ void DrawInlineIcon(const char* id, IconDrawFn icon, ImU32 color,
 }
 
 bool DrawTinyIconButton(const char* id, IconDrawFn icon, bool active, const char* tooltip,
-                        ImVec2 size = ImVec2(22.0f,22.0f)) {
+                        ImVec2 size = ImVec2(22.0f,22.0f), const char* semanticIcon = nullptr) {
     ImGui::PushID(id);
     const ImVec2 p=ImGui::GetCursorScreenPos();
     const bool clicked=ImGui::InvisibleButton("##tinyIcon",size);
@@ -3398,7 +3403,19 @@ bool DrawTinyIconButton(const char* id, IconDrawFn icon, bool active, const char
     if(active)
         dl->AddRectFilled(ImVec2(p.x+4.0f,p.y+size.y-2.0f),ImVec2(p.x+size.x-4.0f,p.y+size.y),
                           IM_COL32(32,221,242,255),1.0f);
-    if(icon) icon(dl,ImVec2(p.x+size.x*0.5f,p.y+size.y*0.5f),7.2f,
+    bool drewApprovedIcon = false;
+    if (semanticIcon && *semanticIcon) {
+        if (const std::uint32_t tex = gUiIcons.Texture(semanticIcon, 16); tex != 0) {
+            const float iconSize = std::min(16.0f, std::min(size.x - 4.0f, size.y - 4.0f));
+            const ImVec2 center(p.x + size.x * 0.5f, p.y + size.y * 0.5f);
+            const ImVec2 half(iconSize * 0.5f, iconSize * 0.5f);
+            dl->AddImage(static_cast<ImTextureID>(static_cast<intptr_t>(tex)),
+                         ImVec2(center.x - half.x, center.y - half.y),
+                         ImVec2(center.x + half.x, center.y + half.y));
+            drewApprovedIcon = true;
+        }
+    }
+    if(!drewApprovedIcon && icon) icon(dl,ImVec2(p.x+size.x*0.5f,p.y+size.y*0.5f),7.2f,
                   active?IM_COL32(244,251,255,255):hovered?IM_COL32(222,241,255,255):IM_COL32(159,180,201,245));
     if(hovered && tooltip) ImGui::SetTooltip("%s",tooltip);
     ImGui::PopID();
@@ -3406,7 +3423,8 @@ bool DrawTinyIconButton(const char* id, IconDrawFn icon, bool active, const char
 }
 
 bool DrawIconButton(const char* id, const char* label, IconDrawFn icon, bool active = false,
-                    ImVec2 size = ImVec2(74.0f, 58.0f), bool enabled = true) {
+                    ImVec2 size = ImVec2(74.0f, 58.0f), bool enabled = true,
+                    const char* semanticIcon = nullptr) {
     ImGui::PushID(id);
     const ImVec2 p = ImGui::GetCursorScreenPos();
     ImGui::BeginDisabled(!enabled);
@@ -3438,7 +3456,22 @@ bool DrawIconButton(const char* id, const char* label, IconDrawFn icon, bool act
                           IM_COL32(32, 221, 242, 255), 1.0f);
     }
 
-    if (icon) icon(dl, ImVec2(p.x + size.x * 0.5f, p.y + 21.0f), 10.8f, fg);
+    bool drewApprovedIcon = false;
+    if (semanticIcon && *semanticIcon) {
+        if (const std::uint32_t tex = gUiIcons.Texture(semanticIcon, 24); tex != 0) {
+            constexpr float iconSize = 24.0f;
+            const ImVec2 center(p.x + size.x * 0.5f, p.y + 21.0f);
+            const ImVec2 half(iconSize * 0.5f, iconSize * 0.5f);
+            const ImU32 tint = enabled ? IM_COL32(255,255,255,255) : IM_COL32(255,255,255,105);
+            dl->AddImage(static_cast<ImTextureID>(static_cast<intptr_t>(tex)),
+                         ImVec2(center.x - half.x, center.y - half.y),
+                         ImVec2(center.x + half.x, center.y + half.y),
+                         ImVec2(0,0), ImVec2(1,1), tint);
+            drewApprovedIcon = true;
+        }
+    }
+    if (!drewApprovedIcon && icon)
+        icon(dl, ImVec2(p.x + size.x * 0.5f, p.y + 21.0f), 10.8f, fg);
     const ImVec2 ts = ImGui::CalcTextSize(label);
     dl->AddText(ImVec2(p.x + (size.x - ts.x) * 0.5f, p.y + size.y - 18.0f), fg, label);
     if (hovered) ImGui::SetTooltip("%s", label);
@@ -3617,7 +3650,8 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
 
     const float rightWidth = 176.0f;
     ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - rightWidth);
-    if (DrawTinyIconButton("settingsTop", DrawIconGear, state.settingsOpen, "Einstellungen"))
+    if (DrawTinyIconButton("settingsTop", DrawIconGear, state.settingsOpen, L("Einstellungen","Settings"),
+                           ImVec2(22.0f,22.0f), "panel.settings"))
         state.settingsOpen = !state.settingsOpen;
     ImGui::SameLine();
     if (UI::Button("?##manual")) state.manualOpen = !state.manualOpen;
@@ -13027,7 +13061,7 @@ void DrawWorkspaceTabBar(EditorState& state) {
     ImGui::BeginGroup();
 
     const bool canSave = state.hasLegacyIniMeta || state.legacySaveDir[0] != '\0';
-    if (DrawIconButton("cmd.save", L("Speichern","Save"), DrawIconSave, false, ImVec2(78,58), canSave)) {
+    if (DrawIconButton("cmd.save", L("Speichern","Save"), DrawIconSave, false, ImVec2(78,58), canSave, "file.save")) {
         auto project = BuildProjectFromState(state);
         auto result = core::legacy::SaveLegacyMap(project, state.legacySaveDir, state.legacySaveStem);
         if (result) {
@@ -13041,9 +13075,9 @@ void DrawWorkspaceTabBar(EditorState& state) {
         }
     }
     ImGui::SameLine();
-    if (DrawIconButton("cmd.undo", L("Rückgängig","Undo"), DrawIconUndo, false, ImVec2(68,58), undoAvailable())) doUndo();
+    if (DrawIconButton("cmd.undo", L("Rückgängig","Undo"), DrawIconUndo, false, ImVec2(68,58), undoAvailable(), "history.undo")) doUndo();
     ImGui::SameLine();
-    if (DrawIconButton("cmd.redo", L("Wiederholen","Redo"), DrawIconRedo, false, ImVec2(68,58), redoAvailable())) doRedo();
+    if (DrawIconButton("cmd.redo", L("Wiederholen","Redo"), DrawIconRedo, false, ImVec2(68,58), redoAvailable(), "history.redo")) doRedo();
 
     // Transform-Gruppe: dieselben echten ImGuizmo-Modi wie im Objekt-Inspector, jetzt
     // direkt in der primären Toolbar erreichbar. Kein neuer Fake-Modus; die Buttons
@@ -13056,15 +13090,15 @@ void DrawWorkspaceTabBar(EditorState& state) {
     };
     if (DrawIconButton("cmd.move", L("Verschieben","Move"), DrawIconMove,
                        state.editMode == EditMode::ObjectPlacement && state.objectPlaceMode == 0 &&
-                       state.objectGizmoOperation == 0, ImVec2(72,58))) activateTransform(0);
+                       state.objectGizmoOperation == 0, ImVec2(72,58), true, "transform.move")) activateTransform(0);
     ImGui::SameLine();
     if (DrawIconButton("cmd.rotate", L("Rotieren","Rotate"), DrawIconRotate,
                        state.editMode == EditMode::ObjectPlacement && state.objectPlaceMode == 0 &&
-                       state.objectGizmoOperation == 1, ImVec2(72,58))) activateTransform(1);
+                       state.objectGizmoOperation == 1, ImVec2(72,58), true, "transform.rotate")) activateTransform(1);
     ImGui::SameLine();
     if (DrawIconButton("cmd.scale", L("Skalieren","Scale"), DrawIconScale,
                        state.editMode == EditMode::ObjectPlacement && state.objectPlaceMode == 0 &&
-                       state.objectGizmoOperation == 2, ImVec2(72,58))) activateTransform(2);
+                       state.objectGizmoOperation == 2, ImVec2(72,58), true, "transform.scale")) activateTransform(2);
     ImGui::SameLine();
     if (DrawIconButton("cmd.snap", "Snap", DrawIconSnap,
                        state.editMode == EditMode::ObjectPlacement && state.objectGizmoSnap,
@@ -13076,18 +13110,21 @@ void DrawWorkspaceTabBar(EditorState& state) {
 
     ImGui::SameLine(); ImGui::Dummy(ImVec2(8.0f, 1.0f)); ImGui::SameLine();
 
-    struct Tool { const char* id; const char* label; EditMode mode; IconDrawFn icon; };
+    struct Tool { const char* id; const char* label; EditMode mode; IconDrawFn icon; const char* semanticIcon; };
     const Tool tools[] = {
-        {"terrain",L("Terrain","Terrain"),EditMode::Heightmap,DrawIconTerrain},
-        {"texture",L("Textur","Texture"),EditMode::TexturePaint,DrawIconBrush},
-        {"walk","Block & Walk",EditMode::BlockWalk,DrawIconGrid},
-        {"objects",L("Objekte","Objects"),EditMode::ObjectPlacement,DrawIconCube},
-        {"npcs","NPCs",EditMode::Npcs,DrawIconPerson},
-        {"mobs","Mobs",EditMode::Mobs,DrawIconSpawn},
-        {"portals",L("Portale","Portals"),EditMode::Portals,DrawIconPortal},
+        {"terrain",L("Terrain","Terrain"),EditMode::Heightmap,DrawIconTerrain,"world.terrain"},
+        {"texture",L("Textur","Texture"),EditMode::TexturePaint,DrawIconBrush,"tool.brush"},
+        {"walk","Block & Walk",EditMode::BlockWalk,DrawIconGrid,"gameplay.block_walk"},
+        {"objects",L("Objekte","Objects"),EditMode::ObjectPlacement,DrawIconCube,"world.objects"},
+        {"npcs","NPCs",EditMode::Npcs,DrawIconPerson,"nav.npcs"},
+        {"mobs","Mobs",EditMode::Mobs,DrawIconSpawn,"nav.spawns"},
+        // Das Paket besitzt noch kein dediziertes Portal-Hauptsymbol; bis zur Ergänzung
+        // bleibt bewusst der funktionale Legacy-Fallback statt einer falschen Zuordnung.
+        {"portals",L("Portale","Portals"),EditMode::Portals,DrawIconPortal,nullptr},
     };
     for (const auto& tool : tools) {
-        if (DrawIconButton(tool.id, tool.label, tool.icon, state.editMode == tool.mode))
+        if (DrawIconButton(tool.id, tool.label, tool.icon, state.editMode == tool.mode,
+                           ImVec2(74.0f,58.0f), true, tool.semanticIcon))
             setMode(tool.mode);
         ImGui::SameLine();
     }
@@ -15914,6 +15951,10 @@ int main() {
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 330");
 
+    // Load the approved icon raster exports once the OpenGL context is ready. If the
+    // packaged assets are missing, every button keeps its existing vector fallback.
+    gUiIcons.Init();
+
     EditorState state;
     state.renderer.Init();
     state.objectMarkerRenderer.Init();
@@ -15997,6 +16038,7 @@ int main() {
         if (thumb.tex) glDeleteTextures(1, &thumb.tex);
     }
     state.assetThumbnails.clear();
+    gUiIcons.Shutdown();
     state.renderer.Shutdown();
     state.objectMarkerRenderer.Shutdown();
     state.portalMarkerRenderer.Shutdown();
