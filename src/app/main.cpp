@@ -752,6 +752,7 @@ struct EditorState {
     // dargestellt, sondern in Mob-Basisdaten + bis zu 45 Drop-Slots aufgeteilt.
     core::legacy::ShineTextFile dropTableFile;
     bool dropTableLoaded = false;
+    bool dropTableDirty = false;
     std::string dropTableLoadError;
     int dropTableSelectedRecord = -1;
     char dropTableFilter[128] = "";
@@ -1362,6 +1363,7 @@ void SyncProjectRoots(EditorState& state) {
     state.interfaceSelectedAsset = -1;
     state.interfaceAssetFilter[0] = '\0';
     state.dropTableLoaded = false;
+    state.dropTableDirty = false;
     state.dropTableFile = core::legacy::ShineTextFile{};
     state.dropTableLoadError.clear();
     state.dropTableSelectedRecord = -1;
@@ -13553,17 +13555,44 @@ void EnsureDropTableLoaded(EditorState& state) {
     }
     state.dropTableFile = std::move(*loaded);
     state.dropTableLoaded = true;
+    state.dropTableDirty = false;
     state.dropTableSelectedRecord = table->records.empty() ? -1 : 0;
+}
+
+bool SaveDropTable(EditorState& state) {
+    if (!state.dropTableLoaded || state.dropTableFile.path.empty()) return false;
+    auto saved = core::legacy::SaveShineTextFile(state.dropTableFile, state.dropTableFile.path);
+    if (!saved) {
+        state.statusMessage = "Drop Table speichern fehlgeschlagen: " + saved.error();
+        return false;
+    }
+    state.dropTableDirty = false;
+    state.statusMessage = "Drop Table gespeichert: " + state.dropTableFile.path.string();
+    return true;
+}
+
+bool EditDropTableValue(const char* id, std::string& value, float width = 0.0f) {
+    char buffer[160];
+    std::snprintf(buffer, sizeof(buffer), "%s", value.c_str());
+    if (width > 0.0f) ImGui::SetNextItemWidth(width);
+    if (!UI::InputText(id, buffer, sizeof(buffer))) return false;
+    value = buffer;
+    return true;
 }
 
 void DrawDropTableEditor(EditorState& state) {
     EnsureDropTableLoaded(state);
     ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "DROP TABLE / ITEMGROUP");
     ImGui::SameLine();
-    ImGui::TextDisabled("semantische Ansicht · read-only");
+    ImGui::TextDisabled(state.dropTableDirty ? "geändert *" : "290-Spalten-Schema");
     ImGui::SameLine();
-    if (UI::SmallButton("Neu laden##dropTable")) {
+    ImGui::BeginDisabled(!state.dropTableLoaded || !state.dropTableDirty);
+    if (UI::SmallButton("Speichern##dropTable")) SaveDropTable(state);
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (UI::SmallButton(state.dropTableDirty ? "Neu laden / verwerfen##dropTable" : "Neu laden##dropTable")) {
         state.dropTableLoaded = false;
+        state.dropTableDirty = false;
         state.dropTableFile = core::legacy::ShineTextFile{};
         state.dropTableLoadError.clear();
         state.dropTableSelectedRecord = -1;
@@ -13579,6 +13608,8 @@ void DrawDropTableEditor(EditorState& state) {
         ImGui::TextDisabled("ItemDropTable.txt wird geladen...");
         return;
     }
+    if (ShortcutPressed(state.shortcutSave) && state.dropTableDirty)
+        SaveDropTable(state);
 
     auto* table = state.dropTableFile.FindTable("ItemGroup");
     if (!table) {
@@ -13645,7 +13676,7 @@ void DrawDropTableEditor(EditorState& state) {
     }
 
     EnsureItemLookup(state);
-    const auto& record = table->records[static_cast<std::size_t>(state.dropTableSelectedRecord)];
+    auto& record = table->records[static_cast<std::size_t>(state.dropTableSelectedRecord)];
     const std::string mob = ShineRecordValue(record, cMob);
     ImGui::TextColored(ImVec4(0.55f,0.82f,1.0f,1.0f), "%s",
                        mob.empty() ? "(unbenannter Mob)" : mob.c_str());
@@ -13663,17 +13694,38 @@ void DrawDropTableEditor(EditorState& state) {
     if (cChecksum >= 0)
         ImGui::TextDisabled("· CheckSum %s", ShineRecordValue(record,cChecksum).c_str());
 
+    if (UI::CollapsingHeader("Basiswerte##dropTableBase")) {
+        const struct BaseField { const char* label; int col; float width; } fields[] = {
+            {"MapArea", cMap, 150.0f}, {"MobId", cMob, 180.0f},
+            {"MinLevel", cMinLevel, 80.0f}, {"MaxLevel", cMaxLevel, 80.0f},
+            {"MinCen", cMinCen, 90.0f}, {"MaxCen", cMaxCen, 90.0f},
+            {"CenRate", cCenRate, 90.0f}
+        };
+        for (const auto& field : fields) {
+            if (field.col < 0 || static_cast<std::size_t>(field.col) >= record.values.size()) continue;
+            ImGui::PushID(field.label);
+            ImGui::TextDisabled("%s", field.label);
+            ImGui::SameLine(105.0f);
+            if (EditDropTableValue("##value", record.values[static_cast<std::size_t>(field.col)], field.width))
+                state.dropTableDirty = true;
+            ImGui::PopID();
+        }
+        if (cChecksum >= 0 && static_cast<std::size_t>(cChecksum) < record.values.size())
+            ImGui::TextDisabled("CheckSum bleibt bewusst unverändert: %s",
+                                record.values[static_cast<std::size_t>(cChecksum)].c_str());
+    }
+
     UI::Checkbox("Nur belegte Drop-Slots##dropTable", &state.dropTableOnlyActive);
     ImGui::Separator();
 
     struct DropSlot {
         int number = 0;
-        std::string item;
-        std::string rate;
-        std::string upgradeMin;
-        std::string upgradeMax;
-        std::string rule;
-        std::string amount;
+        int itemCol = -1;
+        int rateCol = -1;
+        int upgradeMinCol = -1;
+        int upgradeMaxCol = -1;
+        int ruleCol = -1;
+        int amountCol = -1;
     };
     std::vector<DropSlot> slots;
     slots.reserve(45);
@@ -13683,14 +13735,15 @@ void DrawDropTableEditor(EditorState& state) {
         std::snprintf(twoDigit, sizeof(twoDigit), "%02d", slotNo);
         DropSlot slot;
         slot.number = slotNo;
-        slot.item = ShineRecordValue(record, FindShineColumn(*table, "DrItem" + suffix));
-        slot.rate = ShineRecordValue(record, FindShineColumn(*table, "DrItem" + suffix + "R"));
-        slot.upgradeMin = ShineRecordValue(record, FindShineColumn(*table, "UpGradeMin" + std::string(twoDigit)));
-        slot.upgradeMax = ShineRecordValue(record, FindShineColumn(*table, "UpGradeMax" + std::string(twoDigit)));
-        slot.rule = ShineRecordValue(record, FindShineColumn(*table, "Rule" + suffix));
-        slot.amount = ShineRecordValue(record, FindShineColumn(*table, "Num" + suffix));
-        const bool active = !slot.item.empty() && slot.item != "-";
-        if (!state.dropTableOnlyActive || active) slots.push_back(std::move(slot));
+        slot.itemCol = FindShineColumn(*table, "DrItem" + suffix);
+        slot.rateCol = FindShineColumn(*table, "DrItem" + suffix + "R");
+        slot.upgradeMinCol = FindShineColumn(*table, "UpGradeMin" + std::string(twoDigit));
+        slot.upgradeMaxCol = FindShineColumn(*table, "UpGradeMax" + std::string(twoDigit));
+        slot.ruleCol = FindShineColumn(*table, "Rule" + suffix);
+        slot.amountCol = FindShineColumn(*table, "Num" + suffix);
+        const std::string item = ShineRecordValue(record, slot.itemCol);
+        const bool active = !item.empty() && item != "-";
+        if (!state.dropTableOnlyActive || active) slots.push_back(slot);
     }
 
     if (ImGui::BeginTable("##dropSlots", 7,
@@ -13707,28 +13760,53 @@ void DrawDropTableEditor(EditorState& state) {
         ImGui::TableHeadersRow();
 
         for (const auto& slot : slots) {
+            auto valueRef = [&](int column) -> std::string* {
+                if (column < 0 || static_cast<std::size_t>(column) >= record.values.size()) return nullptr;
+                return &record.values[static_cast<std::size_t>(column)];
+            };
+            ImGui::PushID(slot.number);
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0); ImGui::Text("%d", slot.number);
+
             ImGui::TableSetColumnIndex(1);
-            const bool active = !slot.item.empty() && slot.item != "-";
-            if (active) ImGui::TextUnformatted(slot.item.c_str());
-            else ImGui::TextDisabled("(leer)");
-            ImGui::TableSetColumnIndex(2); ImGui::TextUnformatted(slot.rate.c_str());
-            ImGui::TableSetColumnIndex(3); ImGui::TextUnformatted(slot.amount.c_str());
+            std::string* itemValue = valueRef(slot.itemCol);
+            if (itemValue && EditDropTableValue("##item", *itemValue, -1.0f))
+                state.dropTableDirty = true;
+            const bool active = itemValue && !itemValue->empty() && *itemValue != "-";
+
+            ImGui::TableSetColumnIndex(2);
+            if (auto* v=valueRef(slot.rateCol); v && EditDropTableValue("##rate",*v,-1.0f))
+                state.dropTableDirty=true;
+            ImGui::TableSetColumnIndex(3);
+            if (auto* v=valueRef(slot.amountCol); v && EditDropTableValue("##amount",*v,-1.0f))
+                state.dropTableDirty=true;
             ImGui::TableSetColumnIndex(4);
-            ImGui::Text("%s–%s", slot.upgradeMin.c_str(), slot.upgradeMax.c_str());
-            ImGui::TableSetColumnIndex(5); ImGui::TextUnformatted(slot.rule.c_str());
+            if (auto* minV=valueRef(slot.upgradeMinCol)) {
+                ImGui::SetNextItemWidth(34.0f);
+                if (EditDropTableValue("##upgradeMin",*minV,34.0f)) state.dropTableDirty=true;
+            }
+            ImGui::SameLine(0,2);
+            ImGui::TextDisabled("–");
+            ImGui::SameLine(0,2);
+            if (auto* maxV=valueRef(slot.upgradeMaxCol)) {
+                if (EditDropTableValue("##upgradeMax",*maxV,34.0f)) state.dropTableDirty=true;
+            }
+            ImGui::TableSetColumnIndex(5);
+            if (auto* v=valueRef(slot.ruleCol); v && EditDropTableValue("##rule",*v,-1.0f))
+                state.dropTableDirty=true;
+
             ImGui::TableSetColumnIndex(6);
             if (active) {
-                if (const auto it = state.itemByInx.find(slot.item); it != state.itemByInx.end()) {
+                if (const auto it = state.itemByInx.find(*itemValue); it != state.itemByInx.end()) {
                     const auto& item = state.itemEntries[it->second];
                     if (!item.name.empty()) ImGui::TextUnformatted(item.name.c_str());
                     else ImGui::TextDisabled("ID %lld", item.id);
                     if (ImGui::IsItemHovered()) ImGui::SetTooltip("InxName %s\nID %lld", item.inx.c_str(), item.id);
-                } else {
+                } else if (!state.itemEntries.empty()) {
                     ImGui::TextColored(ImVec4(1.0f,0.48f,0.34f,1.0f), "nicht in ItemInfo");
                 }
             }
+            ImGui::PopID();
         }
         ImGui::EndTable();
     }
