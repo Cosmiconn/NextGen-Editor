@@ -614,6 +614,7 @@ struct EditorState {
     // Portal-Editor (TownPortal.shn + RecallCoord.txt) - siehe CHANGELOG [0.44.20].
     core::legacy::ShnFile townPortalShn;
     bool townPortalLoaded = false;
+    bool townPortalDirty = false;
 
     // Portale-Tab im Map-Editor (EditMode::Portals), siehe CHANGELOG [0.44.25]: MapInfo.shn nur
     // als Referenz (RegenX/RegenY), Auswahl-/Klick-Zustand fuer TownPortal- und Schriftrollen-Ziele.
@@ -683,6 +684,7 @@ struct EditorState {
     std::unordered_map<std::string, ObjectFootprint> footprintCache;
     core::legacy::ShineTextFile recallCoordFile;
     bool recallCoordLoaded = false;
+    bool recallCoordDirty = false;
     char resmapRootPath[512] = ""; // vom Nutzer per Ordnerdialog gewählte Asset-Wurzel
     std::vector<DiscoveredMap> discoveredMaps;
     int selectedMapIndex = -1;
@@ -1358,6 +1360,8 @@ void SyncProjectRoots(EditorState& state) {
     state.questDataLoaded = false;
     state.questDialogLoaded = false;
     state.questDirty = false;
+    state.townPortalDirty = false;
+    state.recallCoordDirty = false;
     state.selectedQuestIdx = -1;
     state.questTextMapBuilt = false;
     state.questTextMap.clear();
@@ -1369,6 +1373,8 @@ void SyncProjectRoots(EditorState& state) {
     state.mobViewInfoLoaded = false;
     state.townPortalLoaded = false;
     state.recallCoordLoaded = false;
+    state.townPortalDirty = false;
+    state.recallCoordDirty = false;
     state.mapInfoLoaded = false;
     state.portalDataSig.clear();
     state.shnAutoLoaded = false;
@@ -3504,7 +3510,8 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Befehlspalette öffnen");
 
     const std::size_t dirtyShn = DirtyShnDocumentCount(state);
-    if (state.mapDirty || dirtyShn > 0 || state.questDirty || state.aiScriptDirty || state.dropTableDirty) {
+    if (state.mapDirty || dirtyShn > 0 || state.questDirty || state.townPortalDirty ||
+        state.recallCoordDirty || state.aiScriptDirty || state.dropTableDirty) {
         ImGui::SameLine();
         ImGui::TextColored(ImVec4(1.0f,0.68f,0.25f,1.0f), "●");
         if (ImGui::IsItemHovered()) {
@@ -3512,6 +3519,8 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
             if (state.mapDirty) dirtyText += "\n• Karte geändert";
             if (dirtyShn > 0) dirtyText += "\n• " + std::to_string(dirtyShn) + " SHN-Datei(en) geändert";
             if (state.questDirty) dirtyText += "\n• QuestData.shn geändert";
+            if (state.townPortalDirty) dirtyText += "\n• TownPortal.shn geändert";
+            if (state.recallCoordDirty) dirtyText += "\n• RecallCoord.txt geändert";
             if (state.aiScriptDirty) dirtyText += "\n• AI-Skript geändert";
             if (state.dropTableDirty) dirtyText += "\n• ItemDropTable geändert";
             ImGui::SetTooltip("%s", dirtyText.c_str());
@@ -5104,7 +5113,7 @@ void DrawShnEditor(EditorState& state) {
     ImGui::TextColored(ImVec4(0.40f,0.72f,0.96f,1.0f), "Spieldaten");
     ImGui::SameLine(); ImGui::TextDisabled("SHN · Quest · Portale · Custom NPC/Mob · Skills · AI · Interface · Drops");
     const std::size_t dataDirtyShn = DirtyShnDocumentCount(state);
-    if (dataDirtyShn > 0 || state.questDirty) {
+    if (dataDirtyShn > 0 || state.questDirty || state.townPortalDirty || state.recallCoordDirty) {
         ImGui::SameLine();
         ImGui::TextColored(ImVec4(1.0f,0.68f,0.25f,1.0f), "%s",
                            L("● ungespeichert","● unsaved"));
@@ -6656,7 +6665,12 @@ void EnsureTownPortalLoaded(EditorState& state) {
     if (const auto srv = PortalServerRoot(state); !srv.empty()) candidates.push_back(std::filesystem::path(srv) / "TownPortal.shn");
     for (const auto& path : candidates) {
         auto result = core::legacy::LoadShnFile(path);
-        if (result) { state.townPortalShn = std::move(*result); state.townPortalLoaded = true; return; }
+        if (result) {
+            state.townPortalShn = std::move(*result);
+            state.townPortalLoaded = true;
+            state.townPortalDirty = false;
+            return;
+        }
     }
 }
 
@@ -6667,7 +6681,11 @@ void EnsureRecallCoordLoaded(EditorState& state) {
     if (state.recallCoordLoaded || serverRoot.empty()) return;
     auto path = std::filesystem::path(serverRoot) / "World" / "RecallCoord.txt";
     auto result = core::legacy::LoadShineTextFile(path);
-    if (result) { state.recallCoordFile = std::move(*result); state.recallCoordLoaded = true; }
+    if (result) {
+        state.recallCoordFile = std::move(*result);
+        state.recallCoordLoaded = true;
+        state.recallCoordDirty = false;
+    }
 }
 
 // Speichert TownPortal.shn in die Client-Kopie (ressystem/) UND - falls dort vorhanden - in die
@@ -6688,7 +6706,27 @@ void SaveTownPortalFiles(EditorState& state) {
     if (const auto srv = PortalServerRoot(state); !srv.empty()) saveTo(std::filesystem::path(srv) / "TownPortal.shn", "Server", true);
     if (!failed.empty()) state.statusMessage = "Fehler beim Speichern von TownPortal.shn - " + failed;
     else if (done.empty()) state.statusMessage = "TownPortal.shn: kein Ziel-Ordner bekannt (Client-ressystem oder Server-Shine-Ordner nötig).";
-    else state.statusMessage = "TownPortal.shn gespeichert (" + done + ").";
+    else {
+        state.townPortalDirty = false;
+        state.statusMessage = "TownPortal.shn gespeichert (" + done + ").";
+    }
+}
+
+bool SaveRecallCoordFile(EditorState& state) {
+    const auto root=PortalServerRoot(state);
+    if (root.empty()) {
+        state.statusMessage=L("RecallCoord.txt: kein Server-Shine-Ordner bekannt.","RecallCoord.txt: no server Shine folder is known.");
+        return false;
+    }
+    const auto path=std::filesystem::path(root)/"World"/"RecallCoord.txt";
+    auto saved=core::legacy::SaveShineTextFile(state.recallCoordFile,path);
+    if (saved) {
+        state.recallCoordDirty=false;
+        state.statusMessage=L("RecallCoord.txt gespeichert.","RecallCoord.txt saved.");
+        return true;
+    }
+    state.statusMessage=L("Fehler: ","Error: ")+saved.error();
+    return false;
 }
 
 // Gemeinsamer Editor für die beiden übrigen Portal-/Teleport-Tabellen (siehe Nutzer-Taxonomie:
@@ -6720,15 +6758,21 @@ void DrawPortalEditor(EditorState& state) {
                 buf.resize(std::max<std::size_t>(buf.size() + 1, 32));
                 if (UI::InputText(("##tp" + std::to_string(ri) + "_" + std::to_string(ci)).c_str(), buf.data(), buf.size())) {
                     auto parsed = core::legacy::ParseShnValue(state.townPortalShn.columns[ci], buf.data());
-                    if (parsed) state.townPortalShn.rows[ri].values[ci] = std::move(*parsed);
+                    if (parsed) {
+                        state.townPortalShn.rows[ri].values[ci] = std::move(*parsed);
+                        state.townPortalDirty = true;
+                    }
                 }
             }
         }
         ImGui::EndTable();
     }
-    if (UI::Button("TownPortal.shn speichern")) {
+    ImGui::BeginDisabled(!state.townPortalDirty);
+    if (UI::Button(state.townPortalDirty ? L("TownPortal.shn speichern *","Save TownPortal.shn *")
+                                         : L("TownPortal.shn speichern","Save TownPortal.shn"))) {
         SaveTownPortalFiles(state);
     }
+    ImGui::EndDisabled();
 
     ImGui::SeparatorText("RecallCoord · Schriftrollen");
     if (!state.recallCoordLoaded) {
@@ -6750,15 +6794,21 @@ void DrawPortalEditor(EditorState& state) {
                 buf.resize(std::max<std::size_t>(buf.size() + 1, 40));
                 if (UI::InputText(("##rc" + std::to_string(ri) + "_" + std::to_string(ci)).c_str(), buf.data(), buf.size())) {
                     v.assign(buf.data());
+                    state.recallCoordDirty = true;
                 }
             }
         }
         ImGui::EndTable();
     }
-    if (UI::Button("RecallCoord.txt speichern")) {
-        auto path = std::filesystem::path(PortalServerRoot(state)) / "World" / "RecallCoord.txt";
-        auto saved = core::legacy::SaveShineTextFile(state.recallCoordFile, path);
-        state.statusMessage = saved ? std::string(L("RecallCoord.txt gespeichert.","RecallCoord.txt saved.")) : L("Fehler: ","Error: ") + saved.error();
+    ImGui::BeginDisabled(!state.recallCoordDirty);
+    if (UI::Button(state.recallCoordDirty ? L("RecallCoord.txt speichern *","Save RecallCoord.txt *")
+                                          : L("RecallCoord.txt speichern","Save RecallCoord.txt"))) {
+        SaveRecallCoordFile(state);
+    }
+    ImGui::EndDisabled();
+    if (ShortcutPressed(state.shortcutSave)) {
+        if (state.townPortalDirty) SaveTownPortalFiles(state);
+        if (state.recallCoordDirty) SaveRecallCoordFile(state);
     }
 }
 
@@ -7068,6 +7118,7 @@ void SetSelectedPortalPosition(EditorState& state, long long x, long long y) {
         auto& f = state.townPortalShn;
         SetShnCellInt(f, static_cast<std::size_t>(state.selectedPortalIdx), FindShnColumnByName(f, "X"), x);
         SetShnCellInt(f, static_cast<std::size_t>(state.selectedPortalIdx), FindShnColumnByName(f, "Y"), y);
+        state.townPortalDirty = true;
     } else if (state.selectedPortalKind == kPortalKindRecall && state.selectedPortalIdx >= 0) {
         auto* table = state.recallCoordFile.FindTable("RecallPoint");
         if (!table || static_cast<std::size_t>(state.selectedPortalIdx) >= table->records.size()) return;
@@ -7075,6 +7126,7 @@ void SetSelectedPortalPosition(EditorState& state, long long x, long long y) {
         if (rec.values.size() < 5) return;
         rec.values[3] = std::to_string(x);
         rec.values[4] = std::to_string(y);
+        state.recallCoordDirty = true;
     }
 }
 
@@ -7107,6 +7159,7 @@ void AddTownPortalForCurrentMap(EditorState& state) {
     SetShnCellInt(f, r, cY, static_cast<long long>(std::lround(py)));
     state.selectedPortalKind = kPortalKindTown;
     state.selectedPortalIdx = static_cast<int>(r);
+    state.townPortalDirty = true;
 }
 
 // Generischer Editor fuer einen ShineText-Record: Zahlenspalten (DWRD/BYTE/WORD) als Zahlenfeld,
@@ -7228,11 +7281,17 @@ void DrawPortalsToolsPanel(EditorState& state) {
             const int cGrp = FindShnColumnByName(f, "TP_GroupNo");
             if (cLvl >= 0) {
                 int v = static_cast<int>(ShnCellInt(f, m.idx, cLvl));
-                if (UI::InputInt(L("Mindestlevel","Minimum level"), &v)) SetShnCellInt(f, m.idx, cLvl, std::clamp(v, 0, 255));
+                if (UI::InputInt(L("Mindestlevel","Minimum level"), &v)) {
+                    SetShnCellInt(f, m.idx, cLvl, std::clamp(v, 0, 255));
+                    state.townPortalDirty=true;
+                }
             }
             if (cGrp >= 0) {
                 int v = static_cast<int>(ShnCellInt(f, m.idx, cGrp));
-                if (UI::InputInt(L("Menü-Gruppe","Menu group"), &v)) SetShnCellInt(f, m.idx, cGrp, std::clamp(v, 0, 255));
+                if (UI::InputInt(L("Menü-Gruppe","Menu group"), &v)) {
+                    SetShnCellInt(f, m.idx, cGrp, std::clamp(v, 0, 255));
+                    state.townPortalDirty=true;
+                }
             }
         }
         float gx = 0.0f, gy = 0.0f;
@@ -7262,13 +7321,23 @@ void DrawPortalsToolsPanel(EditorState& state) {
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s",L("Legt einen neuen Eintrag in TownPortal.shn an. Ob der Client dafür weitere Daten braucht, ist ungeprüft.","Creates a new entry in TownPortal.shn. It is unverified whether the client needs additional data for this."));
     }
 
-    if (state.townPortalLoaded && UI::Button(L("TownPortal.shn speichern","Save TownPortal.shn"), ImVec2(-1,0))) SaveTownPortalFiles(state);
-    if (state.recallCoordLoaded && UI::Button(L("RecallCoord.txt speichern","Save RecallCoord.txt"), ImVec2(-1,0))) {
-        auto path = std::filesystem::path(PortalServerRoot(state)) / "World" / "RecallCoord.txt";
-        auto saved = core::legacy::SaveShineTextFile(state.recallCoordFile, path);
-        state.statusMessage = saved ? std::string("RecallCoord.txt gespeichert.") : "Fehler: " + saved.error();
+    ImGui::BeginDisabled(!state.townPortalDirty);
+    if (state.townPortalLoaded && UI::Button(state.townPortalDirty
+            ? L("TownPortal.shn speichern *","Save TownPortal.shn *")
+            : L("TownPortal.shn speichern","Save TownPortal.shn"), ImVec2(-1,0)))
+        SaveTownPortalFiles(state);
+    ImGui::EndDisabled();
+    ImGui::BeginDisabled(!state.recallCoordDirty);
+    if (state.recallCoordLoaded && UI::Button(state.recallCoordDirty
+            ? L("RecallCoord.txt speichern *","Save RecallCoord.txt *")
+            : L("RecallCoord.txt speichern","Save RecallCoord.txt"), ImVec2(-1,0)))
+        SaveRecallCoordFile(state);
+    ImGui::EndDisabled();
+    if (UI::Button(L("Verwerfen und neu laden","Discard and reload"), ImVec2(-1,0))) {
+        state.townPortalDirty=false;
+        state.recallCoordDirty=false;
+        state.portalDataSig.clear();
     }
-    if (UI::Button(L("Verwerfen und neu laden","Discard and reload"), ImVec2(-1,0))) state.portalDataSig.clear();
 }
 
 // Zeichnet die Portal-Marker in den 2D-View (Farben wie im restlichen Theme: Weiss = gewaehlt,
@@ -10106,6 +10175,10 @@ void HandleGlobalShortcuts(EditorState& state) {
             state.statusMessage = std::string(T("workspace.savedas")) + state.legacySaveDir;
         } else {
             state.statusMessage = L("Fehler: ","Error: ") + result.error();
+        }
+        if (state.editMode == EditMode::Portals) {
+            if (state.townPortalDirty) SaveTownPortalFiles(state);
+            if (state.recallCoordDirty) SaveRecallCoordFile(state);
         }
     }
 
