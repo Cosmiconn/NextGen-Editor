@@ -11895,6 +11895,33 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                     DrawInlineIcon("route", DrawIconRoute, IM_COL32(90,220,255,245),
                                    "MobRoam-Route vorhanden");
                 }
+
+                ImGui::Indent(24.0f);
+                if (DrawTinyIconButton("npcInlineDialog",DrawIconDialog,false,"Dialog bearbeiten"))
+                    OpenNpcDialogEditor(state,rec.values[0]);
+                ImGui::SameLine(0,3);
+                if (DrawTinyIconButton("npcInlineAi",DrawIconCode,false,"Lua / AI bearbeiten"))
+                    OpenAiScriptEditor(state,rec.values[0]);
+                ImGui::SameLine(0,3);
+                if (DrawTinyIconButton("npcInlineRoute",DrawIconRoute,false,"Route bearbeiten"))
+                    OpenPatrolRouteEditor(state,rec.values[0]);
+                if (role == "Merchant") {
+                    ImGui::SameLine(0,3);
+                    if (DrawTinyIconButton("npcInlineShop",DrawIconShop,false,"Shop / Inventar bearbeiten")) {
+                        EnsureShopTextLoaded(state,rec.values[0]);
+                        state.shopEditorOpen=true;
+                    }
+                }
+                if (role == "Gate") {
+                    for (const auto& marker : CollectPortalMarkers(state)) {
+                        if (marker.kind != kPortalKindGateLink || marker.idx != idx) continue;
+                        ImGui::SameLine(0,3);
+                        if (DrawTinyIconButton("npcInlineGate",DrawIconPortal,false,"Gate-Ziel öffnen"))
+                            NavigateToPortalTarget(state,marker);
+                        break;
+                    }
+                }
+                ImGui::Unindent(24.0f);
             }
             ImGui::PopID();
         }
@@ -11996,6 +12023,27 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                     DrawInlineIcon("route", DrawIconRoute, IM_COL32(90,220,255,245),
                                    "Mindestens eine MobRoam-Route vorhanden");
                 }
+
+                if (spawns) {
+                    ImGui::Indent(24.0f);
+                    for (std::size_t si=0; si<spawns->records.size(); ++si) {
+                        const auto& spawn=spawns->records[si];
+                        if (spawn.values.size()<2 || spawn.values[0]!=rec.values[0]) continue;
+                        ImGui::PushID(static_cast<int>(si));
+                        DrawInlineIcon("mobEntry",DrawIconPerson,IM_COL32(180,195,215,235),"MobRegen-Eintrag",ImVec2(18,18));
+                        ImGui::SameLine(0,3);
+                        const int amount=spawn.values.size()>=3?std::max(0,std::atoi(spawn.values[2].c_str())):0;
+                        ImGui::Text("%s  x%d",spawn.values[1].c_str(),amount);
+                        ImGui::SameLine();
+                        if (DrawTinyIconButton("mobEntryAi",DrawIconCode,false,"Lua / AI bearbeiten",ImVec2(19,19)))
+                            OpenAiScriptEditor(state,spawn.values[1]);
+                        ImGui::SameLine(0,2);
+                        if (DrawTinyIconButton("mobEntryRoute",DrawIconRoute,false,"MobRoam-Route bearbeiten",ImVec2(19,19)))
+                            OpenPatrolRouteEditor(state,spawn.values[1]);
+                        ImGui::PopID();
+                    }
+                    ImGui::Unindent(24.0f);
+                }
             }
             ImGui::PopID();
         }
@@ -12042,6 +12090,22 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                     state.portalPickMode=true;
                 }
                 ImGui::EndPopup();
+            }
+            if (selected) {
+                ImGui::Indent(24.0f);
+                if (m.kind == kPortalKindGateLink) {
+                    const std::string target=PortalTargetMapName(m);
+                    ImGui::TextDisabled("→ %s  (%.0f, %.0f)",target.empty()?"(kein Ziel)":target.c_str(),m.targetX,m.targetY);
+                    ImGui::SameLine();
+                    if (DrawTinyIconButton("portalInlineOpen",DrawIconPortal,false,"Zielkarte öffnen",ImVec2(19,19)))
+                        NavigateToPortalTarget(state,m);
+                } else {
+                    ImGui::TextDisabled("Position: %.0f / %.0f",m.x,m.y);
+                    ImGui::SameLine();
+                    if (DrawTinyIconButton("portalInlinePick",DrawIconMove,state.portalPickMode,"Position per 2D-Klick setzen",ImVec2(19,19)))
+                        state.portalPickMode=!state.portalPickMode;
+                }
+                ImGui::Unindent(24.0f);
             }
             ImGui::PopID();
         }
