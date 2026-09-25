@@ -267,6 +267,7 @@ add_executable(test_npc_orientation
     src/app/Renderer.cpp
     src/app/ObjectMarkerRenderer.cpp
     src/app/NifMeshRenderer.cpp
+    src/app/UiIconAssets.cpp
 )
 target_include_directories(test_npc_orientation PRIVATE src/app)
 target_link_libraries(test_npc_orientation PRIVATE
