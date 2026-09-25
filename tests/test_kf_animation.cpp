@@ -17,10 +17,95 @@ const KfControlledTrack* FindTrack(const KfAnimationFile& file, const std::strin
         if (track.nodeName == name) return &track;
     return nullptr;
 }
+
+void TestSampler() {
+    KfAnimationFile file;
+    file.sequence.startTime = 0.0f;
+    file.sequence.stopTime = 2.0f;
+
+    KfControlledTrack track;
+    track.nodeName = "SamplerNode";
+    track.pose.translation = {100.0f, 200.0f, 300.0f};
+    track.pose.rotation = {1.0f, 0.0f, 0.0f, 0.0f};
+    track.pose.scale = 1.0f;
+
+    track.keys.translation.interpolation = 1;
+    track.keys.translation.keys = {
+        {0.0f, {0.0f, 0.0f, 0.0f}},
+        {2.0f, {10.0f, 20.0f, 30.0f}},
+    };
+    track.keys.scale.interpolation = 1;
+    track.keys.scale.keys = {
+        {0.0f, 1.0f},
+        {2.0f, 3.0f},
+    };
+    track.keys.rotationType = 1;
+    track.keys.quaternionRotation = {
+        {0.0f, {1.0f, 0.0f, 0.0f, 0.0f}},
+        {2.0f, {0.0f, 0.0f, 1.0f, 0.0f}},
+    };
+    file.sequence.transformTracks.push_back(track);
+
+    auto mid = SampleKfTransformTrack(file, file.sequence.transformTracks.front(), 1.0f);
+    assert(mid);
+    assert(Near(mid->translation.x, 5.0f));
+    assert(Near(mid->translation.y, 10.0f));
+    assert(Near(mid->translation.z, 15.0f));
+    assert(Near(mid->scale, 2.0f));
+    const float rootHalf = std::sqrt(0.5f);
+    assert(Near(std::abs(mid->rotation.w), rootHalf));
+    assert(Near(std::abs(mid->rotation.y), rootHalf));
+
+    // Sequence time is clamped, so sampling before/after the sequence yields endpoints.
+    auto before = SampleKfTransformTrack(file, file.sequence.transformTracks.front(), -50.0f);
+    auto after = SampleKfTransformTrack(file, file.sequence.transformTracks.front(), 50.0f);
+    assert(before && after);
+    assert(Near(before->translation.x, 0.0f));
+    assert(Near(after->translation.x, 10.0f));
+    assert(Near(after->scale, 3.0f));
+
+    auto all = SampleKfSequence(file, 1.0f);
+    assert(all && all->size() == 1);
+    assert(all->front().nodeName == "SamplerNode");
+
+    // Constant keys are true step functions.
+    KfControlledTrack constantTrack;
+    constantTrack.nodeName = "Constant";
+    constantTrack.keys.scale.interpolation = 5;
+    constantTrack.keys.scale.keys = {{0.0f, 2.0f}, {1.0f, 7.0f}};
+    auto constant = SampleKfTransformTrack(file, constantTrack, 0.75f);
+    assert(constant && Near(constant->scale, 2.0f));
+
+    // XYZ rotation channels are supported independently.
+    KfControlledTrack xyzTrack;
+    xyzTrack.nodeName = "XYZ";
+    xyzTrack.keys.rotationType = 4;
+    xyzTrack.keys.xyzRotation[0].interpolation = 1;
+    xyzTrack.keys.xyzRotation[0].keys = {
+        {0.0f, 0.0f},
+        {2.0f, 3.14159265358979323846f},
+    };
+    auto xyz = SampleKfTransformTrack(file, xyzTrack, 1.0f);
+    assert(xyz);
+    assert(Near(std::abs(xyz->rotation.w), rootHalf));
+    assert(Near(std::abs(xyz->rotation.x), rootHalf));
+
+    // Unknown interpolation semantics and compressed splines must fail explicitly.
+    KfControlledTrack unsupported = track;
+    unsupported.nodeName = "Quadratic";
+    unsupported.keys.translation.interpolation = 2;
+    assert(!SampleKfTransformTrack(file, unsupported, 1.0f));
+
+    KfControlledTrack compressed;
+    compressed.nodeName = "Compressed";
+    compressed.compressedSpline = true;
+    assert(!SampleKfTransformTrack(file, compressed, 1.0f));
+}
 }
 
 int main(int argc, char** argv) {
     assert(argc >= 3);
+    TestSampler();
 
     const auto effect = LoadKfAnimation(std::filesystem::path(argv[1]));
     if (!effect) {
