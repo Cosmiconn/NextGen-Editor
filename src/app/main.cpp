@@ -5669,7 +5669,7 @@ bool DrawAssetPickerPopup(const char* popupId, const std::vector<std::string>& f
             }
         }
         ImGui::EndChild();
-        if (UI::Button("Abbrechen")) ImGui::CloseCurrentPopup();
+        if (UI::Button(L("Abbrechen","Cancel"))) ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
     return picked;
@@ -10102,15 +10102,15 @@ void DrawToolsContent(EditorState& state) {
         }
         ImGui::EndDisabled();
     } else if (state.editMode == EditMode::ObjectPlacement) {
-        ImGui::Text("Klick im Editor (2D) unten:");
-        UI::RadioButton("Platzieren", &state.objectPlaceMode, 1);
+        ImGui::Text("%s",L("Klick im Editor (2D) unten:","Click in the 2D editor below:"));
+        UI::RadioButton(L("Platzieren","Place"), &state.objectPlaceMode, 1);
         ImGui::SameLine();
-        UI::RadioButton("Auswählen", &state.objectPlaceMode, 0);
+        UI::RadioButton(L("Auswählen","Select"), &state.objectPlaceMode, 0);
 
         if (state.objectPlaceMode) {
-            UI::InputText("Modellpfad", state.newObjectModelPath, sizeof(state.newObjectModelPath));
+            UI::InputText(L("Modellpfad","Model path"), state.newObjectModelPath, sizeof(state.newObjectModelPath));
             ImGui::SameLine();
-            if (UI::Button("Durchsuchen...##nif")) {
+            if (UI::Button(L("Durchsuchen...##nif","Browse...##nif"))) {
                 if (const auto resmapRoot = FindResmapRootForAssets(state.project.clientFolder)) {
                     state.availableNifFiles = ListFilesByExtension(*resmapRoot, {".nif"});
                     state.nifAssetRoot = *resmapRoot;
@@ -10118,12 +10118,12 @@ void DrawToolsContent(EditorState& state) {
                     state.nifListScanned = true;
                     state.assetPickerFilter.clear();
                     if (state.availableNifFiles.empty()) {
-                        state.statusMessage = "Keine .nif-Dateien unter " + resmapRoot->string() + " gefunden.";
+                        state.statusMessage = L("Keine .nif-Dateien unter ","No .nif files found under ") + resmapRoot->string() + L(" gefunden.",".");
                     } else {
                         ImGui::OpenPopup("##nifPicker");
                     }
                 } else {
-                    state.statusMessage = "Kein Client-Ordner/'resmap' aktiv - unter 'Neu' ein Projekt mit Client Ordner anlegen.";
+                    state.statusMessage = L("Kein Client-Ordner/'resmap' aktiv - unter 'Neu' ein Projekt mit Client Ordner anlegen.","No client folder/'resmap' is active - create a project with a client folder under 'New'.");
                 }
             }
             {
@@ -10134,23 +10134,23 @@ void DrawToolsContent(EditorState& state) {
                     std::snprintf(state.newObjectModelPath, sizeof(state.newObjectModelPath), "%s", legacyModelPath.c_str());
                 }
             }
-            UI::SliderFloat("Rotation um Hochachse (°)##new", &state.newObjectRotDeg, -180.0f, 180.0f);
-            UI::SliderFloat("Skalierung##new", &state.newObjectScale, 0.1f, 5.0f);
+            UI::SliderFloat(L("Rotation um Hochachse (°)##new","Rotation around up axis (°)##new"), &state.newObjectRotDeg, -180.0f, 180.0f);
+            UI::SliderFloat(L("Skalierung##new","Scale##new"), &state.newObjectScale, 0.1f, 5.0f);
         }
 
         ImGui::Separator();
-        ImGui::TextDisabled("Auswahl erfolgt im separaten Objekt-Outliner oder direkt in 2D/3D.");
+        ImGui::TextDisabled("%s",L("Auswahl erfolgt im separaten Objekt-Outliner oder direkt in 2D/3D.","Select objects in the separate Object Outliner or directly in 2D/3D."));
 
         const bool multipleSelection = state.selectedObjects.size() > 1;
         if (multipleSelection) {
-            ImGui::Text("%zu Objekte ausgewählt", state.selectedObjects.size());
-            ImGui::TextWrapped("Koordinaten, Rotation, Skalierung und Drag&Drop wirken gemeinsam. "
-                               "Relative Abstände und Höhen bleiben beim Verschieben erhalten.");
+            ImGui::Text(L("%zu Objekte ausgewählt","%zu objects selected"), state.selectedObjects.size());
+            ImGui::TextWrapped("%s",L("Koordinaten, Rotation, Skalierung und Drag&Drop wirken gemeinsam. Relative Abstände und Höhen bleiben beim Verschieben erhalten.",
+                                    "Coordinates, rotation, scale and drag & drop affect the selection together. Relative spacing and heights are preserved when moving."));
         }
 
         SyncSelectedObjectModelPath(state);
         if (auto* obj = EditableObject(state, state.selectedObject)) {
-            ImGui::SeparatorText("Transform-Werkzeug");
+            ImGui::SeparatorText(L("Transform-Werkzeug","Transform tool"));
             if (DrawIconButton("gizmoMoveProps","Move",DrawIconMove,state.objectGizmoOperation==0,ImVec2(72,52))) {
                 state.objectGizmoOperation=0; state.objectGizmoMatrixValid=false;
             }
@@ -10164,7 +10164,7 @@ void DrawToolsContent(EditorState& state) {
             }
             ImGui::SameLine();
             if (DrawTinyIconButton("gizmoSnapProps",DrawIconSnap,state.objectGizmoSnap,
-                                   state.objectGizmoSnap ? "Snap deaktivieren" : "Snap aktivieren",
+                                   state.objectGizmoSnap ? L("Snap deaktivieren","Disable snap") : L("Snap aktivieren","Enable snap"),
                                    ImVec2(28,28)))
                 state.objectGizmoSnap=!state.objectGizmoSnap;
             if (UI::Checkbox("Local##gizmoProps",&state.objectGizmoLocal)) state.objectGizmoMatrixValid=false;
@@ -10173,31 +10173,31 @@ void DrawToolsContent(EditorState& state) {
                     UI::InputFloat("Grid-Snap",&state.objectMoveSnap,10.0f,50.0f,"%.1f");
                     state.objectMoveSnap=std::max(0.01f,state.objectMoveSnap);
                 } else if (state.objectGizmoOperation==1) {
-                    UI::InputFloat("Winkel-Snap (°)",&state.objectRotateSnap,1.0f,5.0f,"%.1f");
+                    UI::InputFloat(L("Winkel-Snap (°)","Angle snap (°)"),&state.objectRotateSnap,1.0f,5.0f,"%.1f");
                     state.objectRotateSnap=std::max(0.1f,state.objectRotateSnap);
                 } else {
                     UI::InputFloat("Scale-Snap",&state.objectScaleSnap,0.01f,0.10f,"%.2f");
                     state.objectScaleSnap=std::max(0.001f,state.objectScaleSnap);
                 }
             }
-            if (UI::Button("Auswahl fokussieren (F)")) FocusSelectedObjects(state);
+            if (UI::Button(L("Auswahl fokussieren (F)","Focus selection (F)"))) FocusSelectedObjects(state);
             ImGui::SameLine();
-            if (UI::Button("Auf Terrain (Ende)")) GroundSelectedObjects(state);
+            if (UI::Button(L("Auf Terrain (Ende)","Place on terrain (End)"))) GroundSelectedObjects(state);
             ImGui::Separator();
             const bool shmdScene = IsShmdSelection(state.selectedObject);
             if (shmdScene) {
                 const std::string categoryName = ShmdSelectionCategoryName(state, state.selectedObject);
-                ImGui::Text("SHMD-Kategorie: %s", categoryName.empty() ? "Szenenmodell" : categoryName.c_str());
+                ImGui::Text(L("SHMD-Kategorie: %s","SHMD category: %s"), categoryName.empty() ? L("Szenenmodell","Scene model") : categoryName.c_str());
             }
             if (shmdScene || (multipleSelection && std::any_of(state.selectedObjects.begin(), state.selectedObjects.end(),
                                                                [](int id) { return IsShmdSelection(id); }))) {
-                ImGui::TextWrapped("Transformänderungen wandeln betroffene Sky/Water/GroundObject-Einträge automatisch "
-                                   "in normale Placements um, da die SHMD-Kategorielisten keine Transformfelder besitzen.");
+                ImGui::TextWrapped("%s",L("Transformänderungen wandeln betroffene Sky/Water/GroundObject-Einträge automatisch in normale Placements um, da die SHMD-Kategorielisten keine Transformfelder besitzen.",
+                                        "Transform changes automatically convert affected Sky/Water/GroundObject entries into normal placements because the SHMD category lists do not contain transform fields."));
             }
 
             ImGui::BeginDisabled(multipleSelection);
-            if (multipleSelection) ImGui::TextDisabled("Modellwechsel nur bei Einzelauswahl");
-            if (UI::InputText("Modellpfad##selected", state.selectedObjectModelPath, sizeof(state.selectedObjectModelPath))) {
+            if (multipleSelection) ImGui::TextDisabled("%s",L("Modellwechsel nur bei Einzelauswahl","Model changes require a single selection"));
+            if (UI::InputText(L("Modellpfad##selected","Model path##selected"), state.selectedObjectModelPath, sizeof(state.selectedObjectModelPath))) {
                 state.selectedObjectModelPathDirty = true;
             }
             if (state.selectedObjectModelPathDirty && ImGui::IsItemDeactivatedAfterEdit()) {
@@ -10206,7 +10206,7 @@ void DrawToolsContent(EditorState& state) {
                 obj = EditableObject(state, state.selectedObject);
             }
             ImGui::SameLine();
-            if (UI::Button("Durchsuchen...##selectedNif")) {
+            if (UI::Button(L("Durchsuchen...##selectedNif","Browse...##selectedNif"))) {
                 if (const auto resmapRoot = FindResmapRootForAssets(state.project.clientFolder)) {
                     state.availableNifFiles = ListFilesByExtension(*resmapRoot, {".nif"});
                     state.nifAssetRoot = *resmapRoot;
@@ -10229,7 +10229,7 @@ void DrawToolsContent(EditorState& state) {
             if (obj) {
                 const float oldX = obj->posX, oldY = obj->posY, oldZ = obj->posZ;
                 float position[3] = {oldX, oldY, oldZ};
-                if (ImGui::InputFloat3(multipleSelection ? "Position (aktives Objekt)" : "Position", position, "%.1f")) {
+                if (ImGui::InputFloat3(multipleSelection ? L("Position (aktives Objekt)","Position (active object)") : "Position", position, "%.1f")) {
                     MoveSelectedObjectsBy(state, position[0] - oldX, position[1] - oldY, position[2] - oldZ);
                     obj = EditableObject(state, state.selectedObject);
                 }
@@ -10256,7 +10256,7 @@ void DrawToolsContent(EditorState& state) {
                 if (obj) {
                     const float oldScale = obj->scale;
                     float scale = oldScale;
-                    if (UI::SliderFloat("Skalierung", &scale, 0.01f, 100.0f, "%.3f",
+                    if (UI::SliderFloat(L("Skalierung","Scale"), &scale, 0.01f, 100.0f, "%.3f",
                                         ImGuiSliderFlags_Logarithmic)) {
                         const float factor = oldScale > 1.0e-6f ? scale / oldScale : 1.0f;
                         ScaleSelectedObjectsBy(state, factor);
@@ -10266,15 +10266,15 @@ void DrawToolsContent(EditorState& state) {
                 }
             }
 
-            if (UI::Button("Ausgewählte Objekte löschen")) DeleteSelectedObjects(state);
+            if (UI::Button(L("Ausgewählte Objekte löschen","Delete selected objects"))) DeleteSelectedObjects(state);
         }
 
         ImGui::Separator();
-        if (UI::Button("Alle normalen Objekte entfernen")) ImGui::OpenPopup("##deleteAllNormalObjects");
+        if (UI::Button(L("Alle normalen Objekte entfernen","Remove all normal objects"))) ImGui::OpenPopup("##deleteAllNormalObjects");
         if (ImGui::BeginPopupModal("##deleteAllNormalObjects", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::Text("Wirklich alle %zu normalen Placement-Objekte entfernen?", state.placementSet.Count());
-            ImGui::TextDisabled("Sky, Water und GroundObject bleiben erhalten.");
-            if (UI::Button("Alle normalen entfernen")) {
+            ImGui::Text(L("Wirklich alle %zu normalen Placement-Objekte entfernen?","Really remove all %zu normal placement objects?"), state.placementSet.Count());
+            ImGui::TextDisabled("%s",L("Sky, Water und GroundObject bleiben erhalten.","Sky, Water and GroundObject are preserved."));
+            if (UI::Button(L("Alle normalen entfernen","Remove all normal objects"))) {
                 DeleteAllNormalObjects(state);
                 ImGui::CloseCurrentPopup();
             }
