@@ -13092,18 +13092,8 @@ void DrawWorkspaceTabBar(EditorState& state) {
         ImGui::SameLine();
     }
 
-    ImGui::Dummy(ImVec2(8.0f, 1.0f)); ImGui::SameLine();
-    if (DrawIconButton("cmd.data",L("Spieldaten","Data"),DrawIconTable,false,ImVec2(86,58))) {
-        state.screen = AppScreen::ShnEditor;
-    }
-    ImGui::SameLine();
-    if (DrawIconButton("cmd.kfm","KFM",DrawIconClapper,false,ImVec2(70,58))) {
-        state.screen = AppScreen::KfmBrowser;
-    }
-    ImGui::SameLine();
-    if (DrawIconButton("cmd.back",L("Zurück","Back"),DrawIconUndo,false,ImVec2(70,58))) {
-        state.screen = AppScreen::MapEditorLauncher;
-    }
+    // Workspace-Wechsel (Spieldaten/Animationen/Projekt/Map-Auswahl) bleibt bewusst in
+    // der globalen Topbar. Die Map-Toolbar enthält nur Aktionen für die aktuelle Karte.
 
     ImGui::EndGroup();
     ImGui::PopStyleVar();
