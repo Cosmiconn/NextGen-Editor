@@ -6391,7 +6391,7 @@ void DrawPortalEditor(EditorState& state) {
     if (UI::Button("RecallCoord.txt speichern")) {
         auto path = std::filesystem::path(PortalServerRoot(state)) / "World" / "RecallCoord.txt";
         auto saved = core::legacy::SaveShineTextFile(state.recallCoordFile, path);
-        state.statusMessage = saved ? std::string("RecallCoord.txt gespeichert.") : "Fehler: " + saved.error();
+        state.statusMessage = saved ? std::string(L("RecallCoord.txt gespeichert.","RecallCoord.txt saved.")) : L("Fehler: ","Error: ") + saved.error();
     }
 }
 
@@ -6795,10 +6795,10 @@ void DrawPortalsToolsPanel(EditorState& state) {
     EnsurePortalDataLoaded(state);
 
     if (state.npcDialogRessystemRoot.empty()) {
-        if (DrawPortalFolderField("Client-ressystem-Ordner (enthält TownPortal.shn, MapInfo.shn) noch nicht gefunden.", "portal_ressystem", state.npcDialogRessystemRoot)) state.portalDataSig.clear();
+        if (DrawPortalFolderField(L("Client-ressystem-Ordner (enthält TownPortal.shn, MapInfo.shn) noch nicht gefunden.","Client ressystem folder (containing TownPortal.shn, MapInfo.shn) was not found."), "portal_ressystem", state.npcDialogRessystemRoot)) state.portalDataSig.clear();
     }
     if (PortalServerRoot(state).empty()) {
-        if (DrawPortalFolderField("Server-Ordner Server/9Data/Shine (enthält World/RecallCoord.txt, World/NPC.txt) noch nicht gewählt.", "portal_server", state.shineTextRoot)) state.portalDataSig.clear();
+        if (DrawPortalFolderField(L("Server-Ordner Server/9Data/Shine (enthält World/RecallCoord.txt, World/NPC.txt) noch nicht gewählt.","Server folder Server/9Data/Shine (containing World/RecallCoord.txt, World/NPC.txt) has not been selected yet."), "portal_server", state.shineTextRoot)) state.portalDataSig.clear();
     }
     if (state.legacySaveStem[0] == '\0') { ImGui::TextDisabled("%s",L("Keine Karte offen.","No map open.")); return; }
 
@@ -6808,25 +6808,25 @@ void DrawPortalsToolsPanel(EditorState& state) {
     for (const auto& m : markers) if (m.kind == state.selectedPortalKind && static_cast<int>(m.idx) == state.selectedPortalIdx) selectionValid = true;
     if (!selectionValid) { state.selectedPortalKind = kPortalKindNone; state.selectedPortalIdx = -1; }
 
-    if (!state.townPortalLoaded) ImGui::TextWrapped("TownPortal.shn konnte nicht geladen werden.");
-    if (!state.recallCoordLoaded) ImGui::TextWrapped("World/RecallCoord.txt konnte nicht geladen werden.");
+    if (!state.townPortalLoaded) ImGui::TextWrapped("%s",L("TownPortal.shn konnte nicht geladen werden.","TownPortal.shn could not be loaded."));
+    if (!state.recallCoordLoaded) ImGui::TextWrapped("%s",L("World/RecallCoord.txt konnte nicht geladen werden.","World/RecallCoord.txt could not be loaded."));
 
-    ImGui::TextDisabled("%zu Teleport-Ziele auf '%s' · Auswahl links im Szene-Outliner",
+    ImGui::TextDisabled(L("%zu Teleport-Ziele auf '%s' · Auswahl links im Szene-Outliner","%zu teleport targets on '%s' · select in the Scene Outliner on the left"),
                         markers.size(), state.legacySaveStem);
-    ImGui::TextDisabled("Raute = TownPortal · Dreieck = Schriftrolle · Quadrat = Gate_Town · Ring = Wiederbelebung");
+    ImGui::TextDisabled("%s",L("Raute = TownPortal · Dreieck = Schriftrolle · Quadrat = Gate_Town · Ring = Wiederbelebung","Diamond = TownPortal · triangle = scroll · square = Gate_Town · ring = respawn"));
 
-    ImGui::SeparatorText("Auswahl");
+    ImGui::SeparatorText(L("Auswahl","Selection"));
     if (state.selectedPortalKind == kPortalKindNone)
-        ImGui::TextDisabled("Portal im Szene-Outliner oder in der 2D-Ansicht auswählen.");
+        ImGui::TextDisabled("%s",L("Portal im Szene-Outliner oder in der 2D-Ansicht auswählen.","Select a portal in the Scene Outliner or the 2D view."));
 
     for (const auto& m : markers) {
         if (m.kind != state.selectedPortalKind || static_cast<int>(m.idx) != state.selectedPortalIdx) continue;
-        const char* kindText = m.kind == kPortalKindTown ? "TownPortal · auswählbares Ziel"
-                             : m.kind == kPortalKindRecall ? "RecallCoord · festes Schriftrollen-Ziel"
-                             : "World/NPC.txt · ausgehende Gate-Verknüpfung";
+        const char* kindText = m.kind == kPortalKindTown ? L("TownPortal · auswählbares Ziel","TownPortal · selectable target")
+                             : m.kind == kPortalKindRecall ? L("RecallCoord · festes Schriftrollen-Ziel","RecallCoord · fixed scroll target")
+                             : L("World/NPC.txt · ausgehende Gate-Verknüpfung","World/NPC.txt · outbound gate link");
         ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s", m.label.c_str());
         ImGui::TextDisabled("%s",kindText);
-        ImGui::SeparatorText(m.kind == kPortalKindGateLink ? "Ausgangspunkt" : "Position");
+        ImGui::SeparatorText(m.kind == kPortalKindGateLink ? L("Ausgangspunkt","Origin") : "Position");
         int x = static_cast<int>(m.x), y = static_cast<int>(m.y);
         if (m.kind == kPortalKindGateLink) {
             ImGui::Text("X: %d   Y: %d",x,y);
@@ -6836,72 +6836,72 @@ void DrawPortalsToolsPanel(EditorState& state) {
             changed |= UI::InputInt("Y", &y, 1, 50);
             if (changed) SetSelectedPortalPosition(state, x, y);
         }
-        if (UI::Button("Kamera auf Portal", ImVec2(-1,0))) {
+        if (UI::Button(L("Kamera auf Portal","Camera to portal"), ImVec2(-1,0))) {
             const float wx=static_cast<float>(x), wz=static_cast<float>(y);
             state.camera.SetTarget(wx,state.heightmap.SampleWorld(wx,wz)+25.0f,wz);
             state.camera.Zoom(260.0f-state.camera.Distance());
         }
 
         if (m.kind == kPortalKindGateLink) {
-            ImGui::SeparatorText("Ziel");
+            ImGui::SeparatorText(L("Ziel","Target"));
             ImGui::Text("Link: %s",m.linkKey.c_str());
-            if (!m.sourceRole.empty()) ImGui::TextDisabled("Rolle: %s",m.sourceRole.c_str());
-            ImGui::Text("Client-Karte: %s",m.targetMapClient.empty() ? "(leer)" : m.targetMapClient.c_str());
-            ImGui::Text("Server-Karte: %s",m.targetMapServer.empty() ? "(leer)" : m.targetMapServer.c_str());
-            ImGui::Text("Ziel X/Y: %.0f / %.0f",m.targetX,m.targetY);
-            ImGui::TextDisabled("Richtung: %d · Party: %s",m.targetDirect,m.targetParty ? "ja" : "nein");
-            if (DrawIconButton("openGateTarget","Ziel öffnen",DrawIconPortal,false,ImVec2(100,58)))
+            if (!m.sourceRole.empty()) ImGui::TextDisabled(L("Rolle: %s","Role: %s"),m.sourceRole.c_str());
+            ImGui::Text(L("Client-Karte: %s","Client map: %s"),m.targetMapClient.empty() ? L("(leer)","(empty)") : m.targetMapClient.c_str());
+            ImGui::Text(L("Server-Karte: %s","Server map: %s"),m.targetMapServer.empty() ? L("(leer)","(empty)") : m.targetMapServer.c_str());
+            ImGui::Text(L("Ziel X/Y: %.0f / %.0f","Target X/Y: %.0f / %.0f"),m.targetX,m.targetY);
+            ImGui::TextDisabled(L("Richtung: %d · Party: %s","Direction: %d · Party: %s"),m.targetDirect,m.targetParty ? L("ja","yes") : L("nein","no"));
+            if (DrawIconButton("openGateTarget",L("Ziel öffnen","Open target"),DrawIconPortal,false,ImVec2(100,58)))
                 NavigateToPortalTarget(state,m);
         }
 
         if (m.kind == kPortalKindTown) {
-            ImGui::SeparatorText("Bedingungen");
+            ImGui::SeparatorText(L("Bedingungen","Conditions"));
             auto& f = state.townPortalShn;
             const int cLvl = FindShnColumnByName(f, "MinLevel");
             const int cGrp = FindShnColumnByName(f, "TP_GroupNo");
             if (cLvl >= 0) {
                 int v = static_cast<int>(ShnCellInt(f, m.idx, cLvl));
-                if (UI::InputInt("Mindestlevel", &v)) SetShnCellInt(f, m.idx, cLvl, std::clamp(v, 0, 255));
+                if (UI::InputInt(L("Mindestlevel","Minimum level"), &v)) SetShnCellInt(f, m.idx, cLvl, std::clamp(v, 0, 255));
             }
             if (cGrp >= 0) {
                 int v = static_cast<int>(ShnCellInt(f, m.idx, cGrp));
-                if (UI::InputInt("Menü-Gruppe", &v)) SetShnCellInt(f, m.idx, cGrp, std::clamp(v, 0, 255));
+                if (UI::InputInt(L("Menü-Gruppe","Menu group"), &v)) SetShnCellInt(f, m.idx, cGrp, std::clamp(v, 0, 255));
             }
         }
         float gx = 0.0f, gy = 0.0f;
         if (FindGateTownNpc(state, gx, gy)) {
-            ImGui::TextDisabled("Abstand zum Gate_Town-NPC: %.0f", std::sqrt((gx - m.x) * (gx - m.x) + (gy - m.y) * (gy - m.y)));
+            ImGui::TextDisabled(L("Abstand zum Gate_Town-NPC: %.0f","Distance to Gate_Town NPC: %.0f"), std::sqrt((gx - m.x) * (gx - m.x) + (gy - m.y) * (gy - m.y)));
         }
         break;
     }
-    ImGui::SeparatorText("Positionieren");
+    ImGui::SeparatorText(L("Positionieren","Positioning"));
     const bool canRepositionPortal = state.selectedPortalKind == kPortalKindTown ||
                                      state.selectedPortalKind == kPortalKindRecall;
     ImGui::BeginDisabled(!canRepositionPortal);
-    UI::Checkbox("Position per Klick im 2D-View setzen", &state.portalPickMode);
+    UI::Checkbox(L("Position per Klick im 2D-View setzen","Set position by clicking in the 2D view"), &state.portalPickMode);
     ImGui::EndDisabled();
     if (!canRepositionPortal) state.portalPickMode = false;
     if (state.portalPickMode && state.selectedPortalKind == kPortalKindNone)
-        ImGui::TextDisabled("Zuerst ein Ziel im Szene-Outliner oder in der 2D-Ansicht wählen.");
+        ImGui::TextDisabled("%s",L("Zuerst ein Ziel im Szene-Outliner oder in der 2D-Ansicht wählen.","Select a target in the Scene Outliner or 2D view first."));
 
-    ImGui::SeparatorText("Aktionen");
+    ImGui::SeparatorText(L("Aktionen","Actions"));
     if (state.townPortalLoaded) {
         bool hasTown = false;
         for (const auto& m : markers) if (m.kind == kPortalKindTown) hasTown = true;
         if (!hasTown) {
-            ImGui::TextDisabled("Diese Karte hat noch kein TownPortal-Ziel.");
+            ImGui::TextDisabled("%s",L("Diese Karte hat noch kein TownPortal-Ziel.","This map does not have a TownPortal target yet."));
         }
-        if (UI::Button("TownPortal-Ziel hier hinzufügen")) AddTownPortalForCurrentMap(state);
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Legt einen neuen Eintrag in TownPortal.shn an. Ob der Client dafür weitere Daten braucht, ist ungeprüft.");
+        if (UI::Button(L("TownPortal-Ziel hier hinzufügen","Add TownPortal target here"))) AddTownPortalForCurrentMap(state);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s",L("Legt einen neuen Eintrag in TownPortal.shn an. Ob der Client dafür weitere Daten braucht, ist ungeprüft.","Creates a new entry in TownPortal.shn. It is unverified whether the client needs additional data for this."));
     }
 
-    if (state.townPortalLoaded && UI::Button("TownPortal.shn speichern", ImVec2(-1,0))) SaveTownPortalFiles(state);
-    if (state.recallCoordLoaded && UI::Button("RecallCoord.txt speichern", ImVec2(-1,0))) {
+    if (state.townPortalLoaded && UI::Button(L("TownPortal.shn speichern","Save TownPortal.shn"), ImVec2(-1,0))) SaveTownPortalFiles(state);
+    if (state.recallCoordLoaded && UI::Button(L("RecallCoord.txt speichern","Save RecallCoord.txt"), ImVec2(-1,0))) {
         auto path = std::filesystem::path(PortalServerRoot(state)) / "World" / "RecallCoord.txt";
         auto saved = core::legacy::SaveShineTextFile(state.recallCoordFile, path);
         state.statusMessage = saved ? std::string("RecallCoord.txt gespeichert.") : "Fehler: " + saved.error();
     }
-    if (UI::Button("Verwerfen und neu laden", ImVec2(-1,0))) state.portalDataSig.clear();
+    if (UI::Button(L("Verwerfen und neu laden","Discard and reload"), ImVec2(-1,0))) state.portalDataSig.clear();
 }
 
 // Zeichnet die Portal-Marker in den 2D-View (Farben wie im restlichen Theme: Weiss = gewaehlt,
