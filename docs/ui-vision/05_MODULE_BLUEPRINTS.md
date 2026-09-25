@@ -31,7 +31,7 @@ Brush Preview + Radius/Strength/Hardness kompakt. Raise/Lower/Smooth/Flatten als
 Rot/Grün-Legende, Brush/Rectangle, sichtbares Undo/Redo. Footprint→Walk verwendet die echte NIF-Grundfläche (konvexe Hull, Bounding-Fallback) und folgt verbindlich **Preview → Apply/Cancel**: sichtbare Kategorien werden im 2D-View rot/grün gefüllt, Apply ist genau ein Undo-Schritt.
 
 ## SHN
-Daten-IDE statt Roh-Tabelle: Dokumentkopf, Dirty, Filter, Referenz-/Error-Hinweise, Save-Bar.
+Daten-IDE statt Roh-Tabelle: Dokumentkopf, Dirty, Filter, Save-Bar. Referenz-/Error-Hinweise sind evidenzbasiert: aktuell Item/Mob/ActiveSkill-Familien per verifizierter ID-Menge; Grün=vorhanden, Rot=fehlend, Gelb=mehrdeutig, eindeutige Treffer als Cross-Link.
 
 ## Quest
 General / Requirements / Objectives / Rewards / Dialogs / Scripts. Referenzen als Links. Später Flow View als Tab.
