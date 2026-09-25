@@ -94,6 +94,7 @@
 #include <unordered_set>
 #include <set>
 #include <sstream>
+#include <string_view>
 #include <vector>
 
 using namespace theseed::mapeditor;
@@ -9304,6 +9305,10 @@ void DrawCommandPalette(EditorState& state) {
         state.mapLauncherView = EditorState::MapLauncherView::NewMap;
         state.screen = AppScreen::MapEditorLauncher;
     });
+    add("Workspace: Standard", "", [&] { RequestMapWorkspacePreset(state,0); state.screen = AppScreen::MapEditorWorkspace; });
+    add("Workspace: 3D-Fokus", "", [&] { RequestMapWorkspacePreset(state,1); state.screen = AppScreen::MapEditorWorkspace; });
+    add("Workspace: Terrain / 2D", "", [&] { RequestMapWorkspacePreset(state,2); state.screen = AppScreen::MapEditorWorkspace; });
+    add("Workspace: Daten / Szene", "", [&] { RequestMapWorkspacePreset(state,3); state.screen = AppScreen::MapEditorWorkspace; });
     add("Spieldaten: Single SHN", "", [&] { state.shnSubTab = 0; state.screen = AppScreen::ShnEditor; });
     add("Spieldaten: Multi SHN", "", [&] { state.shnSubTab = 1; state.screen = AppScreen::ShnEditor; });
     add("Spieldaten: Quest Editor", "", [&] { state.shnSubTab = 4; state.screen = AppScreen::ShnEditor; });
