@@ -3471,11 +3471,18 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
     LoadRecentEntries(state);
     LoadShortcutSettings(state);
     LoadWorkspaceSettings(state);
+
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
+    ImGui::PushStyleColor(ImGuiCol_Border, UiTheme::Border);
+    ImGui::BeginChild("##nextgenTopBar", ImVec2(0.0f, 43.0f), true,
+                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(11.0f, 7.0f));
 
     ImGui::TextColored(UiTheme::AccentCyan, "NG");
-    ImGui::SameLine();
-    ImGui::TextUnformatted("NextGen-Editor");
+    ImGui::SameLine(0.0f, 7.0f);
+    ImGui::TextUnformatted("NextGen");
+    ImGui::SameLine(0.0f, 4.0f);
+    ImGui::TextColored(UiTheme::AccentBlue, "Editor");
     if (breadcrumbTitle && breadcrumbTitle[0]) {
         ImGui::SameLine();
         ImGui::TextDisabled("/ %s", breadcrumbTitle);
@@ -3542,7 +3549,7 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
     if (state.mapDirty || dirtyShn > 0 || state.questDirty || state.townPortalDirty ||
         state.recallCoordDirty || state.aiScriptDirty || state.dropTableDirty) {
         ImGui::SameLine();
-        ImGui::TextColored(ImVec4(1.0f,0.68f,0.25f,1.0f), "●");
+        ImGui::TextColored(UiTheme::Warning, "●");
         if (ImGui::IsItemHovered()) {
             std::string dirtyText = "Ungespeichert";
             if (state.mapDirty) dirtyText += "\n• Karte geändert";
@@ -3570,7 +3577,9 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
         app::SetLanguage(langIdx == 0 ? app::Language::German : app::Language::English);
 
     ImGui::PopStyleVar();
-    ImGui::Separator();
+    ImGui::EndChild();
+    ImGui::PopStyleColor(2);
+    ImGui::Dummy(ImVec2(0.0f, 4.0f));
 }
 
 
@@ -3587,8 +3596,8 @@ const char* ShnSourceName(EditorState::ShnSource source) {
 
 ImVec4 ShnSourceColor(EditorState::ShnSource source) {
     return source == EditorState::ShnSource::Client
-        ? ImVec4(0.40f, 0.72f, 0.96f, 1.0f)
-        : ImVec4(0.72f, 0.74f, 0.78f, 1.0f);
+        ? UiTheme::AccentBlue
+        : UiTheme::TextSecondary;
 }
 
 std::string LowerAscii(std::string value) {
