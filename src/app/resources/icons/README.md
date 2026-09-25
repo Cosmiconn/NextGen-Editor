@@ -1,28 +1,41 @@
-# NextGen Editor – production SVG icon sources
+# NextGen Editor – runtime icon resources
 
-Dieser Ordner enthält die **Implementierungsquellen** für das neue Icon-System.
+This directory contains the icon assets used by the editor runtime.
 
-## Qualitätsstandard
-- konsistente 24×24-Geometrie
-- klare Silhouette bei 16–24 px
-- einheitliche Linienführung
-- keine Emojis, keine ad-hoc gezeichneten Platzhalter
-- Zustandsfarbe wird vom NextGen-Theme gesteuert
+## Authoritative artwork
 
-## Quelle
-Die neutralen Basisglyphen stammen aus **Lucide Icons** (ISC License, siehe `LICENSE-LUCIDE.txt`) und werden im NextGen Editor semantisch benannt und bei Bedarf projektbezogen angepasst.
+The approved source package for the UI upgrade is:
 
-Die hochauflösenden visuellen Zielbilder liegen unter:
-`docs/ui-vision/reference/`
+`NextGen_Icons_True_Vector_Set_With_Sizes.zip`
 
-Diese SVGs sind die technische Icon-Basis; **die PNG-Zielbilder bleiben die visuelle Qualitätsreferenz**.
+The package inventory and semantic mapping are tracked in:
+`docs/ui-vision/ICON_INVENTORY.md`.
 
-## Vorhandene Kernicons
-Datei/History: new, open, save, undo, redo  
-Transform: select, move, rotate, scale  
-World: brush, terrain, layers, object, water, sky, weather, light  
-Scene: outliner, asset-browser, visibility, search, filter  
-Gameplay: npc, spawn, portal, trigger, event, collision, block-walk, path  
-System: minimap, project, settings, help, validate, playtest, export, copy, duplicate, lock, unlock
+Do not add newly invented replacement icons when the approved package already contains the required function.
 
-Noch projektindividuell zu zeichnen: NG-App-Small-Mark, spezielle Fiesta-/Map-Semantik, einige gefüllte Active-Varianten.
+## Current migration state
+
+The SVG files currently in this directory originated from the earlier Lucide-based implementation pass. They are **legacy migration assets**, not the final visual source of truth. The older native ImDrawList icon primitives in `main.cpp` are legacy as well.
+
+They may remain temporarily while the approved package is imported and mapped, but a finished module must not visibly mix both styles.
+
+## Runtime quality rules
+
+- Prefer package-native 16/24/32 px exports for dense editor chrome.
+- Preserve larger PNG masters for visual comparison and future regeneration.
+- Use SVG only where it reproduces the approved raster appearance cleanly.
+- If an automatically reconstructed SVG visibly loses glow, gradients, bevels or edge quality, use the approved PNG export instead.
+- State color is controlled by the NextGen UI theme; destructive actions remain red and active tools blue/cyan.
+- Keep one stable semantic id per editor action; UI code must not depend on arbitrary source filenames.
+
+## Migration order
+
+1. import/package inventory;
+2. NG branding and executable/window icon;
+3. app shell / primary toolbar;
+4. viewport and map-editor panels;
+5. data-editor module launchers;
+6. secondary actions / context menus;
+7. remove obsolete Lucide/native DrawList fallbacks once their replacements are verified.
+
+See `docs/ui-vision/04_ICON_SYSTEM.md` and `docs/ui-vision/ICON_INVENTORY.md`.
