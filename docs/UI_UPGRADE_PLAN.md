@@ -137,7 +137,7 @@ Pflichtsymbole:
 - Shop/Dialog/Lua/Route als kontextuelle Untereditoren statt isolierter Modals, wo sinnvoll.
 
 ### Phase D – Erweiterungspunkte
-- Interface Editor.
+- Interface Editor: read-only `resmenu`-Browser mit TGA/DDS-Vorschau und UI-NIF-/Materialinspektor ist umgesetzt; schreibende Layout-/Asset-Bearbeitung bleibt offen.
 - Drop Table Editor.
 - eigener AI Workspace. **Umgesetzt.**
 - Material/NIF Editing.
@@ -200,7 +200,7 @@ Noch offen für spätere Ausbaustufen:
 - Skill-, Quest- und Custom NPC/Mob-Editor verwenden inzwischen durchgängig dieselbe DE/EN-Panel-Sprache; verbleibende tiefe Spezialdialoge können schrittweise nachgezogen werden;
 - gespeicherte Map-Workspace-Presets sind umgesetzt: Standard, 3D-Fokus, Terrain/2D und Daten/Szene; die Auswahl bleibt über `workspace.txt` erhalten und das danach frei angepasste Dock-Layout weiterhin über `layout.ini`;
 - NIF-Materialinspektor im Asset Browser ist read-only umgesetzt: Mesh-/Materialdaten, Textur-Slots, DDS/TGA-/Embedded-Vorschauen, gecachte Pfadauflösung sowie Filter/Diagnose für fehlende Texturdateien. Fehlende Referenzen aus Flipbook-Animationen werden ebenfalls in Suche, Gesamtzähler und „Nur fehlende Texturen“ einbezogen; eine deduplizierte Referenzliste lässt sich zur Reparatur kopieren. Schreibende NIF-Materialbearbeitung bleibt bewusst zurückgestellt, bis ein verlustfreier Writer belegt ist.
-- zukünftige Interface-/Drop-Table-Editoren sowie schreibendes NIF-Material-Editing; AI Workspace ist umgesetzt. Der Drop-Table-Editor bleibt zurückgestellt, bis die bekannten ShineText-Kanten der 270+ Spalten breiten `ItemDropTable.txt` belastbar behoben sind.
+- Interface-Ausbaustufe 1 ist umgesetzt: automatischer `Client/resmenu`-Katalog, Suche, TGA/DDS-Vorschau sowie read-only NIF-/Materialanalyse für UI-NIFs. PNG-Dateien werden bereits katalogisiert, aber mangels verifiziertem Core-Decoder noch nicht gerendert. Schreibende Interface-Bearbeitung, Drop-Table-Editor und schreibendes NIF-Material-Editing bleiben offen; AI Workspace ist umgesetzt. Der Drop-Table-Editor bleibt zurückgestellt, bis die bekannten ShineText-Kanten der 270+ Spalten breiten `ItemDropTable.txt` belastbar behoben sind.
 
 ## 9. Aktuelles Arbeitsziel
 
