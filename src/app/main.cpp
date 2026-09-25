@@ -4025,6 +4025,7 @@ struct LoadedShnFamilyPeer {
     int idColumn = -1;
     std::string fileName;
     std::unordered_map<long long,int> rowById;
+    std::unordered_set<long long> duplicateIds;
 };
 
 static std::vector<LoadedShnFamilyPeer> BuildKnownShnFamilyPeers(const EditorState& state, int currentDocument) {
@@ -4047,8 +4048,10 @@ static std::vector<LoadedShnFamilyPeer> BuildKnownShnFamilyPeers(const EditorSta
                 for (std::size_t r = 0; r < peerFile.rows.size(); ++r) {
                     if (static_cast<std::size_t>(peer.idColumn) >= peerFile.rows[r].values.size()) continue;
                     long long id = 0;
-                    if (ShnValueAsInt(peerFile.rows[r].values[static_cast<std::size_t>(peer.idColumn)], id))
-                        peer.rowById.emplace(id, static_cast<int>(r));
+                    if (ShnValueAsInt(peerFile.rows[r].values[static_cast<std::size_t>(peer.idColumn)], id)) {
+                        const auto [it, inserted] = peer.rowById.emplace(id, static_cast<int>(r));
+                        if (!inserted) peer.duplicateIds.insert(id);
+                    }
                 }
             }
         }
@@ -4057,15 +4060,31 @@ static std::vector<LoadedShnFamilyPeer> BuildKnownShnFamilyPeers(const EditorSta
     return result;
 }
 
-enum class ShnReferenceState { None, Valid, Missing };
+enum class ShnReferenceState { None, Valid, Missing, Ambiguous };
+
+static std::unordered_set<long long> DuplicateIdsInColumn(const core::legacy::ShnFile& file, int idColumn) {
+    std::unordered_set<long long> seen;
+    std::unordered_set<long long> duplicates;
+    if (idColumn < 0) return duplicates;
+    seen.reserve(file.rows.size());
+    for (const auto& row : file.rows) {
+        if (static_cast<std::size_t>(idColumn) >= row.values.size()) continue;
+        long long id = 0;
+        if (!ShnValueAsInt(row.values[static_cast<std::size_t>(idColumn)], id)) continue;
+        if (!seen.insert(id).second) duplicates.insert(id);
+    }
+    return duplicates;
+}
 
 static ShnReferenceState KnownShnReferenceState(const std::vector<LoadedShnFamilyPeer>& peers,
-                                                long long id) {
+                                                long long id, bool currentIdDuplicate = false) {
+    if (currentIdDuplicate) return ShnReferenceState::Ambiguous;
     bool checked = false;
     for (const auto& peer : peers) {
         if (peer.document < 0 || peer.idColumn < 0) continue; // not loaded != broken reference
         checked = true;
         if (!peer.rowById.contains(id)) return ShnReferenceState::Missing;
+        if (peer.duplicateIds.contains(id)) return ShnReferenceState::Ambiguous;
     }
     return checked ? ShnReferenceState::Valid : ShnReferenceState::None;
 }
@@ -4076,7 +4095,9 @@ static std::string KnownShnReferenceTooltip(const std::vector<LoadedShnFamilyPee
     for (const auto& peer : peers) {
         out += "\n• " + peer.fileName + ": ";
         if (peer.document < 0 || peer.idColumn < 0) out += L("nicht geladen","not loaded");
-        else out += peer.rowById.contains(id) ? L("gefunden","found") : L("FEHLT","MISSING");
+        else if (!peer.rowById.contains(id)) out += L("FEHLT","MISSING");
+        else if (peer.duplicateIds.contains(id)) out += L("mehrdeutig (ID mehrfach)","ambiguous (duplicate ID)");
+        else out += L("gefunden","found");
     }
     return out;
 }
@@ -4102,8 +4123,10 @@ static bool DrawKnownShnFamilyReferenceStrip(EditorState& state, int currentDocu
                            .values[static_cast<std::size_t>(idColumn)], id))
         return false;
 
-    const auto refState = KnownShnReferenceState(peers,id);
+    const auto currentDuplicates = DuplicateIdsInColumn(current.file,idColumn);
+    const auto refState = KnownShnReferenceState(peers,id,currentDuplicates.contains(id));
     const ImVec4 color = refState == ShnReferenceState::Missing ? UiTheme::Error
+                       : refState == ShnReferenceState::Ambiguous ? UiTheme::Warning
                        : refState == ShnReferenceState::Valid ? UiTheme::Success
                                                              : UiTheme::TextSecondary;
     ImGui::TextColored(color, "%s · ID #%lld", family->label, id);
@@ -4120,6 +4143,11 @@ static bool DrawKnownShnFamilyReferenceStrip(EditorState& state, int currentDocu
         const auto found = peer.rowById.find(id);
         if (found == peer.rowById.end()) {
             ImGui::TextColored(UiTheme::Error, "✕ %s", peer.fileName.c_str());
+            continue;
+        }
+        if (peer.duplicateIds.contains(id) || currentDuplicates.contains(id)) {
+            ImGui::TextColored(UiTheme::Warning, "⚠ %s %s", peer.fileName.c_str(),
+                               L("(ID mehrfach)","(duplicate ID)"));
             continue;
         }
         ImGui::PushID(static_cast<int>(i));
@@ -4481,6 +4509,8 @@ void DrawShnGrid(EditorState& state) {
     const int familyIdColumn = knownFamily ? ExactShnColumnIndex(file, "ID") : -1;
     const auto familyPeers = knownFamily ? BuildKnownShnFamilyPeers(state, state.shnSelectedFile)
                                          : std::vector<LoadedShnFamilyPeer>{};
+    const auto familyDuplicateIds = familyIdColumn >= 0 ? DuplicateIdsInColumn(file, familyIdColumn)
+                                                        : std::unordered_set<long long>{};
 
     ImGui::TextColored(ShnSourceColor(doc.source), "%s", ShnSourceName(doc.source));
     ImGui::SameLine();
@@ -4545,8 +4575,8 @@ void DrawShnGrid(EditorState& state) {
         UI::Checkbox(L("Familien-Referenzen##shnRefs","Family references##shnRefs"),
                      &state.shnHighlightKnownReferences);
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("%s",L("Grün = ID in allen geladenen, verifizierten Familienmitgliedern vorhanden. Rot = ID fehlt in mindestens einem geladenen Familienmitglied.",
-                                     "Green = ID exists in every loaded, verified family member. Red = ID is missing from at least one loaded family member."));
+            ImGui::SetTooltip("%s",L("Grün = ID in allen geladenen, verifizierten Familienmitgliedern vorhanden. Rot = ID fehlt. Gelb = ID ist mehrfach und daher als Cross-Link mehrdeutig.",
+                                     "Green = ID exists in every loaded, verified family member. Red = ID is missing. Amber = duplicate ID, so the cross-link is ambiguous."));
     }
 
     if (DrawKnownShnFamilyReferenceStrip(state, state.shnSelectedFile, familyPeers))
@@ -4713,7 +4743,8 @@ void DrawShnGrid(EditorState& state) {
                     long long referenceId = 0;
                     if (state.shnHighlightKnownReferences && static_cast<int>(ci) == familyIdColumn &&
                         ShnValueAsInt(row.values[ci], referenceId)) {
-                        referenceState = KnownShnReferenceState(familyPeers, referenceId);
+                        referenceState = KnownShnReferenceState(
+                            familyPeers, referenceId, familyDuplicateIds.contains(referenceId));
                     }
                     if (status == kShnCellAutoFilled)
                         ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, IM_COL32(30, 90, 40, 160));
@@ -4725,6 +4756,8 @@ void DrawShnGrid(EditorState& state) {
                         ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, IM_COL32(120, 32, 42, 175));
                     else if (referenceState == ShnReferenceState::Valid)
                         ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, IM_COL32(24, 86, 55, 125));
+                    else if (referenceState == ShnReferenceState::Ambiguous)
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, IM_COL32(115, 78, 24, 145));
 
                     const bool selected =
                         state.shnSelectedRow == static_cast<int>(ri) &&
