@@ -719,7 +719,7 @@ struct EditorState {
     int shnMultiProfile = 0;
     int shnSelectedRow = -1;
     int shnSelectedColumn = -1;
-    int shnSubTab = 0; // 0=Single, 1=Multi, 2=XP, 3=Buy&Sell, 4=Quest
+    int shnSubTab = 0; // 0=Single, 1=Multi, 2=XP, 3=Buy&Sell, 4=Quest, 5=Portal, 6=NPC/Mob, 7=Skill, 8=AI, 9=Interface
     char shnPath[1024] = "";
     char shnSearch[256] = "";
     bool shnSearchColumns = true;
@@ -735,6 +735,16 @@ struct EditorState {
     std::vector<std::array<char, 64>> shnColumnFilters;
     bool shnHighlightClientServerDiff = true;
     std::string shnStatus;
+
+    // --- Interface Browser --------------------------------------------------
+    // Erste sichere Ausbaustufe des Interface-Editors: rein lesender Katalog des echten
+    // Client/resmenu-Bestands. TGA/DDS werden direkt vorgeschaut, NIFs verwenden denselben
+    // verifizierten read-only NIF-/Materialinspektor wie der Karten-Asset-Browser.
+    std::string interfaceRoot;
+    std::vector<std::string> interfaceAssets;
+    bool interfaceAssetsScanned = false;
+    int interfaceSelectedAsset = -1;
+    char interfaceAssetFilter[128] = "";
 
     std::string statusMessage;
 
@@ -1302,11 +1312,13 @@ void SyncProjectRoots(EditorState& state) {
     }
     state.charRoot.clear();
     state.itemRoot.clear();
+    state.interfaceRoot.clear();
     state.itemViewBuilt = false;
     state.avatarKey.clear();
     if (state.project.clientFolder[0] != '\0') {
         if (auto found = FindDirBreadthFirst(state.project.clientFolder, "reschar", 3, nullptr)) state.charRoot = found->string();
         if (auto found = FindDirBreadthFirst(state.project.clientFolder, "resitem", 3, nullptr)) state.itemRoot = found->string();
+        if (auto found = FindDirBreadthFirst(state.project.clientFolder, "resmenu", 3, nullptr)) state.interfaceRoot = found->string();
     }
     if (state.project.serverFolder[0] != '\0') {
         if (auto found = FindServerShineRoot(state.project.serverFolder)) {
@@ -1334,6 +1346,10 @@ void SyncProjectRoots(EditorState& state) {
     state.mapInfoLoaded = false;
     state.portalDataSig.clear();
     state.shnAutoLoaded = false;
+    state.interfaceAssetsScanned = false;
+    state.interfaceAssets.clear();
+    state.interfaceSelectedAsset = -1;
+    state.interfaceAssetFilter[0] = '\0';
 }
 
 // Die Textur-Layer-Auflösung bleibt unabhängig von der Heightmap. Neue Karten verwenden
@@ -4811,6 +4827,7 @@ void DrawPortalEditor(EditorState& state);
 void DrawCustomCreatureEditor(EditorState& state);
 void DrawSkillEditor(EditorState& state);
 void DrawAiWorkspace(EditorState& state);
+void DrawInterfaceWorkspace(EditorState& state);
 
 void DrawShnEditor(EditorState& state) {
     // Beim ersten Oeffnen die aus den Projekt-Ordnern abgeleiteten Client-/Server-SHN-Ordner
@@ -4826,7 +4843,7 @@ void DrawShnEditor(EditorState& state) {
     ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(8, 20, 31, 255));
     ImGui::BeginChild("##shnEditor", ImVec2(0,0), false);
     ImGui::TextColored(ImVec4(0.40f,0.72f,0.96f,1.0f), "Spieldaten");
-    ImGui::SameLine(); ImGui::TextDisabled("SHN · Quest · Portale · Custom NPC/Mob · Skills · AI");
+    ImGui::SameLine(); ImGui::TextDisabled("SHN · Quest · Portale · Custom NPC/Mob · Skills · AI · Interface");
     ImGui::Separator();
     struct DataTool { const char* id; const char* label; IconDrawFn icon; };
     const DataTool dataTools[] = {
@@ -4839,6 +4856,7 @@ void DrawShnEditor(EditorState& state) {
         {"creatures","NPC / Mob",DrawIconPerson},
         {"skills","Skills",DrawIconBolt},
         {"ai","AI Scripts",DrawIconCode},
+        {"interface","Interface",DrawIconMonitorEye},
     };
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(5.0f, 5.0f));
     for (int i = 0; i < static_cast<int>(std::size(dataTools)); ++i) {
@@ -4943,7 +4961,8 @@ void DrawShnEditor(EditorState& state) {
     else if(state.shnSubTab==5) { DrawPortalEditor(state); }
     else if(state.shnSubTab==6) { DrawCustomCreatureEditor(state); }
     else if(state.shnSubTab==7) { DrawSkillEditor(state); }
-    else { DrawAiWorkspace(state); }
+    else if(state.shnSubTab==8) { DrawAiWorkspace(state); }
+    else { DrawInterfaceWorkspace(state); }
     ImGui::EndChild(); ImGui::EndChild(); ImGui::PopStyleColor();
 }
 
@@ -4959,7 +4978,7 @@ void DrawProjectHub(EditorState& state) {
     const float cardW = std::max(260.0f, (avail.x - gap * 2.0f) / 3.0f);
     const float cardH = std::max(205.0f, (avail.y - gap) * 0.5f);
 
-    enum class HubAction { Map, Data, Quest, Skill, Kfm, Extensions };
+    enum class HubAction { Map, Data, Quest, Skill, Kfm, Interface };
     struct CardDef {
         const char* id;
         const char* title;
@@ -4984,9 +5003,9 @@ void DrawProjectHub(EditorState& state) {
         {"hub.kfm", "Animationen / KFM",
          {"KFM-Katalog", "Übergänge", "Dateiverweise prüfen", "verlustfreie Kopie exportieren"},
          DrawIconClapper, HubAction::Kfm, true},
-        {"hub.extensions", "Erweiterungen",
-         {"Interface Editor", "Drop Table Editor", "NIF / Material Editing", "weitere Spezialwerkzeuge"},
-         DrawIconAtom, HubAction::Extensions, false},
+        {"hub.interface", "Interface Browser",
+         {"resmenu-Assets durchsuchen", "TGA/DDS-Vorschau", "UI-NIF / Material analysieren", "read-only, ohne Format-Risiko"},
+         DrawIconMonitorEye, HubAction::Interface, true},
     };
 
     for (int i = 0; i < static_cast<int>(std::size(cards)); ++i) {
@@ -5001,9 +5020,9 @@ void DrawProjectHub(EditorState& state) {
                 case HubAction::Quest: state.shnSubTab = 4; state.screen = AppScreen::ShnEditor; break;
                 case HubAction::Skill: state.shnSubTab = 7; state.screen = AppScreen::ShnEditor; break;
                 case HubAction::Kfm: state.screen = AppScreen::KfmBrowser; break;
-                case HubAction::Extensions:
-                    state.comingSoonTitle = "Erweiterungen";
-                    state.screen = AppScreen::ComingSoon;
+                case HubAction::Interface:
+                    state.shnSubTab = 9;
+                    state.screen = AppScreen::ShnEditor;
                     break;
             }
         }
@@ -9587,6 +9606,7 @@ void DrawCommandPalette(EditorState& state) {
     add("Spieldaten: Custom NPC / Mob", "", [&] { state.shnSubTab = 6; state.screen = AppScreen::ShnEditor; });
     add("Spieldaten: Skill Editor", "", [&] { state.shnSubTab = 7; state.screen = AppScreen::ShnEditor; });
     add("Spieldaten: AI Workspace", "", [&] { state.shnSubTab = 8; state.screen = AppScreen::ShnEditor; });
+    add("Spieldaten: Interface Browser", "", [&] { state.shnSubTab = 9; state.screen = AppScreen::ShnEditor; });
     if (state.aiScriptDirty && !state.aiScriptEditorPath.empty())
         add("AI: Aktuelles Skript speichern", ShortcutLabel(state.shortcutSave), [&] { SaveAiScript(state); });
     add("Animationen: KFM", "", [&] { state.screen = AppScreen::KfmBrowser; });
@@ -13464,6 +13484,168 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
     ImGui::EndChild();
 }
 
+
+void DrawInterfaceWorkspace(EditorState& state) {
+    if (state.interfaceRoot.empty() && state.project.clientFolder[0] != '\0') {
+        if (auto found = FindDirBreadthFirst(state.project.clientFolder, "resmenu", 3, nullptr))
+            state.interfaceRoot = found->string();
+    }
+
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "INTERFACE / RESMENU");
+    ImGui::SameLine();
+    ImGui::TextDisabled("read-only");
+
+    if (state.interfaceRoot.empty()) {
+        ImGui::Separator();
+        ImGui::TextWrapped("Kein Client/resmenu unter dem Projekt-Clientpfad gefunden. "
+                           "Der Browser schreibt absichtlich keine Interface-Dateien, solange "
+                           "deren Formate nicht verlustfrei verifiziert sind.");
+        return;
+    }
+
+    const std::filesystem::path root = state.interfaceRoot;
+    if (!state.interfaceAssetsScanned) {
+        state.interfaceAssets = ListFilesByExtension(root, {".tga", ".dds", ".png", ".nif"});
+        state.interfaceAssetsScanned = true;
+        if (state.interfaceSelectedAsset >= static_cast<int>(state.interfaceAssets.size()))
+            state.interfaceSelectedAsset = -1;
+    }
+
+    ImGui::SameLine();
+    if (UI::SmallButton("Neu scannen##interface")) {
+        state.interfaceAssetsScanned = false;
+        state.interfaceAssets.clear();
+        state.interfaceSelectedAsset = -1;
+        state.interfaceAssetFilter[0] = '\0';
+        state.nifInspectorAsset.clear();
+        state.nifInspectorModel.reset();
+        state.nifInspectorError.clear();
+        state.nifInspectorResolvedTextureCache.clear();
+        return;
+    }
+
+    ImGui::TextDisabled("%s", state.interfaceRoot.c_str());
+    UI::InputTextWithHint("##interfaceFilter", "Interface-Assets filtern...",
+                          state.interfaceAssetFilter, sizeof(state.interfaceAssetFilter));
+
+    std::size_t imageCount = 0;
+    std::size_t nifCount = 0;
+    std::size_t pngCount = 0;
+    for (const auto& rel : state.interfaceAssets) {
+        const std::string ext = LowerAscii(std::filesystem::path(rel).extension().string());
+        if (ext == ".nif") ++nifCount;
+        else {
+            ++imageCount;
+            if (ext == ".png") ++pngCount;
+        }
+    }
+
+    const std::string needle = LowerAscii(state.interfaceAssetFilter);
+    std::vector<std::size_t> matching;
+    matching.reserve(state.interfaceAssets.size());
+    for (std::size_t i = 0; i < state.interfaceAssets.size(); ++i) {
+        if (needle.empty() || LowerAscii(state.interfaceAssets[i]).find(needle) != std::string::npos)
+            matching.push_back(i);
+    }
+
+    ImGui::TextDisabled("%zu / %zu Assets · %zu Bilder · %zu NIF",
+                        matching.size(), state.interfaceAssets.size(), imageCount, nifCount);
+    if (pngCount > 0) {
+        ImGui::SameLine();
+        ImGui::TextDisabled("· %zu PNG ohne Vorschau", pngCount);
+    }
+    ImGui::Separator();
+
+    const ImVec2 avail = ImGui::GetContentRegionAvail();
+    const float leftW = std::clamp(avail.x * 0.36f, 280.0f, 430.0f);
+    ImGui::BeginChild("##interfaceAssetList", ImVec2(leftW, 0), true);
+
+    if (matching.empty()) {
+        ImGui::TextDisabled("Keine passenden resmenu-Assets.");
+    } else {
+        ImGuiListClipper clipper;
+        clipper.Begin(static_cast<int>(matching.size()));
+        while (clipper.Step()) {
+            for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row) {
+                const std::size_t assetIndex = matching[static_cast<std::size_t>(row)];
+                const std::string& rel = state.interfaceAssets[assetIndex];
+                const std::string ext = LowerAscii(std::filesystem::path(rel).extension().string());
+                ImGui::PushID(static_cast<int>(assetIndex));
+
+                const char* badge = ext == ".nif" ? "NIF" :
+                                    ext == ".tga" ? "TGA" :
+                                    ext == ".dds" ? "DDS" :
+                                    ext == ".png" ? "PNG" : "FILE";
+                ImGui::TextColored(ext == ".nif"
+                                       ? ImVec4(0.35f,0.78f,1.0f,1.0f)
+                                       : ImVec4(0.55f,0.86f,0.66f,1.0f),
+                                   "%s", badge);
+                ImGui::SameLine(0, 6);
+
+                const bool selected = state.interfaceSelectedAsset == static_cast<int>(assetIndex);
+                if (UI::Selectable((rel + "##interfaceAsset").c_str(), selected)) {
+                    state.interfaceSelectedAsset = static_cast<int>(assetIndex);
+                    if (ext == ".nif") {
+                        LoadNifAssetInspector(state, root / rel, rel);
+                    } else {
+                        state.nifInspectorAsset.clear();
+                        state.nifInspectorModel.reset();
+                        state.nifInspectorError.clear();
+                        state.nifInspectorResolvedTextureCache.clear();
+                    }
+                }
+                ImGui::PopID();
+            }
+        }
+    }
+    ImGui::EndChild();
+
+    ImGui::SameLine();
+    ImGui::BeginChild("##interfacePreview", ImVec2(0,0), true);
+    if (state.interfaceSelectedAsset < 0 ||
+        state.interfaceSelectedAsset >= static_cast<int>(state.interfaceAssets.size())) {
+        ImGui::TextDisabled("Asset auswählen, um Vorschau und Metadaten anzuzeigen.");
+        ImGui::EndChild();
+        return;
+    }
+
+    const std::string& rel = state.interfaceAssets[static_cast<std::size_t>(state.interfaceSelectedAsset)];
+    const std::filesystem::path path = root / rel;
+    const std::string ext = LowerAscii(path.extension().string());
+
+    ImGui::TextWrapped("%s", rel.c_str());
+    std::error_code ec;
+    const auto bytes = std::filesystem::file_size(path, ec);
+    if (!ec) ImGui::TextDisabled("%llu Bytes", static_cast<unsigned long long>(bytes));
+    ImGui::Separator();
+
+    if (ext == ".nif") {
+        if (state.nifInspectorAsset != rel)
+            LoadNifAssetInspector(state, path, rel);
+        DrawNifAssetInspector(state, root);
+    } else if (ext == ".tga" || ext == ".dds") {
+        const auto thumb = GetOrLoadAssetThumbnail(state, path, false);
+        if (thumb.tex) {
+            ImVec2 size = ImGui::GetContentRegionAvail();
+            size.x = std::max(1.0f, size.x - 12.0f);
+            size.y = std::max(1.0f, size.y - 12.0f);
+            const float aspect = thumb.aspect > 0.0f ? thumb.aspect : 1.0f;
+            if (size.x / size.y > aspect) size.x = size.y * aspect;
+            else size.y = size.x / aspect;
+            ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(thumb.tex)), size);
+        } else {
+            ImGui::TextDisabled("Bild konnte nicht dekodiert werden.");
+        }
+    } else if (ext == ".png") {
+        ImGui::TextWrapped("PNG wird bereits katalogisiert, hat aber in der aktuellen Core-Bibliothek "
+                           "noch keinen Decoder. Die Datei bleibt sichtbar, ohne einen unsicheren "
+                           "zusätzlichen Bild-Codec in den Build einzuführen.");
+    } else {
+        ImGui::TextDisabled("Für diesen Dateityp ist noch keine Vorschau verfügbar.");
+    }
+    ImGui::EndChild();
+}
+
 void DrawWorkspaceAssetBrowser(EditorState& state) {
     const bool objectMode = state.editMode == EditMode::ObjectPlacement;
     const bool textureMode = state.editMode == EditMode::TexturePaint;
@@ -13502,6 +13684,15 @@ void DrawWorkspaceAssetBrowser(EditorState& state) {
 
     const auto& files = objectMode ? state.availableNifFiles : state.availableTextureFiles;
     const auto& root = objectMode ? state.nifAssetRoot : state.textureAssetRoot;
+    if (objectMode && !state.nifInspectorAsset.empty() &&
+        std::find(files.begin(), files.end(), state.nifInspectorAsset) == files.end()) {
+        // Ein zuvor im Interface-Browser inspiziertes resmenu-NIF darf im Karten-Asset-Browser
+        // nicht versehentlich relativ zu resmap weiterverwendet werden.
+        state.nifInspectorAsset.clear();
+        state.nifInspectorModel.reset();
+        state.nifInspectorError.clear();
+        state.nifInspectorResolvedTextureCache.clear();
+    }
     std::string needle = LowerAscii(state.workspaceAssetFilter);
     std::vector<std::size_t> matching;
     matching.reserve(files.size());
