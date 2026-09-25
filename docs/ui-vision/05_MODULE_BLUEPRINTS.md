@@ -28,7 +28,7 @@ Brush Preview + Radius/Strength/Hardness kompakt. Raise/Lower/Smooth/Flatten als
 42–52 px Thumbnail, Eye/Lock, Name, UV/Blend-Meta, DnD-Reorder.
 
 ## Block & Walk
-Rot/Grün-Legende, Brush/Rectangle, sichtbares Undo/Redo, Footprint→Walk prominent.
+Rot/Grün-Legende, Brush/Rectangle, sichtbares Undo/Redo. Footprint→Walk verwendet die echte NIF-Grundfläche (konvexe Hull, Bounding-Fallback) und folgt verbindlich **Preview → Apply/Cancel**: sichtbare Kategorien werden im 2D-View rot/grün gefüllt, Apply ist genau ein Undo-Schritt.
 
 ## SHN
 Daten-IDE statt Roh-Tabelle: Dokumentkopf, Dirty, Filter, Referenz-/Error-Hinweise, Save-Bar.
