@@ -8400,6 +8400,11 @@ void DrawGlobalHelpBar(EditorState& state, const ImVec2& displaySize) {
 void HandleGlobalShortcuts(EditorState& state) {
     ImGuiIO& io = ImGui::GetIO();
     if (ImGui::IsKeyPressed(ImGuiKey_F1, false)) state.manualOpen = !state.manualOpen;
+    if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_P, false)) {
+        state.commandPaletteOpen = true;
+        state.commandPaletteSelection = 0;
+    }
+
     if (io.WantTextInput || state.screen != AppScreen::MapEditorWorkspace) return;
     if (state.editMode == EditMode::ObjectPlacement) {
         if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_C, false)) CopySelectedObjects(state);
@@ -8410,24 +8415,197 @@ void HandleGlobalShortcuts(EditorState& state) {
         if (ImGui::IsKeyPressed(ImGuiKey_End, false)) GroundSelectedObjects(state);
         if (ImGui::IsKeyPressed(ImGuiKey_Delete, false)) DeleteSelectedObjects(state);
     }
+
     const bool undo = io.KeyCtrl && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z, false);
-    const bool redo = io.KeyCtrl && ((ImGui::IsKeyPressed(ImGuiKey_Y, false)) || (io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z, false)));
+    const bool redo = io.KeyCtrl &&
+        (ImGui::IsKeyPressed(ImGuiKey_Y, false) || (io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z, false)));
     if (!undo && !redo) return;
+
     switch (state.editMode) {
         case EditMode::Heightmap:
-            if (undo ? state.undo.Undo(state.heightmap) : state.undo.Redo(state.heightmap)) state.meshDirty = true;
+            if (undo ? state.undo.Undo(state.heightmap) : state.undo.Redo(state.heightmap)) {
+                state.meshDirty = true;
+                state.mapDirty = true;
+            }
             break;
         case EditMode::TexturePaint:
             if (undo ? state.textureUndo.Undo(state.textureStack) : state.textureUndo.Redo(state.textureStack)) {
                 state.layerPreviewDirty = true;
+                state.mapDirty = true;
                 state.renderer.UpdateBlendTextures(state.textureStack);
             }
             break;
         case EditMode::BlockWalk:
-            if (undo ? state.walkUndo.Undo(state.walkGrid) : state.walkUndo.Redo(state.walkGrid)) state.walkPreviewDirty = true;
+            if (undo ? state.walkUndo.Undo(state.walkGrid) : state.walkUndo.Redo(state.walkGrid)) {
+                state.walkPreviewDirty = true;
+                state.mapDirty = true;
+            }
             break;
-        default: break;
+        default:
+            break;
     }
+}
+
+void DrawCommandPalette(EditorState& state) {
+    struct Command {
+        std::string label;
+        std::string hint;
+        std::function<void()> action;
+    };
+    std::vector<Command> commands;
+    commands.reserve(32);
+
+    auto add = [&](std::string label, std::string hint, std::function<void()> action) {
+        commands.push_back({std::move(label), std::move(hint), std::move(action)});
+    };
+
+    add("Projekt: Übersicht", "", [&] { state.screen = AppScreen::ProjectHub; });
+    add("Karte: Kartenübersicht öffnen", "", [&] {
+        state.mapLauncherView = EditorState::MapLauncherView::Browse;
+        state.screen = AppScreen::MapEditorLauncher;
+    });
+    add("Karte: Neue Karte", "", [&] {
+        state.mapLauncherView = EditorState::MapLauncherView::NewMap;
+        state.screen = AppScreen::MapEditorLauncher;
+    });
+    add("Spieldaten: Single SHN", "", [&] { state.shnSubTab = 0; state.screen = AppScreen::ShnEditor; });
+    add("Spieldaten: Multi SHN", "", [&] { state.shnSubTab = 1; state.screen = AppScreen::ShnEditor; });
+    add("Spieldaten: Quest Editor", "", [&] { state.shnSubTab = 4; state.screen = AppScreen::ShnEditor; });
+    add("Spieldaten: Portal Editor", "", [&] { state.shnSubTab = 5; state.screen = AppScreen::ShnEditor; });
+    add("Spieldaten: Custom NPC / Mob", "", [&] { state.shnSubTab = 6; state.screen = AppScreen::ShnEditor; });
+    add("Spieldaten: Skill Editor", "", [&] { state.shnSubTab = 7; state.screen = AppScreen::ShnEditor; });
+    add("Animationen: KFM", "", [&] { state.screen = AppScreen::KfmBrowser; });
+    add("Hilfe: Handbuch", "F1", [&] { state.manualOpen = true; });
+
+    if (state.hasLegacyIniMeta || state.legacySaveStem[0] != '\0') {
+        add("Karte: Terrain-Werkzeug", "", [&] {
+            state.editMode = EditMode::Heightmap; state.screen = AppScreen::MapEditorWorkspace;
+        });
+        add("Karte: Textur-Werkzeug", "", [&] {
+            state.editMode = EditMode::TexturePaint; state.screen = AppScreen::MapEditorWorkspace;
+        });
+        add("Karte: Block & Walk", "", [&] {
+            state.editMode = EditMode::BlockWalk; state.screen = AppScreen::MapEditorWorkspace;
+        });
+        add("Karte: Objekte", "", [&] {
+            state.editMode = EditMode::ObjectPlacement; state.objectPlaceMode = 0;
+            state.screen = AppScreen::MapEditorWorkspace;
+        });
+        add("Karte: NPCs", "", [&] { state.editMode = EditMode::Npcs; state.screen = AppScreen::MapEditorWorkspace; });
+        add("Karte: Mobs", "", [&] { state.editMode = EditMode::Mobs; state.screen = AppScreen::MapEditorWorkspace; });
+        add("Karte: Portale", "", [&] { state.editMode = EditMode::Portals; state.screen = AppScreen::MapEditorWorkspace; });
+
+        if (state.legacySaveDir[0] != '\0' && state.legacySaveStem[0] != '\0') {
+            add("Karte: Speichern", "Strg+S", [&] {
+                auto project = BuildProjectFromState(state);
+                auto result = core::legacy::SaveLegacyMap(project, state.legacySaveDir, state.legacySaveStem);
+                if (result) {
+                    state.legacyIniMeta = project.ini;
+                    state.mapDirty = false;
+                    TouchRecentMap(state, (std::filesystem::path(state.legacySaveDir) /
+                                          (std::string(state.legacySaveStem) + ".ini")).string());
+                    state.statusMessage = std::string(T("workspace.savedas")) + state.legacySaveDir;
+                } else {
+                    state.statusMessage = "Fehler: " + result.error();
+                }
+            });
+        }
+    }
+
+    if (!state.selectedObjects.empty()) {
+        add("Objekte: Auswahl fokussieren", "F", [&] { FocusSelectedObjects(state); });
+        add("Objekte: Auf Terrain setzen", "Ende", [&] { GroundSelectedObjects(state); });
+        add("Objekte: Duplizieren", "Strg+D", [&] { DuplicateSelectedObjects(state); });
+        add("Objekte: Kopieren", "Strg+C", [&] { CopySelectedObjects(state); });
+        add("Objekte: Löschen", "Entf", [&] { DeleteSelectedObjects(state); });
+    }
+
+    if (DirtyShnDocumentCount(state) > 0) {
+        add("Spieldaten: Alle geänderten SHN speichern", "", [&] {
+            std::size_t saved = 0, failed = 0;
+            for (auto& doc : state.shnFiles) {
+                if (!doc.dirty) continue;
+                auto result = core::legacy::SaveShnFile(doc.file, doc.file.path);
+                if (result) { doc.dirty = false; ++saved; }
+                else ++failed;
+            }
+            state.statusMessage = "SHN gespeichert: " + std::to_string(saved) +
+                (failed ? ", Fehler: " + std::to_string(failed) : std::string{});
+        });
+    }
+
+    if (state.commandPaletteOpen) {
+        ImGui::OpenPopup("##commandPalette");
+        state.commandPaletteOpen = false;
+        state.commandPaletteSelection = 0;
+    }
+
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f,0.5f));
+    ImGui::SetNextWindowSize(ImVec2(640.0f, 430.0f), ImGuiCond_Appearing);
+
+    if (!ImGui::BeginPopupModal("##commandPalette", nullptr,
+            ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings)) return;
+
+    ImGui::TextColored(ImVec4(0.30f,0.78f,1.0f,1.0f), "BEFEHLSPALETTE");
+    ImGui::SameLine();
+    ImGui::TextDisabled("Strg+P · Esc schließen");
+    ImGui::Separator();
+
+    if (ImGui::IsWindowAppearing()) {
+        state.commandPaletteQuery[0] = '\0';
+        ImGui::SetKeyboardFocusHere();
+    }
+    ImGui::SetNextItemWidth(-1.0f);
+    if (ImGui::InputTextWithHint("##commandQuery", "Befehl oder Werkzeug suchen...",
+                                 state.commandPaletteQuery, sizeof(state.commandPaletteQuery)))
+        state.commandPaletteSelection = 0;
+
+    std::string needle = state.commandPaletteQuery;
+    std::transform(needle.begin(), needle.end(), needle.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+
+    std::vector<int> matches;
+    for (int i = 0; i < static_cast<int>(commands.size()); ++i) {
+        std::string hay = commands[static_cast<std::size_t>(i)].label + " " +
+                          commands[static_cast<std::size_t>(i)].hint;
+        std::transform(hay.begin(), hay.end(), hay.begin(), [](unsigned char c) {
+            return static_cast<char>(std::tolower(c));
+        });
+        if (needle.empty() || hay.find(needle) != std::string::npos) matches.push_back(i);
+    }
+
+    if (!matches.empty()) {
+        if (ImGui::IsKeyPressed(ImGuiKey_DownArrow, false))
+            state.commandPaletteSelection = (state.commandPaletteSelection + 1) % static_cast<int>(matches.size());
+        if (ImGui::IsKeyPressed(ImGuiKey_UpArrow, false))
+            state.commandPaletteSelection = (state.commandPaletteSelection + static_cast<int>(matches.size()) - 1) %
+                                            static_cast<int>(matches.size());
+        state.commandPaletteSelection = std::clamp(state.commandPaletteSelection, 0,
+                                                   static_cast<int>(matches.size()) - 1);
+    } else {
+        state.commandPaletteSelection = 0;
+    }
+
+    bool executeSelected = !matches.empty() && ImGui::IsKeyPressed(ImGuiKey_Enter, false);
+    ImGui::BeginChild("##commandList", ImVec2(0,0), true);
+    for (int visibleIndex = 0; visibleIndex < static_cast<int>(matches.size()); ++visibleIndex) {
+        auto& command = commands[static_cast<std::size_t>(matches[visibleIndex])];
+        const bool selected = visibleIndex == state.commandPaletteSelection;
+        std::string label = command.label;
+        if (!command.hint.empty()) label += "    [" + command.hint + "]";
+        if (ImGui::Selectable(label.c_str(), selected) || (selected && executeSelected)) {
+            auto action = command.action;
+            ImGui::CloseCurrentPopup();
+            action();
+            break;
+        }
+        if (selected) ImGui::SetItemDefaultFocus();
+    }
+    if (matches.empty()) ImGui::TextDisabled("Keine passenden Befehle.");
+    ImGui::EndChild();
+    ImGui::EndPopup();
 }
 
 static void DrawVisibilityPanel(EditorState& state);
