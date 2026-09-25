@@ -3000,7 +3000,89 @@ void DrawIconGear(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
     }
 }
 
+void DrawIconSword(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
+    const ImVec2 tip(c.x+r*0.72f,c.y-r*0.82f);
+    const ImVec2 pommel(c.x-r*0.62f,c.y+r*0.78f);
+    dl->AddLine(pommel,tip,col,3.0f);
+    dl->AddTriangleFilled(tip,ImVec2(c.x+r*0.28f,c.y-r*0.62f),ImVec2(c.x+r*0.55f,c.y-r*0.30f),col);
+    dl->AddLine(ImVec2(c.x-r*0.58f,c.y+r*0.18f),ImVec2(c.x+r*0.10f,c.y+r*0.74f),col,2.6f);
+    dl->AddCircleFilled(pommel,r*0.16f,col);
+}
+void DrawIconGem(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
+    const ImVec2 p[5]={ImVec2(c.x-r*0.62f,c.y-r*0.68f),ImVec2(c.x+r*0.62f,c.y-r*0.68f),
+                       ImVec2(c.x+r*0.92f,c.y-r*0.12f),ImVec2(c.x,c.y+r*0.92f),
+                       ImVec2(c.x-r*0.92f,c.y-r*0.12f)};
+    dl->AddPolyline(p,5,col,ImDrawFlags_Closed,2.2f);
+    dl->AddLine(ImVec2(c.x-r*0.62f,c.y-r*0.68f),ImVec2(c.x,c.y+r*0.92f),col,1.4f);
+    dl->AddLine(ImVec2(c.x+r*0.62f,c.y-r*0.68f),ImVec2(c.x,c.y+r*0.92f),col,1.4f);
+}
+void DrawIconCoin(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
+    dl->AddCircle(c,r*0.82f,col,24,2.4f);
+    dl->AddCircle(c,r*0.55f,col,20,1.4f);
+    dl->AddLine(ImVec2(c.x-r*0.18f,c.y-r*0.42f),ImVec2(c.x+r*0.18f,c.y+r*0.42f),col,2.0f);
+}
+void DrawIconDice(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
+    dl->AddRect(ImVec2(c.x-r*0.82f,c.y-r*0.82f),ImVec2(c.x+r*0.82f,c.y+r*0.82f),col,2.5f,0,2.1f);
+    const float p=r*0.43f, q=r*0.12f;
+    dl->AddCircleFilled(ImVec2(c.x-p,c.y-p),q,col);
+    dl->AddCircleFilled(c,q,col);
+    dl->AddCircleFilled(ImVec2(c.x+p,c.y+p),q,col);
+}
+void DrawIconBanner(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
+    dl->AddLine(ImVec2(c.x-r*0.65f,c.y-r),ImVec2(c.x-r*0.65f,c.y+r),col,2.4f);
+    const ImVec2 flag[4]={ImVec2(c.x-r*0.60f,c.y-r*0.86f),ImVec2(c.x+r*0.80f,c.y-r*0.62f),
+                          ImVec2(c.x+r*0.35f,c.y-r*0.10f),ImVec2(c.x-r*0.60f,c.y-r*0.28f)};
+    dl->AddPolyline(flag,4,col,ImDrawFlags_Closed,2.0f);
+}
+void DrawIconPack(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
+    dl->AddCircleFilled(ImVec2(c.x-r*0.48f,c.y-r*0.42f),r*0.26f,col);
+    dl->AddCircleFilled(ImVec2(c.x+r*0.48f,c.y-r*0.42f),r*0.26f,col);
+    dl->AddCircleFilled(ImVec2(c.x,c.y-r*0.68f),r*0.30f,col);
+    dl->AddEllipseFilled(ImVec2(c.x,c.y+r*0.30f),ImVec2(r*0.92f,r*0.52f),col);
+}
+
 using IconDrawFn = void (*)(ImDrawList*, ImVec2, float, ImU32);
+
+struct SceneSemanticIcon {
+    IconDrawFn icon = DrawIconPerson;
+    ImU32 color = IM_COL32(120,200,255,240);
+    std::string tooltip;
+};
+
+SceneSemanticIcon ResolveNpcSceneIcon(const std::string& role, const std::string& arg) {
+    SceneSemanticIcon out;
+    out.tooltip = role.empty() ? "NPC" : role;
+    if (!arg.empty() && arg != "-") out.tooltip += " · " + arg;
+
+    if (role == "QuestNpc") {
+        if (arg == "GBDice") { out.icon=DrawIconDice; out.color=IM_COL32(235,165,255,245); }
+        else { out.icon=DrawIconBook; out.color=IM_COL32(255,205,90,245); }
+    } else if (role == "Merchant") {
+        if (arg == "Weapon" || arg == "WeaponTitle") { out.icon=DrawIconSword; out.color=IM_COL32(255,155,90,245); }
+        else if (arg == "Skill") { out.icon=DrawIconBolt; out.color=IM_COL32(95,205,255,245); }
+        else if (arg == "SoulStone") { out.icon=DrawIconGem; out.color=IM_COL32(190,125,255,245); }
+        else if (arg == "Guild") { out.icon=DrawIconBanner; out.color=IM_COL32(105,175,255,245); }
+        else { out.icon=DrawIconShop; out.color=IM_COL32(100,225,160,245); }
+    } else if (role == "StoreManager") {
+        out.icon=DrawIconShop; out.color=IM_COL32(90,215,150,245);
+    } else if (role == "Guard") {
+        out.icon=DrawIconLock; out.color=IM_COL32(255,150,90,245);
+    } else if (role == "Gate") {
+        out.icon=DrawIconPortal; out.color=IM_COL32(185,125,255,245);
+    } else if (role == "NPCMenu") {
+        if (arg == "Guild") { out.icon=DrawIconBanner; out.color=IM_COL32(105,175,255,245); }
+        else if (arg == "ExchangeCoin") { out.icon=DrawIconCoin; out.color=IM_COL32(255,205,90,245); }
+        else if (arg == "RandomOption") { out.icon=DrawIconGear; out.color=IM_COL32(210,145,255,245); }
+        else { out.icon=DrawIconTable; out.color=IM_COL32(125,190,255,245); }
+    }
+    return out;
+}
+
+SceneSemanticIcon ResolveMobZoneSceneIcon(int speciesCount) {
+    if (speciesCount <= 0) return {DrawIconSpawn,IM_COL32(125,135,150,220),"Leere Spawn-Zone"};
+    if (speciesCount == 1) return {DrawIconSpawn,IM_COL32(95,195,255,245),"Spawn-Zone · eine Monsterart"};
+    return {DrawIconPack,IM_COL32(255,165,90,245),"Gemischte Mob-Gruppe · mehrere Monsterarten"};
+}
 
 void DrawInlineIcon(const char* id, IconDrawFn icon, ImU32 color,
                     const char* tooltip = nullptr, ImVec2 size = ImVec2(20.0f,20.0f)) {
@@ -11766,19 +11848,14 @@ void DrawSceneOutlinerPanel(EditorState& state) {
             auto& rec = table->records[idx];
             if (rec.values.size() < 8) continue;
             const std::string role = rec.values[6];
-            const std::string label = rec.values[0] + "  ·  " + role;
+            const std::string arg = rec.values[7];
+            const auto semantic = ResolveNpcSceneIcon(role,arg);
+            const std::string label = rec.values[0] + "  ·  " + role +
+                                      ((!arg.empty() && arg != "-") ? (" / " + arg) : std::string());
             if (!needle.empty() && LowerAscii(label).find(needle) == std::string::npos) continue;
 
-            IconDrawFn icon = DrawIconPerson;
-            ImU32 iconColor = IM_COL32(120,200,255,240);
-            if (role == "QuestNpc") { icon = DrawIconBook; iconColor = IM_COL32(255,205,90,245); }
-            else if (role == "Merchant" || role == "StoreManager") { icon = DrawIconShop; iconColor = IM_COL32(100,225,160,245); }
-            else if (role == "Guard") { icon = DrawIconLock; iconColor = IM_COL32(255,150,90,245); }
-            else if (role == "Gate") { icon = DrawIconPortal; iconColor = IM_COL32(185,125,255,245); }
-            else if (role == "NPCMenu") { icon = DrawIconTable; iconColor = IM_COL32(125,190,255,245); }
-
             ImGui::PushID(static_cast<int>(idx));
-            DrawInlineIcon("role", icon, iconColor, role.empty() ? "NPC" : role.c_str());
+            DrawInlineIcon("role", semantic.icon, semantic.color, semantic.tooltip.c_str());
             ImGui::SameLine(0,4);
             const bool selected = state.selectedNpcRecordIdx == static_cast<int>(idx);
             if (UI::Selectable((label + "##npcScene").c_str(), selected)) {
@@ -11814,9 +11891,14 @@ void DrawSceneOutlinerPanel(EditorState& state) {
         auto* spawns = state.mobRegenTextFile.FindTable("MobRegen");
         if (!zones) { ImGui::TextDisabled("MobRegenGroup-Tabelle fehlt."); return; }
         std::unordered_map<std::string,int> groupCounts;
+        std::unordered_map<std::string,int> totalMobCounts;
         if (spawns) {
-            for (const auto& rec : spawns->records)
-                if (!rec.values.empty()) ++groupCounts[rec.values[0]];
+            for (const auto& rec : spawns->records) {
+                if (rec.values.empty()) continue;
+                ++groupCounts[rec.values[0]];
+                if (rec.values.size() >= 3)
+                    totalMobCounts[rec.values[0]] += std::max(0,std::atoi(rec.values[2].c_str()));
+            }
         }
         ImGui::TextDisabled("%zu Spawn-Zonen", zones->records.size());
         ImGui::SameLine();
@@ -11835,12 +11917,15 @@ void DrawSceneOutlinerPanel(EditorState& state) {
             auto& rec = zones->records[i];
             if (rec.values.empty()) continue;
             const int groups = groupCounts[rec.values[0]];
+            const int totalMobs = totalMobCounts[rec.values[0]];
+            const auto semantic = ResolveMobZoneSceneIcon(groups);
             const std::string label = rec.values[0] + "  ·  " + std::to_string(groups) +
-                                      (groups == 1 ? " Gruppe" : " Gruppen");
+                                      (groups == 1 ? " Art" : " Arten") + " · " +
+                                      std::to_string(totalMobs) + (totalMobs == 1 ? " Mob" : " Mobs");
             if (!needle.empty() && LowerAscii(label).find(needle) == std::string::npos) continue;
 
             ImGui::PushID(static_cast<int>(i));
-            DrawInlineIcon("spawn", DrawIconSpawn, IM_COL32(95,195,255,245), "Mob-Spawn-Zone");
+            DrawInlineIcon("spawn", semantic.icon, semantic.color, semantic.tooltip.c_str());
             ImGui::SameLine(0,4);
             const bool selected = state.selectedMobZoneIdx == static_cast<int>(i);
             if (UI::Selectable((label + "##mobScene").c_str(), selected)) {
