@@ -745,6 +745,7 @@ struct EditorState {
     bool interfaceAssetsScanned = false;
     int interfaceSelectedAsset = -1;
     char interfaceAssetFilter[128] = "";
+    bool interfaceOverridesOnly = false;
 
     // --- Drop Table Browser -------------------------------------------------
     // Semantische Ansicht von Server/9Data/Shine/World/ItemDropTable.txt. Die Datei ist
@@ -14089,25 +14090,32 @@ void DrawInterfaceWorkspace(EditorState& state) {
     ImGui::TextDisabled("%s", state.interfaceRoot.c_str());
     UI::InputTextWithHint("##interfaceFilter", L("Interface-Assets filtern...","Filter interface assets..."),
                           state.interfaceAssetFilter, sizeof(state.interfaceAssetFilter));
+    UI::Checkbox(L("Nur Projekt-Overrides##interface","Project overrides only##interface"),
+                 &state.interfaceOverridesOnly);
 
     std::size_t imageCount = 0;
     std::size_t nifCount = 0;
+    std::size_t overrideCount = 0;
     for (const auto& rel : state.interfaceAssets) {
         const std::string ext = LowerAscii(std::filesystem::path(rel).extension().string());
         if (ext == ".nif") ++nifCount;
         else ++imageCount;
+        if (IsRegularFileNoThrow(InterfaceProjectOverridePath(state, rel))) ++overrideCount;
     }
 
     const std::string needle = LowerAscii(state.interfaceAssetFilter);
     std::vector<std::size_t> matching;
     matching.reserve(state.interfaceAssets.size());
     for (std::size_t i = 0; i < state.interfaceAssets.size(); ++i) {
-        if (needle.empty() || LowerAscii(state.interfaceAssets[i]).find(needle) != std::string::npos)
+        const std::string& rel = state.interfaceAssets[i];
+        if (state.interfaceOverridesOnly &&
+            !IsRegularFileNoThrow(InterfaceProjectOverridePath(state, rel))) continue;
+        if (needle.empty() || LowerAscii(rel).find(needle) != std::string::npos)
             matching.push_back(i);
     }
 
-    ImGui::TextDisabled("%zu / %zu Assets · %zu Bilder · %zu NIF",
-                        matching.size(), state.interfaceAssets.size(), imageCount, nifCount);
+    ImGui::TextDisabled("%zu / %zu Assets · %zu Bilder · %zu NIF · %zu Overrides",
+                        matching.size(), state.interfaceAssets.size(), imageCount, nifCount, overrideCount);
     ImGui::Separator();
 
     const ImVec2 avail = ImGui::GetContentRegionAvail();
