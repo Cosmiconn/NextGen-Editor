@@ -9258,13 +9258,25 @@ void DrawSettingsWindow(EditorState& state) {
     }
     ImGui::SameLine();
     if (UI::Button("Map-Workspace zurücksetzen")) {
-        state.resetMapDockLayout = true;
-        state.statusMessage = "Map-Workspace auf Standardlayout zurückgesetzt.";
+        RequestMapWorkspacePreset(state,0);
     }
 
     ImGui::SeparatorText("Workspace");
     ImGui::TextWrapped("Dock-Größen und Positionen werden automatisch zwischen Sitzungen gespeichert.");
     ImGui::TextDisabled("%s", (NextGenUserSettingsDir() / "layout.ini").string().c_str());
+    ImGui::TextWrapped("Zusätzlich kann ein Ausgangs-Preset gewählt werden. Nach dem Anwenden bleibt das Layout frei dockbar.");
+    const char* presetNames[]={"Standard","3D-Fokus","Terrain / 2D","Daten / Szene"};
+    int settingsPreset=state.mapWorkspacePreset;
+    ImGui::SetNextItemWidth(220.0f);
+    if (UI::Combo("Map-Workspace-Preset", &settingsPreset, presetNames, 4) &&
+        settingsPreset != state.mapWorkspacePreset) {
+        RequestMapWorkspacePreset(state,settingsPreset);
+    }
+    ImGui::SameLine();
+    if (UI::Button("Anwenden"))
+        RequestMapWorkspacePreset(state,settingsPreset);
+    ImGui::TextDisabled("Auswahl gespeichert in %s",
+                        (NextGenUserSettingsDir() / "workspace.txt").string().c_str());
     ImGui::TextWrapped("Gizmo-Shortcuts verwenden standardmäßig 1 / 2 / 3, damit sie nicht mit der WASD-Kamera kollidieren.");
 
     ImGui::End();
@@ -12751,27 +12763,54 @@ void DrawMapEditorWorkspace(EditorState& state) {
     ImGui::Separator();
 
     const ImGuiID dockspaceId = ImGui::GetID("##MapEditorDockspace");
+    if (state.pendingMapWorkspacePreset >= 0) {
+        state.mapWorkspacePreset = std::clamp(state.pendingMapWorkspacePreset,0,3);
+        state.pendingMapWorkspacePreset = -1;
+        state.resetMapDockLayout = true;
+        SaveWorkspaceSettings(state);
+    }
     if (!state.mapEditorDockspaceBuilt || state.resetMapDockLayout) {
         const bool haveSavedLayout = ImGui::DockBuilderGetNode(dockspaceId) != nullptr;
         const bool buildDefault = state.resetMapDockLayout || !haveSavedLayout;
         state.mapEditorDockspaceBuilt = true;
 
         if (buildDefault) {
+            // Presets verändern ausschließlich das Dock-Rezept. Danach darf der Nutzer
+            // weiterhin frei ziehen; ImGui speichert diese individuellen Anpassungen in layout.ini.
+            float leftRatio=0.18f, inspectorRatio=0.25f, bottomRatio=0.34f;
+            float navigatorRatio=0.34f, assetRatio=0.43f;
+            switch (state.mapWorkspacePreset) {
+                case 1: // 3D-Fokus
+                    leftRatio=0.14f; inspectorRatio=0.20f; bottomRatio=0.20f;
+                    navigatorRatio=0.30f; assetRatio=0.38f;
+                    break;
+                case 2: // Terrain / 2D
+                    leftRatio=0.16f; inspectorRatio=0.22f; bottomRatio=0.52f;
+                    navigatorRatio=0.30f; assetRatio=0.28f;
+                    break;
+                case 3: // Daten / Szene
+                    leftRatio=0.25f; inspectorRatio=0.31f; bottomRatio=0.30f;
+                    navigatorRatio=0.28f; assetRatio=0.48f;
+                    break;
+                default:
+                    break;
+            }
+
             ImGui::DockBuilderRemoveNode(dockspaceId);
             ImGui::DockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags_DockSpace);
             ImGui::DockBuilderSetNodeSize(dockspaceId, ImGui::GetContentRegionAvail());
 
             ImGuiID center = dockspaceId;
             ImGuiID leftId = 0, inspectorId = 0, bottomId = 0;
-            ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, 0.18f, &leftId, &center);
-            ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, 0.25f, &inspectorId, &center);
-            ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, 0.34f, &bottomId, &center);
+            ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, leftRatio, &leftId, &center);
+            ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, inspectorRatio, &inspectorId, &center);
+            ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, bottomRatio, &bottomId, &center);
 
             ImGuiID navigatorId = 0, sceneId = leftId;
-            ImGui::DockBuilderSplitNode(leftId, ImGuiDir_Up, 0.34f, &navigatorId, &sceneId);
+            ImGui::DockBuilderSplitNode(leftId, ImGuiDir_Up, navigatorRatio, &navigatorId, &sceneId);
 
             ImGuiID assetId = 0, view2dId = bottomId;
-            ImGui::DockBuilderSplitNode(bottomId, ImGuiDir_Left, 0.43f, &assetId, &view2dId);
+            ImGui::DockBuilderSplitNode(bottomId, ImGuiDir_Left, assetRatio, &assetId, &view2dId);
             const ImGuiID view3dId = center;
 
             ImGui::DockBuilderDockWindow("Navigator##mapNavigator", navigatorId);
@@ -12783,6 +12822,7 @@ void DrawMapEditorWorkspace(EditorState& state) {
             ImGui::DockBuilderDockWindow("2D-Ansicht##view2d", view2dId);
             ImGui::DockBuilderDockWindow("3D-Ansicht##view3d", view3dId);
             ImGui::DockBuilderFinish(dockspaceId);
+            state.statusMessage=std::string("Workspace-Preset angewendet: ")+MapWorkspacePresetName(state.mapWorkspacePreset);
         }
         state.resetMapDockLayout = false;
     }
@@ -12827,10 +12867,16 @@ void DrawMapEditorWorkspace(EditorState& state) {
     if (UI::Button("Spieldaten öffnen", ImVec2(-1,0))) state.screen = AppScreen::ShnEditor;
     if (UI::Button("Animationen / KFM", ImVec2(-1,0))) state.screen = AppScreen::KfmBrowser;
     ImGui::Separator();
-    if (UI::Button("Standardlayout zurücksetzen", ImVec2(-1,0))) {
-        state.resetMapDockLayout = true;
-        state.statusMessage = "Map-Workspace auf Standardlayout zurückgesetzt.";
+    ImGui::TextDisabled("Workspace-Preset");
+    const char* workspacePresets[]={"Standard","3D-Fokus","Terrain / 2D","Daten / Szene"};
+    int presetChoice=state.mapWorkspacePreset;
+    ImGui::SetNextItemWidth(-1.0f);
+    if (UI::Combo("##mapWorkspacePreset", &presetChoice, workspacePresets, 4) &&
+        presetChoice != state.mapWorkspacePreset) {
+        RequestMapWorkspacePreset(state,presetChoice);
     }
+    if (UI::Button("Preset erneut anwenden", ImVec2(-1,0)))
+        RequestMapWorkspacePreset(state,state.mapWorkspacePreset);
     ImGui::End();
     ImGui::PopStyleColor();
 
