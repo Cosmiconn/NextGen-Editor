@@ -6046,13 +6046,26 @@ void DrawPortalEditor(EditorState& state) {
 constexpr int kPortalKindNone = 0;
 constexpr int kPortalKindTown = 1;
 constexpr int kPortalKindRecall = 2;
+constexpr int kPortalKindGateLink = 3;
 
 struct PortalMarker {
     int kind = kPortalKindNone;
-    std::size_t idx = 0;   // Zeilen-Index (TownPortal.shn) bzw. Record-Index (RecallPoint)
+    std::size_t idx = 0;   // TownPortal-Zeile, RecallPoint-Record oder ShineNPC-Record
     float x = 0.0f;
     float y = 0.0f;
     std::string label;
+
+    // Nur für echte ausgehende Gate-Verknüpfungen aus World/NPC.txt:
+    // ShineNPC.RoleArg0 -> LinkTable.argument. Die NA2016-Referenzdaten belegen damit
+    // Zielkarte, Zielkoordinate, Richtung und Party-Flag ohne Heuristik.
+    std::string linkKey;
+    std::string sourceRole;
+    std::string targetMapServer;
+    std::string targetMapClient;
+    float targetX = 0.0f;
+    float targetY = 0.0f;
+    int targetDirect = 0;
+    bool targetParty = false;
 };
 
 int FindShnColumnByName(const core::legacy::ShnFile& f, const std::string& name) {
@@ -6193,10 +6206,129 @@ std::vector<PortalMarker> CollectPortalMarkers(EditorState& state) {
             }
         }
     }
+
+    // Ausgehende Karten-Gates sind in World/NPC.txt zweistufig verknüpft:
+    // ShineNPC.RoleArg0 (z.B. GateRou1) == LinkTable.argument.
+    // LinkTable liefert MapServer/MapClient, Ziel-X/Y, Richtung und Party-Flag.
+    if (state.npcTextLoaded) {
+        auto* npcs = state.npcTextFile.FindTable("ShineNPC");
+        auto* links = state.npcTextFile.FindTable("LinkTable");
+        if (npcs && links) {
+            std::unordered_map<std::string,const core::legacy::ShineRecord*> byArgument;
+            for (const auto& link : links->records) {
+                if (link.values.size() >= 7 && !link.values[0].empty())
+                    byArgument.emplace(link.values[0], &link);
+            }
+            for (const std::size_t idx : NpcRecordsForCurrentMap(state)) {
+                if (idx >= npcs->records.size()) continue;
+                const auto& npc = npcs->records[idx];
+                if (npc.values.size() < 8 || npc.values[7].empty()) continue;
+                const auto it = byArgument.find(npc.values[7]);
+                if (it == byArgument.end()) continue;
+                const auto& link = *it->second;
+                PortalMarker m;
+                m.kind = kPortalKindGateLink;
+                m.idx = idx;
+                m.x = static_cast<float>(std::atof(npc.values[2].c_str()));
+                m.y = static_cast<float>(std::atof(npc.values[3].c_str()));
+                m.linkKey = npc.values[7];
+                m.sourceRole = npc.values.size() > 6 ? npc.values[6] : std::string();
+                m.targetMapServer = TrimAscii(link.values[1]);
+                m.targetMapClient = TrimAscii(link.values[2]);
+                m.targetX = static_cast<float>(std::atof(link.values[3].c_str()));
+                m.targetY = static_cast<float>(std::atof(link.values[4].c_str()));
+                m.targetDirect = std::atoi(link.values[5].c_str());
+                m.targetParty = std::atoi(link.values[6].c_str()) != 0;
+                const std::string target = !m.targetMapClient.empty() ? m.targetMapClient : m.targetMapServer;
+                m.label = (npc.values[0].empty() ? m.linkKey : npc.values[0]) + " → " + target;
+                out.push_back(std::move(m));
+            }
+        }
+    }
     return out;
 }
 
 // Setzt die Position des aktuell gewaehlten Ziels (Klick im 2D-View bzw. Eingabefelder).
+std::string PortalTargetMapName(const PortalMarker& marker) {
+    return !marker.targetMapClient.empty() ? marker.targetMapClient : marker.targetMapServer;
+}
+
+int FindDiscoveredMapByName(const EditorState& state, const std::string& mapName) {
+    const std::string wanted = LowerAscii(TrimAscii(mapName));
+    if (wanted.empty()) return -1;
+    for (std::size_t i = 0; i < state.discoveredMaps.size(); ++i) {
+        if (LowerAscii(state.discoveredMaps[i].name) == wanted ||
+            LowerAscii(std::filesystem::path(state.discoveredMaps[i].iniPath).stem().string()) == wanted)
+            return static_cast<int>(i);
+    }
+    return -1;
+}
+
+bool NavigateToPortalTarget(EditorState& state, const PortalMarker& marker) {
+    if (marker.kind != kPortalKindGateLink) return false;
+    const std::string targetMap = PortalTargetMapName(marker);
+    if (targetMap.empty()) {
+        state.statusMessage = "Gate-Link '" + marker.linkKey + "' enthält keine Zielkarte.";
+        return false;
+    }
+
+    // Link auf dieselbe Karte: kein Reload nötig, nur direkt zum Ziel springen.
+    if (LowerAscii(targetMap) == LowerAscii(state.legacySaveStem)) {
+        state.camera.SetTarget(marker.targetX,
+                               state.heightmap.SampleWorld(marker.targetX,marker.targetY) + 25.0f,
+                               marker.targetY);
+        state.camera.Zoom(260.0f - state.camera.Distance());
+        state.statusMessage = "Gate-Ziel fokussiert: " + targetMap + " (" +
+                              std::to_string(static_cast<int>(marker.targetX)) + ", " +
+                              std::to_string(static_cast<int>(marker.targetY)) + ").";
+        return true;
+    }
+
+    int mapIndex = FindDiscoveredMapByName(state,targetMap);
+    if (mapIndex < 0 && state.project.clientFolder[0] != '\0') {
+        const auto resolution = ResolveMapSearchRootAndScan(state.project.clientFolder);
+        state.discoveredMaps = resolution.maps;
+        state.lastResmapCandidateCount = resolution.candidateCount;
+        state.lastResmapFound = resolution.root.has_value();
+        state.lastResmapResolvedPath = resolution.root ? resolution.root->string() : std::string();
+        state.lastScannedMapRoot = state.project.clientFolder;
+        mapIndex = FindDiscoveredMapByName(state,targetMap);
+    }
+
+    if (mapIndex < 0) {
+        state.mapLauncherView = EditorState::MapLauncherView::Browse;
+        state.screen = AppScreen::MapEditorLauncher;
+        state.statusMessage = "Zielkarte '" + targetMap + "' wurde im Client-resmap nicht gefunden.";
+        return false;
+    }
+
+    state.selectedMapIndex = mapIndex;
+    std::snprintf(state.legacyMapIniPath,sizeof(state.legacyMapIniPath),"%s",
+                  state.discoveredMaps[static_cast<std::size_t>(mapIndex)].iniPath.c_str());
+
+    // Niemals ungespeicherte Kartenänderungen durch einen Navigations-Klick verwerfen.
+    if (state.mapDirty) {
+        state.mapLauncherView = EditorState::MapLauncherView::Browse;
+        state.screen = AppScreen::MapEditorLauncher;
+        state.statusMessage = "Zielkarte '" + targetMap +
+                              "' ist vorausgewählt. Aktuelle Karte hat ungespeicherte Änderungen und wurde nicht geschlossen.";
+        return true;
+    }
+
+    if (!OpenLegacyMapIntoState(state,state.discoveredMaps[static_cast<std::size_t>(mapIndex)].iniPath,true))
+        return false;
+    state.screen = AppScreen::MapEditorWorkspace;
+    state.editMode = EditMode::Portals;
+    state.camera.SetTarget(marker.targetX,
+                           state.heightmap.SampleWorld(marker.targetX,marker.targetY) + 25.0f,
+                           marker.targetY);
+    state.camera.Zoom(260.0f - state.camera.Distance());
+    state.statusMessage = "Gate-Ziel geöffnet: " + targetMap + " (" +
+                          std::to_string(static_cast<int>(marker.targetX)) + ", " +
+                          std::to_string(static_cast<int>(marker.targetY)) + ").";
+    return true;
+}
+
 void SetSelectedPortalPosition(EditorState& state, long long x, long long y) {
     x = std::max(0LL, x);
     y = std::max(0LL, y);
@@ -6324,19 +6456,37 @@ void DrawPortalsToolsPanel(EditorState& state) {
 
     for (const auto& m : markers) {
         if (m.kind != state.selectedPortalKind || static_cast<int>(m.idx) != state.selectedPortalIdx) continue;
-        ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s",
-                           m.kind == kPortalKindTown ? m.label.c_str() : ("Schriftrolle " + m.label).c_str());
-        ImGui::TextDisabled("%s", m.kind == kPortalKindTown ? "TownPortal · auswählbares Ziel" : "RecallCoord · festes Schriftrollen-Ziel");
-        ImGui::SeparatorText("Position");
+        const char* kindText = m.kind == kPortalKindTown ? "TownPortal · auswählbares Ziel"
+                             : m.kind == kPortalKindRecall ? "RecallCoord · festes Schriftrollen-Ziel"
+                             : "World/NPC.txt · ausgehende Gate-Verknüpfung";
+        ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s", m.label.c_str());
+        ImGui::TextDisabled("%s",kindText);
+        ImGui::SeparatorText(m.kind == kPortalKindGateLink ? "Ausgangspunkt" : "Position");
         int x = static_cast<int>(m.x), y = static_cast<int>(m.y);
-        bool changed = false;
-        changed |= UI::InputInt("X", &x, 1, 50);
-        changed |= UI::InputInt("Y", &y, 1, 50);
-        if (changed) SetSelectedPortalPosition(state, x, y);
+        if (m.kind == kPortalKindGateLink) {
+            ImGui::Text("X: %d   Y: %d",x,y);
+        } else {
+            bool changed = false;
+            changed |= UI::InputInt("X", &x, 1, 50);
+            changed |= UI::InputInt("Y", &y, 1, 50);
+            if (changed) SetSelectedPortalPosition(state, x, y);
+        }
         if (UI::Button("Kamera auf Portal", ImVec2(-1,0))) {
             const float wx=static_cast<float>(x), wz=static_cast<float>(y);
             state.camera.SetTarget(wx,state.heightmap.SampleWorld(wx,wz)+25.0f,wz);
             state.camera.Zoom(260.0f-state.camera.Distance());
+        }
+
+        if (m.kind == kPortalKindGateLink) {
+            ImGui::SeparatorText("Ziel");
+            ImGui::Text("Link: %s",m.linkKey.c_str());
+            if (!m.sourceRole.empty()) ImGui::TextDisabled("Rolle: %s",m.sourceRole.c_str());
+            ImGui::Text("Client-Karte: %s",m.targetMapClient.empty() ? "(leer)" : m.targetMapClient.c_str());
+            ImGui::Text("Server-Karte: %s",m.targetMapServer.empty() ? "(leer)" : m.targetMapServer.c_str());
+            ImGui::Text("Ziel X/Y: %.0f / %.0f",m.targetX,m.targetY);
+            ImGui::TextDisabled("Richtung: %d · Party: %s",m.targetDirect,m.targetParty ? "ja" : "nein");
+            if (DrawIconButton("openGateTarget","Ziel öffnen",DrawIconPortal,false,ImVec2(100,58)))
+                NavigateToPortalTarget(state,m);
         }
 
         if (m.kind == kPortalKindTown) {
@@ -6360,7 +6510,12 @@ void DrawPortalsToolsPanel(EditorState& state) {
         break;
     }
     ImGui::SeparatorText("Positionieren");
+    const bool canRepositionPortal = state.selectedPortalKind == kPortalKindTown ||
+                                     state.selectedPortalKind == kPortalKindRecall;
+    ImGui::BeginDisabled(!canRepositionPortal);
     UI::Checkbox("Position per Klick im 2D-View setzen", &state.portalPickMode);
+    ImGui::EndDisabled();
+    if (!canRepositionPortal) state.portalPickMode = false;
     if (state.portalPickMode && state.selectedPortalKind == kPortalKindNone)
         ImGui::TextDisabled("Zuerst ein Ziel im Szene-Outliner oder in der 2D-Ansicht wählen.");
 
@@ -6413,8 +6568,10 @@ void DrawPortalMarkers2D(EditorState& state, const ImVec2& origin, const ImVec2&
             if (hasGate) dl->AddLine(toScreen(gx, gy), c, IM_COL32(170, 185, 205, 90), 1.0f);
             const ImVec2 pts[4] = {ImVec2(c.x, c.y - r), ImVec2(c.x + r, c.y), ImVec2(c.x, c.y + r), ImVec2(c.x - r, c.y)};
             dl->AddConvexPolyFilled(pts, 4, col);
-        } else {
+        } else if (m.kind == kPortalKindRecall) {
             dl->AddTriangleFilled(ImVec2(c.x, c.y - r), ImVec2(c.x + r, c.y + r), ImVec2(c.x - r, c.y + r), col);
+        } else {
+            dl->AddRectFilled(ImVec2(c.x-r,c.y-r),ImVec2(c.x+r,c.y+r),col,2.0f);
         }
         if (selected) dl->AddText(ImVec2(c.x + r + 4.0f, c.y - r), col, m.label.c_str());
     }
@@ -11060,9 +11217,11 @@ void DrawPortals3D(EditorState& state, const ImVec2& imagePos, int w, int h) {
         if(m.kind==kPortalKindTown) {
             const ImVec2 d[4]={ImVec2(p.x,p.y-r),ImVec2(p.x+r,p.y),ImVec2(p.x,p.y+r),ImVec2(p.x-r,p.y)};
             dl->AddPolyline(d,4,col,ImDrawFlags_Closed,selected?2.5f:1.7f);
-        } else {
+        } else if(m.kind==kPortalKindRecall) {
             const ImVec2 t[3]={ImVec2(p.x,p.y-r),ImVec2(p.x+r,p.y+r),ImVec2(p.x-r,p.y+r)};
             dl->AddPolyline(t,3,col,ImDrawFlags_Closed,selected?2.5f:1.7f);
+        } else {
+            dl->AddRect(ImVec2(p.x-r,p.y-r),ImVec2(p.x+r,p.y+r),col,2.0f,0,selected?2.5f:1.7f);
         }
         if(selected) dl->AddText(ImVec2(p.x+r+5.0f,p.y-r),col,m.label.c_str());
     }
@@ -11660,18 +11819,25 @@ void DrawSceneOutlinerPanel(EditorState& state) {
     if (state.editMode == EditMode::Portals) {
         EnsurePortalDataLoaded(state);
         const auto markers = CollectPortalMarkers(state);
-        ImGui::TextDisabled("%zu Ziele", markers.size());
+        const std::size_t outboundCount = static_cast<std::size_t>(std::count_if(
+            markers.begin(),markers.end(),[](const PortalMarker& m){ return m.kind==kPortalKindGateLink; }));
+        ImGui::TextDisabled("%zu Marker · %zu ausgehend", markers.size(), outboundCount);
         ImGui::BeginChild("##scenePortalList", ImVec2(0,0), true);
         for (std::size_t i = 0; i < markers.size(); ++i) {
             const auto& m = markers[i];
             const bool town = m.kind == kPortalKindTown;
-            std::string label = town ? ("TownPortal · " + m.label) : ("Recall · " + m.label);
+            const bool recall = m.kind == kPortalKindRecall;
+            std::string label = town ? ("TownPortal · " + m.label)
+                              : recall ? ("Recall · " + m.label)
+                                       : ("Gate · " + m.label);
             if (!needle.empty() && LowerAscii(label).find(needle) == std::string::npos) continue;
             const bool selected = m.kind == state.selectedPortalKind && static_cast<int>(m.idx) == state.selectedPortalIdx;
             ImGui::PushID(static_cast<int>(i));
             DrawInlineIcon("portal", DrawIconPortal,
-                           town ? IM_COL32(95,195,255,245) : IM_COL32(190,125,255,245),
-                           town ? "TownPortal" : "RecallCoord / Schriftrolle");
+                           town ? IM_COL32(95,195,255,245)
+                                : recall ? IM_COL32(190,125,255,245)
+                                         : IM_COL32(100,225,160,245),
+                           town ? "TownPortal" : recall ? "RecallCoord / Schriftrolle" : "Ausgehender Gate-Link");
             ImGui::SameLine(0,4);
             if (UI::Selectable((label + "##portalScene").c_str(), selected)) {
                 state.selectedPortalKind = m.kind;
