@@ -565,4 +565,180 @@ std::expected<KfAnimationFile, std::string> LoadKfAnimation(const std::filesyste
     }
 }
 
+
+namespace {
+
+float ClampTrackTime(const KfAnimationFile& file, float time) {
+    if (!std::isfinite(time)) return file.sequence.startTime;
+    const float lo = std::min(file.sequence.startTime, file.sequence.stopTime);
+    const float hi = std::max(file.sequence.startTime, file.sequence.stopTime);
+    return std::clamp(time, lo, hi);
+}
+
+template <class Key>
+std::pair<const Key*, const Key*> BracketKeys(const std::vector<Key>& keys, float time) {
+    if (keys.empty()) return {nullptr, nullptr};
+    if (time <= keys.front().time) return {&keys.front(), &keys.front()};
+    if (time >= keys.back().time) return {&keys.back(), &keys.back()};
+    const auto it = std::upper_bound(keys.begin(), keys.end(), time,
+        [](float t, const Key& key) { return t < key.time; });
+    if (it == keys.begin()) return {&*it, &*it};
+    return {&*(it - 1), &*it};
+}
+
+float SegmentAlpha(float time, float a, float b) {
+    const float span = b - a;
+    if (std::abs(span) < 1.0e-8f) return 0.0f;
+    return std::clamp((time - a) / span, 0.0f, 1.0f);
+}
+
+std::expected<float, std::string>
+SampleFloatGroup(const KfKeyGroupFloat& group, float time, const char* channel) {
+    if (group.keys.empty()) return std::unexpected(std::string(channel) + ": no keys");
+    if (group.interpolation != 1 && group.interpolation != 5) {
+        return std::unexpected(std::string(channel) +
+            ": interpolation type " + std::to_string(group.interpolation) +
+            " is not yet verified for playback");
+    }
+    const auto [a,b] = BracketKeys(group.keys,time);
+    if (!a || !b) return std::unexpected(std::string(channel) + ": invalid key range");
+    if (a == b || group.interpolation == 5) return a->value;
+    const float t=SegmentAlpha(time,a->time,b->time);
+    return a->value + (b->value-a->value)*t;
+}
+
+std::expected<KfVec3, std::string>
+SampleVec3Group(const KfKeyGroupVec3& group, float time, const char* channel) {
+    if (group.keys.empty()) return std::unexpected(std::string(channel) + ": no keys");
+    if (group.interpolation != 1 && group.interpolation != 5) {
+        return std::unexpected(std::string(channel) +
+            ": interpolation type " + std::to_string(group.interpolation) +
+            " is not yet verified for playback");
+    }
+    const auto [a,b] = BracketKeys(group.keys,time);
+    if (!a || !b) return std::unexpected(std::string(channel) + ": invalid key range");
+    if (a == b || group.interpolation == 5) return a->value;
+    const float t=SegmentAlpha(time,a->time,b->time);
+    return KfVec3{
+        a->value.x+(b->value.x-a->value.x)*t,
+        a->value.y+(b->value.y-a->value.y)*t,
+        a->value.z+(b->value.z-a->value.z)*t
+    };
+}
+
+KfQuat NormalizeQuat(KfQuat q) {
+    const float n=std::sqrt(q.w*q.w+q.x*q.x+q.y*q.y+q.z*q.z);
+    if (n < 1.0e-8f) return {};
+    q.w/=n; q.x/=n; q.y/=n; q.z/=n;
+    return q;
+}
+
+KfQuat MulQuat(const KfQuat& a,const KfQuat& b) {
+    return NormalizeQuat({
+        a.w*b.w-a.x*b.x-a.y*b.y-a.z*b.z,
+        a.w*b.x+a.x*b.w+a.y*b.z-a.z*b.y,
+        a.w*b.y-a.x*b.z+a.y*b.w+a.z*b.x,
+        a.w*b.z+a.x*b.y-a.y*b.x+a.z*b.w
+    });
+}
+
+KfQuat AxisQuat(float x,float y,float z,float angle) {
+    const float half=angle*0.5f;
+    const float sn=std::sin(half);
+    return NormalizeQuat({std::cos(half),x*sn,y*sn,z*sn});
+}
+
+KfQuat SlerpQuat(KfQuat a,KfQuat b,float t) {
+    a=NormalizeQuat(a); b=NormalizeQuat(b);
+    float dot=a.w*b.w+a.x*b.x+a.y*b.y+a.z*b.z;
+    if(dot<0.0f){dot=-dot;b.w=-b.w;b.x=-b.x;b.y=-b.y;b.z=-b.z;}
+    if(dot>0.9995f) {
+        return NormalizeQuat({
+            a.w+(b.w-a.w)*t,
+            a.x+(b.x-a.x)*t,
+            a.y+(b.y-a.y)*t,
+            a.z+(b.z-a.z)*t
+        });
+    }
+    dot=std::clamp(dot,-1.0f,1.0f);
+    const float theta=std::acos(dot);
+    const float sn=std::sin(theta);
+    if(std::abs(sn)<1.0e-8f) return a;
+    const float wa=std::sin((1.0f-t)*theta)/sn;
+    const float wb=std::sin(t*theta)/sn;
+    return NormalizeQuat({
+        a.w*wa+b.w*wb,
+        a.x*wa+b.x*wb,
+        a.y*wa+b.y*wb,
+        a.z*wa+b.z*wb
+    });
+}
+
+std::expected<KfQuat,std::string>
+SampleRotation(const KfTransformKeys& keys,float time,const KfQuat& pose) {
+    if(keys.rotationType==0) return pose;
+    if(keys.rotationType==4) {
+        std::array<float,3> angle{0.0f,0.0f,0.0f};
+        for(std::size_t axis=0;axis<3;++axis) {
+            if(keys.xyzRotation[axis].keys.empty()) continue;
+            auto sampled=SampleFloatGroup(keys.xyzRotation[axis],time,"XYZ rotation");
+            if(!sampled) return std::unexpected(sampled.error());
+            angle[axis]=*sampled;
+        }
+        // Gamebryo XYZ rotation keys are applied X, then Y, then Z.
+        return MulQuat(MulQuat(AxisQuat(0,0,1,angle[2]),AxisQuat(0,1,0,angle[1])),
+                       AxisQuat(1,0,0,angle[0]));
+    }
+    if(keys.quaternionRotation.empty()) return pose;
+    if(keys.rotationType!=1 && keys.rotationType!=5) {
+        return std::unexpected("Quaternion rotation interpolation type " +
+                               std::to_string(keys.rotationType) +
+                               " is not yet verified for playback");
+    }
+    const auto [a,b]=BracketKeys(keys.quaternionRotation,time);
+    if(!a||!b) return pose;
+    if(a==b||keys.rotationType==5) return NormalizeQuat(a->value);
+    return SlerpQuat(a->value,b->value,SegmentAlpha(time,a->time,b->time));
+}
+
+} // namespace
+
+std::expected<KfTransform, std::string>
+SampleKfTransformTrack(const KfAnimationFile& file, const KfControlledTrack& track,
+                       float sequenceTime) {
+    if(track.compressedSpline) {
+        return std::unexpected("compressed B-spline sampling is not yet verified for playback");
+    }
+
+    const float time=ClampTrackTime(file,sequenceTime);
+    KfTransform out=track.pose;
+
+    if(!track.keys.translation.keys.empty()) {
+        auto sampled=SampleVec3Group(track.keys.translation,time,"translation");
+        if(!sampled) return std::unexpected(track.nodeName+": "+sampled.error());
+        out.translation=*sampled;
+    }
+    if(!track.keys.scale.keys.empty()) {
+        auto sampled=SampleFloatGroup(track.keys.scale,time,"scale");
+        if(!sampled) return std::unexpected(track.nodeName+": "+sampled.error());
+        out.scale=*sampled;
+    }
+    auto rotation=SampleRotation(track.keys,time,out.rotation);
+    if(!rotation) return std::unexpected(track.nodeName+": "+rotation.error());
+    out.rotation=*rotation;
+    return out;
+}
+
+std::expected<std::vector<KfSampledTransform>, std::string>
+SampleKfSequence(const KfAnimationFile& file, float sequenceTime) {
+    std::vector<KfSampledTransform> out;
+    out.reserve(file.sequence.transformTracks.size());
+    for(const auto& track:file.sequence.transformTracks) {
+        auto sampled=SampleKfTransformTrack(file,track,sequenceTime);
+        if(!sampled) return std::unexpected(sampled.error());
+        out.push_back({track.nodeName,*sampled});
+    }
+    return out;
+}
+
 } // namespace theseed::mapeditor::core
