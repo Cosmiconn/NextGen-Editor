@@ -3142,6 +3142,62 @@ SceneSemanticIcon ResolveMobZoneSceneIcon(int speciesCount) {
     return {DrawIconPack,IM_COL32(255,165,90,245),"Gemischte Mob-Gruppe · mehrere Monsterarten"};
 }
 
+
+int NpcSceneGroupRank(const std::string& role, const std::string& arg) {
+    if (role == "QuestNpc") return arg == "GBDice" ? 1 : 0;
+    if (role == "Merchant") {
+        if (arg == "Weapon" || arg == "WeaponTitle") return 10;
+        if (arg == "Skill") return 11;
+        if (arg == "SoulStone") return 12;
+        if (arg == "Guild") return 13;
+        return 14;
+    }
+    if (role == "StoreManager") return 15;
+    if (role == "NPCMenu") {
+        if (arg == "Guild") return 20;
+        if (arg == "ExchangeCoin") return 21;
+        if (arg == "RandomOption") return 22;
+        return 23;
+    }
+    if (role == "Guard") return 24;
+    if (role == "Gate") return 30;
+    return 40;
+}
+
+std::string NpcSceneGroupLabel(const std::string& role, const std::string& arg) {
+    if (role == "QuestNpc") return arg == "GBDice" ? "Quests / Würfel" : "Quests";
+    if (role == "Merchant") {
+        if (arg == "Weapon" || arg == "WeaponTitle") return "Handel / Waffen";
+        if (arg == "Skill") return "Handel / Skills";
+        if (arg == "SoulStone") return "Handel / SoulStone";
+        if (arg == "Guild") return "Handel / Gilde";
+        return "Handel / Händler";
+    }
+    if (role == "StoreManager") return "Handel / Lager";
+    if (role == "NPCMenu") {
+        if (arg == "Guild") return "Service / Gilde";
+        if (arg == "ExchangeCoin") return "Service / Münztausch";
+        if (arg == "RandomOption") return "Service / Random Option";
+        return "Service / Menü";
+    }
+    if (role == "Guard") return "Service / Wache";
+    if (role == "Gate") return "Gates";
+    if (!role.empty() && role != "-") return "Sonstige / " + role;
+    return "Sonstige";
+}
+
+int MobSceneGroupRank(int speciesCount) {
+    if (speciesCount <= 0) return 0;
+    if (speciesCount == 1) return 1;
+    return 2;
+}
+
+const char* MobSceneGroupLabel(int speciesCount) {
+    if (speciesCount <= 0) return "Leere Zonen";
+    if (speciesCount == 1) return "Eine Monsterart";
+    return "Gemischte Gruppen";
+}
+
 bool SceneQuickFilterButton(const char* id,const char* label,bool active) {
     ImGui::PushID(id);
     if(active) {
@@ -12128,7 +12184,17 @@ void DrawSceneOutlinerPanel(EditorState& state) {
         ImGui::SameLine();
         if(SceneQuickFilterButton("npcGate","Gates",state.sceneNpcQuickFilter==4)) state.sceneNpcQuickFilter=4;
 
-        ImGui::BeginChild("##sceneNpcList", ImVec2(0,0), true);
+        struct NpcSceneEntry {
+            std::size_t idx = 0;
+            std::string role;
+            std::string arg;
+            std::string label;
+            std::string group;
+            int groupRank = 0;
+            SceneSemanticIcon semantic;
+        };
+        std::vector<NpcSceneEntry> npcEntries;
+        npcEntries.reserve(indices.size());
         for (std::size_t idx : indices) {
             auto& rec = table->records[idx];
             if (rec.values.size() < 8) continue;
@@ -12140,83 +12206,110 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                                      (state.sceneNpcQuickFilter==3 && (role=="NPCMenu" || role=="Guard")) ||
                                      (state.sceneNpcQuickFilter==4 && role=="Gate");
             if(!roleMatches) continue;
-            const auto semantic = ResolveNpcSceneIcon(role,arg);
             const std::string label = rec.values[0] + "  ·  " + role +
                                       ((!arg.empty() && arg != "-") ? (" / " + arg) : std::string());
             if (!needle.empty() && LowerAscii(label).find(needle) == std::string::npos) continue;
+            npcEntries.push_back({idx,role,arg,label,NpcSceneGroupLabel(role,arg),
+                                  NpcSceneGroupRank(role,arg),ResolveNpcSceneIcon(role,arg)});
+        }
+        std::stable_sort(npcEntries.begin(),npcEntries.end(),[](const NpcSceneEntry& a,const NpcSceneEntry& b) {
+            if (a.groupRank != b.groupRank) return a.groupRank < b.groupRank;
+            if (a.group != b.group) return LowerAscii(a.group) < LowerAscii(b.group);
+            return LowerAscii(a.label) < LowerAscii(b.label);
+        });
 
-            ImGui::PushID(static_cast<int>(idx));
-            DrawInlineIcon("role", semantic.icon, semantic.color, semantic.tooltip.c_str());
-            ImGui::SameLine(0,4);
-            const bool selected = state.selectedNpcRecordIdx == static_cast<int>(idx);
-            if (UI::Selectable((label + "##npcScene").c_str(), selected)) {
-                state.selectedNpcRecordIdx = static_cast<int>(idx);
-                if (!state.showAllRoamRoutes) state.roamOverlayKey.clear();
-            }
-            if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
-                FocusCurrentSceneSelection(state);
-            if (ImGui::BeginPopupContextItem("##npcSceneContext")) {
-                state.selectedNpcRecordIdx = static_cast<int>(idx);
-                ImGui::TextDisabled("%s",semantic.tooltip.c_str());
-                ImGui::Separator();
-                if (UI::MenuItem("Im 3D-Viewport fokussieren")) FocusCurrentSceneSelection(state);
-                if (UI::MenuItem("Dialog bearbeiten")) OpenNpcDialogEditor(state,rec.values[0]);
-                if (UI::MenuItem("Lua / AI bearbeiten")) OpenAiScriptEditor(state,rec.values[0]);
-                if (UI::MenuItem("Route bearbeiten")) OpenPatrolRouteEditor(state,rec.values[0]);
-                if (role == "Merchant" && UI::MenuItem("Shop / Inventar bearbeiten")) {
-                    EnsureShopTextLoaded(state,rec.values[0]);
-                    state.shopEditorOpen=true;
-                }
-                if (role == "Gate") {
-                    for (const auto& marker : CollectPortalMarkers(state)) {
-                        if (marker.kind != kPortalKindGateLink || marker.idx != idx) continue;
-                        if (UI::MenuItem("Gate-Ziel öffnen")) NavigateToPortalTarget(state,marker);
-                        break;
+        ImGui::BeginChild("##sceneNpcList", ImVec2(0,0), true);
+        for (std::size_t first = 0; first < npcEntries.size();) {
+            std::size_t last = first + 1;
+            while (last < npcEntries.size() && npcEntries[last].group == npcEntries[first].group) ++last;
+            const std::string groupTitle = npcEntries[first].group + "  (" + std::to_string(last-first) + ")";
+            ImGui::PushID(npcEntries[first].group.c_str());
+            const bool open = UI::CollapsingHeader(groupTitle.c_str(), ImGuiTreeNodeFlags_DefaultOpen);
+            if (open) {
+                for (std::size_t pos = first; pos < last; ++pos) {
+                    const auto& entry = npcEntries[pos];
+                    auto& rec = table->records[entry.idx];
+                    ImGui::PushID(static_cast<int>(entry.idx));
+                    DrawInlineIcon("role", entry.semantic.icon, entry.semantic.color, entry.semantic.tooltip.c_str());
+                    ImGui::SameLine(0,4);
+                    const bool selected = state.selectedNpcRecordIdx == static_cast<int>(entry.idx);
+                    if (UI::Selectable((entry.label + "##npcScene").c_str(), selected)) {
+                        state.selectedNpcRecordIdx = static_cast<int>(entry.idx);
+                        if (!state.showAllRoamRoutes) state.roamOverlayKey.clear();
                     }
-                }
-                ImGui::EndPopup();
-            }
-            if (selected) {
-                RefreshRoamOverlayRoutes(state);
-                const bool hasSelectedRoute = std::any_of(
-                    state.roamOverlayRoutes.begin(), state.roamOverlayRoutes.end(),
-                    [&](const EditorState::RoamOverlayRoute& route) { return route.name == rec.values[0]; });
-                if (hasSelectedRoute) {
-                    ImGui::SameLine();
-                    DrawInlineIcon("route", DrawIconRoute, IM_COL32(90,220,255,245),
-                                   "MobRoam-Route vorhanden");
-                }
+                    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+                        FocusCurrentSceneSelection(state);
+                    if (ImGui::BeginPopupContextItem("##npcSceneContext")) {
+                        state.selectedNpcRecordIdx = static_cast<int>(entry.idx);
+                        ImGui::TextDisabled("%s",entry.semantic.tooltip.c_str());
+                        ImGui::Separator();
+                        if (UI::MenuItem("Im 3D-Viewport fokussieren")) FocusCurrentSceneSelection(state);
+                        if (UI::MenuItem("Dialog bearbeiten")) OpenNpcDialogEditor(state,rec.values[0]);
+                        if (UI::MenuItem("Lua / AI bearbeiten")) OpenAiScriptEditor(state,rec.values[0]);
+                        if (UI::MenuItem("Route bearbeiten")) OpenPatrolRouteEditor(state,rec.values[0]);
+                        if (entry.role == "Merchant" && UI::MenuItem("Shop / Inventar bearbeiten")) {
+                            EnsureShopTextLoaded(state,rec.values[0]);
+                            state.shopEditorOpen=true;
+                        }
+                        if (entry.role == "Gate") {
+                            for (const auto& marker : CollectPortalMarkers(state)) {
+                                if (marker.kind != kPortalKindGateLink || marker.idx != entry.idx) continue;
+                                if (UI::MenuItem("Gate-Ziel öffnen")) NavigateToPortalTarget(state,marker);
+                                break;
+                            }
+                        }
+                        ImGui::EndPopup();
+                    }
+                    if (selected) {
+                        RefreshRoamOverlayRoutes(state);
+                        const bool hasSelectedRoute = std::any_of(
+                            state.roamOverlayRoutes.begin(), state.roamOverlayRoutes.end(),
+                            [&](const EditorState::RoamOverlayRoute& route) { return route.name == rec.values[0]; });
+                        if (hasSelectedRoute) {
+                            ImGui::SameLine();
+                            DrawInlineIcon("route", DrawIconRoute, IM_COL32(90,220,255,245),
+                                           "MobRoam-Route vorhanden");
+                        }
 
-                ImGui::Indent(24.0f);
-                if (DrawTinyIconButton("npcInlineDialog",DrawIconDialog,false,"Dialog bearbeiten"))
-                    OpenNpcDialogEditor(state,rec.values[0]);
-                ImGui::SameLine(0,3);
-                if (DrawTinyIconButton("npcInlineAi",DrawIconCode,false,"Lua / AI bearbeiten"))
-                    OpenAiScriptEditor(state,rec.values[0]);
-                ImGui::SameLine(0,3);
-                if (DrawTinyIconButton("npcInlineRoute",DrawIconRoute,false,"Route bearbeiten"))
-                    OpenPatrolRouteEditor(state,rec.values[0]);
-                if (role == "Merchant") {
-                    ImGui::SameLine(0,3);
-                    if (DrawTinyIconButton("npcInlineShop",DrawIconShop,false,"Shop / Inventar bearbeiten")) {
-                        EnsureShopTextLoaded(state,rec.values[0]);
-                        state.shopEditorOpen=true;
-                    }
-                }
-                if (role == "Gate") {
-                    for (const auto& marker : CollectPortalMarkers(state)) {
-                        if (marker.kind != kPortalKindGateLink || marker.idx != idx) continue;
+                        ImGui::Indent(24.0f);
+                        if (DrawTinyIconButton("npcInlineDialog",DrawIconDialog,false,"Dialog bearbeiten"))
+                            OpenNpcDialogEditor(state,rec.values[0]);
                         ImGui::SameLine(0,3);
-                        if (DrawTinyIconButton("npcInlineGate",DrawIconPortal,false,"Gate-Ziel öffnen"))
-                            NavigateToPortalTarget(state,marker);
-                        break;
+                        if (DrawTinyIconButton("npcInlineAi",DrawIconCode,false,"Lua / AI bearbeiten"))
+                            OpenAiScriptEditor(state,rec.values[0]);
+                        ImGui::SameLine(0,3);
+                        if (DrawTinyIconButton("npcInlineRoute",DrawIconRoute,false,"Route bearbeiten"))
+                            OpenPatrolRouteEditor(state,rec.values[0]);
+                        if (entry.role == "Merchant") {
+                            ImGui::SameLine(0,3);
+                            if (DrawTinyIconButton("npcInlineShop",DrawIconShop,false,"Shop / Inventar bearbeiten")) {
+                                EnsureShopTextLoaded(state,rec.values[0]);
+                                state.shopEditorOpen=true;
+                            }
+                        }
+                        if (entry.role == "Gate") {
+                            for (const auto& marker : CollectPortalMarkers(state)) {
+                                if (marker.kind != kPortalKindGateLink || marker.idx != entry.idx) continue;
+                                ImGui::SameLine(0,3);
+                                if (DrawTinyIconButton("npcInlineGate",DrawIconPortal,false,"Gate-Ziel öffnen"))
+                                    NavigateToPortalTarget(state,marker);
+                                break;
+                            }
+                        }
+                        ImGui::Unindent(24.0f);
                     }
+                    ImGui::PopID();
                 }
-                ImGui::Unindent(24.0f);
             }
             ImGui::PopID();
+            first = last;
         }
+        if (npcEntries.empty()) ImGui::TextDisabled("Keine passenden NPCs.");
         ImGui::EndChild();
+        return;
+    }
+
+    if (state.editMode == EditMode::Mobs) {        ImGui::EndChild();
         return;
     }
 
@@ -12260,7 +12353,17 @@ void DrawSceneOutlinerPanel(EditorState& state) {
         ImGui::SameLine();
         if(SceneQuickFilterButton("mobMixed","Gemischt",state.sceneMobQuickFilter==3)) state.sceneMobQuickFilter=3;
 
-        ImGui::BeginChild("##sceneMobZoneList", ImVec2(0,0), true);
+        struct MobSceneEntry {
+            std::size_t idx = 0;
+            int speciesCount = 0;
+            int totalMobs = 0;
+            int groupRank = 0;
+            std::string group;
+            std::string label;
+            SceneSemanticIcon semantic;
+        };
+        std::vector<MobSceneEntry> mobEntries;
+        mobEntries.reserve(zones->records.size());
         for (std::size_t i = 0; i < zones->records.size(); ++i) {
             auto& rec = zones->records[i];
             if (rec.values.empty()) continue;
@@ -12271,88 +12374,114 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                                       (state.sceneMobQuickFilter==2 && groups==1) ||
                                       (state.sceneMobQuickFilter==3 && groups>1);
             if(!groupMatches) continue;
-            const auto semantic = ResolveMobZoneSceneIcon(groups);
             const std::string label = rec.values[0] + "  ·  " + std::to_string(groups) +
                                       (groups == 1 ? " Art" : " Arten") + " · " +
                                       std::to_string(totalMobs) + (totalMobs == 1 ? " Mob" : " Mobs");
             if (!needle.empty() && LowerAscii(label).find(needle) == std::string::npos) continue;
+            mobEntries.push_back({i,groups,totalMobs,MobSceneGroupRank(groups),MobSceneGroupLabel(groups),
+                                  label,ResolveMobZoneSceneIcon(groups)});
+        }
+        std::stable_sort(mobEntries.begin(),mobEntries.end(),[](const MobSceneEntry& a,const MobSceneEntry& b) {
+            if (a.groupRank != b.groupRank) return a.groupRank < b.groupRank;
+            return LowerAscii(a.label) < LowerAscii(b.label);
+        });
 
-            ImGui::PushID(static_cast<int>(i));
-            DrawInlineIcon("spawn", semantic.icon, semantic.color, semantic.tooltip.c_str());
-            ImGui::SameLine(0,4);
-            const bool selected = state.selectedMobZoneIdx == static_cast<int>(i);
-            if (UI::Selectable((label + "##mobScene").c_str(), selected)) {
-                state.selectedMobZoneIdx = static_cast<int>(i);
-                if (!state.showAllRoamRoutes) state.roamOverlayKey.clear();
-            }
-            if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
-                FocusCurrentSceneSelection(state);
-            if (ImGui::BeginPopupContextItem("##mobSceneContext")) {
-                state.selectedMobZoneIdx = static_cast<int>(i);
-                ImGui::TextDisabled("%s",semantic.tooltip.c_str());
-                ImGui::TextDisabled("%d Arten · %d Mobs",groups,totalMobs);
-                ImGui::Separator();
-                if (UI::MenuItem("Im 3D-Viewport fokussieren")) FocusCurrentSceneSelection(state);
-                if (spawns && ImGui::BeginMenu("Monster in dieser Zone")) {
-                    bool any=false;
-                    for (const auto& spawn : spawns->records) {
-                        if (spawn.values.size() < 2 || spawn.values[0] != rec.values[0]) continue;
-                        any=true;
-                        const std::string mobName=spawn.values[1];
-                        if (ImGui::BeginMenu(mobName.c_str())) {
-                            if (UI::MenuItem("Lua / AI bearbeiten")) OpenAiScriptEditor(state,mobName);
-                            if (UI::MenuItem("MobRoam-Route bearbeiten")) OpenPatrolRouteEditor(state,mobName);
+        ImGui::BeginChild("##sceneMobZoneList", ImVec2(0,0), true);
+        for (std::size_t first = 0; first < mobEntries.size();) {
+            std::size_t last = first + 1;
+            while (last < mobEntries.size() && mobEntries[last].group == mobEntries[first].group) ++last;
+            const std::string groupTitle = mobEntries[first].group + "  (" + std::to_string(last-first) + ")";
+            ImGui::PushID(mobEntries[first].group.c_str());
+            const bool open = UI::CollapsingHeader(groupTitle.c_str(), ImGuiTreeNodeFlags_DefaultOpen);
+            if (open) {
+                for (std::size_t pos = first; pos < last; ++pos) {
+                    const auto& entry = mobEntries[pos];
+                    auto& rec = zones->records[entry.idx];
+                    ImGui::PushID(static_cast<int>(entry.idx));
+                    DrawInlineIcon("spawn", entry.semantic.icon, entry.semantic.color, entry.semantic.tooltip.c_str());
+                    ImGui::SameLine(0,4);
+                    const bool selected = state.selectedMobZoneIdx == static_cast<int>(entry.idx);
+                    if (UI::Selectable((entry.label + "##mobScene").c_str(), selected)) {
+                        state.selectedMobZoneIdx = static_cast<int>(entry.idx);
+                        if (!state.showAllRoamRoutes) state.roamOverlayKey.clear();
+                    }
+                    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+                        FocusCurrentSceneSelection(state);
+                    if (ImGui::BeginPopupContextItem("##mobSceneContext")) {
+                        state.selectedMobZoneIdx = static_cast<int>(entry.idx);
+                        ImGui::TextDisabled("%s",entry.semantic.tooltip.c_str());
+                        ImGui::TextDisabled("%d Arten · %d Mobs",entry.speciesCount,entry.totalMobs);
+                        ImGui::Separator();
+                        if (UI::MenuItem("Im 3D-Viewport fokussieren")) FocusCurrentSceneSelection(state);
+                        if (spawns && ImGui::BeginMenu("Monster in dieser Zone")) {
+                            bool any=false;
+                            for (const auto& spawn : spawns->records) {
+                                if (spawn.values.size() < 2 || spawn.values[0] != rec.values[0]) continue;
+                                any=true;
+                                const std::string mobName=spawn.values[1];
+                                if (ImGui::BeginMenu(mobName.c_str())) {
+                                    if (UI::MenuItem("Lua / AI bearbeiten")) OpenAiScriptEditor(state,mobName);
+                                    if (UI::MenuItem("MobRoam-Route bearbeiten")) OpenPatrolRouteEditor(state,mobName);
+                                    ImGui::EndMenu();
+                                }
+                            }
+                            if (!any) ImGui::TextDisabled("Keine Monster");
                             ImGui::EndMenu();
                         }
+                        ImGui::EndPopup();
                     }
-                    if (!any) ImGui::TextDisabled("Keine Monster");
-                    ImGui::EndMenu();
-                }
-                ImGui::EndPopup();
-            }
-            if (selected) {
-                RefreshRoamOverlayRoutes(state);
-                bool hasSelectedRoute = false;
-                if (spawns) {
-                    std::unordered_set<std::string> zoneNames;
-                    for (const auto& spawn : spawns->records) {
-                        if (spawn.values.size() >= 2 && spawn.values[0] == rec.values[0] && !spawn.values[1].empty())
-                            zoneNames.insert(spawn.values[1]);
-                    }
-                    hasSelectedRoute = std::any_of(
-                        state.roamOverlayRoutes.begin(), state.roamOverlayRoutes.end(),
-                        [&](const EditorState::RoamOverlayRoute& route) { return zoneNames.count(route.name) != 0; });
-                }
-                if (hasSelectedRoute) {
-                    ImGui::SameLine();
-                    DrawInlineIcon("route", DrawIconRoute, IM_COL32(90,220,255,245),
-                                   "Mindestens eine MobRoam-Route vorhanden");
-                }
+                    if (selected) {
+                        RefreshRoamOverlayRoutes(state);
+                        bool hasSelectedRoute = false;
+                        if (spawns) {
+                            std::unordered_set<std::string> zoneNames;
+                            for (const auto& spawn : spawns->records) {
+                                if (spawn.values.size() >= 2 && spawn.values[0] == rec.values[0] && !spawn.values[1].empty())
+                                    zoneNames.insert(spawn.values[1]);
+                            }
+                            hasSelectedRoute = std::any_of(
+                                state.roamOverlayRoutes.begin(), state.roamOverlayRoutes.end(),
+                                [&](const EditorState::RoamOverlayRoute& route) { return zoneNames.count(route.name) != 0; });
+                        }
+                        if (hasSelectedRoute) {
+                            ImGui::SameLine();
+                            DrawInlineIcon("route", DrawIconRoute, IM_COL32(90,220,255,245),
+                                           "Mindestens eine MobRoam-Route vorhanden");
+                        }
 
-                if (spawns) {
-                    ImGui::Indent(24.0f);
-                    for (std::size_t si=0; si<spawns->records.size(); ++si) {
-                        const auto& spawn=spawns->records[si];
-                        if (spawn.values.size()<2 || spawn.values[0]!=rec.values[0]) continue;
-                        ImGui::PushID(static_cast<int>(si));
-                        DrawInlineIcon("mobEntry",DrawIconPerson,IM_COL32(180,195,215,235),"MobRegen-Eintrag",ImVec2(18,18));
-                        ImGui::SameLine(0,3);
-                        const int amount=spawn.values.size()>=3?std::max(0,std::atoi(spawn.values[2].c_str())):0;
-                        ImGui::Text("%s  x%d",spawn.values[1].c_str(),amount);
-                        ImGui::SameLine();
-                        if (DrawTinyIconButton("mobEntryAi",DrawIconCode,false,"Lua / AI bearbeiten",ImVec2(19,19)))
-                            OpenAiScriptEditor(state,spawn.values[1]);
-                        ImGui::SameLine(0,2);
-                        if (DrawTinyIconButton("mobEntryRoute",DrawIconRoute,false,"MobRoam-Route bearbeiten",ImVec2(19,19)))
-                            OpenPatrolRouteEditor(state,spawn.values[1]);
-                        ImGui::PopID();
+                        if (spawns) {
+                            ImGui::Indent(24.0f);
+                            for (std::size_t si=0; si<spawns->records.size(); ++si) {
+                                const auto& spawn=spawns->records[si];
+                                if (spawn.values.size()<2 || spawn.values[0]!=rec.values[0]) continue;
+                                ImGui::PushID(static_cast<int>(si));
+                                DrawInlineIcon("mobEntry",DrawIconPerson,IM_COL32(180,195,215,235),"MobRegen-Eintrag",ImVec2(18,18));
+                                ImGui::SameLine(0,3);
+                                const int amount=spawn.values.size()>=3?std::max(0,std::atoi(spawn.values[2].c_str())):0;
+                                ImGui::Text("%s  x%d",spawn.values[1].c_str(),amount);
+                                ImGui::SameLine();
+                                if (DrawTinyIconButton("mobEntryAi",DrawIconCode,false,"Lua / AI bearbeiten",ImVec2(19,19)))
+                                    OpenAiScriptEditor(state,spawn.values[1]);
+                                ImGui::SameLine(0,2);
+                                if (DrawTinyIconButton("mobEntryRoute",DrawIconRoute,false,"MobRoam-Route bearbeiten",ImVec2(19,19)))
+                                    OpenPatrolRouteEditor(state,spawn.values[1]);
+                                ImGui::PopID();
+                            }
+                            ImGui::Unindent(24.0f);
+                        }
                     }
-                    ImGui::Unindent(24.0f);
+                    ImGui::PopID();
                 }
             }
             ImGui::PopID();
+            first = last;
         }
+        if (mobEntries.empty()) ImGui::TextDisabled("Keine passenden Spawn-Zonen.");
         ImGui::EndChild();
+        return;
+    }
+
+    if (state.editMode == EditMode::Portals) {        ImGui::EndChild();
         return;
     }
 
@@ -12371,7 +12500,14 @@ void DrawSceneOutlinerPanel(EditorState& state) {
         ImGui::SameLine();
         if(SceneQuickFilterButton("portalRecall","Recall",state.scenePortalQuickFilter==3)) state.scenePortalQuickFilter=3;
 
-        ImGui::BeginChild("##scenePortalList", ImVec2(0,0), true);
+        struct PortalSceneEntry {
+            std::size_t markerIndex = 0;
+            int groupRank = 0;
+            std::string group;
+            std::string label;
+        };
+        std::vector<PortalSceneEntry> portalEntries;
+        portalEntries.reserve(markers.size());
         for (std::size_t i = 0; i < markers.size(); ++i) {
             const auto& m = markers[i];
             const bool town = m.kind == kPortalKindTown;
@@ -12385,50 +12521,83 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                               : recall ? ("Recall · " + m.label)
                                        : ("Gate · " + m.label);
             if (!needle.empty() && LowerAscii(label).find(needle) == std::string::npos) continue;
-            const bool selected = m.kind == state.selectedPortalKind && static_cast<int>(m.idx) == state.selectedPortalIdx;
-            ImGui::PushID(static_cast<int>(i));
-            DrawInlineIcon("portal", DrawIconPortal,
-                           town ? IM_COL32(95,195,255,245)
-                                : recall ? IM_COL32(190,125,255,245)
-                                         : IM_COL32(100,225,160,245),
-                           town ? "TownPortal" : recall ? "RecallCoord / Schriftrolle" : "Ausgehender Gate-Link");
-            ImGui::SameLine(0,4);
-            if (UI::Selectable((label + "##portalScene").c_str(), selected)) {
-                state.selectedPortalKind = m.kind;
-                state.selectedPortalIdx = static_cast<int>(m.idx);
-            }
-            if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
-                FocusCurrentSceneSelection(state);
-            if (ImGui::BeginPopupContextItem("##portalSceneContext")) {
-                state.selectedPortalKind = m.kind;
-                state.selectedPortalIdx = static_cast<int>(m.idx);
-                if (UI::MenuItem("Im 3D-Viewport fokussieren")) FocusCurrentSceneSelection(state);
-                if (m.kind == kPortalKindGateLink) {
-                    if (UI::MenuItem("Zielkarte öffnen")) NavigateToPortalTarget(state,m);
-                } else if (UI::MenuItem("Position per 2D-Klick setzen")) {
-                    state.portalPickMode=true;
+            const int groupRank = m.kind == kPortalKindGateLink ? 0 : town ? 1 : 2;
+            const char* group = m.kind == kPortalKindGateLink ? "Ausgehende Gates"
+                              : town ? "TownPortal"
+                                     : "RecallCoord";
+            portalEntries.push_back({i,groupRank,group,label});
+        }
+        std::stable_sort(portalEntries.begin(),portalEntries.end(),[](const PortalSceneEntry& a,const PortalSceneEntry& b) {
+            if (a.groupRank != b.groupRank) return a.groupRank < b.groupRank;
+            return LowerAscii(a.label) < LowerAscii(b.label);
+        });
+
+        ImGui::BeginChild("##scenePortalList", ImVec2(0,0), true);
+        for (std::size_t first = 0; first < portalEntries.size();) {
+            std::size_t last = first + 1;
+            while (last < portalEntries.size() && portalEntries[last].group == portalEntries[first].group) ++last;
+            const std::string groupTitle = portalEntries[first].group + "  (" + std::to_string(last-first) + ")";
+            ImGui::PushID(portalEntries[first].group.c_str());
+            const bool open = UI::CollapsingHeader(groupTitle.c_str(), ImGuiTreeNodeFlags_DefaultOpen);
+            if (open) {
+                for (std::size_t pos = first; pos < last; ++pos) {
+                    const auto& entry = portalEntries[pos];
+                    const auto& m = markers[entry.markerIndex];
+                    const bool town = m.kind == kPortalKindTown;
+                    const bool recall = m.kind == kPortalKindRecall;
+                    const bool selected = m.kind == state.selectedPortalKind && static_cast<int>(m.idx) == state.selectedPortalIdx;
+                    ImGui::PushID(static_cast<int>(entry.markerIndex));
+                    DrawInlineIcon("portal", DrawIconPortal,
+                                   town ? IM_COL32(95,195,255,245)
+                                        : recall ? IM_COL32(190,125,255,245)
+                                                 : IM_COL32(100,225,160,245),
+                                   town ? "TownPortal" : recall ? "RecallCoord / Schriftrolle" : "Ausgehender Gate-Link");
+                    ImGui::SameLine(0,4);
+                    if (UI::Selectable((entry.label + "##portalScene").c_str(), selected)) {
+                        state.selectedPortalKind = m.kind;
+                        state.selectedPortalIdx = static_cast<int>(m.idx);
+                    }
+                    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+                        FocusCurrentSceneSelection(state);
+                    if (ImGui::BeginPopupContextItem("##portalSceneContext")) {
+                        state.selectedPortalKind = m.kind;
+                        state.selectedPortalIdx = static_cast<int>(m.idx);
+                        if (UI::MenuItem("Im 3D-Viewport fokussieren")) FocusCurrentSceneSelection(state);
+                        if (m.kind == kPortalKindGateLink) {
+                            if (UI::MenuItem("Zielkarte öffnen")) NavigateToPortalTarget(state,m);
+                        } else if (UI::MenuItem("Position per 2D-Klick setzen")) {
+                            state.portalPickMode=true;
+                        }
+                        ImGui::EndPopup();
+                    }
+                    if (selected) {
+                        ImGui::Indent(24.0f);
+                        if (m.kind == kPortalKindGateLink) {
+                            const std::string target=PortalTargetMapName(m);
+                            ImGui::TextDisabled("→ %s  (%.0f, %.0f)",target.empty()?"(kein Ziel)":target.c_str(),m.targetX,m.targetY);
+                            ImGui::SameLine();
+                            if (DrawTinyIconButton("portalInlineOpen",DrawIconPortal,false,"Zielkarte öffnen",ImVec2(19,19)))
+                                NavigateToPortalTarget(state,m);
+                        } else {
+                            ImGui::TextDisabled("Position: %.0f / %.0f",m.x,m.y);
+                            ImGui::SameLine();
+                            if (DrawTinyIconButton("portalInlinePick",DrawIconMove,state.portalPickMode,"Position per 2D-Klick setzen",ImVec2(19,19)))
+                                state.portalPickMode=!state.portalPickMode;
+                        }
+                        ImGui::Unindent(24.0f);
+                    }
+                    ImGui::PopID();
                 }
-                ImGui::EndPopup();
-            }
-            if (selected) {
-                ImGui::Indent(24.0f);
-                if (m.kind == kPortalKindGateLink) {
-                    const std::string target=PortalTargetMapName(m);
-                    ImGui::TextDisabled("→ %s  (%.0f, %.0f)",target.empty()?"(kein Ziel)":target.c_str(),m.targetX,m.targetY);
-                    ImGui::SameLine();
-                    if (DrawTinyIconButton("portalInlineOpen",DrawIconPortal,false,"Zielkarte öffnen",ImVec2(19,19)))
-                        NavigateToPortalTarget(state,m);
-                } else {
-                    ImGui::TextDisabled("Position: %.0f / %.0f",m.x,m.y);
-                    ImGui::SameLine();
-                    if (DrawTinyIconButton("portalInlinePick",DrawIconMove,state.portalPickMode,"Position per 2D-Klick setzen",ImVec2(19,19)))
-                        state.portalPickMode=!state.portalPickMode;
-                }
-                ImGui::Unindent(24.0f);
             }
             ImGui::PopID();
+            first = last;
         }
+        if (portalEntries.empty()) ImGui::TextDisabled("Keine passenden Portal-Marker.");
         ImGui::EndChild();
+        return;
+    }
+
+    const std::size_t shmdSceneCount        ImGui::EndChild();
         return;
     }
 
