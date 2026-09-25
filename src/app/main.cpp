@@ -227,10 +227,10 @@ enum class AppScreen { ProjectHub, NewProjectConfig, MapEditorLauncher, MapEdito
 // Projekt-Ebene (NEU): getrennt von den Client-/Server-Ordnern, siehe die Erläuterung im
 // Mockup ("Neues Projekt konfigurieren") - im Projekt-Ordner werden geänderte Dateien mit
 // der korrekten Ordnerstruktur für Client/Server abgelegt, NIE direkt im Client- oder
-// Server-Ordner. Die tatsächliche Ordnerstruktur-Spiegelung ist noch nicht implementiert
-// (siehe Kommentar bei SaveProjectConfig) - vorerst wird nur die Konfiguration selbst
-// gespeichert/geladen, die Client-Ordner-Angabe wird bereits als Suchwurzel für "Map
-// Öffnen" verwendet.
+// Server-Ordner. Die Spiegelung wird schrittweise pro Editor eingeführt: der Interface-
+// Workspace nutzt bereits <Projekt>/Client/resmenu/... als non-destruktiven Override-Pfad;
+// andere Editoren folgen weiterhin ihren bestehenden Save-Workflows. Die Client-Ordner-
+// Angabe bleibt zusätzlich Suchwurzel für "Map Öffnen" und read-only Asset-Quellen.
 struct ProjectConfig {
     char name[256] = "";
     char projectFolder[512] = "";
@@ -13914,6 +13914,84 @@ void DrawDropTableEditor(EditorState& state) {
     ImGui::EndChild();
 }
 
+std::filesystem::path InterfaceProjectOverrideRoot(const EditorState& state) {
+    if (state.project.projectFolder[0] == '\0') return {};
+    return std::filesystem::path(state.project.projectFolder) / "Client" / "resmenu";
+}
+
+std::filesystem::path InterfaceProjectOverridePath(const EditorState& state, const std::string& rel) {
+    const auto root = InterfaceProjectOverrideRoot(state);
+    return root.empty() ? std::filesystem::path{} : root / std::filesystem::path(rel);
+}
+
+bool IsRegularFileNoThrow(const std::filesystem::path& path) {
+    if (path.empty()) return false;
+    std::error_code ec;
+    return std::filesystem::is_regular_file(path, ec) && !ec;
+}
+
+std::filesystem::path InterfaceEffectiveAssetPath(const EditorState& state,
+                                                  const std::filesystem::path& sourceRoot,
+                                                  const std::string& rel) {
+    const auto projectCopy = InterfaceProjectOverridePath(state, rel);
+    if (IsRegularFileNoThrow(projectCopy)) return projectCopy;
+    return sourceRoot / std::filesystem::path(rel);
+}
+
+void InvalidateInterfaceAssetPreview(EditorState& state,
+                                     const std::filesystem::path& sourcePath,
+                                     const std::filesystem::path& projectPath) {
+    if (!sourcePath.empty()) state.assetThumbnails.erase(sourcePath.string());
+    if (!projectPath.empty()) state.assetThumbnails.erase(projectPath.string());
+    state.nifInspectorAsset.clear();
+    state.nifInspectorModel.reset();
+    state.nifInspectorError.clear();
+    state.nifInspectorResolvedTextureCache.clear();
+}
+
+bool CreateInterfaceProjectOverride(EditorState& state,
+                                    const std::filesystem::path& sourcePath,
+                                    const std::string& rel) {
+    const auto projectPath = InterfaceProjectOverridePath(state, rel);
+    if (projectPath.empty()) {
+        state.statusMessage = L("Kein Projektordner konfiguriert.","No project folder configured.");
+        return false;
+    }
+    std::error_code ec;
+    std::filesystem::create_directories(projectPath.parent_path(), ec);
+    if (ec) {
+        state.statusMessage = L("Projektordner konnte nicht angelegt werden: ",
+                                "Could not create project folder: ") + ec.message();
+        return false;
+    }
+    if (!std::filesystem::copy_file(sourcePath, projectPath,
+                                    std::filesystem::copy_options::overwrite_existing, ec) || ec) {
+        state.statusMessage = L("Interface-Asset konnte nicht ins Projekt kopiert werden: ",
+                                "Could not copy interface asset into project: ") + ec.message();
+        return false;
+    }
+    InvalidateInterfaceAssetPreview(state, sourcePath, projectPath);
+    state.statusMessage = L("Projekt-Override erstellt: ","Project override created: ") + projectPath.string();
+    return true;
+}
+
+bool RemoveInterfaceProjectOverride(EditorState& state,
+                                    const std::filesystem::path& sourcePath,
+                                    const std::string& rel) {
+    const auto projectPath = InterfaceProjectOverridePath(state, rel);
+    if (projectPath.empty() || !IsRegularFileNoThrow(projectPath)) return false;
+    std::error_code ec;
+    if (!std::filesystem::remove(projectPath, ec) || ec) {
+        state.statusMessage = L("Projekt-Override konnte nicht entfernt werden: ",
+                                "Could not remove project override: ") + ec.message();
+        return false;
+    }
+    InvalidateInterfaceAssetPreview(state, sourcePath, projectPath);
+    state.statusMessage = L("Projekt-Override entfernt; Original wird wieder verwendet.",
+                            "Project override removed; source asset is used again.");
+    return true;
+}
+
 void DrawInterfaceWorkspace(EditorState& state) {
     if (state.interfaceRoot.empty() && state.project.clientFolder[0] != '\0') {
         if (auto found = FindDirBreadthFirst(state.project.clientFolder, "resmenu", 3, nullptr))
@@ -13922,13 +14000,16 @@ void DrawInterfaceWorkspace(EditorState& state) {
 
     ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "INTERFACE / RESMENU");
     ImGui::SameLine();
-    ImGui::TextDisabled("%s",L("nur lesen","read-only"));
+    ImGui::TextDisabled("%s",L("Originale nur lesen · Projekt-Overrides aktiv",
+                               "sources read-only · project overrides enabled"));
 
     if (state.interfaceRoot.empty()) {
         ImGui::Separator();
-        ImGui::TextWrapped("Kein Client/resmenu unter dem Projekt-Clientpfad gefunden. "
-                           "Der Browser schreibt absichtlich keine Interface-Dateien, solange "
-                           "deren Formate nicht verlustfrei verifiziert sind.");
+        ImGui::TextWrapped("%s",L(
+            "Kein Client/resmenu unter dem Projekt-Clientpfad gefunden. Originaldateien werden "
+            "weiterhin nie verändert; schreibende Arbeit erfolgt nur als Projekt-Override.",
+            "No Client/resmenu was found below the configured client path. Source files are never "
+            "modified; writable work is stored only as project overrides."));
         return;
     }
 
@@ -14010,7 +14091,7 @@ void DrawInterfaceWorkspace(EditorState& state) {
                 if (UI::Selectable((rel + "##interfaceAsset").c_str(), selected)) {
                     state.interfaceSelectedAsset = static_cast<int>(assetIndex);
                     if (ext == ".nif") {
-                        LoadNifAssetInspector(state, root / rel, rel);
+                        LoadNifAssetInspector(state, InterfaceEffectiveAssetPath(state, root, rel), rel);
                     } else {
                         state.nifInspectorAsset.clear();
                         state.nifInspectorModel.reset();
@@ -14034,18 +14115,53 @@ void DrawInterfaceWorkspace(EditorState& state) {
     }
 
     const std::string& rel = state.interfaceAssets[static_cast<std::size_t>(state.interfaceSelectedAsset)];
-    const std::filesystem::path path = root / rel;
+    const std::filesystem::path sourcePath = root / rel;
+    const std::filesystem::path projectPath = InterfaceProjectOverridePath(state, rel);
+    const bool hasProjectOverride = IsRegularFileNoThrow(projectPath);
+    const std::filesystem::path path = hasProjectOverride ? projectPath : sourcePath;
     const std::string ext = LowerAscii(path.extension().string());
 
     ImGui::TextWrapped("%s", rel.c_str());
     std::error_code ec;
     const auto bytes = std::filesystem::file_size(path, ec);
     if (!ec) ImGui::TextDisabled("%llu Bytes", static_cast<unsigned long long>(bytes));
+    ImGui::SameLine();
+    if (hasProjectOverride)
+        ImGui::TextColored(ImVec4(0.42f,0.86f,0.62f,1.0f), "%s", L("· Projekt-Override","· project override"));
+    else
+        ImGui::TextDisabled("%s", L("· Original","· source"));
+
+    const bool canCreateOverride = state.project.projectFolder[0] != '\0' && !hasProjectOverride;
+    ImGui::BeginDisabled(!canCreateOverride);
+    if (UI::SmallButton(L("In Projekt übernehmen##interfaceOverride",
+                          "Create project override##interfaceOverride"))) {
+        CreateInterfaceProjectOverride(state, sourcePath, rel);
+    }
+    ImGui::EndDisabled();
+    if (hasProjectOverride) {
+        ImGui::SameLine();
+        if (UI::SmallButton(L("Projektkopie entfernen##interfaceOverride",
+                              "Remove project copy##interfaceOverride"))) {
+            RemoveInterfaceProjectOverride(state, sourcePath, rel);
+        }
+    }
+    if (state.project.projectFolder[0] == '\0') {
+        ImGui::TextDisabled("%s",L("Projektordner konfigurieren, um bearbeitbare Overrides anzulegen.",
+                                   "Configure a project folder to create editable overrides."));
+    } else if (hasProjectOverride) {
+        ImGui::TextDisabled("%s", projectPath.string().c_str());
+    } else {
+        ImGui::TextDisabled("%s",L(
+            "Beim Übernehmen wird das Asset unverändert nach <Projekt>/Client/resmenu/... kopiert.",
+            "Creating an override copies the asset unchanged to <Project>/Client/resmenu/... ."));
+    }
     ImGui::Separator();
 
     if (ext == ".nif") {
         if (state.nifInspectorAsset != rel)
             LoadNifAssetInspector(state, path, rel);
+        // Externe Texturreferenzen bleiben zunächst gegen den read-only Quellbestand aufgelöst;
+        // nur die ausgewählte NIF-Datei selbst kommt bei vorhandenem Override aus dem Projekt.
         DrawNifAssetInspector(state, root);
     } else if (ext == ".tga" || ext == ".dds" || ext == ".png" ||
                ext == ".jpg" || ext == ".jpeg" || ext == ".bmp") {
