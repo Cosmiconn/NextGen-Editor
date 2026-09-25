@@ -809,6 +809,11 @@ struct EditorState {
     std::string nifInspectorAsset;
     std::optional<core::NifModel> nifInspectorModel;
     std::string nifInspectorError;
+    char nifInspectorFilter[128] = "";
+    bool nifInspectorMissingOnly = false;
+    // Texturpfade werden pro ausgewaehltem NIF gecacht. Ein leerer Wert bedeutet:
+    // Referenz wurde geprueft, aber keine Datei gefunden. "Neu laden" leert den Cache.
+    std::unordered_map<std::string, std::string> nifInspectorResolvedTextureCache;
     char objectOutlinerFilter[128] = "";
     int sceneNpcQuickFilter = 0;    // 0 alle, 1 Quest, 2 Handel, 3 Service, 4 Gates
     int sceneMobQuickFilter = 0;    // 0 alle, 1 leer, 2 eine Art, 3 gemischt
@@ -13051,6 +13056,7 @@ void LoadNifAssetInspector(EditorState& state, const std::filesystem::path& path
     state.nifInspectorAsset = relativeAsset;
     state.nifInspectorModel.reset();
     state.nifInspectorError.clear();
+    state.nifInspectorResolvedTextureCache.clear();
     auto loaded = core::LoadNifMesh(path);
     if (loaded) {
         state.nifInspectorModel = std::move(*loaded);
@@ -13084,6 +13090,24 @@ std::optional<std::filesystem::path> ResolveNifInspectorTexturePath(
         if (LowerAscii(entry.path().filename().string()) == wanted) return entry.path();
     }
     return std::nullopt;
+}
+
+std::optional<std::filesystem::path> ResolveNifInspectorTexturePathCached(
+    EditorState& state, const std::filesystem::path& root,
+    const std::string& textureName) {
+    if (textureName.empty()) return std::nullopt;
+    const std::string key = LowerAscii(textureName);
+    if (const auto it = state.nifInspectorResolvedTextureCache.find(key);
+        it != state.nifInspectorResolvedTextureCache.end()) {
+        if (it->second.empty()) return std::nullopt;
+        return std::filesystem::path(it->second);
+    }
+
+    const auto resolved = ResolveNifInspectorTexturePath(
+        root, state.nifInspectorAsset, textureName);
+    state.nifInspectorResolvedTextureCache.emplace(
+        key, resolved ? resolved->string() : std::string{});
+    return resolved;
 }
 
 EditorState::AssetThumbnail GetOrLoadEmbeddedNifInspectorThumbnail(
@@ -13125,11 +13149,23 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
     const auto& model = *state.nifInspectorModel;
     std::size_t triangleCount = 0;
     std::size_t textureCount = 0;
+    std::size_t externalTextureCount = 0;
+    std::size_t embeddedTextureCount = 0;
+    std::size_t missingTextureCount = 0;
     std::size_t animatedTextureCount = 0;
     for (const auto& part : model.parts) {
         triangleCount += part.triangleIndices.size() / 3;
-        for (const auto& slot : part.textureSlots)
-            if (slot.present) ++textureCount;
+        for (const auto& slot : part.textureSlots) {
+            if (!slot.present) continue;
+            ++textureCount;
+            if (slot.embeddedTexture) {
+                ++embeddedTextureCount;
+            } else if (!slot.texture.empty()) {
+                ++externalTextureCount;
+                if (!ResolveNifInspectorTexturePathCached(state, root, slot.texture))
+                    ++missingTextureCount;
+            }
+        }
         animatedTextureCount += part.textureTransformAnimations.size();
         animatedTextureCount += part.textureFlipAnimations.size();
     }
@@ -13137,19 +13173,53 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
     ImGui::Text("Root: %s", model.rootName.empty() ? "(unbenannt)" : model.rootName.c_str());
     ImGui::TextDisabled("%zu Mesh-Teile · %zu Dreiecke · %zu Textur-Slots",
                         model.parts.size(), triangleCount, textureCount);
-    ImGui::TextDisabled("%zu Nodes · %u eingebettete Texturen · %zu Textur-Animationen",
-                        model.nodes.size(), model.decodedEmbeddedTextures, animatedTextureCount);
+    ImGui::TextDisabled("%zu extern · %zu eingebettet · %zu Textur-Animationen",
+                        externalTextureCount, embeddedTextureCount, animatedTextureCount);
+    if (missingTextureCount > 0)
+        ImGui::TextColored(ImVec4(1.0f,0.48f,0.34f,1.0f), "%zu Texturdatei(en) nicht gefunden",
+                           missingTextureCount);
+    else if (externalTextureCount > 0)
+        ImGui::TextColored(ImVec4(0.42f,0.86f,0.62f,1.0f), "Alle externen Texturen gefunden");
+    ImGui::TextDisabled("%zu Nodes · %u dekodierte eingebettete Texturen",
+                        model.nodes.size(), model.decodedEmbeddedTextures);
     if (model.recovered || model.partial) {
         ImGui::TextDisabled("%s%s",
                             model.recovered ? "Kompatibilitäts-Recovery aktiv" : "",
                             model.partial ? (model.recovered ? " · partiell dekodiert" : "Partiell dekodiert") : "");
     }
 
+    UI::InputTextWithHint("##nifInspectorFilter", "Mesh oder Textur filtern...",
+                          state.nifInspectorFilter, sizeof(state.nifInspectorFilter));
+    UI::Checkbox("Nur fehlende Texturen##nifInspector", &state.nifInspectorMissingOnly);
+    ImGui::SameLine();
+    if (UI::SmallButton("Filter zurücksetzen##nifInspector")) {
+        state.nifInspectorFilter[0] = '\0';
+        state.nifInspectorMissingOnly = false;
+    }
+    const std::string inspectorNeedle = LowerAscii(state.nifInspectorFilter);
+
     ImGui::BeginChild("##nifMaterialInspectorBody", ImVec2(0,0), true);
+    std::size_t visiblePartCount = 0;
     for (std::size_t pi = 0; pi < model.parts.size(); ++pi) {
         const auto& part = model.parts[pi];
-        ImGui::PushID(static_cast<int>(pi));
         const std::string partName = part.name.empty() ? ("Mesh " + std::to_string(pi + 1)) : part.name;
+
+        bool partHasMissingTexture = false;
+        std::string partSearch = LowerAscii(partName);
+        for (const auto& slot : part.textureSlots) {
+            if (!slot.present) continue;
+            if (!slot.texture.empty()) partSearch += " " + LowerAscii(slot.texture);
+            if (!slot.embeddedTexture && !slot.texture.empty() &&
+                !ResolveNifInspectorTexturePathCached(state, root, slot.texture))
+                partHasMissingTexture = true;
+        }
+        if (!inspectorNeedle.empty() && partSearch.find(inspectorNeedle) == std::string::npos)
+            continue;
+        if (state.nifInspectorMissingOnly && !partHasMissingTexture)
+            continue;
+
+        ++visiblePartCount;
+        ImGui::PushID(static_cast<int>(pi));
         const std::string header = partName + "  (" + std::to_string(part.positions.size()) +
                                    " V / " + std::to_string(part.triangleIndices.size()/3) + " T)";
         if (UI::CollapsingHeader(header.c_str())) {
@@ -13177,13 +13247,24 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                 EditorState::AssetThumbnail preview;
                 std::optional<std::filesystem::path> resolvedTexture;
                 if (slot.embeddedTexture) {
+                    if (state.nifInspectorMissingOnly) {
+                        ImGui::PopID();
+                        continue;
+                    }
                     preview = GetOrLoadEmbeddedNifInspectorThumbnail(
                         state, *slot.embeddedTexture, pi, si);
                 } else if (!slot.texture.empty()) {
-                    resolvedTexture = ResolveNifInspectorTexturePath(
-                        root, state.nifInspectorAsset, slot.texture);
+                    resolvedTexture = ResolveNifInspectorTexturePathCached(
+                        state, root, slot.texture);
+                    if (state.nifInspectorMissingOnly && resolvedTexture) {
+                        ImGui::PopID();
+                        continue;
+                    }
                     if (resolvedTexture)
                         preview = GetOrLoadAssetThumbnail(state, *resolvedTexture, false);
+                } else if (state.nifInspectorMissingOnly) {
+                    ImGui::PopID();
+                    continue;
                 }
 
                 if (preview.tex) {
@@ -13207,7 +13288,8 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                             if (ImGui::IsItemHovered())
                                 ImGui::SetTooltip("%s", resolvedTexture->string().c_str());
                         } else {
-                            ImGui::TextDisabled("Texturdatei nicht gefunden");
+                            ImGui::TextColored(ImVec4(1.0f,0.48f,0.34f,1.0f),
+                                               "Texturdatei nicht gefunden");
                         }
                     }
                 }
@@ -13230,6 +13312,10 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
         }
         ImGui::PopID();
     }
+    if (visiblePartCount == 0)
+        ImGui::TextDisabled(state.nifInspectorMissingOnly
+                                ? "Keine Mesh-Teile mit fehlenden Texturen."
+                                : "Keine passenden Mesh-Teile.");
     ImGui::EndChild();
 }
 
@@ -13300,7 +13386,8 @@ void DrawWorkspaceAssetBrowser(EditorState& state) {
                 ImGui::Dummy(ImVec2(thumbSize,thumbSize));
             }
             ImGui::SameLine();
-            if (UI::Selectable(rel.c_str(), false, 0, ImVec2(0,thumbSize))) {
+            const bool inspected = objectMode && state.nifInspectorAsset == rel;
+            if (UI::Selectable(rel.c_str(), inspected, 0, ImVec2(0,thumbSize))) {
                 if (objectMode) {
                     const std::string legacy = ToLegacyResmapModelPath(rel);
                     std::snprintf(state.newObjectModelPath, sizeof(state.newObjectModelPath), "%s", legacy.c_str());
