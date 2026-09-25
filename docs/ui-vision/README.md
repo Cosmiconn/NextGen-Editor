@@ -7,23 +7,19 @@ Diese Dateien sind die visuelle Source of Truth. Der Editor soll als **hochwerti
 
 ## Qualitätsregel
 
-**Die hochauflösenden PNG-Boards unter `reference/` sind die primäre visuelle Referenz.**  
-Sie dürfen nicht durch vereinfachte Wireframes, grobe SVG-Skizzen oder Platzhaltergrafiken ersetzt werden.
+Die **fünf vom Nutzer gelieferten Referenzbilder** sind die primäre visuelle Referenz. Ihre exakten Dateinamen und Rollen sind unter [references/README.md](references/README.md) dokumentiert.
 
-Programmatische Diagramme dürfen Struktur erklären, sind aber **niemals** die Qualitätsreferenz für das finale UI.
+Programmatische Wireframes oder vereinfachte Mockups dürfen Struktur erklären, sind aber **niemals** die Qualitätsreferenz für das finale UI.
 
 ## Primäre visuelle Zielbilder
 
-### UI Design Specification A
-![NextGen UI Design Specification A](reference/06-generated-design-spec-a.png)
+1. NG-Monogramm / Branding
+2. Icon-System / Navigation
+3. Editor-Layout mit 3D + Outliner + Inspector + Asset Browser
+4. Hero-Viewport / Premium-Shell
+5. integrierte Gesamtvision
 
-### UI Design Specification B
-![NextGen UI Design Specification B](reference/07-generated-design-spec-b.png)
-
-### UI Design Specification C
-![NextGen UI Design Specification C](reference/08-generated-design-spec-c.png)
-
-Diese drei Dateien sind byte-genaue Repo-Kopien der hochwertigen Zielbilder aus dem Design-Review.
+Die genaue Zuordnung steht in [references/README.md](references/README.md).
 
 ## Nicht verhandelbar
 
@@ -45,11 +41,19 @@ Diese drei Dateien sind byte-genaue Repo-Kopien der hochwertigen Zielbilder aus 
 - [04_ICON_SYSTEM.md](04_ICON_SYSTEM.md)
 - [05_MODULE_BLUEPRINTS.md](05_MODULE_BLUEPRINTS.md)
 - [06_IMPLEMENTATION_PLAN.md](06_IMPLEMENTATION_PLAN.md)
+- [references/README.md](references/README.md) – Originalreferenz-Manifest
+
+## Aktiver Stand
+
+- `src/app/resources/nextgen.ico` enthält jetzt ein echtes NG-Markenicon in allen Windows-Größen.
+- Das Windows-Fenster setzt Ressource 101 zusätzlich explizit für Titlebar/Alt-Tab/Taskleiste.
+- `src/app/resources/branding/ng-app-icon-master.svg` ist die editierbare Produktionsquelle der derzeit eingebauten NG-Fassung.
+- `src/app/resources/icons/*.svg` enthält das versionierte Icon-Inventar.
 
 ## Referenzhierarchie
 
-1. **High-resolution PNG boards** – Look, Materialwirkung, Dichte, Hierarchie.
-2. **Vom Nutzer freigegebenes NG-Motiv** – Formreferenz für App-/EXE-Branding.
+1. **Vom Nutzer gelieferte fünf Rasterreferenzen** – Look, Materialwirkung, Dichte, Hierarchie.
+2. **NG-Monogramm aus Referenz 1** – Form- und Materialreferenz für Branding.
 3. Markdown-Spezifikation – konkrete Tokens, Größen und Verhalten.
 4. Implementierungsassets – SVGs / native DrawList-Icons / Rastergrößen.
 
