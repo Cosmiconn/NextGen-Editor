@@ -11446,9 +11446,9 @@ void DrawEditor2DContent(EditorState& state) {
         if (UI::Button("1:1##zoom2dFit", btn)) { state.view2dZoom = 1.0f; state.view2dCenterU = state.view2dCenterV = 0.5f; }
         ImGui::PopStyleColor();
         ImGui::SetCursorScreenPos(after);
-        char zoomText[48];
-        std::snprintf(zoomText, sizeof(zoomText), "Zoom %.1fx  (Mausrad / Mitte ziehen)", zoom);
-        ImGui::GetWindowDrawList()->AddText(ImVec2(viewMin.x + 10.0f, viewMin.y + viewSize.y - 20.0f), IM_COL32(220, 226, 235, 220), zoomText);
+        // No permanent mouse-help overlay here: it looked like a stuck popup over the
+        // viewport. The explicit +/-/1:1 controls remain visible and the manual documents
+        // wheel/middle-button navigation.
     }
 }
 
@@ -12247,12 +12247,9 @@ void DrawPreview3DContent(EditorState& state) {
                 state.camera.MoveLocal(fwd * step, right * step, up * step);
             }
         }
-        // Kurzhilfe unten links im Bild
-        ImDrawList* dl = ImGui::GetWindowDrawList();
-        const char* hint = "Rechte Maustaste + Maus: umsehen   WASD: laufen   Q/E: runter/hoch   Shift: schnell   Mausrad: Zoom   Mitte: schieben   Links ziehen: kreisen";
-        const ImVec2 hp(imageScreenPos.x + 10.0f, imageScreenPos.y + avail.y - 22.0f);
-        dl->AddRectFilled(ImVec2(hp.x - 6.0f, hp.y - 3.0f), ImVec2(hp.x + ImGui::CalcTextSize(hint).x + 6.0f, hp.y + 17.0f), IM_COL32(12, 15, 20, 170), 4.0f);
-        dl->AddText(hp, IM_COL32(190, 200, 215, 230), hint);
+        // Deliberately no permanent mouse-help banner inside the 3D viewport. It was
+        // perceived as a popup that never disappeared and also competed visually with the
+        // transform gizmo. Camera bindings stay available in the manual/settings UI.
     }
 
     // Zoom +/- Knöpfe unten rechts über dem 3D-Bild (siehe Mockup) - zusätzlich zum
@@ -15160,6 +15157,9 @@ int main() {
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
+        // ImGuizmo keeps its own per-frame hover/active state. Without BeginFrame() the
+        // handles can be drawn while never entering a usable interaction state.
+        ImGuizmo::BeginFrame();
 
         // Die neue Oberfläche (siehe Mockups "NextGen-Editor") ersetzt die bisherige frei
         // andockbare Fenster-Landschaft durch einen einzigen Vollbild-Host mit fest
