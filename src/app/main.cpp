@@ -13598,13 +13598,13 @@ void DrawDropTableEditor(EditorState& state) {
     EnsureDropTableLoaded(state);
     ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "DROP TABLE / ITEMGROUP");
     ImGui::SameLine();
-    ImGui::TextDisabled(state.dropTableDirty ? "geändert *" : "290-Spalten-Schema");
+    ImGui::TextDisabled(state.dropTableDirty ? L("geändert *","modified *") : L("290-Spalten-Schema","290-column schema"));
     ImGui::SameLine();
     ImGui::BeginDisabled(!state.dropTableLoaded || !state.dropTableDirty);
-    if (UI::SmallButton("Speichern##dropTable")) SaveDropTable(state);
+    if (UI::SmallButton(L("Speichern##dropTable","Save##dropTable"))) SaveDropTable(state);
     ImGui::EndDisabled();
     ImGui::SameLine();
-    if (UI::SmallButton(state.dropTableDirty ? "Neu laden / verwerfen##dropTable" : "Neu laden##dropTable")) {
+    if (UI::SmallButton(state.dropTableDirty ? L("Neu laden / verwerfen##dropTable","Reload / discard##dropTable") : L("Neu laden##dropTable","Reload##dropTable"))) {
         state.dropTableLoaded = false;
         state.dropTableDirty = false;
         state.dropTableFile = core::legacy::ShineTextFile{};
@@ -13619,7 +13619,7 @@ void DrawDropTableEditor(EditorState& state) {
         return;
     }
     if (!state.dropTableLoaded) {
-        ImGui::TextDisabled("ItemDropTable.txt wird geladen...");
+        ImGui::TextDisabled("%s",L("ItemDropTable.txt wird geladen...","Loading ItemDropTable.txt..."));
         return;
     }
     if (ShortcutPressed(state.shortcutSave) && state.dropTableDirty)
@@ -13657,10 +13657,10 @@ void DrawDropTableEditor(EditorState& state) {
         dropItemColumns[static_cast<std::size_t>(slotNo-1)] =
             FindShineColumn(*table, "DrItem" + std::to_string(slotNo));
 
-    UI::InputTextWithHint("##dropFilter", "Mob, MapArea oder Drop-Item filtern...",
+    UI::InputTextWithHint("##dropFilter", L("Mob, MapArea oder Drop-Item filtern...","Filter mob, MapArea or drop item..."),
                           state.dropTableFilter, sizeof(state.dropTableFilter));
     ImGui::SameLine();
-    UI::Checkbox("Nur fehlende Referenzen##dropTable", &state.dropTableProblemsOnly);
+    UI::Checkbox(L("Nur fehlende Referenzen##dropTable","Missing references only##dropTable"), &state.dropTableProblemsOnly);
     const std::string needle = LowerAscii(state.dropTableFilter);
 
     auto recordReferenceProblem = [&](const core::legacy::ShineRecord& candidate) {
@@ -13727,14 +13727,14 @@ void DrawDropTableEditor(EditorState& state) {
             }
         }
     }
-    if (visible.empty()) ImGui::TextDisabled("Keine passenden Mobs.");
+    if (visible.empty()) ImGui::TextDisabled("%s",L("Keine passenden Mobs.","No matching mobs."));
     ImGui::EndChild();
 
     ImGui::SameLine();
     ImGui::BeginChild("##dropDetails", ImVec2(0,0), true);
     if (state.dropTableSelectedRecord < 0 ||
         state.dropTableSelectedRecord >= static_cast<int>(table->records.size())) {
-        ImGui::TextDisabled("Mob auswählen.");
+        ImGui::TextDisabled("%s",L("Mob auswählen.","Select a mob."));
         ImGui::EndChild();
         return;
     }
@@ -13748,7 +13748,7 @@ void DrawDropTableEditor(EditorState& state) {
         if (knownMobs.count(mob))
             ImGui::TextColored(ImVec4(0.42f,0.86f,0.62f,1.0f), "MobViewInfo ✓");
         else
-            ImGui::TextColored(ImVec4(1.0f,0.48f,0.34f,1.0f), "nicht in MobViewInfo");
+            ImGui::TextColored(ImVec4(1.0f,0.48f,0.34f,1.0f), "%s",L("nicht in MobViewInfo","not in MobViewInfo"));
     }
     ImGui::SameLine();
     const std::string map = ShineRecordValue(record, cMap);
@@ -13764,7 +13764,7 @@ void DrawDropTableEditor(EditorState& state) {
     if (cChecksum >= 0)
         ImGui::TextDisabled("· CheckSum %s", ShineRecordValue(record,cChecksum).c_str());
 
-    if (UI::CollapsingHeader("Basiswerte##dropTableBase")) {
+    if (UI::CollapsingHeader(L("Basiswerte##dropTableBase","Base values##dropTableBase"))) {
         const struct BaseField { const char* label; int col; float width; } fields[] = {
             {"MapArea", cMap, 150.0f}, {"MobId", cMob, 180.0f},
             {"MinLevel", cMinLevel, 80.0f}, {"MaxLevel", cMaxLevel, 80.0f},
@@ -13803,7 +13803,7 @@ void DrawDropTableEditor(EditorState& state) {
         }
     }
 
-    UI::Checkbox("Nur belegte Drop-Slots##dropTable", &state.dropTableOnlyActive);
+    UI::Checkbox(L("Nur belegte Drop-Slots##dropTable","Active drop slots only##dropTable"), &state.dropTableOnlyActive);
     ImGui::Separator();
 
     struct DropSlot {
@@ -13841,7 +13841,7 @@ void DrawDropTableEditor(EditorState& state) {
         ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed, 36.0f);
         ImGui::TableSetupColumn("Item", ImGuiTableColumnFlags_WidthStretch, 0.32f);
         ImGui::TableSetupColumn("Rate", ImGuiTableColumnFlags_WidthFixed, 72.0f);
-        ImGui::TableSetupColumn("Anzahl", ImGuiTableColumnFlags_WidthFixed, 58.0f);
+        ImGui::TableSetupColumn(L("Anzahl","Amount"), ImGuiTableColumnFlags_WidthFixed, 58.0f);
         ImGui::TableSetupColumn("Upgrade", ImGuiTableColumnFlags_WidthFixed, 85.0f);
         ImGui::TableSetupColumn("Rule", ImGuiTableColumnFlags_WidthFixed, 58.0f);
         ImGui::TableSetupColumn("ItemInfo", ImGuiTableColumnFlags_WidthStretch, 0.25f);
@@ -13891,7 +13891,7 @@ void DrawDropTableEditor(EditorState& state) {
                     else ImGui::TextDisabled("ID %lld", item.id);
                     if (ImGui::IsItemHovered()) ImGui::SetTooltip("InxName %s\nID %lld", item.inx.c_str(), item.id);
                 } else if (!state.itemEntries.empty()) {
-                    ImGui::TextColored(ImVec4(1.0f,0.48f,0.34f,1.0f), "nicht in ItemInfo");
+                    ImGui::TextColored(ImVec4(1.0f,0.48f,0.34f,1.0f), "%s",L("nicht in ItemInfo","not in ItemInfo"));
                 }
             }
             ImGui::PopID();
@@ -13905,7 +13905,7 @@ void DrawDropTableEditor(EditorState& state) {
         if (!value.empty() && value != "-") exclusions.push_back(value);
     }
     if (!exclusions.empty()) {
-        ImGui::SeparatorText("Ausgeschlossene Items");
+        ImGui::SeparatorText(L("Ausgeschlossene Items","Excluded items"));
         for (std::size_t i = 0; i < exclusions.size(); ++i) {
             if (i) ImGui::SameLine();
             ImGui::TextDisabled("%s%s", i ? "· " : "", exclusions[i].c_str());
@@ -13922,7 +13922,7 @@ void DrawInterfaceWorkspace(EditorState& state) {
 
     ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "INTERFACE / RESMENU");
     ImGui::SameLine();
-    ImGui::TextDisabled("read-only");
+    ImGui::TextDisabled("%s",L("nur lesen","read-only"));
 
     if (state.interfaceRoot.empty()) {
         ImGui::Separator();
@@ -13942,7 +13942,7 @@ void DrawInterfaceWorkspace(EditorState& state) {
     }
 
     ImGui::SameLine();
-    if (UI::SmallButton("Neu scannen##interface")) {
+    if (UI::SmallButton(L("Neu scannen##interface","Rescan##interface"))) {
         state.interfaceAssetsScanned = false;
         state.interfaceAssets.clear();
         state.interfaceSelectedAsset = -1;
@@ -13955,7 +13955,7 @@ void DrawInterfaceWorkspace(EditorState& state) {
     }
 
     ImGui::TextDisabled("%s", state.interfaceRoot.c_str());
-    UI::InputTextWithHint("##interfaceFilter", "Interface-Assets filtern...",
+    UI::InputTextWithHint("##interfaceFilter", L("Interface-Assets filtern...","Filter interface assets..."),
                           state.interfaceAssetFilter, sizeof(state.interfaceAssetFilter));
 
     std::size_t imageCount = 0;
@@ -13983,7 +13983,7 @@ void DrawInterfaceWorkspace(EditorState& state) {
     ImGui::BeginChild("##interfaceAssetList", ImVec2(leftW, 0), true);
 
     if (matching.empty()) {
-        ImGui::TextDisabled("Keine passenden resmenu-Assets.");
+        ImGui::TextDisabled("%s",L("Keine passenden resmenu-Assets.","No matching resmenu assets."));
     } else {
         ImGuiListClipper clipper;
         clipper.Begin(static_cast<int>(matching.size()));
@@ -14028,7 +14028,7 @@ void DrawInterfaceWorkspace(EditorState& state) {
     ImGui::BeginChild("##interfacePreview", ImVec2(0,0), true);
     if (state.interfaceSelectedAsset < 0 ||
         state.interfaceSelectedAsset >= static_cast<int>(state.interfaceAssets.size())) {
-        ImGui::TextDisabled("Asset auswählen, um Vorschau und Metadaten anzuzeigen.");
+        ImGui::TextDisabled("%s",L("Asset auswählen, um Vorschau und Metadaten anzuzeigen.","Select an asset to show preview and metadata."));
         ImGui::EndChild();
         return;
     }
@@ -14059,7 +14059,7 @@ void DrawInterfaceWorkspace(EditorState& state) {
             else size.y = size.x / aspect;
             ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(thumb.tex)), size);
         } else {
-            ImGui::TextDisabled("Bild konnte nicht dekodiert werden.");
+            ImGui::TextDisabled("%s",L("Bild konnte nicht dekodiert werden.","Image could not be decoded."));
         }
     } else {
         ImGui::TextDisabled("Für diesen Dateityp ist noch keine Vorschau verfügbar.");
