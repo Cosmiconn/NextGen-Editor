@@ -1,34 +1,40 @@
 # NextGen UI icon assets
 
-This directory is populated only from the two approved user-supplied icon packs.
+`NextGen_Icons_Final.zip` is the single authoritative source package for the editor icon system.
 
-## Source roles
+It contains:
+- `svg/`: **68 true path-based vector masters**;
+- `png_256/` and `png_1024/`: transparent raster renders;
+- `icons_png/{16,24,32,48,64,128}/`: curated runtime exports;
+- `svg_embedded_png_256/` and `svg_embedded_png_1024/`: SVG containers for exact PNG appearance;
+- matching button-tile PNG/SVG variants.
 
-- `NextGen_Icons_True_Vector_Set_With_Sizes.zip`
-  - true SVG path masters;
-  - curated PNG exports at 16/24/32/48/64/128 px.
-- `NextGen_Icons_Complete_PNG_SVG.zip`
-  - high-resolution PNG appearance reference;
-  - its SVG files embed PNGs and are not used as vector masters.
+The final package extends the original 54-icon set with 14 UI icons:
+2D, 3D, KFM, AI, XP, Preise, Visibility Eye, Lock, Unlock, Copy,
+Duplicate, Delete, Command Palette and Recent Projects.
 
-Run:
+Import:
 
 ```bash
 python tools/ui/import_icon_pack.py \
-  --vector-pack /path/NextGen_Icons_True_Vector_Set_With_Sizes.zip \
-  --raster-pack /path/NextGen_Icons_Complete_PNG_SVG.zip \
+  --pack /path/NextGen_Icons_Final.zip \
   --repo-root . --clean
 ```
 
-The importer refuses the vector pack if any SVG contains an embedded `<image>`,
-`data:image` or Base64 raster payload, and it requires the two manifests to agree
-on all 54 logical icons.
+Add `--include-embedded-svg` only when the exact-raster SVG containers are
+needed for archival/export purposes. They are not runtime vector masters.
+
+The importer verifies:
+- exactly 68 manifest rows;
+- group counts 18 / 15 / 12 / 9 / 14;
+- every file under `svg/` contains vector paths and no embedded raster;
+- every runtime size exists for every icon.
 
 Runtime policy:
-- 16 px: inline/outliner;
+- 16 px: inline/outliner/state actions;
 - 24 px: primary toolbar;
 - 32 px: module launchers;
-- 48/64/128: larger cards/branding where required.
+- 48/64/128: larger cards/branding.
 
-Do not hand-edit generated raster exports. Update the approved source packs and
-rerun the importer instead.
+Do not hand-edit generated exports. Update the approved final package and rerun
+the importer.
