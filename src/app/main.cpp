@@ -862,6 +862,24 @@ std::size_t DirtyShnDocumentCount(const EditorState& state) {
         [](const auto& doc) { return doc.dirty; }));
 }
 
+bool LoadProjectFolderIntoState(EditorState& state, const std::string& folder) {
+    if (folder.empty()) return false;
+    const auto projectFile = std::filesystem::path(folder) / "project.tsproj";
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(projectFile, ec)) {
+        state.statusMessage = "Kein NextGen-Projekt gefunden: " + projectFile.string();
+        return false;
+    }
+    state.project = ProjectConfig{};
+    std::snprintf(state.project.projectFolder, sizeof(state.project.projectFolder), "%s", folder.c_str());
+    TryLoadProjectConfig(state.project);
+    state.project.hasProject = true;
+    TouchRecentProject(state, folder);
+    state.statusMessage = "Projekt geladen: " + NormalizedRecentPath(folder);
+    state.screen = AppScreen::ProjectHub;
+    return true;
+}
+
 // Listet Dateien mit einer der angegebenen Endungen unter root (rekursiv, begrenzte Tiefe),
 // relative Pfade zu root. Für Asset-Picker (Textur-/Modell-Auswahl) - siehe DrawAssetPickerPopup.
 std::vector<std::string> ListFilesByExtension(const std::filesystem::path& root,
@@ -1411,6 +1429,7 @@ void PasteObjectClipboard(EditorState& state) {
     state.selectedObject=state.selectedObjects.empty()?kNoObjectSelection:state.selectedObjects.back();
     ReloadObjectRenderers(state);
     state.statusMessage=std::to_string(state.selectedObjects.size())+" Objekt(e) eingefügt.";
+    state.mapDirty = true;
 }
 
 void DuplicateSelectedObjects(EditorState& state) {
@@ -1436,6 +1455,7 @@ void DuplicateSelectedObjects(EditorState& state) {
     state.selectedObject=state.selectedObjects.back();
     ReloadObjectRenderers(state);
     state.statusMessage=std::to_string(state.selectedObjects.size())+" Objekt(e) dupliziert.";
+    state.mapDirty = true;
 }
 
 void GroundSelectedObjects(EditorState& state) {
@@ -1448,6 +1468,7 @@ void GroundSelectedObjects(EditorState& state) {
         obj.posY=state.heightmap.SampleWorld(obj.posX,obj.posZ);
     }
     state.statusMessage="Auswahl auf Terrain gesetzt.";
+    state.mapDirty = true;
 }
 
 void FocusSelectedObjects(EditorState& state) {
@@ -2771,6 +2792,7 @@ bool DrawEditorCard(const char* id, ImVec2 size, ImU32 bodyColor, ImU32 headerCo
 // tabs==nullptr blendet die linken Tabs aus (Detail-Bildschirme zeigen stattdessen NUR den
 // aktuellen Titel als "Breadcrumb", siehe Mockup rechtes/zweites Bild).
 void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
+    LoadRecentEntries(state);
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(11.0f, 7.0f));
 
     ImGui::TextColored(ImVec4(0.20f, 0.72f, 1.0f, 1.0f), "NG");
@@ -2814,11 +2836,7 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
     if (UI::Button(T("nav.open"))) {
 #ifdef _WIN32
         if (auto picked = BrowseForFolderWindows("Projekt-Ordner wählen")) {
-            std::snprintf(state.project.projectFolder, sizeof(state.project.projectFolder), "%s", picked->c_str());
-            TryLoadProjectConfig(state.project);
-            state.project.hasProject = true;
-            state.statusMessage = "Projekt geladen: " + std::string(state.project.projectFolder);
-            state.screen = AppScreen::ProjectHub;
+            LoadProjectFolderIntoState(state, *picked);
         }
 #endif
     }
@@ -2826,10 +2844,25 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
     ImGui::BeginDisabled(!state.project.hasProject);
     if (UI::Button(T("nav.save"))) {
         std::string err;
-        state.statusMessage = SaveProjectConfig(state.project, &err) ? T("newproject.saved")
-                                                                      : (T("newproject.savefailed") + err);
+        if (SaveProjectConfig(state.project, &err)) {
+            TouchRecentProject(state, state.project.projectFolder);
+            state.statusMessage = T("newproject.saved");
+        } else {
+            state.statusMessage = T("newproject.savefailed") + err;
+        }
     }
     ImGui::EndDisabled();
+
+    const std::size_t dirtyShn = DirtyShnDocumentCount(state);
+    if (state.mapDirty || dirtyShn > 0) {
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(1.0f,0.68f,0.25f,1.0f), "●");
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Ungespeichert%s%s",
+                state.mapDirty ? "\n• Karte geändert" : "",
+                dirtyShn > 0 ? ("\n• " + std::to_string(dirtyShn) + " SHN-Datei(en) geändert").c_str() : "");
+        }
+    }
 
     const float rightWidth = 130.0f;
     ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - rightWidth);
