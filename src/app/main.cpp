@@ -9571,7 +9571,9 @@ void DrawSkillEditor(EditorState& state) {
 
     // Liste (Clipper, gecacht)
     const std::string key = std::string(ed.filter) + "|" + std::to_string(asf.rows.size()) + "|" +
-                            std::to_string(state.shnEditCounter) + "|qf=" + std::to_string(ed.quickFilter);
+                            std::to_string(state.shnEditCounter) + "|qf=" + std::to_string(ed.quickFilter) +
+                            "|docs=" + std::to_string(d.skillC) + "," + std::to_string(d.skillS) + "," +
+                            std::to_string(d.server) + "," + std::to_string(d.viewC) + "," + std::to_string(d.viewS);
     if (key != ed.listKey) {
         ed.listKey = key;
         ed.visible.clear();
@@ -9645,7 +9647,8 @@ void DrawSkillEditor(EditorState& state) {
     ImGui::BeginChild("##skilllist", ImVec2(skillListW, 0.0f), true);
     ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s", L("SKILLS", "SKILLS"));
     ImGui::SameLine();
-    ImGui::TextDisabled("%zu / %zu", ed.visible.size(), asf.rows.size());
+    ImGui::TextDisabled("%zu / %zu · %s: %zu", ed.visible.size(), asf.rows.size(),
+                        L("Sync-Probleme","Sync issues"), ed.syncIssues.size());
     ImGui::Separator();
     {
         struct SeriesGroup {
