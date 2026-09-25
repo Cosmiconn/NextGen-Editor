@@ -724,6 +724,7 @@ struct EditorState {
     int shnSelectedColumn = -1;
     int shnSubTab = 0; // 0=Single, 1=Multi, 2=XP, 3=Buy&Sell, 4=Quest, 5=Portal, 6=NPC/Mob, 7=Skill, 8=AI, 9=Interface
     char shnPath[1024] = "";
+    char shnFileFilter[128] = "";
     char shnSearch[256] = "";
     bool shnSearchColumns = true;
     bool shnSearchValues = true;
@@ -4036,6 +4037,17 @@ void DrawShnGrid(EditorState& state) {
     if (UI::Button("Redo")) RedoShnCellEdit(state);
     ImGui::EndDisabled();
     ImGui::SameLine();
+    const bool anyColumnFilter = std::any_of(state.shnColumnFilters.begin(),state.shnColumnFilters.end(),
+        [](const auto& f){ return f[0] != '\0'; });
+    ImGui::BeginDisabled(state.shnSearch[0] == '\0' && !anyColumnFilter);
+    if (UI::SmallButton(L("Filter löschen##shn","Clear filters##shn"))) {
+        state.shnSearch[0] = '\0';
+        state.shnFilterActive = false;
+        for (auto& filter : state.shnColumnFilters) filter[0] = '\0';
+        state.shnVisibleKey.clear();
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
     ImGui::TextDisabled("Doppelklick/F2: Inline · Rechtsklick: Optionen");
     if (counterpart) {
         ImGui::SameLine();
@@ -4576,11 +4588,19 @@ void AddRowWithPropagation(EditorState& state, int docIndex) {
 void DrawShnSourceList(EditorState& state, EditorState::ShnSource source, const char* id) {
     ImGui::TextColored(ShnSourceColor(source), "%s", ShnSourceName(source));
     ImGui::SameLine();
-    std::size_t count = 0; for (const auto& d : state.shnFiles) if (d.source == source) ++count;
-    ImGui::TextDisabled("(%zu Dateien)", count);
+    std::size_t count = 0, visibleCount = 0;
+    const std::string fileNeedle = LowerAscii(state.shnFileFilter);
+    for (const auto& d : state.shnFiles) {
+        if (d.source != source) continue;
+        ++count;
+        if (fileNeedle.empty() || LowerAscii(d.file.FileName()).find(fileNeedle) != std::string::npos) ++visibleCount;
+    }
+    if (fileNeedle.empty()) ImGui::TextDisabled(L("(%zu Dateien)","(%zu files)"),count);
+    else ImGui::TextDisabled("%zu / %zu",visibleCount,count);
     ImGui::BeginChild(id, ImVec2(0, 170), true);
     for (int i : ShnIndicesForSource(state, source)) {
         auto& doc = state.shnFiles[static_cast<std::size_t>(i)];
+        if (!fileNeedle.empty() && LowerAscii(doc.file.FileName()).find(fileNeedle) == std::string::npos) continue;
         const bool selected = state.shnSelectedFile == i;
         const auto peers = FindDependencyPeers(state, i);
         if (!peers.empty()) {
@@ -5033,6 +5053,8 @@ void DrawShnEditor(EditorState& state) {
         if (!state.shnClientRoot.empty()) ImGui::TextDisabled("Client: %s", state.shnClientRoot.c_str());
         if (!state.shnServerRoot.empty()) ImGui::TextDisabled("Server: %s", state.shnServerRoot.c_str());
         ImGui::Separator();
+        UI::InputTextWithHint("##shnFileFilter",L("SHN-Datei suchen...","Search SHN file..."),
+                              state.shnFileFilter,sizeof(state.shnFileFilter));
         DrawShnSourceList(state, EditorState::ShnSource::Client, "##shnClientFiles");
         DrawShnSourceList(state, EditorState::ShnSource::Server, "##shnServerFiles");
         if (state.shnSelectedFile>=0 && state.shnSelectedFile<static_cast<int>(state.shnFiles.size())) {
