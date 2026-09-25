@@ -3,24 +3,20 @@
 **Status:** verbindliche Inventar-/Mapping-Datei für `ui-upgrade`  
 **Geprüft am:** 2026-09-25
 
-## Verbindliche Quellen – zwei Pakete, zwei Rollen
+## Verbindliche Quelle – Final-Paket
 
-Die beiden hochgeladenen Archive ergänzen sich. Keines ersetzt das andere vollständig:
+**`NextGen_Icons_Final.zip`** ist die alleinige verbindliche Quelle für neue Icon-Arbeiten.
 
-1. **`NextGen_Icons_True_Vector_Set_With_Sizes.zip` = Vector-Master + Small-Size-Exports**
-   - `manifest.csv` enthält exakt **54 logische Icons**.
-   - `svg/` enthält exakt **54 echte, pfadbasierte SVG-Dateien**.
-   - technische Prüfung: **0/54** SVGs enthalten `<image>`, `data:image` oder Base64-Rasterdaten.
-   - alle 54 SVGs enthalten echte Vektor-`<path>`-Geometrie.
-   - `icons_png/16|24|32|48|64|128` sind die für kleine UI-Größen vorbereiteten Rasterexports.
-   - laut Paket-README wurden die kleinen PNGs bewusst aus den hochwertigen 1024-PNG-Mastern erzeugt und **nicht** aus den rekonstruierten SVGs.
+Technische Prüfung des Archivs:
+- `manifest.csv`: **68** logische Icons.
+- Gruppen: Toolbar **18**, Navigation **15**, Panels **12**, Extra/Module/Branding **9**, Additional UI **14**.
+- `svg/`: **68/68** echte pfadbasierte SVGs; **0/68** enthalten `<image>`, `data:image` oder Base64-Rasterdaten.
+- `icons_png/16|24|32|48|64|128`: **68 Icons je Größe** (408 Small-Size-Raster insgesamt).
+- `png_256/` und `png_1024/`: hochwertige transparente Rasterreferenzen.
+- `svg_embedded_png_256|1024/` sowie die Button-Tile-Gegenstücke: **272** SVG-Container mit eingebetteten PNGs; diese sind bewusst **keine** Vector-Master.
+- SHA-256 des geprüften Final-Pakets: `4057d096eb71cd9ef84bdcf5741afa66f85148ae5ffa55e82c87ff30e50e1b77`.
 
-2. **`NextGen_Icons_Complete_PNG_SVG.zip` = hochwertige Raster-/Appearance-Referenz**
-   - ebenfalls **54 logische Icons**, jeweils als `normalized_256` und `master_1024`.
-   - die enthaltenen „SVG“-Dateien sind laut Paket-README SVG-Container mit eingebetteten PNGs und daher **keine Vector-Master**.
-   - die PNGs dieses Pakets bleiben verbindliche Referenz für Farbe, Glow, Materialwirkung und Rasterqualität.
-
-Damit gilt: **Form-/Vektorquelle = erstes Archiv; visuelle Rasterreferenz = zweites Archiv; kleine Runtime-PNGs = die expliziten Small-Size-Exports des ersten Archivs.**
+Die älteren Pakete sind nur noch Provenienz. Die ursprünglichen 54 SVG-/Small-Size-Assets sind im Final-Paket byte-identisch enthalten; zusätzlich kommen 14 fehlende UI-Icons hinzu.
 
 ## Source-of-truth-Regeln
 
@@ -30,7 +26,7 @@ Damit gilt: **Form-/Vektorquelle = erstes Archiv; visuelle Rasterreferenz = zwei
 - UI-Code referenziert stabile semantische IDs, niemals Paketdateinamen direkt.
 - Bei 16–32 px haben die vorbereiteten Small-Size-PNGs Vorrang vor Live-SVG-Rasterisierung.
 - Die echten SVGs bleiben als Master-/Archivquelle im Repository erhalten.
-- Fehlende Icons werden erst nach Abgleich gegen die 54 Einträge als echter Bedarf dokumentiert.
+- Fehlende Icons werden erst nach Abgleich gegen alle 68 Final-Paket-Einträge als echter Bedarf dokumentiert.
 
 ## Paketabdeckung
 
@@ -38,7 +34,8 @@ Damit gilt: **Form-/Vektorquelle = erstes Archiv; visuelle Rasterreferenz = zwei
 - Navigation: **15**
 - Panels: **12**
 - Extra/Module/Branding: **9**
-- Summe: **54**
+- Additional UI: **14**
+- Summe: **68**
 
 ## Vollständiges Soll-/Ist-Mapping
 
@@ -98,6 +95,20 @@ Damit gilt: **Form-/Vektorquelle = erstes Archiv; visuelle Rasterreferenz = zwei
 | extra | 07 | Custom NPC | `module.custom_npc` | Custom NPC | Wizard launcher | `svg/04_extra_icons/07_custom_npc.svg` | `icons_png/{16,24,32,48,64,128}/04_extra_icons/07_custom_npc.png` | verified / mapping frozen |
 | extra | 08 | Custom Mob | `module.custom_mob` | Custom Mob | Wizard launcher | `svg/04_extra_icons/08_custom_mob.svg` | `icons_png/{16,24,32,48,64,128}/04_extra_icons/08_custom_mob.png` | verified / mapping frozen |
 | extra | 09 | NG Icon | `brand.ng` | NG Branding | EXE / Window / Taskbar / branding | `svg/04_extra_icons/09_ng_icon.svg` | `icons_png/{16,24,32,48,64,128}/04_extra_icons/09_ng_icon.png` | verified / mapping frozen |
+| additional_ui | 01 | 2D | `view.2d` | 2D View | 2D viewport / tabs | `svg/05_additional_ui_icons/01_2d.svg` | `icons_png/{16,24,32,48,64,128}/05_additional_ui_icons/01_2d.png` | verified / mapping frozen |
+| additional_ui | 02 | 3D | `view.3d` | 3D View | 3D viewport / tabs | `svg/05_additional_ui_icons/02_3d.svg` | `icons_png/{16,24,32,48,64,128}/05_additional_ui_icons/02_3d.png` | verified / mapping frozen |
+| additional_ui | 03 | KFM | `module.kfm` | KFM / Animation | Animation workspace launcher | `svg/05_additional_ui_icons/03_kfm.svg` | `icons_png/{16,24,32,48,64,128}/05_additional_ui_icons/03_kfm.png` | verified / mapping frozen |
+| additional_ui | 04 | AI | `module.ai` | AI / Lua | AI workspace launcher | `svg/05_additional_ui_icons/04_ai.svg` | `icons_png/{16,24,32,48,64,128}/05_additional_ui_icons/04_ai.png` | verified / mapping frozen |
+| additional_ui | 05 | XP | `module.xp` | XP | XP editor launcher | `svg/05_additional_ui_icons/05_xp.svg` | `icons_png/{16,24,32,48,64,128}/05_additional_ui_icons/05_xp.png` | verified / mapping frozen |
+| additional_ui | 06 | Preise | `module.prices` | Preise / Prices | Buy & Sell editor launcher | `svg/05_additional_ui_icons/06_preise.svg` | `icons_png/{16,24,32,48,64,128}/05_additional_ui_icons/06_preise.png` | verified / mapping frozen |
+| additional_ui | 07 | Visibility Eye | `state.visibility` | Visibility | Outliner / visibility controls | `svg/05_additional_ui_icons/07_visibility_eye.svg` | `icons_png/{16,24,32,48,64,128}/05_additional_ui_icons/07_visibility_eye.png` | verified / mapping frozen |
+| additional_ui | 08 | Lock | `state.lock` | Lock | Locked state / action | `svg/05_additional_ui_icons/08_lock.svg` | `icons_png/{16,24,32,48,64,128}/05_additional_ui_icons/08_lock.png` | verified / mapping frozen |
+| additional_ui | 09 | Unlock | `state.unlock` | Unlock | Unlocked state / action | `svg/05_additional_ui_icons/09_unlock.svg` | `icons_png/{16,24,32,48,64,128}/05_additional_ui_icons/09_unlock.png` | verified / mapping frozen |
+| additional_ui | 10 | Copy | `edit.copy` | Copy | Copy action | `svg/05_additional_ui_icons/10_copy.svg` | `icons_png/{16,24,32,48,64,128}/05_additional_ui_icons/10_copy.png` | verified / mapping frozen |
+| additional_ui | 11 | Duplicate | `edit.duplicate` | Duplicate | Duplicate action | `svg/05_additional_ui_icons/11_duplicate.svg` | `icons_png/{16,24,32,48,64,128}/05_additional_ui_icons/11_duplicate.png` | verified / mapping frozen |
+| additional_ui | 12 | Delete | `edit.delete` | Delete | Destructive delete action | `svg/05_additional_ui_icons/12_delete.svg` | `icons_png/{16,24,32,48,64,128}/05_additional_ui_icons/12_delete.png` | verified / mapping frozen |
+| additional_ui | 13 | Command Palette | `system.command_palette` | Command Palette | Global command palette | `svg/05_additional_ui_icons/13_command_palette.svg` | `icons_png/{16,24,32,48,64,128}/05_additional_ui_icons/13_command_palette.png` | verified / mapping frozen |
+| additional_ui | 14 | Recent Projects | `system.recent_projects` | Recent Projects | Project/map recent lists | `svg/05_additional_ui_icons/14_recent_projects.svg` | `icons_png/{16,24,32,48,64,128}/05_additional_ui_icons/14_recent_projects.png` | verified / mapping frozen |
 
 
 ## Bewusste semantische Überschneidungen
@@ -107,31 +118,19 @@ Damit gilt: **Form-/Vektorquelle = erstes Archiv; visuelle Rasterreferenz = zwei
 - `punkte` ist für allgemeine Punkte/Waypoints/Marker vorgesehen; `spawnpunkte` ausschließlich für Spawn-Systeme.
 - `verifizierung` bedeutet Validierung/Audit und darf nicht als generisches „OK/Apply“-Symbol missbraucht werden.
 
-## Nach Inventar tatsächlich fehlende dedizierte Icons
+## Nach Final-Inventar tatsächlich noch fehlende dedizierte Icons
 
-Für folgende vorhandene bzw. geplante Funktionen gibt es unter den 54 Paketicons **kein eigenes freigegebenes Symbol**:
+Die 14 neuen Final-Paket-Icons schließen 2D, 3D, KFM, AI, XP, Preise, Visibility, Lock/Unlock, Copy, Duplicate, Delete, Command Palette und Recent Projects.
 
-- 2D View
-- 3D View
+Weiterhin **nicht** als eigenes Final-Paket-Icon vorhanden sind:
 - Focus Selection
 - Drop to Ground
 - Local / World
 - Snap
-- Visibility / Eye
-- Lock / Unlock
-- Copy
-- Duplicate
-- Delete
 - Portal als eigener Hauptmodus
-- generisches Mob-Icon außerhalb von Spawn/Custom Mob
-- KFM / Animation Editor
-- AI / Lua Workspace
-- XP Editor
-- Buy & Sell / Price Editor
-- Command Palette
-- Recent Projects / Recent Maps
+- generisches Mob-Hauptsymbol außerhalb von Spawn/Custom Mob
 
-Diese Lücken werden bis zu einer expliziten Ergänzung weiterhin mit vorhandenen funktionalen Legacy-Symbolen dargestellt; sie werden **nicht** fälschlich einem unpassenden Paketicon zugeordnet.
+Bis zu einer expliziten Ergänzung bleiben hierfür die bestehenden funktionalen DrawList-Fallbacks. Es wird kein unpassendes Paketicon umgedeutet.
 
 ## Runtime-Strategie
 
@@ -144,17 +143,17 @@ Diese Lücken werden bis zu einer expliziten Ergänzung weiterhin mit vorhandene
 
 ## Integrationsstatus
 
-- [x] beide ZIPs technisch geprüft.
-- [x] 54 logische Icons inventarisiert.
-- [x] echte Vector-Master im ersten Paket verifiziert.
-- [x] eingebettete Raster-SVGs im zweiten Paket korrekt klassifiziert.
-- [x] semantische IDs eingefroren.
-- [x] fehlende dedizierte Funktionen dokumentiert.
-- [ ] Vector-Master nach `assets/ui/icons/svg-master/` übernehmen.
-- [ ] Small-Size-Raster nach `assets/ui/icons/png/` übernehmen.
-- [ ] NG Branding nach `assets/ui/branding/` übernehmen.
-- [ ] Runtime-Loader/Cache anbinden.
-- [ ] Primary App Shell / Map Toolbar auf Paketassets migrieren.
-- [ ] Panel Header und Modul-Launcher migrieren.
-- [ ] Legacy-DrawList-Symbole nur für echte Paketlücken beibehalten.
-- [ ] Windows `nextgen.ico` final aus dem freigegebenen NG-Master regenerieren.
+- [x] Final-ZIP technisch geprüft.
+- [x] 68 logische Icons inventarisiert.
+- [x] 68 echte SVG-Vector-Master verifiziert.
+- [x] 408 Small-Size-PNGs (68 × 6 Größen) verifiziert.
+- [x] 272 embedded-PNG-SVGs korrekt als Rastercontainer klassifiziert.
+- [x] semantische IDs inklusive 14 Additional-UI-Icons eingefroren.
+- [x] Runtime-Loader/Cache für semantische IDs vorhanden.
+- [x] Primary Map Toolbar nutzt bereits Paketassets, wenn das jeweilige Runtime-PNG im Repo liegt.
+- [ ] alle 68 SVG-Master nach `assets/ui/icons/svg-master/` übernehmen.
+- [ ] alle Runtime-Raster nach `assets/ui/icons/png/` übernehmen.
+- [ ] NG Branding vollständig nach `assets/ui/branding/` übernehmen und Windows-ICO final regenerieren.
+- [ ] 14 neue Additional-UI-Icons an ihre realen Controls anbinden.
+- [ ] Panel Header und Modul-Launcher vollständig migrieren.
+- [ ] Legacy-DrawList-Symbole nur für die sechs tatsächlich verbleibenden Paketlücken beibehalten.
