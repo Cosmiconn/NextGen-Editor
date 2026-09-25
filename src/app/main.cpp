@@ -340,10 +340,18 @@ struct EditorState {
     bool objectGizmoWasUsing = false;
     std::string objectGizmoSelectionKey;
     std::vector<core::PlacedObject> objectClipboard;
+    std::vector<std::string> objectClipboardLabels;
+    std::vector<std::string> objectClipboardGroups;
     std::vector<char> objectEditorHidden; // nur Editor-Sichtbarkeit, nicht SHMD-Export
     std::vector<char> objectEditorLocked; // nur Editor-Lock, nicht SHMD-Export
+    std::vector<std::string> objectEditorLabels; // reine Editor-Metadaten, nicht SHMD-Export
+    std::vector<std::string> objectEditorGroups; // flache Editor-Ordner/Gruppe, nicht SHMD-Export
     std::unordered_set<std::string> shmdEditorHiddenKeys;
     std::unordered_set<std::string> shmdEditorLockedKeys;
+    std::unordered_map<std::string,std::string> shmdEditorLabels;
+    std::unordered_map<std::string,std::string> shmdEditorGroups;
+    char objectMetaLabelBuffer[128] = "";
+    char objectMetaGroupBuffer[128] = "";
     char newObjectModelPath[512] = "resmap\\field\\Rou\\GuildHall.nif";
     float newObjectScale = 1.0f;
     float newObjectRotDeg = 0.0f;
@@ -1055,6 +1063,8 @@ void ReloadObjectRenderers(EditorState& state) {
 void SyncObjectEditorMetadata(EditorState& state) {
     state.objectEditorHidden.resize(state.placementSet.Count(), 0);
     state.objectEditorLocked.resize(state.placementSet.Count(), 0);
+    state.objectEditorLabels.resize(state.placementSet.Count());
+    state.objectEditorGroups.resize(state.placementSet.Count());
 }
 
 std::string ShmdEditorObjectKey(const EditorState& state, int id) {
@@ -1066,6 +1076,69 @@ std::string ShmdEditorObjectKey(const EditorState& state, int id) {
     const auto& category=state.placementSet.categories[categoryIndex];
     if(pathIndex>=category.modelPaths.size()) return {};
     return category.name+"|"+category.modelPaths[pathIndex];
+}
+
+std::string ObjectEditorLabel(const EditorState& state, int id) {
+    if (id >= 0) {
+        const std::size_t index=static_cast<std::size_t>(id);
+        return index<state.objectEditorLabels.size()?state.objectEditorLabels[index]:std::string{};
+    }
+    const std::string key=ShmdEditorObjectKey(state,id);
+    if (key.empty()) return {};
+    const auto it=state.shmdEditorLabels.find(key);
+    return it==state.shmdEditorLabels.end()?std::string{}:it->second;
+}
+
+std::string ObjectEditorGroup(const EditorState& state, int id) {
+    if (id >= 0) {
+        const std::size_t index=static_cast<std::size_t>(id);
+        return index<state.objectEditorGroups.size()?state.objectEditorGroups[index]:std::string{};
+    }
+    const std::string key=ShmdEditorObjectKey(state,id);
+    if (key.empty()) return {};
+    const auto it=state.shmdEditorGroups.find(key);
+    return it==state.shmdEditorGroups.end()?std::string{}:it->second;
+}
+
+void SetObjectEditorLabel(EditorState& state, int id, std::string value) {
+    if (id >= 0) {
+        SyncObjectEditorMetadata(state);
+        const std::size_t index=static_cast<std::size_t>(id);
+        if(index<state.objectEditorLabels.size()) state.objectEditorLabels[index]=std::move(value);
+        return;
+    }
+    const std::string key=ShmdEditorObjectKey(state,id);
+    if(key.empty()) return;
+    if(value.empty()) state.shmdEditorLabels.erase(key);
+    else state.shmdEditorLabels[key]=std::move(value);
+}
+
+void SetObjectEditorGroup(EditorState& state, int id, std::string value) {
+    if (id >= 0) {
+        SyncObjectEditorMetadata(state);
+        const std::size_t index=static_cast<std::size_t>(id);
+        if(index<state.objectEditorGroups.size()) state.objectEditorGroups[index]=std::move(value);
+        return;
+    }
+    const std::string key=ShmdEditorObjectKey(state,id);
+    if(key.empty()) return;
+    if(value.empty()) state.shmdEditorGroups.erase(key);
+    else state.shmdEditorGroups[key]=std::move(value);
+}
+
+void TransferShmdEditorMetadataKey(EditorState& state, const std::string& oldKey,
+                                   const std::string& newKey) {
+    if(oldKey.empty() || newKey.empty() || oldKey==newKey) return;
+    if(state.shmdEditorHiddenKeys.erase(oldKey)>0) state.shmdEditorHiddenKeys.insert(newKey);
+    if(state.shmdEditorLockedKeys.erase(oldKey)>0) state.shmdEditorLockedKeys.insert(newKey);
+    if(const auto it=state.shmdEditorLabels.find(oldKey);it!=state.shmdEditorLabels.end()) {
+        state.shmdEditorLabels[newKey]=std::move(it->second);
+        state.shmdEditorLabels.erase(it);
+    }
+    if(const auto it=state.shmdEditorGroups.find(oldKey);it!=state.shmdEditorGroups.end()) {
+        state.shmdEditorGroups[newKey]=std::move(it->second);
+        state.shmdEditorGroups.erase(it);
+    }
 }
 
 bool IsObjectEditorLocked(const EditorState& state, int id) {
@@ -1615,8 +1688,12 @@ void ApplyProjectToState(EditorState& state, core::legacy::LegacyMapProject&& pr
     state.objectListRangeAnchor = -1;
     state.objectEditorHidden.assign(state.placementSet.Count(), 0);
     state.objectEditorLocked.assign(state.placementSet.Count(), 0);
+    state.objectEditorLabels.assign(state.placementSet.Count(), {});
+    state.objectEditorGroups.assign(state.placementSet.Count(), {});
     state.shmdEditorHiddenKeys.clear();
     state.shmdEditorLockedKeys.clear();
+    state.shmdEditorLabels.clear();
+    state.shmdEditorGroups.clear();
     // Versucht, für alle Objekte echte .nif-Meshes zu laden (aktuell nur untexturierte Meshes
     // erfolgreich, siehe docs/MAP_FORMAT.md) - für den Rest bleibt der Platzhalter-Marker.
     state.nifMeshRenderer.LoadModelsForSet(state.placementSet, mapDir);
