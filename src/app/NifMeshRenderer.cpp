@@ -41,6 +41,7 @@ layout(location = 6) in vec2 aUv4;
 layout(location = 7) in vec2 aUv5;
 layout(location = 8) in vec2 aUv6;
 layout(location = 9) in vec2 aUv7;
+layout(location = 10) in vec4 aColor;
 
 uniform mat4 uViewProj;
 uniform mat4 uModel;
@@ -55,6 +56,7 @@ out vec2 vUv4;
 out vec2 vUv5;
 out vec2 vUv6;
 out vec2 vUv7;
+out vec4 vColor;
 
 void main() {
     vec4 worldPos = uModel * vec4(aPos, 1.0);
@@ -62,6 +64,7 @@ void main() {
     vNormal = mat3(uModel) * aNormal;
     vUv0 = aUv0; vUv1 = aUv1; vUv2 = aUv2; vUv3 = aUv3;
     vUv4 = aUv4; vUv5 = aUv5; vUv6 = aUv6; vUv7 = aUv7;
+    vColor = aColor;
     gl_Position = uViewProj * worldPos;
 }
 )";
@@ -78,6 +81,7 @@ in vec2 vUv4;
 in vec2 vUv5;
 in vec2 vUv6;
 in vec2 vUv7;
+in vec4 vColor;
 out vec4 FragColor;
 
 uniform vec3 uLightDir;
@@ -89,6 +93,7 @@ uniform vec3 uEmissiveColor;
 uniform float uGlossiness;
 uniform bool uSpecularEnabled;
 uniform int uApplyMode;
+uniform bool uVcAlphaTextureBlender;
 uniform bool uHasTex[10];
 uniform int uUvSet[10];
 uniform bool uHasTexTransform[10];
@@ -165,14 +170,23 @@ vec3 bumpNormal(vec3 baseNormal) {
 void main() {
     vec4 base = uHasTex[0] ? texture(uTex0, slotUv(0)) : vec4(1.0);
     vec3 surface = uDiffuseColor;
-    if (uHasTex[0]) {
-        if (uApplyMode == 0) surface = base.rgb;                         // APPLY_REPLACE
-        else if (uApplyMode == 1) surface = mix(surface, base.rgb, base.a); // APPLY_DECAL
-        else surface *= base.rgb;                                       // APPLY_MODULATE/HILIGHT fallback
+    if (uVcAlphaTextureBlender && uHasTex[0] && uHasTex[1] && uHasTex[2]) {
+        // Original Gamebryo VCAlphaTextureBlender-P.hlsl:
+        // Texture1/Texture2 are blended by vertex alpha, then multiplied by Detail*2.
+        vec3 texture1 = texture(uTex0, slotUv(0)).rgb;
+        vec3 texture2 = texture(uTex1, slotUv(1)).rgb;
+        vec3 blended = mix(texture2, texture1, clamp(vColor.a, 0.0, 1.0));
+        vec3 detail = texture(uTex2, slotUv(2)).rgb * 2.0;
+        surface = uDiffuseColor * vColor.rgb * blended * detail;
+    } else {
+        if (uHasTex[0]) {
+            if (uApplyMode == 0) surface = base.rgb;                         // APPLY_REPLACE
+            else if (uApplyMode == 1) surface = mix(surface, base.rgb, base.a); // APPLY_DECAL
+            else surface *= base.rgb;                                       // APPLY_MODULATE/HILIGHT fallback
+        }
+        if (uHasTex[1]) surface *= texture(uTex1, slotUv(1)).rgb; // Dark map
+        if (uHasTex[2]) surface *= clamp(texture(uTex2, slotUv(2)).rgb * 2.0, 0.0, 2.0); // Detail map
     }
-
-    if (uHasTex[1]) surface *= texture(uTex1, slotUv(1)).rgb; // Dark map
-    if (uHasTex[2]) surface *= clamp(texture(uTex2, slotUv(2)).rgb * 2.0, 0.0, 2.0); // Detail map
 
     // Decals are layered in file order. Their alpha controls only the sticker blend, not the
     // alpha of the underlying surface.
@@ -182,7 +196,7 @@ void main() {
     if (uHasTex[9]) { vec4 d = texture(uTex9, slotUv(9)); surface = mix(surface, d.rgb, d.a); }
 
     float alpha = uMaterialAlpha;
-    if (uHasTex[0] && uApplyMode != 1) alpha *= base.a;
+    if (!uVcAlphaTextureBlender && uHasTex[0] && uApplyMode != 1) alpha *= base.a;
     if (uAlphaTest) {
         bool passAlpha = true;
         if (uAlphaTestFunc == 0) passAlpha = false;
@@ -374,6 +388,7 @@ void NifMeshRenderer::Init() {
     uniforms_.locGlossiness = glGetUniformLocation(shaderProgram_, "uGlossiness");
     uniforms_.locSpecularEnabled = glGetUniformLocation(shaderProgram_, "uSpecularEnabled");
     uniforms_.locApplyMode = glGetUniformLocation(shaderProgram_, "uApplyMode");
+    uniforms_.locVcAlphaTextureBlender = glGetUniformLocation(shaderProgram_, "uVcAlphaTextureBlender");
     uniforms_.locBumpLumaScale = glGetUniformLocation(shaderProgram_, "uBumpLumaScale");
     uniforms_.locBumpLumaOffset = glGetUniformLocation(shaderProgram_, "uBumpLumaOffset");
     uniforms_.locBumpMatrix = glGetUniformLocation(shaderProgram_, "uBumpMatrix");
@@ -546,7 +561,7 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                     // NiTexturingProperty-Slots waehlen ihr Set spaeter per Uniform; dadurch koennen
                     // Base/Detail/Decal unterschiedliche UV-Kanaele benutzen.
                     constexpr std::size_t kGpuUvSets = 8;
-                    constexpr std::size_t kVertexStrideFloats = 6 + kGpuUvSets * 2;
+                    constexpr std::size_t kVertexStrideFloats = 6 + kGpuUvSets * 2 + 4;
                     std::vector<float> vertexData;
                     vertexData.reserve(part.positions.size() * kVertexStrideFloats);
                     for (std::size_t v = 0; v < part.positions.size(); ++v) {
@@ -564,6 +579,9 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                             }
                             vertexData.push_back(u); vertexData.push_back(vv);
                         }
+                        const core::NifColor4 color =
+                            (part.vertexColors.size() == part.positions.size()) ? part.vertexColors[v] : core::NifColor4{};
+                        vertexData.insert(vertexData.end(), {color.r, color.g, color.b, color.a});
                     }
 
                     SubMesh sub;
@@ -574,6 +592,7 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                     sub.glossiness = std::clamp(part.material.glossiness, 0.0f, 128.0f);
                     sub.specularEnabled = part.specularEnabled;
                     sub.textureApplyMode = part.textureApplyMode;
+                    sub.vcAlphaTextureBlender = part.shaderName == "VCAlphaTextureBlender";
                     sub.bumpMapLumaScale = part.bumpMapLumaScale;
                     sub.bumpMapLumaOffset = part.bumpMapLumaOffset;
                     // NIF Matrix22 is read row-major; glUniformMatrix2fv expects column-major.
@@ -759,6 +778,9 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                         glVertexAttribPointer(location, 2, GL_FLOAT, GL_FALSE, strideBytes,
                                               reinterpret_cast<void*>((6 + uvSet * 2) * sizeof(float)));
                     }
+                    glEnableVertexAttribArray(10);
+                    glVertexAttribPointer(10, 4, GL_FLOAT, GL_FALSE, strideBytes,
+                                          reinterpret_cast<void*>((6 + kGpuUvSets * 2) * sizeof(float)));
 
                     glGenBuffers(1, &sub.ebo);
                     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sub.ebo);
@@ -1121,6 +1143,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     const auto& locGlossiness = uniforms_.locGlossiness;
     const auto& locSpecularEnabled = uniforms_.locSpecularEnabled;
     const auto& locApplyMode = uniforms_.locApplyMode;
+    const auto& locVcAlphaTextureBlender = uniforms_.locVcAlphaTextureBlender;
     const auto& locBumpLumaScale = uniforms_.locBumpLumaScale;
     const auto& locBumpLumaOffset = uniforms_.locBumpLumaOffset;
     const auto& locBumpMatrix = uniforms_.locBumpMatrix;
@@ -1282,6 +1305,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
         glUniform1f(locGlossiness, sub.glossiness);
         glUniform1i(locSpecularEnabled, sub.specularEnabled ? 1 : 0);
         glUniform1i(locApplyMode, static_cast<int>(sub.textureApplyMode));
+        glUniform1i(locVcAlphaTextureBlender, sub.vcAlphaTextureBlender ? 1 : 0);
         glUniform1f(locBumpLumaScale, sub.bumpMapLumaScale);
         glUniform1f(locBumpLumaOffset, sub.bumpMapLumaOffset);
         glUniformMatrix2fv(locBumpMatrix, 1, GL_FALSE, sub.bumpMapMatrix.data());
