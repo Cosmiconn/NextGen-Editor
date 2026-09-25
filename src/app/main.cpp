@@ -1355,6 +1355,8 @@ void SyncProjectRoots(EditorState& state) {
     state.shopTextLoaded = false;
     state.questDataLoaded = false;
     state.questDialogLoaded = false;
+    state.questDirty = false;
+    state.selectedQuestIdx = -1;
     state.questTextMapBuilt = false;
     state.questTextMap.clear();
     state.questListKey.clear();
@@ -10048,6 +10050,16 @@ void DrawCommandPalette(EditorState& state) {
             const auto [saved,failed] = SaveAllDirtyShnDocuments(state);
             state.statusMessage = "SHN gespeichert: " + std::to_string(saved) +
                 (failed ? ", Fehler: " + std::to_string(failed) : std::string{});
+        });
+    }
+    if (state.questDirty && state.questDataLoaded && !state.shnServerRoot.empty()) {
+        add("Quest: QuestData speichern", ShortcutLabel(state.shortcutSave), [&] {
+            const auto path = std::filesystem::path(state.shnServerRoot) / "QuestData.shn";
+            const auto result = core::legacy::SaveQuestData(state.questDataFile,path);
+            if (result) {
+                state.questDirty=false;
+                state.statusMessage="QuestData.shn gespeichert.";
+            } else state.statusMessage="QuestData.shn: "+result.error();
         });
     }
 
