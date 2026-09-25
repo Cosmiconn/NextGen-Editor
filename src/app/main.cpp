@@ -15857,6 +15857,19 @@ int main() {
     glfwSwapInterval(1);
 #ifdef _WIN32
     g_appWindowForDialogs = window;
+
+    // Die RC-Ressource stellt das EXE-Icon bereit; zusätzlich setzen wir sie explizit am
+    // nativen GLFW-Fenster. Dadurch verwenden Titelleiste, Alt-Tab und Taskleiste zuverlässig
+    // dieselbe NG-Marke, statt je nach Windows/GLFW-Version auf ein Standardicon zurückzufallen.
+    if (HWND hwnd = glfwGetWin32Window(window)) {
+        HINSTANCE instance = GetModuleHandleW(nullptr);
+        HICON bigIcon = static_cast<HICON>(LoadImageW(
+            instance, MAKEINTRESOURCEW(101), IMAGE_ICON, 0, 0, LR_DEFAULTSIZE | LR_SHARED));
+        HICON smallIcon = static_cast<HICON>(LoadImageW(
+            instance, MAKEINTRESOURCEW(101), IMAGE_ICON, 16, 16, LR_SHARED));
+        if (bigIcon) SendMessageW(hwnd, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(bigIcon));
+        if (smallIcon) SendMessageW(hwnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(smallIcon));
+    }
 #endif
 
     if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress))) {
