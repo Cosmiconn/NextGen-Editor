@@ -2937,6 +2937,12 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
         }
     }
     ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (UI::SmallButton("Strg+P")) {
+        state.commandPaletteOpen = true;
+        state.commandPaletteSelection = 0;
+    }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Befehlspalette öffnen");
 
     const std::size_t dirtyShn = DirtyShnDocumentCount(state);
     if (state.mapDirty || dirtyShn > 0) {
@@ -8406,6 +8412,22 @@ void HandleGlobalShortcuts(EditorState& state) {
     }
 
     if (io.WantTextInput || state.screen != AppScreen::MapEditorWorkspace) return;
+
+    if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S, false) &&
+        state.legacySaveDir[0] != '\0' && state.legacySaveStem[0] != '\0') {
+        auto project = BuildProjectFromState(state);
+        auto result = core::legacy::SaveLegacyMap(project, state.legacySaveDir, state.legacySaveStem);
+        if (result) {
+            state.legacyIniMeta = project.ini;
+            state.mapDirty = false;
+            TouchRecentMap(state, (std::filesystem::path(state.legacySaveDir) /
+                                  (std::string(state.legacySaveStem) + ".ini")).string());
+            state.statusMessage = std::string(T("workspace.savedas")) + state.legacySaveDir;
+        } else {
+            state.statusMessage = "Fehler: " + result.error();
+        }
+    }
+
     if (state.editMode == EditMode::ObjectPlacement) {
         if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_C, false)) CopySelectedObjects(state);
         if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_V, false)) PasteObjectClipboard(state);
@@ -11665,7 +11687,10 @@ int main() {
         ImGui::PopStyleVar();
 
         HandleGlobalShortcuts(state);
+        DrawCommandPalette(state);
         DrawManualWindow(state);
+        SyncStatusToast(state);
+        DrawToasts(state);
 
         ImGui::Render();
         int displayW = 0, displayH = 0;
