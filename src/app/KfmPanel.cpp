@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <cmath>
 
 namespace theseed::mapeditor::app {
 namespace {
@@ -15,6 +16,8 @@ bool KfmPanel::Open(const std::filesystem::path& path) {
     auto loaded=core::LoadKfmFile(path);
     if(!loaded) { message_=loaded.error();return false; }
     source_=path;file_=std::move(*loaded);references_.reset();selected_=0;transitionCount_=0;
+    previewKf_.reset(); previewKfPath_.clear(); previewAnimationIndex_=static_cast<std::size_t>(-1);
+    previewTime_=0.0f; previewPlaying_=false; previewMessage_.clear();
     for(const auto& a:file_->animations)transitionCount_+=a.transitions.size();
     std::snprintf(path_,sizeof(path_),"%s",utf8(path).c_str());
     const auto copy=path.parent_path()/(path.stem().string()+"-copy.kfm");
@@ -29,6 +32,38 @@ void KfmPanel::Filter() {
         if(needle.empty() || lower(a.kfFileName+" "+a.name+" "+std::to_string(a.eventCode)).find(needle)!=std::string::npos)visible_.push_back(i);
     }
 }
+void KfmPanel::LoadSelectedKfPreview() {
+    previewPlaying_ = false;
+    previewKf_.reset();
+    previewKfPath_.clear();
+    previewAnimationIndex_ = static_cast<std::size_t>(-1);
+    previewMessage_.clear();
+
+    if (!file_ || selected_ >= file_->animations.size()) {
+        previewMessage_ = L("Keine Animation ausgewählt.", "No animation selected.");
+        return;
+    }
+
+    if (!references_) references_ = core::InspectKfmReferences(*file_, source_);
+    if (selected_ >= references_->animations.size() || !references_->animations[selected_]) {
+        previewMessage_ = L("KF-Datei konnte nicht aufgelöst werden.", "KF file could not be resolved.");
+        return;
+    }
+
+    const auto& path = *references_->animations[selected_];
+    auto loaded = core::LoadKfAnimation(path);
+    if (!loaded) {
+        previewMessage_ = loaded.error();
+        return;
+    }
+
+    previewKfPath_ = path;
+    previewKf_ = std::move(*loaded);
+    previewAnimationIndex_ = selected_;
+    previewTime_ = previewKf_->sequence.startTime;
+    previewMessage_ = L("KF geladen.", "KF loaded.");
+}
+
 void KfmPanel::Draw(const std::function<std::optional<std::string>()>& browse) {
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f, 7.0f));
 
@@ -125,8 +160,18 @@ void KfmPanel::Draw(const std::function<std::optional<std::string>()>& browse) {
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
                 if (ImGui::Selectable(std::to_string(a.eventCode).c_str(), selected_ == index,
-                                      ImGuiSelectableFlags_SpanAllColumns))
-                    selected_ = index;
+                                      ImGuiSelectableFlags_SpanAllColumns)) {
+                    if (selected_ != index) {
+                        selected_ = index;
+                        previewPlaying_ = false;
+                        if (previewAnimationIndex_ != selected_) {
+                            previewKf_.reset();
+                            previewKfPath_.clear();
+                            previewAnimationIndex_ = static_cast<std::size_t>(-1);
+                            previewMessage_.clear();
+                        }
+                    }
+                }
                 ImGui::TableNextColumn(); ImGui::Text("%d", a.index);
                 ImGui::TableNextColumn(); ImGui::TextUnformatted(a.kfFileName.c_str());
                 ImGui::TableNextColumn(); ImGui::Text("%zu", a.transitions.size());
@@ -196,10 +241,117 @@ void KfmPanel::Draw(const std::function<std::optional<std::string>()>& browse) {
         ImGui::TextDisabled("%s", L("Keine Animation ausgewählt.", "No animation selected."));
     }
 
-    ImGui::Separator();
-    ImGui::TextDisabled("%s",
-        L("Playback ist noch nicht implementiert; der Katalog bleibt verlustfrei lesend/kopierend.",
-          "Playback is not implemented yet; the catalog remains lossless for reading/copying."));
+    ImGui::SeparatorText(L("KF Timeline / Track Preview", "KF Timeline / Track Preview"));
+    const bool previewMatches = previewKf_ && previewAnimationIndex_ == selected_;
+    if (!previewMatches) {
+        if (ImGui::Button(L("Ausgewählte KF laden", "Load selected KF"))) LoadSelectedKfPreview();
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s",
+            L("Echtes KF-Sampling; komprimierte B-Splines werden noch nicht geraten.",
+              "Real KF sampling; compressed B-splines are not guessed yet."));
+    } else {
+        auto& kf = *previewKf_;
+        const float start = kf.sequence.startTime;
+        const float stop = kf.sequence.stopTime;
+        const float duration = std::max(0.0f, stop - start);
+
+        if (previewPlaying_ && duration > 0.0f) {
+            previewTime_ += ImGui::GetIO().DeltaTime * previewSpeed_;
+            if (previewTime_ > stop) {
+                if (previewLoop_) {
+                    const float span = std::max(duration, 1.0e-6f);
+                    previewTime_ = start + std::fmod(previewTime_ - start, span);
+                } else {
+                    previewTime_ = stop;
+                    previewPlaying_ = false;
+                }
+            }
+        }
+
+        if (ImGui::Button(previewPlaying_ ? L("Pause", "Pause") : L("Play", "Play")))
+            previewPlaying_ = !previewPlaying_;
+        ImGui::SameLine();
+        if (ImGui::Button(L("Start", "Start"))) {
+            previewTime_ = start;
+            previewPlaying_ = false;
+        }
+        ImGui::SameLine();
+        ImGui::Checkbox(L("Loop", "Loop"), &previewLoop_);
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(95.0f);
+        ImGui::SliderFloat("##kfSpeed", &previewSpeed_, 0.1f, 3.0f, "%.1fx");
+
+        ImGui::SetNextItemWidth(-1.0f);
+        ImGui::SliderFloat("##kfTime", &previewTime_, start, stop,
+                           duration > 0.0f ? "%.3f s" : "%.3f");
+
+        std::size_t supported = 0, unsupported = 0;
+        for (const auto& track : kf.sequence.transformTracks) {
+            auto sample = core::SampleKfTransformTrack(kf, track, previewTime_);
+            if (sample) ++supported;
+            else ++unsupported;
+        }
+
+        ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s", kf.sequence.name.c_str());
+        ImGui::SameLine();
+        ImGui::TextDisabled("%.3f .. %.3f s · %zu Tracks · %zu samplebar · %zu offen",
+                            start, stop, kf.sequence.transformTracks.size(), supported, unsupported);
+        ImGui::TextDisabled("%s", utf8(previewKfPath_).c_str());
+
+        const float trackTableH = std::clamp(ImGui::GetContentRegionAvail().y - 36.0f, 130.0f, 300.0f);
+        if (ImGui::BeginTable("##kfTrackPreview", 6,
+                ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV |
+                ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY,
+                ImVec2(0, trackTableH))) {
+            ImGui::TableSetupScrollFreeze(0,1);
+            ImGui::TableSetupColumn(L("Knoten", "Node"), ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn(L("Typ", "Type"), ImGuiTableColumnFlags_WidthFixed, 72.0f);
+            ImGui::TableSetupColumn("X", ImGuiTableColumnFlags_WidthFixed, 72.0f);
+            ImGui::TableSetupColumn("Y", ImGuiTableColumnFlags_WidthFixed, 72.0f);
+            ImGui::TableSetupColumn("Z", ImGuiTableColumnFlags_WidthFixed, 72.0f);
+            ImGui::TableSetupColumn(L("Skala", "Scale"), ImGuiTableColumnFlags_WidthFixed, 72.0f);
+            ImGui::TableHeadersRow();
+
+            ImGuiListClipper clipper;
+            clipper.Begin(static_cast<int>(kf.sequence.transformTracks.size()));
+            while (clipper.Step()) {
+                for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row) {
+                    const auto& track = kf.sequence.transformTracks[static_cast<std::size_t>(row)];
+                    const auto sample = core::SampleKfTransformTrack(kf, track, previewTime_);
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn();
+                    ImGui::TextUnformatted(track.nodeName.empty() ? "(unnamed)" : track.nodeName.c_str());
+                    ImGui::TableNextColumn();
+                    if (sample) {
+                        ImGui::TextColored(ImVec4(0.45f,0.85f,0.60f,1.0f), "%s",
+                                           track.compressedSpline ? "Spline" : "Keys");
+                    } else {
+                        ImGui::TextColored(ImVec4(1.0f,0.62f,0.30f,1.0f), "%s",
+                                           track.compressedSpline ? "Spline*" : "offen");
+                        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", sample.error().c_str());
+                    }
+                    ImGui::TableNextColumn();
+                    if (sample) ImGui::Text("%.2f", sample->translation.x); else ImGui::TextDisabled("-");
+                    ImGui::TableNextColumn();
+                    if (sample) ImGui::Text("%.2f", sample->translation.y); else ImGui::TextDisabled("-");
+                    ImGui::TableNextColumn();
+                    if (sample) ImGui::Text("%.2f", sample->translation.z); else ImGui::TextDisabled("-");
+                    ImGui::TableNextColumn();
+                    if (sample) ImGui::Text("%.3f", sample->scale); else ImGui::TextDisabled("-");
+                }
+            }
+            ImGui::EndTable();
+        }
+
+        ImGui::TextDisabled("%s",
+            L("Diese Timeline sampelt echte KF-Transforms. Skelett-/Mesh-Playback folgt erst, "
+              "wenn komprimierte Fiesta-B-Splines und Bone-Hierarchie verifiziert sind.",
+              "This timeline samples real KF transforms. Skeleton/mesh playback follows only "
+              "after compressed Fiesta B-splines and bone hierarchy are verified."));
+    }
+    if (!previewMessage_.empty()) {
+        ImGui::TextWrapped("%s", previewMessage_.c_str());
+    }
     ImGui::EndChild();
 
     ImGui::PopStyleVar();
