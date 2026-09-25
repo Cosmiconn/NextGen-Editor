@@ -4850,6 +4850,7 @@ void DrawSkillEditor(EditorState& state);
 void DrawAiWorkspace(EditorState& state);
 void DrawInterfaceWorkspace(EditorState& state);
 void DrawDropTableEditor(EditorState& state);
+bool SaveDropTable(EditorState& state);
 
 void DrawShnEditor(EditorState& state) {
     // Beim ersten Oeffnen die aus den Projekt-Ordnern abgeleiteten Client-/Server-SHN-Ordner
