@@ -37,7 +37,7 @@ Daten-IDE statt Roh-Tabelle: Dokumentkopf, Dirty, Filter, Save-Bar. Referenz-/Er
 General / Requirements / Objectives / Rewards / Dialogs / Scripts. Referenzen als Links. Später Flow View als Tab.
 
 ## Skill
-Serie links, Stufe/Detail rechts, Animation/VFX als echte Picker-Chips, Preview-Link.
+Serie links, Stufe/Detail rechts. Animation/VFX nutzen datenbelegte Such-Picker über alle gleichartigen ActiveSkillView-Felder; rechts im Picker steht eine Referenz-Vorschau mit Häufigkeit, konkreten Skills und Quellspalten sowie direkter Navigation. Das ist bewusst noch kein KF/NIF-Playback und keine Behauptung physischer Asset-Gültigkeit.
 
 ## KFM
 Assetliste + Preview-Viewport + Transport + Timeline + Trackliste. Danach Skeleton/Mesh Playback.
