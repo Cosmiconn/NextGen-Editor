@@ -530,6 +530,7 @@ struct EditorState {
         int scalePercent = 100;
         bool scaleDamage = true, scaleCost = false, scaleCooldown = false, scaleCast = false;
         int quickFilter = 0; // 0 alle, 1 geändert, 2 Sync-Probleme
+        std::unordered_set<long long> syncIssues;
         std::vector<std::string> report;
     } skill;
     struct CreatureWizard {
@@ -9283,6 +9284,33 @@ static std::string SkillCellRead(EditorState& state, const SkillDocs& d, skilled
     return {};
 }
 
+static bool SkillCellCopiesDiffer(EditorState& state,const SkillDocs& d,skilled::Doc kind,
+                                  const char* col,long long skillId,std::string* details=nullptr) {
+    bool haveValue=false, differ=false;
+    std::string first;
+    if (details) details->clear();
+    for (const int di:SkillDocsOf(d,kind)) {
+        if (di < 0 || di >= static_cast<int>(state.shnFiles.size())) continue;
+        const auto& doc=state.shnFiles[static_cast<std::size_t>(di)];
+        const long long row=SkillRowIn(state,di,skillId);
+        const int ci=ShnColumnIndexByName(doc.file,col);
+        std::string value;
+        if (row < 0 || ci < 0) {
+            value=L("(Zeile/Feld fehlt)","(row/field missing)");
+            differ=true;
+        } else {
+            value=ShnCellText(doc.file,static_cast<std::size_t>(row),col);
+            if (!haveValue) { first=value; haveValue=true; }
+            else if (value != first) differ=true;
+        }
+        if (details) {
+            if (!details->empty()) *details += "\n";
+            *details += std::string(ShnSourceName(doc.source))+" "+doc.file.FileName()+": "+value;
+        }
+    }
+    return differ;
+}
+
 // Schreibt in ALLE Kopien (Client und Server) der Zeile.
 static bool SkillCellWrite(EditorState& state, const SkillDocs& d, skilled::Doc kind, const char* col, long long skillId, const std::string& text) {
     bool any = false;
@@ -9348,8 +9376,20 @@ static void DrawSkillField(EditorState& state, const SkillDocs& d, const skilled
     ImGui::TableNextRow();
     ImGui::TableSetColumnIndex(0);
     ImGui::AlignTextToFramePadding();
+    std::string syncDetails;
+    const bool copiesDiffer=SkillCellCopiesDiffer(state,d,fld.doc,fld.col,skillId,&syncDetails);
+    if (copiesDiffer) ImGui::PushStyleColor(ImGuiCol_Text,ImVec4(1.0f,0.68f,0.25f,1.0f));
     ImGui::TextUnformatted(de ? fld.labelDe : fld.labelEn);
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) ImGui::SetTooltip("%s\n[%s]", de ? fld.tipDe : fld.tipEn, fld.col);
+    if (copiesDiffer) ImGui::PopStyleColor();
+    if (copiesDiffer) {
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(1.0f,0.68f,0.25f,1.0f),"⚠");
+    }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
+        const std::string tip=std::string(de ? fld.tipDe : fld.tipEn)+"\n["+fld.col+"]"+
+                              (copiesDiffer ? "\n\n"+std::string(L("Client/Server unterschiedlich:","Client/server differ:"))+"\n"+syncDetails : "");
+        ImGui::SetTooltip("%s",tip.c_str());
+    }
     ImGui::TableSetColumnIndex(1);
     ImGui::PushID(fld.col);
     using K = skilled::Kind;
@@ -9538,10 +9578,6 @@ void DrawSkillEditor(EditorState& state) {
         const std::string needle = LowerAscii(ed.filter);
 
         std::unordered_set<long long> modifiedIds;
-        std::unordered_set<long long> skillServerIds;
-        std::unordered_set<long long> viewClientIds;
-        std::unordered_set<long long> viewServerIds;
-        std::unordered_set<long long> serverIds;
         auto collectIds = [&](int docIdx, std::unordered_set<long long>& ids, bool dirtyOnly) {
             if (docIdx < 0 || docIdx >= static_cast<int>(state.shnFiles.size())) return;
             const auto& doc = state.shnFiles[static_cast<std::size_t>(docIdx)];
@@ -9558,22 +9594,40 @@ void DrawSkillEditor(EditorState& state) {
         };
         if (ed.quickFilter == 1) {
             collectIds(d.skillC,modifiedIds,true);
+            collectIds(d.skillS,modifiedIds,true);
             collectIds(d.viewC,modifiedIds,true);
+            collectIds(d.viewS,modifiedIds,true);
             collectIds(d.server,modifiedIds,true);
-        } else if (ed.quickFilter == 2) {
-            collectIds(d.skillS,skillServerIds,false);
-            collectIds(d.viewC,viewClientIds,false);
-            collectIds(d.viewS,viewServerIds,false);
-            collectIds(d.server,serverIds,false);
         }
 
-        const auto syncProblem = [&](long long id) {
-            if (d.skillS < 0 || !skillServerIds.contains(id)) return true;
-            if (d.viewC < 0 || !viewClientIds.contains(id)) return true;
-            if (d.viewS < 0 || !viewServerIds.contains(id)) return true;
-            if (d.server < 0 || !serverIds.contains(id)) return true;
+        const auto rowsDifferBySharedColumns = [&](int leftDoc,int rightDoc,long long id) {
+            if (leftDoc < 0 || rightDoc < 0) return true;
+            const long long lr=SkillRowIn(state,leftDoc,id), rr=SkillRowIn(state,rightDoc,id);
+            if (lr < 0 || rr < 0) return true;
+            const auto& lf=state.shnFiles[static_cast<std::size_t>(leftDoc)].file;
+            const auto& rf=state.shnFiles[static_cast<std::size_t>(rightDoc)].file;
+            const auto matched=MatchShnColumnsByName(lf,rf);
+            for (std::size_t ci=0;ci<matched.size();++ci) {
+                if (matched[ci] < 0) continue;
+                const auto rci=static_cast<std::size_t>(matched[ci]);
+                const auto lri=static_cast<std::size_t>(lr), rri=static_cast<std::size_t>(rr);
+                if (lri >= lf.rows.size() || rri >= rf.rows.size() ||
+                    ci >= lf.rows[lri].values.size() || rci >= rf.rows[rri].values.size()) return true;
+                if (core::legacy::ShnValueToString(lf.rows[lri].values[ci]) !=
+                    core::legacy::ShnValueToString(rf.rows[rri].values[rci])) return true;
+            }
             return false;
         };
+
+        ed.syncIssues.clear();
+        for (std::size_t r=0;r<asf.rows.size();++r) {
+            const long long id=std::atoll(ShnCellText(asf,r,"ID").c_str());
+            const bool missingServerInfo=d.server < 0 || SkillRowIn(state,d.server,id) < 0;
+            if (missingServerInfo ||
+                rowsDifferBySharedColumns(d.skillC,d.skillS,id) ||
+                rowsDifferBySharedColumns(d.viewC,d.viewS,id))
+                ed.syncIssues.insert(id);
+        }
 
         for (std::size_t r = 0; r < asf.rows.size(); ++r) {
             const std::string idText = ShnCellText(asf,r,"ID");
@@ -9583,7 +9637,7 @@ void DrawSkillEditor(EditorState& state) {
                 if (hay.find(needle) == std::string::npos) continue;
             }
             if (ed.quickFilter == 1 && !modifiedIds.contains(id)) continue;
-            if (ed.quickFilter == 2 && !syncProblem(id)) continue;
+            if (ed.quickFilter == 2 && !ed.syncIssues.contains(id)) continue;
             ed.visible.push_back(r);
         }
     }
@@ -9652,12 +9706,7 @@ void DrawSkillEditor(EditorState& state) {
                     std::string label =
                         std::string("Stufe ") + std::to_string(step) + "  ·  #" + std::to_string(id) +
                         (name.empty() ? std::string() : "  " + name);
-                    const bool rowSyncProblem =
-                        d.skillS < 0 || SkillRowIn(state,d.skillS,id) < 0 ||
-                        d.viewC < 0 || SkillRowIn(state,d.viewC,id) < 0 ||
-                        d.viewS < 0 || SkillRowIn(state,d.viewS,id) < 0 ||
-                        d.server < 0 || SkillRowIn(state,d.server,id) < 0;
-                    if (rowSyncProblem) label += L("  ⚠ Sync","  ⚠ Sync");
+                    if (ed.syncIssues.contains(id)) label += L("  ⚠ Sync","  ⚠ Sync");
                     if (UI::Selectable((label + "##skillStep" + std::to_string(row)).c_str(), ed.selectedId == id)) {
                         ed.selectedId = id;
                         ed.report.clear();
