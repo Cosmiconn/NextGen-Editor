@@ -3553,7 +3553,8 @@ bool DrawCompactIconTextButton(const char* id, const char* label, IconDrawFn fal
 // waren Hinweise für die Umsetzung (z.B. "Noch nicht entschieden"), keine echten UI-Elemente -
 // erscheinen daher hier bewusst NICHT in der gerenderten Karte.
 bool DrawEditorCard(const char* id, ImVec2 size, ImU32 bodyColor, ImU32 headerColor, IconDrawFn icon,
-                    const char* title, const std::vector<std::string>& features, bool startEnabled) {
+                    const char* title, const std::vector<std::string>& features, bool startEnabled,
+                    const char* semanticIcon = nullptr) {
     ImGui::PushID(id);
     ImGui::BeginGroup();
     ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -3567,10 +3568,24 @@ bool DrawEditorCard(const char* id, ImVec2 size, ImU32 bodyColor, ImU32 headerCo
     dl->AddText(ImVec2(origin.x + (size.x - titleTextSize.x) * 0.5f, origin.y + (headerH - titleTextSize.y) * 0.5f),
                 IM_COL32(255, 255, 255, 255), title);
 
-    const ImVec2 iconCenter(origin.x + size.x * 0.5f, origin.y + headerH + size.x * 0.32f);
-    icon(dl, iconCenter, size.x * 0.22f, IM_COL32(255, 255, 255, 235));
+    const ImVec2 iconCenter(origin.x + size.x * 0.5f, origin.y + headerH + size.x * 0.30f);
+    bool drewApprovedIcon = false;
+    if (semanticIcon && *semanticIcon) {
+        if (const std::uint32_t tex = gUiIcons.Texture(semanticIcon, 48); tex != 0) {
+            constexpr float iconSize = 48.0f;
+            const ImVec2 half(iconSize * 0.5f, iconSize * 0.5f);
+            dl->AddImage(static_cast<ImTextureID>(static_cast<intptr_t>(tex)),
+                         ImVec2(iconCenter.x - half.x, iconCenter.y - half.y),
+                         ImVec2(iconCenter.x + half.x, iconCenter.y + half.y),
+                         ImVec2(0,1), ImVec2(1,0),
+                         startEnabled ? IM_COL32(255,255,255,255) : IM_COL32(255,255,255,105));
+            drewApprovedIcon = true;
+        }
+    }
+    if (!drewApprovedIcon && icon)
+        icon(dl, iconCenter, size.x * 0.18f, IM_COL32(255, 255, 255, 235));
 
-    float textY = origin.y + headerH + size.x * 0.32f + size.x * 0.30f;
+    float textY = origin.y + headerH + size.x * 0.30f + size.x * 0.25f;
     for (const auto& feature : features) {
         dl->AddText(ImVec2(origin.x + 12.0f, textY), IM_COL32(235, 235, 225, 255), feature.c_str());
         textY += ImGui::GetTextLineHeight() + 2.0f;
@@ -5339,29 +5354,49 @@ void DrawShnEditor(EditorState& state) {
         }
     }
     ImGui::Separator();
-    struct DataTool { const char* id; const char* label; IconDrawFn icon; const char* semanticIcon; };
+    struct DataTool {
+        const char* id;
+        const char* label;
+        IconDrawFn icon;
+        const char* semanticIcon;
+        int subTab;
+        int creatureMode; // -1 = n/a, 0 = mob, 1 = NPC
+    };
     const DataTool dataTools[] = {
-        {"single","Single SHN",DrawIconTable,"module.shn.single"},
-        {"multi","Multi SHN",DrawIconLayers,"module.shn.multi"},
-        {"xp","XP Rate",DrawIconBolt,"module.xp"},
-        {"prices",L("Preise","Prices"),DrawIconTable,"module.prices"},
-        {"quest","Quest",DrawIconBook,"module.quest"},
-        // Portal and the combined NPC/Mob launcher still have no exact package icon.
-        // Keep their semantic DrawList fallbacks instead of reusing a misleading asset.
-        {"portals",L("Portale","Portals"),DrawIconPortal,nullptr},
-        {"creatures","NPC / Mob",DrawIconPerson,nullptr},
-        {"skills","Skills",DrawIconBolt,"module.skill"},
-        {"ai","AI Scripts",DrawIconCode,"module.ai"},
-        {"interface","Interface",DrawIconMonitorEye,"module.interface"},
-        {"drops","Drops",DrawIconSpawn,"module.droptable"},
+        {"single","Single SHN",DrawIconTable,"module.shn.single",0,-1},
+        {"multi","Multi SHN",DrawIconLayers,"module.shn.multi",1,-1},
+        {"xp","XP Rate",DrawIconBolt,"module.xp",2,-1},
+        {"prices",L("Preise","Prices"),DrawIconTable,"module.prices",3,-1},
+        {"quest","Quest",DrawIconBook,"module.quest",4,-1},
+        // Das Final-Paket besitzt weiterhin kein eigenes Portal-Icon; hier bleibt der
+        // funktionale Legacy-Fallback, statt ein semantisch falsches Paketicon umzudeuten.
+        {"portals",L("Portale","Portals"),DrawIconPortal,nullptr,5,-1},
+        {"customNpc","Custom NPC",DrawIconPerson,"module.custom_npc",6,1},
+        {"customMob","Custom Mob",DrawIconSpawn,"module.custom_mob",6,0},
+        {"skills","Skills",DrawIconBolt,"module.skill",7,-1},
+        {"ai","AI Scripts",DrawIconCode,"module.ai",8,-1},
+        {"interface","Interface",DrawIconMonitorEye,"module.interface",9,-1},
+        {"drops","Drops",DrawIconSpawn,"module.droptable",10,-1},
     };
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(5.0f, 5.0f));
     for (int i = 0; i < static_cast<int>(std::size(dataTools)); ++i) {
         const auto& tool = dataTools[i];
-        if (DrawIconButton(tool.id, tool.label, tool.icon, state.shnSubTab == i,
-                           ImVec2(102.0f, 58.0f), true, tool.semanticIcon))
-            state.shnSubTab = i;
-        if (i + 1 < static_cast<int>(std::size(dataTools))) ImGui::SameLine();
+        bool active = state.shnSubTab == tool.subTab;
+        if (tool.creatureMode >= 0)
+            active = active && (state.wiz.isNpc == (tool.creatureMode == 1));
+
+        if (DrawIconButton(tool.id, tool.label, tool.icon, active,
+                           ImVec2(96.0f, 58.0f), true, tool.semanticIcon)) {
+            state.shnSubTab = tool.subTab;
+            if (tool.creatureMode >= 0) {
+                state.wiz.isNpc = tool.creatureMode == 1;
+                if (!state.wiz.isNpc && state.wiz.lookMode == 2) state.wiz.lookMode = 0;
+            }
+        }
+        if (i + 1 < static_cast<int>(std::size(dataTools)) &&
+            ImGui::GetContentRegionAvail().x > 104.0f) {
+            ImGui::SameLine();
+        }
     }
     ImGui::PopStyleVar();
     ImGui::Separator();
@@ -5489,35 +5524,36 @@ void DrawProjectHub(EditorState& state) {
         const char* title;
         std::vector<std::string> features;
         IconDrawFn icon;
+        const char* semanticIcon;
         HubAction action;
         bool enabled;
     };
     const CardDef cards[] = {
         {"hub.map", "Karte",
          {"Heightmap & Texturen", "Walk & Block", "Objekte + Sky/Water/GroundObject", "NPCs, Mobs & Portale"},
-         DrawIconTerrain, HubAction::Map, true},
+         DrawIconTerrain, "nav.world", HubAction::Map, true},
         {"hub.data", "Spieldaten",
          {"Single & Multi SHN", "XP Rate / Buy & Sell", "Custom NPC/Mob + AI", "Drop Tables + Client/Server"},
-         DrawIconTable, HubAction::Data, true},
+         DrawIconTable, "module.shn.single", HubAction::Data, true},
         {"hub.quest", "Quest Editor",
          {"QuestData + QuestDialog", "Ziele & Drops", "Start/Action/Finish Skripte", "Text-ID Auflösung"},
-         DrawIconBook, HubAction::Quest, true},
+         DrawIconBook, "module.quest", HubAction::Quest, true},
         {"hub.skill", "Skill Editor",
          {"Skills bearbeiten/klonen", "Skill-Stufen", "Animation/Effekt-Auswahl", "Serien skalieren"},
-         DrawIconBolt, HubAction::Skill, true},
+         DrawIconBolt, "module.skill", HubAction::Skill, true},
         {"hub.kfm", "Animationen / KFM",
          {"KFM-Katalog", "Übergänge", "Dateiverweise prüfen", "verlustfreie Kopie exportieren"},
-         DrawIconClapper, HubAction::Kfm, true},
+         DrawIconClapper, "module.kfm", HubAction::Kfm, true},
         {"hub.interface", "Interface Browser",
          {"resmenu-Assets durchsuchen", "Bildformate vorschauen", "UI-NIF / Material analysieren", "Projekt-Overrides sicher verwalten"},
-         DrawIconMonitorEye, HubAction::Interface, true},
+         DrawIconMonitorEye, "module.interface", HubAction::Interface, true},
     };
 
     for (int i = 0; i < static_cast<int>(std::size(cards)); ++i) {
         const auto& card = cards[i];
         const bool clicked = DrawEditorCard(card.id, ImVec2(cardW, cardH),
             IM_COL32(8, 24, 36, 255), IM_COL32(9, 42, 63, 255),
-            card.icon, card.title, card.features, card.enabled);
+            card.icon, card.title, card.features, card.enabled, card.semanticIcon);
         if (clicked) {
             switch (card.action) {
                 case HubAction::Map: state.screen = AppScreen::MapEditorLauncher; break;
