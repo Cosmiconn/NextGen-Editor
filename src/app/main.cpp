@@ -6056,6 +6056,39 @@ void DrawQuestEditor(EditorState& state) {
         if (saved) state.questDirty = false;
         state.statusMessage = saved ? std::string("QuestData.shn gespeichert.") : "Fehler: " + saved.error();
     };
+    auto duplicateSelectedQuest = [&]() {
+        if (state.selectedQuestIdx < 0 ||
+            static_cast<std::size_t>(state.selectedQuestIdx) >= quests.size()) return;
+        std::array<bool,65536> used{};
+        int maxId=0;
+        for (const auto& rec:quests) {
+            used[rec.id]=true;
+            maxId=std::max(maxId,static_cast<int>(rec.id));
+        }
+        int newId=-1;
+        if (maxId < 65535 && !used[static_cast<std::size_t>(maxId+1)]) newId=maxId+1;
+        if (newId < 0) {
+            for (int id=1;id<=65535;++id) {
+                if (!used[static_cast<std::size_t>(id)]) { newId=id; break; }
+            }
+        }
+        if (newId < 0) {
+            state.statusMessage=L("Keine freie Quest-ID verfügbar.","No free quest ID available.");
+            return;
+        }
+        auto copy=quests[static_cast<std::size_t>(state.selectedQuestIdx)];
+        copy.id=static_cast<std::uint16_t>(newId);
+        copy.dataLen=0; // wird von SaveQuestData aus dem aktuellen Record neu berechnet
+        quests.push_back(std::move(copy));
+        state.selectedQuestIdx=static_cast<int>(quests.size()-1);
+        state.questDirty=true;
+        ++state.questRevision;
+        state.questListKey.clear();
+        state.statusMessage=std::string(L("Quest geklont · neue ID #","Quest cloned · new ID #"))+
+                            std::to_string(newId)+
+                            L(". Text-/Reward-Referenzen wurden bewusst aus der Vorlage übernommen.",
+                              ". Text/reward references were intentionally copied from the template.");
+    };
     ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s", L("QUEST EDITOR", "QUEST EDITOR"));
     ImGui::SameLine();
     ImGui::TextDisabled(L("%zu Quests%s", "%zu quests%s"), quests.size(),
@@ -6073,6 +6106,15 @@ void DrawQuestEditor(EditorState& state) {
         saveQuestData();
     }
     if (ShortcutPressed(state.shortcutSave) && state.questDirty) saveQuestData();
+    ImGui::SameLine();
+    ImGui::BeginDisabled(state.selectedQuestIdx < 0 ||
+                         static_cast<std::size_t>(state.selectedQuestIdx) >= quests.size());
+    if (UI::Button(L("Aus Auswahl klonen","Clone selected"))) duplicateSelectedQuest();
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled | ImGuiHoveredFlags_DelayShort))
+        ImGui::SetTooltip("%s",L(
+            "Erzeugt eine vollständige Kopie mit freier Quest-ID. Unbekannte Reward-/Raw-Felder bleiben bytegetreu aus der Vorlage erhalten.",
+            "Creates a full copy with a free quest ID. Unknown reward/raw fields are preserved from the template."));
     ImGui::Separator();
     ImGui::SetNextItemWidth(430.0f);
     UI::InputTextWithHint("##questsearch", L("Quest-ID oder Titeltext suchen...", "Search quest ID or title text..."),
