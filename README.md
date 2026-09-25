@@ -18,12 +18,21 @@ cmake --build build --config Release
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-Vollständige Windows-App mit vcpkg:
+Vollständige Windows-App mit vcpkg. Unter Windows ist die GUI standardmäßig aktiviert; wenn
+`VCPKG_ROOT` oder `VCPKG_INSTALLATION_ROOT` gesetzt ist, wird der Toolchain-Pfad automatisch
+erkannt:
 
 ```powershell
-cmake -S . -B build -DNEXTGEN_EDITOR_BUILD_GUI=ON "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+cmake -S . -B build
 cmake --build build --config Release
 .\build\Release\Editor.exe
+```
+
+Ohne gesetzte vcpkg-Umgebungsvariable kann der Toolchain-Pfad weiterhin explizit angegeben werden:
+
+```powershell
+cmake -S . -B build "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
+cmake --build build --config Release
 ```
 
 C++23 einschließlich `std::expected` ist erforderlich. Lokal geprüft mit MSVC 19.51.
