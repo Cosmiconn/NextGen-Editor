@@ -2919,6 +2919,16 @@ void DrawIconDelete(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
     dl->AddRect(ImVec2(c.x-r*0.52f,c.y-r*0.3f),ImVec2(c.x+r*0.52f,c.y+r*0.85f),col,1.0f,0,1.8f);
     dl->AddLine(ImVec2(c.x-r*0.28f,c.y-r*0.7f),ImVec2(c.x+r*0.28f,c.y-r*0.7f),col,2.0f);
 }
+void DrawIconGear(ImDrawList* dl, ImVec2 c, float r, ImU32 col) {
+    dl->AddCircle(c, r*0.62f, col, 20, 2.0f);
+    dl->AddCircle(c, r*0.22f, col, 16, 2.0f);
+    for (int i=0;i<8;++i) {
+        const float a=static_cast<float>(i)*3.14159265f/4.0f;
+        const ImVec2 a0(c.x+std::cos(a)*r*0.70f,c.y+std::sin(a)*r*0.70f);
+        const ImVec2 a1(c.x+std::cos(a)*r,c.y+std::sin(a)*r);
+        dl->AddLine(a0,a1,col,3.0f);
+    }
+}
 
 using IconDrawFn = void (*)(ImDrawList*, ImVec2, float, ImU32);
 
@@ -3014,6 +3024,7 @@ bool DrawEditorCard(const char* id, ImVec2 size, ImU32 bodyColor, ImU32 headerCo
 // aktuellen Titel als "Breadcrumb", siehe Mockup rechtes/zweites Bild).
 void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
     LoadRecentEntries(state);
+    LoadShortcutSettings(state);
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(11.0f, 7.0f));
 
     ImGui::TextColored(ImVec4(0.20f, 0.72f, 1.0f, 1.0f), "NG");
@@ -3074,7 +3085,8 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
     }
     ImGui::EndDisabled();
     ImGui::SameLine();
-    if (UI::SmallButton("Strg+P")) {
+    const std::string paletteShortcutLabel = ShortcutLabel(state.shortcutPalette);
+    if (UI::SmallButton(paletteShortcutLabel.c_str())) {
         state.commandPaletteOpen = true;
         state.commandPaletteSelection = 0;
     }
@@ -3091,8 +3103,11 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
         }
     }
 
-    const float rightWidth = 130.0f;
+    const float rightWidth = 164.0f;
     ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - rightWidth);
+    if (DrawTinyIconButton("settingsTop", DrawIconGear, state.settingsOpen, "Einstellungen"))
+        state.settingsOpen = !state.settingsOpen;
+    ImGui::SameLine();
     if (UI::Button("?##manual")) state.manualOpen = !state.manualOpen;
     ImGui::SameLine();
     ImGui::SetNextItemWidth(64.0f);
