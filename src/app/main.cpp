@@ -5019,7 +5019,7 @@ void DrawProjectHub(EditorState& state) {
          {"Heightmap & Texturen", "Walk & Block", "Objekte + Sky/Water/GroundObject", "NPCs, Mobs & Portale"},
          DrawIconTerrain, HubAction::Map, true},
         {"hub.data", "Spieldaten",
-         {"Single & Multi SHN", "XP Rate / Buy & Sell", "Custom NPC/Mob + AI", "Client + Server Tabellen"},
+         {"Single & Multi SHN", "XP Rate / Buy & Sell", "Custom NPC/Mob + AI", "Drop Tables + Client/Server"},
          DrawIconTable, HubAction::Data, true},
         {"hub.quest", "Quest Editor",
          {"QuestData + QuestDialog", "Ziele & Drops", "Start/Action/Finish Skripte", "Text-ID Auflösung"},
