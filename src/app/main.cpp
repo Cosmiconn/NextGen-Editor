@@ -640,6 +640,17 @@ struct EditorState {
     core::legacy::ShineTextFile patrolRouteFile;
     bool patrolRouteLoaded = false;
 
+    // Permanente, rein lesende Szene-Overlays aus MobRoam/<Name>.txt. Der Cache wird nur
+    // bei Auswahl-/Ordnerwechsel neu aufgebaut und verändert keine Fiesta-Dateien.
+    struct RoamOverlayRoute {
+        std::string name;
+        std::vector<std::pair<float, float>> points; // X/Z im Kartenkoordinatensystem
+        bool returnsToStart = false;
+    };
+    std::string roamOverlayKey;
+    std::vector<RoamOverlayRoute> roamOverlayRoutes;
+    bool showRoamRoutes = true;
+
     // Grundfläche (Bounding-Box in X/Z, aus den echten NIF-Vertex-Positionen) für die
     // 2D-Anzeige - siehe CHANGELOG [0.44.24]. Schlüssel: PlacedObject::modelPath (innerhalb
     // einer Kartensitzung eindeutig genug, da Modelle relativ zum selben Kartenordner
@@ -6407,6 +6418,7 @@ void OpenPatrolRouteEditor(EditorState& state, const std::string& mobName) {
     state.patrolRouteLoaded = true;
     state.patrolEditorName = mobName;
     state.patrolEditorOpen = true;
+    state.roamOverlayKey.clear();
 }
 
 void DrawPatrolRouteEditorPopup(EditorState& state) {
@@ -6456,6 +6468,7 @@ void DrawPatrolRouteEditorPopup(EditorState& state) {
                     auto path = std::filesystem::path(state.shnServerRoot) / "MobRoam" / (state.patrolEditorName + ".txt");
                     auto saved = core::legacy::SaveShineTextFile(state.patrolRouteFile, path);
                     state.statusMessage = saved ? std::string("Patrouillenroute gespeichert.") : "Fehler: " + saved.error();
+                    if (saved) state.roamOverlayKey.clear();
                 }
             }
         }
@@ -9561,6 +9574,7 @@ static void DrawVisibilityPanel(EditorState& state) {
 
     UI::Checkbox("NPC-Modelle (3D)", &state.showNpcModels);
     UI::Checkbox("NPC-Namen und Blickpfeile (3D, NPC-Modus)", &state.showNpcLabels);
+    UI::Checkbox("Patrouillen-/Roam-Routen (3D, Auswahl)", &state.showRoamRoutes);
     if (state.npcModelsMissing > 0) {
         ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.35f, 1.0f), "%d NPC(s) ohne Modell (Platzhalter fehlen):", state.npcModelsMissing);
         for (const auto& n : state.npcModelsMissingNames) ImGui::BulletText("%s", n.c_str());
@@ -10368,6 +10382,113 @@ void DrawEditor2DContent(EditorState& state) {
     }
 }
 
+std::optional<EditorState::RoamOverlayRoute> LoadRoamOverlayRoute(
+    const EditorState& state, const std::string& name) {
+    if (name.empty() || state.shnServerRoot.empty()) return std::nullopt;
+    const auto path = std::filesystem::path(state.shnServerRoot) / "MobRoam" / (name + ".txt");
+    std::error_code ec;
+    if (!std::filesystem::exists(path, ec)) return std::nullopt;
+    auto loaded = core::legacy::LoadShineTextFile(path);
+    if (!loaded) return std::nullopt;
+    const auto* table = loaded->FindTable("Roaming");
+    if (!table) return std::nullopt;
+
+    EditorState::RoamOverlayRoute route;
+    route.name = name;
+    for (const auto& rec : table->records) {
+        if (rec.values.size() < 3) continue;
+        const float x = static_cast<float>(std::atof(rec.values[1].c_str()));
+        const float z = static_cast<float>(std::atof(rec.values[2].c_str()));
+        route.points.emplace_back(x, z);
+        if (rec.values.size() >= 4 && LowerAscii(rec.values[3]) == "return")
+            route.returnsToStart = true;
+    }
+    if (route.points.empty()) return std::nullopt;
+    return route;
+}
+
+void RefreshRoamOverlayRoutes(EditorState& state) {
+    std::vector<std::string> names;
+    std::string key = state.shnServerRoot + "|" + std::to_string(static_cast<int>(state.editMode)) + "|";
+
+    if (state.editMode == EditMode::Npcs && state.npcTextLoaded && state.selectedNpcRecordIdx >= 0) {
+        if (auto* table = state.npcTextFile.FindTable("ShineNPC")) {
+            const auto idx = static_cast<std::size_t>(state.selectedNpcRecordIdx);
+            if (idx < table->records.size() && !table->records[idx].values.empty()) {
+                names.push_back(table->records[idx].values[0]);
+                key += names.back();
+            }
+        }
+    } else if (state.editMode == EditMode::Mobs && state.mobRegenTextLoaded && state.selectedMobZoneIdx >= 0) {
+        auto* zones = state.mobRegenTextFile.FindTable("MobRegenGroup");
+        auto* spawns = state.mobRegenTextFile.FindTable("MobRegen");
+        const auto zi = static_cast<std::size_t>(state.selectedMobZoneIdx);
+        if (zones && spawns && zi < zones->records.size() && !zones->records[zi].values.empty()) {
+            const std::string zoneName = zones->records[zi].values[0];
+            key += zoneName;
+            std::unordered_set<std::string> unique;
+            for (const auto& rec : spawns->records) {
+                if (rec.values.size() < 2 || rec.values[0] != zoneName || rec.values[1].empty()) continue;
+                if (unique.insert(rec.values[1]).second) names.push_back(rec.values[1]);
+            }
+            std::sort(names.begin(), names.end());
+            for (const auto& n : names) key += "|" + n;
+        }
+    }
+
+    if (key == state.roamOverlayKey) return;
+    state.roamOverlayKey = key;
+    state.roamOverlayRoutes.clear();
+    for (const auto& name : names) {
+        if (auto route = LoadRoamOverlayRoute(state, name))
+            state.roamOverlayRoutes.push_back(std::move(*route));
+    }
+}
+
+void DrawRoamRoutes3D(EditorState& state, const ImVec2& imagePos, int w, int h) {
+    if (!state.showRoamRoutes || (state.editMode != EditMode::Npcs && state.editMode != EditMode::Mobs))
+        return;
+    RefreshRoamOverlayRoutes(state);
+    if (state.roamOverlayRoutes.empty()) return;
+
+    static const ImU32 kRouteColors[] = {
+        IM_COL32(80, 220, 255, 235),
+        IM_COL32(255, 190, 80, 235),
+        IM_COL32(170, 120, 255, 235),
+        IM_COL32(90, 235, 150, 235),
+    };
+
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    dl->PushClipRect(imagePos, ImVec2(imagePos.x + w, imagePos.y + h), true);
+    for (std::size_t ri = 0; ri < state.roamOverlayRoutes.size(); ++ri) {
+        const auto& route = state.roamOverlayRoutes[ri];
+        const ImU32 col = kRouteColors[ri % std::size(kRouteColors)];
+        std::vector<ImVec2> points;
+        points.reserve(route.points.size() + (route.returnsToStart ? 1u : 0u));
+
+        for (const auto& [x,z] : route.points) {
+            ImVec2 p;
+            const float y = state.heightmap.SampleWorld(x,z) + 12.0f;
+            if (ProjectWorldTo3DView(state,imagePos,w,h,{x,y,z},p)) points.push_back(p);
+        }
+        if (route.returnsToStart && points.size() > 1) points.push_back(points.front());
+        if (points.size() >= 2) dl->AddPolyline(points.data(), static_cast<int>(points.size()), col, ImDrawFlags_None, 2.2f);
+
+        for (std::size_t pi = 0; pi < points.size() && pi < route.points.size(); ++pi) {
+            dl->AddCircleFilled(points[pi], pi == 0 ? 4.5f : 3.0f, col);
+            if (pi == 0) {
+                const ImVec2 ts = ImGui::CalcTextSize(route.name.c_str());
+                const ImVec2 p(points[pi].x + 7.0f, points[pi].y - ts.y * 0.5f);
+                dl->AddRectFilled(ImVec2(p.x-3.0f,p.y-2.0f),
+                                  ImVec2(p.x+ts.x+3.0f,p.y+ts.y+2.0f),
+                                  IM_COL32(10,16,24,190),3.0f);
+                dl->AddText(p,col,route.name.c_str());
+            }
+        }
+    }
+    dl->PopClipRect();
+}
+
 // Zeichnet im 3D-View Namen und Blickpfeile der NPCs (Projektion per ImGui) - damit sich NPCs
 // richtig ausrichten lassen (CHANGELOG [0.44.32]).
 static void DrawNpcOverlay3D(EditorState& state, const ImVec2& imagePos, int w, int h) {
@@ -10828,6 +10949,7 @@ void DrawPreview3DContent(EditorState& state) {
     Draw3DBrushOverlay(state,imageScreenPos,w,h,viewImageHovered);
     DrawMobZones3D(state,imageScreenPos,w,h);
     DrawPortals3D(state,imageScreenPos,w,h);
+    DrawRoamRoutes3D(state,imageScreenPos,w,h);
     const bool gizmoCapturing = DrawObjectTransformGizmo(state, imageScreenPos, w, h);
     DrawObjectGizmoToolbar(state, imageScreenPos);
     DrawNpcOverlay3D(state, imageScreenPos, w, h);
