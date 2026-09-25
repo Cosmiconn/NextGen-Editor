@@ -3494,6 +3494,49 @@ bool DrawIconButton(const char* id, const char* label, IconDrawFn icon, bool act
     return clicked && enabled;
 }
 
+bool DrawCompactIconTextButton(const char* id, const char* label, IconDrawFn fallbackIcon,
+                               const char* semanticIcon, bool enabled = true,
+                               const char* tooltip = nullptr) {
+    ImGui::PushID(id);
+    const ImVec2 textSize = ImGui::CalcTextSize(label);
+    const ImVec2 size(textSize.x + 34.0f, 30.0f);
+    const ImVec2 p = ImGui::GetCursorScreenPos();
+
+    ImGui::BeginDisabled(!enabled);
+    const bool clicked = ImGui::InvisibleButton("##compactIconText", size);
+    ImGui::EndDisabled();
+    const bool hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled);
+
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const ImU32 bg = hovered && enabled ? IM_COL32(13,48,78,235) : IM_COL32(8,25,40,120);
+    const ImU32 border = hovered && enabled ? IM_COL32(19,140,255,185) : IM_COL32(31,62,88,160);
+    const ImU32 fg = enabled ? (hovered ? IM_COL32(232,246,255,255) : IM_COL32(181,204,222,255))
+                             : IM_COL32(88,108,126,145);
+
+    dl->AddRectFilled(p, ImVec2(p.x + size.x, p.y + size.y), bg, 5.0f);
+    dl->AddRect(p, ImVec2(p.x + size.x, p.y + size.y), border, 5.0f, 0, 1.0f);
+
+    bool drewApprovedIcon = false;
+    if (semanticIcon && *semanticIcon) {
+        if (const std::uint32_t tex = gUiIcons.Texture(semanticIcon, 24); tex != 0) {
+            constexpr float iconSize = 20.0f;
+            const ImVec2 iconMin(p.x + 7.0f, p.y + 5.0f);
+            dl->AddImage(static_cast<ImTextureID>(static_cast<intptr_t>(tex)),
+                         iconMin, ImVec2(iconMin.x + iconSize, iconMin.y + iconSize),
+                         ImVec2(0,1), ImVec2(1,0),
+                         enabled ? IM_COL32(255,255,255,255) : IM_COL32(255,255,255,105));
+            drewApprovedIcon = true;
+        }
+    }
+    if (!drewApprovedIcon && fallbackIcon)
+        fallbackIcon(dl, ImVec2(p.x + 17.0f, p.y + 15.0f), 7.0f, fg);
+
+    dl->AddText(ImVec2(p.x + 30.0f, p.y + (size.y - textSize.y) * 0.5f), fg, label);
+    if (hovered && tooltip) ImGui::SetTooltip("%s", tooltip);
+    ImGui::PopID();
+    return clicked && enabled;
+}
+
 // Zeichnet eine einzelne Editor-Karte (siehe Mockup "Projekt"-Übersicht). Gibt true zurück,
 // wenn der Start-Knopf in diesem Frame geklickt wurde. Die gelben Klebezettel aus dem Mockup
 // waren Hinweise für die Umsetzung (z.B. "Noch nicht entschieden"), keine echten UI-Elemente -
@@ -3622,12 +3665,14 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
     ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
     ImGui::SameLine();
 
-    if (UI::Button(T("nav.new"))) {
+    if (DrawCompactIconTextButton("topNew", T("nav.new"), nullptr, "file.new", true,
+                                  L("Neues Projekt / neue Karte konfigurieren","Configure new project / map"))) {
         state.project = ProjectConfig{};
         state.screen = AppScreen::NewProjectConfig;
     }
     ImGui::SameLine();
-    if (UI::Button(T("nav.open"))) {
+    if (DrawCompactIconTextButton("topOpen", T("nav.open"), nullptr, "file.open", true,
+                                  L("Projektordner öffnen","Open project folder"))) {
 #ifdef _WIN32
         if (auto picked = BrowseForFolderWindows("Projekt-Ordner wählen")) {
             LoadProjectFolderIntoState(state, *picked);
@@ -3635,8 +3680,9 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
 #endif
     }
     ImGui::SameLine();
-    ImGui::BeginDisabled(!state.project.hasProject);
-    if (UI::Button(T("nav.save"))) {
+    if (DrawCompactIconTextButton("topSave", T("nav.save"), DrawIconSave, "file.save",
+                                  state.project.hasProject,
+                                  L("Projektkonfiguration speichern","Save project configuration"))) {
         std::string err;
         if (SaveProjectConfig(state.project, &err)) {
             TouchRecentProject(state, state.project.projectFolder);
@@ -3645,7 +3691,6 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
             state.statusMessage = T("newproject.savefailed") + err;
         }
     }
-    ImGui::EndDisabled();
     ImGui::SameLine();
     const std::string paletteShortcutLabel = ShortcutLabel(state.shortcutPalette);
     const std::string paletteTooltip = std::string(L("Befehlspalette öffnen","Open command palette")) +
