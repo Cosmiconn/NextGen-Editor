@@ -3776,31 +3776,191 @@ void DrawShnSourceList(EditorState& state, EditorState::ShnSource source, const 
 }
 
 void DrawShnMultiProfiles(EditorState& state) {
-    ImGui::Text("Multi SHN Editor");
-    ImGui::TextWrapped("Die Aufgabe markiert Kandidaten in CLIENT und SERVER getrennt. Die Markierung basiert auf Dateinamen/Tabellenkontext und ist bewusst eine Kandidatenliste, keine behauptete harte Abhängigkeit.");
-    const char* profiles[] = {"Neues Item", "Neuer NPC", "Neuer Mob", "Neuer Skill", "Shop / Preis", "Neue Quest", "XP / Rate"};
-    ImGui::SetNextItemWidth(260.0f); UI::Combo("Aufgabe", &state.shnMultiProfile, profiles, static_cast<int>(std::size(profiles)));
-    ImGui::Separator();
-    for (EditorState::ShnSource source : {EditorState::ShnSource::Client, EditorState::ShnSource::Server}) {
-        ImGui::TextColored(ShnSourceColor(source), "%s", ShnSourceName(source));
-        ImGui::BeginChild(source == EditorState::ShnSource::Client ? "##multiClient" : "##multiServer", ImVec2(0, 190), true);
-        bool any = false;
-        for (int i : ShnIndicesForSource(state, source)) {
-            auto& doc = state.shnFiles[static_cast<std::size_t>(i)];
-            const bool candidate = ShnProfileMatch(doc.file.FileName(), state.shnMultiProfile);
-            if (!candidate) continue;
-            any = true;
-            ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 220, 70, 255));
-            if (UI::Selectable(("◆ " + doc.file.FileName() + (doc.dirty ? " *" : "") + "##multi" + std::to_string(i)).c_str(), state.shnSelectedFile == i)) SelectShnDocument(state, i);
-            ImGui::PopStyleColor();
-            ImGui::SameLine(); ImGui::TextDisabled("Kandidat");
-        }
-        if (!any) ImGui::TextDisabled("Keine Kandidaten in den geladenen %s-SHN gefunden.", ShnSourceName(source));
-        ImGui::EndChild();
-    }
-    ImGui::TextDisabled("Hinweis: Gelb = prüfen/ggf. ändern. Die tatsächliche Abhängigkeit wird erst als gesichert markiert, wenn sie aus den vorhandenen SHN-/Datenbeziehungen belegt ist.");
-}
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "MULTI SHN");
+    ImGui::SameLine();
+    ImGui::TextDisabled("Client / Server vergleichen");
+    ImGui::TextWrapped("Die Aufgabe filtert passende Tabellen. Dateien mit gleichem Namen werden "
+                       "paarweise gegenübergestellt; Schema- und Zellabweichungen sind nur Hinweise "
+                       "und werden nicht automatisch überschrieben.");
 
+    const char* profiles[] = {"Neues Item", "Neuer NPC", "Neuer Mob", "Neuer Skill",
+                              "Shop / Preis", "Neue Quest", "XP / Rate"};
+    ImGui::SetNextItemWidth(260.0f);
+    UI::Combo("Aufgabe", &state.shnMultiProfile, profiles, static_cast<int>(std::size(profiles)));
+    ImGui::SameLine();
+    ImGui::TextDisabled("Geladene Dateien: %zu", state.shnFiles.size());
+    ImGui::Separator();
+
+    struct Pair {
+        std::string fileName;
+        int client = -1;
+        int server = -1;
+    };
+    std::map<std::string, Pair> pairs;
+    for (std::size_t i = 0; i < state.shnFiles.size(); ++i) {
+        auto& doc = state.shnFiles[i];
+        if (!ShnProfileMatch(doc.file.FileName(), state.shnMultiProfile)) continue;
+        const std::string key = LowerAscii(doc.file.FileName());
+        auto& pair = pairs[key];
+        pair.fileName = doc.file.FileName();
+        if (doc.source == EditorState::ShnSource::Client) pair.client = static_cast<int>(i);
+        else pair.server = static_cast<int>(i);
+    }
+
+    std::size_t paired = 0, clientOnly = 0, serverOnly = 0, dirtyFiles = 0;
+    for (const auto& [key, p] : pairs) {
+        (void)key;
+        if (p.client >= 0 && p.server >= 0) ++paired;
+        else if (p.client >= 0) ++clientOnly;
+        else ++serverOnly;
+        if ((p.client >= 0 && state.shnFiles[static_cast<std::size_t>(p.client)].dirty) ||
+            (p.server >= 0 && state.shnFiles[static_cast<std::size_t>(p.server)].dirty))
+            ++dirtyFiles;
+    }
+
+    ImGui::BeginChild("##multiSummary", ImVec2(0, 54.0f), true);
+    ImGui::Text("Paare: %zu", paired);
+    ImGui::SameLine(); ImGui::TextDisabled("| Client-only: %zu", clientOnly);
+    ImGui::SameLine(); ImGui::TextDisabled("| Server-only: %zu", serverOnly);
+    ImGui::SameLine(); ImGui::TextDisabled("| Geändert: %zu", dirtyFiles);
+    ImGui::TextDisabled("Klick auf Client/Server öffnet die Datei direkt im Single-SHN-Editor.");
+    ImGui::EndChild();
+
+    const ImGuiTableFlags flags =
+        ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable |
+        ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingStretchProp;
+    if (ImGui::BeginTable("##multiCompare", 7, flags, ImVec2(0,0))) {
+        ImGui::TableSetupScrollFreeze(0,1);
+        ImGui::TableSetupColumn("Datei", ImGuiTableColumnFlags_WidthStretch, 1.8f);
+        ImGui::TableSetupColumn("Client", ImGuiTableColumnFlags_WidthStretch, 1.1f);
+        ImGui::TableSetupColumn("Server", ImGuiTableColumnFlags_WidthStretch, 1.1f);
+        ImGui::TableSetupColumn("Schema", ImGuiTableColumnFlags_WidthFixed, 105.0f);
+        ImGui::TableSetupColumn("Zeilen", ImGuiTableColumnFlags_WidthFixed, 100.0f);
+        ImGui::TableSetupColumn("Zell-Diff", ImGuiTableColumnFlags_WidthFixed, 95.0f);
+        ImGui::TableSetupColumn("Aktion", ImGuiTableColumnFlags_WidthFixed, 125.0f);
+        ImGui::TableHeadersRow();
+
+        for (const auto& [key, p] : pairs) {
+            (void)key;
+            const core::legacy::ShnFile* clientFile =
+                p.client >= 0 ? &state.shnFiles[static_cast<std::size_t>(p.client)].file : nullptr;
+            const core::legacy::ShnFile* serverFile =
+                p.server >= 0 ? &state.shnFiles[static_cast<std::size_t>(p.server)].file : nullptr;
+
+            bool schemaEqual = false;
+            bool rowCountEqual = false;
+            std::size_t diffCells = 0;
+            bool diffTruncated = false;
+
+            if (clientFile && serverFile) {
+                rowCountEqual = clientFile->rows.size() == serverFile->rows.size();
+                schemaEqual = clientFile->columns.size() == serverFile->columns.size();
+                if (schemaEqual) {
+                    for (std::size_t ci = 0; ci < clientFile->columns.size(); ++ci) {
+                        if (clientFile->columns[ci].name != serverFile->columns[ci].name ||
+                            clientFile->columns[ci].kind != serverFile->columns[ci].kind) {
+                            schemaEqual = false;
+                            break;
+                        }
+                    }
+                }
+                if (schemaEqual) {
+                    const std::size_t rowLimit = std::min(clientFile->rows.size(), serverFile->rows.size());
+                    constexpr std::size_t kDiffScanLimit = 5000;
+                    std::size_t scanned = 0;
+                    for (std::size_t ri = 0; ri < rowLimit && scanned < kDiffScanLimit; ++ri) {
+                        const auto& cr = clientFile->rows[ri];
+                        const auto& sr = serverFile->rows[ri];
+                        const std::size_t colLimit = std::min(cr.values.size(), sr.values.size());
+                        for (std::size_t ci = 0; ci < colLimit && scanned < kDiffScanLimit; ++ci, ++scanned) {
+                            if (core::legacy::ShnValueToString(cr.values[ci]) !=
+                                core::legacy::ShnValueToString(sr.values[ci]))
+                                ++diffCells;
+                        }
+                    }
+                    diffTruncated = scanned >= kDiffScanLimit;
+                }
+            }
+
+            ImGui::PushID(p.fileName.c_str());
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextUnformatted(p.fileName.c_str());
+
+            auto drawSide = [&](int docIndex, const char* label) {
+                if (docIndex < 0) {
+                    ImGui::TextDisabled("-");
+                    return;
+                }
+                auto& doc = state.shnFiles[static_cast<std::size_t>(docIndex)];
+                const std::string button = std::string(label) + (doc.dirty ? " *" : "");
+                if (UI::SmallButton(button.c_str())) {
+                    SelectShnDocument(state, docIndex);
+                    state.shnSubTab = 0;
+                }
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("%s\n%zu Zeilen · %zu Spalten%s",
+                                      doc.file.path.string().c_str(),
+                                      doc.file.rows.size(), doc.file.columns.size(),
+                                      doc.dirty ? "\nNicht gespeicherte Änderungen" : "");
+            };
+
+            ImGui::TableSetColumnIndex(1); drawSide(p.client, "CLIENT");
+            ImGui::TableSetColumnIndex(2); drawSide(p.server, "SERVER");
+
+            ImGui::TableSetColumnIndex(3);
+            if (!clientFile || !serverFile) {
+                ImGui::TextDisabled("kein Paar");
+            } else if (schemaEqual) {
+                ImGui::TextColored(ImVec4(0.45f,0.85f,0.60f,1.0f), "gleich");
+            } else {
+                ImGui::TextColored(ImVec4(1.0f,0.55f,0.30f,1.0f), "abweichend");
+            }
+
+            ImGui::TableSetColumnIndex(4);
+            if (clientFile && serverFile) {
+                if (rowCountEqual)
+                    ImGui::Text("%zu", clientFile->rows.size());
+                else
+                    ImGui::TextColored(ImVec4(1.0f,0.55f,0.30f,1.0f), "%zu / %zu",
+                                       clientFile->rows.size(), serverFile->rows.size());
+            } else {
+                const auto* only = clientFile ? clientFile : serverFile;
+                ImGui::TextDisabled("%zu", only ? only->rows.size() : 0u);
+            }
+
+            ImGui::TableSetColumnIndex(5);
+            if (!clientFile || !serverFile) {
+                ImGui::TextDisabled("-");
+            } else if (!schemaEqual) {
+                ImGui::TextDisabled("n/a");
+            } else if (diffCells == 0 && rowCountEqual) {
+                ImGui::TextColored(ImVec4(0.45f,0.85f,0.60f,1.0f), "0");
+            } else {
+                ImGui::TextColored(ImVec4(1.0f,0.72f,0.30f,1.0f), "%zu%s",
+                                   diffCells, diffTruncated ? "+" : "");
+                if (diffTruncated && ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Aus Performancegründen wurden maximal 5000 Zellen verglichen.");
+            }
+
+            ImGui::TableSetColumnIndex(6);
+            if (clientFile && serverFile) {
+                if (UI::SmallButton("Client öffnen")) {
+                    SelectShnDocument(state, p.client);
+                    state.shnSubTab = 0;
+                    state.shnHighlightClientServerDiff = true;
+                }
+            } else {
+                ImGui::TextDisabled("prüfen");
+            }
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+
+    if (pairs.empty())
+        ImGui::TextDisabled("Für diese Aufgabe wurden in den geladenen Client-/Server-SHN keine Kandidaten gefunden.");
+}
 // Sucht ein bereits geladenes SHN-Dokument nach Dateiname (ohne Pfad) + Quelle; falls nicht
 // geladen, aber der jeweilige Ordner (shnServerRoot/shnClientRoot) schon bekannt ist, wird
 // dort rekursiv danach gesucht und automatisch geladen - für XP-/Preis-Editor, die feste,
