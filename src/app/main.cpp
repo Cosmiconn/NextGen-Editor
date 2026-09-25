@@ -105,65 +105,88 @@ namespace {
 // Gemeinsame DE/EN-Hilfe; Definition steht weiter unten bei den spezialisierten Editoren.
 static const char* L(const char* de, const char* en);
 
-// Einheitliches UI-Farbschema: Schwarz / Grau / Blau / Weiß.
-// Alle normalen ImGui-Controls verwenden diese Palette; einzelne Bereiche dürfen
-// darüber gezielt nur noch die Blau-Abstufungen aus der Palette verwenden.
+// Verbindliche Design-Tokens aus docs/ui-vision/01_BRAND_AND_THEME.md.
+// UI-Code soll semantisch auf diese Palette zurückgreifen statt lokale Blau-/Grautöne zu erfinden.
+namespace UiTheme {
+const ImVec4 Root          = ImVec4(0.031f, 0.071f, 0.114f, 1.0f); // #08121D
+const ImVec4 Panel         = ImVec4(0.051f, 0.106f, 0.165f, 1.0f); // #0D1B2A
+const ImVec4 PanelAlt      = ImVec4(0.063f, 0.137f, 0.220f, 1.0f); // #102338
+const ImVec4 Input         = ImVec4(0.039f, 0.086f, 0.137f, 1.0f); // #0A1623
+const ImVec4 Border        = ImVec4(0.125f, 0.231f, 0.333f, 1.0f); // #203B55
+const ImVec4 AccentBlue    = ImVec4(0.075f, 0.549f, 1.000f, 1.0f); // #138CFF
+const ImVec4 AccentCyan    = ImVec4(0.125f, 0.867f, 0.949f, 1.0f); // #20DDF2
+const ImVec4 AccentDeep    = ImVec4(0.043f, 0.373f, 0.843f, 1.0f); // #0B5FD7
+const ImVec4 TextPrimary   = ImVec4(0.929f, 0.965f, 1.000f, 1.0f); // #EDF6FF
+const ImVec4 TextSecondary = ImVec4(0.624f, 0.706f, 0.788f, 1.0f); // #9FB4C9
+const ImVec4 Success       = ImVec4(0.153f, 0.788f, 0.471f, 1.0f); // #27C978
+const ImVec4 Warning       = ImVec4(1.000f, 0.702f, 0.239f, 1.0f); // #FFB33D
+const ImVec4 Error         = ImVec4(0.941f, 0.322f, 0.369f, 1.0f); // #F0525E
+const ImVec4 Purple        = ImVec4(0.584f, 0.412f, 1.000f, 1.0f); // #9569FF
+}
+
 void ApplyEditorTheme() {
     ImGuiStyle& style = ImGui::GetStyle();
-    style.WindowRounding = 5.0f;
-    style.ChildRounding = 5.0f;
-    style.FrameRounding = 4.0f;
-    style.PopupRounding = 6.0f;
-    style.GrabRounding = 3.0f;
-    style.ScrollbarRounding = 4.0f;
-    style.TabRounding = 4.0f;
+    style.WindowRounding = 6.0f;
+    style.ChildRounding = 6.0f;
+    style.FrameRounding = 5.0f;
+    style.PopupRounding = 7.0f;
+    style.GrabRounding = 5.0f;
+    style.ScrollbarRounding = 6.0f;
+    style.TabRounding = 5.0f;
     style.WindowBorderSize = 1.0f;
     style.ChildBorderSize = 1.0f;
-    style.FrameBorderSize = 0.0f;
+    style.FrameBorderSize = 1.0f;
     style.TabBorderSize = 0.0f;
-    style.ItemSpacing = ImVec2(8.0f, 6.0f);
-    style.ItemInnerSpacing = ImVec2(6.0f, 4.0f);
-    style.FramePadding = ImVec2(9.0f, 6.0f);
-    style.WindowPadding = ImVec2(10.0f, 9.0f);
-    style.ScrollbarSize = 13.0f;
+    style.ItemSpacing = ImVec2(8.0f, 7.0f);
+    style.ItemInnerSpacing = ImVec2(6.0f, 5.0f);
+    style.FramePadding = ImVec2(9.0f, 7.0f);
+    style.WindowPadding = ImVec2(11.0f, 10.0f);
+    style.ScrollbarSize = 12.0f;
+    style.GrabMinSize = 11.0f;
 
     ImVec4* c = style.Colors;
-    c[ImGuiCol_Text]                 = ImVec4(0.91f, 0.94f, 0.98f, 1.0f);
-    c[ImGuiCol_TextDisabled]         = ImVec4(0.48f, 0.54f, 0.62f, 1.0f);
-    c[ImGuiCol_WindowBg]             = ImVec4(0.025f, 0.035f, 0.050f, 1.0f);
-    c[ImGuiCol_ChildBg]              = ImVec4(0.040f, 0.055f, 0.075f, 1.0f);
-    c[ImGuiCol_PopupBg]              = ImVec4(0.045f, 0.060f, 0.082f, 0.99f);
-    c[ImGuiCol_Border]               = ImVec4(0.12f, 0.18f, 0.25f, 1.0f);
+    c[ImGuiCol_Text]                 = UiTheme::TextPrimary;
+    c[ImGuiCol_TextDisabled]         = UiTheme::TextSecondary;
+    c[ImGuiCol_WindowBg]             = UiTheme::Root;
+    c[ImGuiCol_ChildBg]              = UiTheme::Panel;
+    c[ImGuiCol_PopupBg]              = ImVec4(0.039f, 0.086f, 0.137f, 0.99f);
+    c[ImGuiCol_Border]               = UiTheme::Border;
     c[ImGuiCol_BorderShadow]         = ImVec4(0, 0, 0, 0);
-    c[ImGuiCol_FrameBg]              = ImVec4(0.070f, 0.095f, 0.130f, 1.0f);
-    c[ImGuiCol_FrameBgHovered]       = ImVec4(0.090f, 0.150f, 0.215f, 1.0f);
-    c[ImGuiCol_FrameBgActive]        = ImVec4(0.105f, 0.195f, 0.285f, 1.0f);
-    c[ImGuiCol_TitleBg]              = ImVec4(0.018f, 0.028f, 0.042f, 1.0f);
-    c[ImGuiCol_TitleBgActive]        = ImVec4(0.030f, 0.070f, 0.110f, 1.0f);
-    c[ImGuiCol_MenuBarBg]            = ImVec4(0.026f, 0.038f, 0.055f, 1.0f);
-    c[ImGuiCol_ScrollbarBg]          = ImVec4(0.020f, 0.027f, 0.038f, 1.0f);
-    c[ImGuiCol_ScrollbarGrab]        = ImVec4(0.15f, 0.21f, 0.29f, 1.0f);
-    c[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.21f, 0.32f, 0.43f, 1.0f);
-    c[ImGuiCol_ScrollbarGrabActive]  = ImVec4(0.20f, 0.45f, 0.68f, 1.0f);
-    c[ImGuiCol_CheckMark]            = ImVec4(0.18f, 0.68f, 1.00f, 1.0f);
-    c[ImGuiCol_SliderGrab]           = ImVec4(0.18f, 0.60f, 0.92f, 1.0f);
-    c[ImGuiCol_SliderGrabActive]     = ImVec4(0.25f, 0.76f, 1.00f, 1.0f);
-    c[ImGuiCol_Button]               = ImVec4(0.060f, 0.095f, 0.135f, 1.0f);
-    c[ImGuiCol_ButtonHovered]        = ImVec4(0.080f, 0.190f, 0.300f, 1.0f);
-    c[ImGuiCol_ButtonActive]         = ImVec4(0.070f, 0.280f, 0.455f, 1.0f);
-    c[ImGuiCol_Header]               = ImVec4(0.060f, 0.140f, 0.220f, 1.0f);
-    c[ImGuiCol_HeaderHovered]        = ImVec4(0.080f, 0.220f, 0.350f, 1.0f);
-    c[ImGuiCol_HeaderActive]         = ImVec4(0.075f, 0.300f, 0.490f, 1.0f);
-    c[ImGuiCol_Separator]            = ImVec4(0.12f, 0.18f, 0.25f, 1.0f);
-    c[ImGuiCol_SeparatorHovered]     = ImVec4(0.18f, 0.46f, 0.68f, 1.0f);
-    c[ImGuiCol_SeparatorActive]      = ImVec4(0.22f, 0.62f, 0.90f, 1.0f);
-    c[ImGuiCol_Tab]                  = ImVec4(0.040f, 0.075f, 0.110f, 1.0f);
-    c[ImGuiCol_TabHovered]           = ImVec4(0.075f, 0.200f, 0.320f, 1.0f);
-    c[ImGuiCol_TabActive]            = ImVec4(0.060f, 0.240f, 0.390f, 1.0f);
-    c[ImGuiCol_TabUnfocused]         = ImVec4(0.030f, 0.052f, 0.075f, 1.0f);
-    c[ImGuiCol_TabUnfocusedActive]   = ImVec4(0.050f, 0.140f, 0.220f, 1.0f);
-    c[ImGuiCol_DockingPreview]       = ImVec4(0.10f, 0.55f, 0.90f, 0.70f);
-    c[ImGuiCol_NavHighlight]         = ImVec4(0.15f, 0.62f, 0.98f, 0.85f);
+    c[ImGuiCol_FrameBg]              = UiTheme::Input;
+    c[ImGuiCol_FrameBgHovered]       = ImVec4(0.063f, 0.137f, 0.220f, 1.0f);
+    c[ImGuiCol_FrameBgActive]        = ImVec4(0.055f, 0.190f, 0.310f, 1.0f);
+    c[ImGuiCol_TitleBg]              = ImVec4(0.024f, 0.059f, 0.094f, 1.0f);
+    c[ImGuiCol_TitleBgActive]        = UiTheme::PanelAlt;
+    c[ImGuiCol_MenuBarBg]            = ImVec4(0.027f, 0.075f, 0.118f, 1.0f);
+    c[ImGuiCol_ScrollbarBg]          = UiTheme::Root;
+    c[ImGuiCol_ScrollbarGrab]        = ImVec4(0.125f, 0.231f, 0.333f, 0.90f);
+    c[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.075f, 0.360f, 0.560f, 1.0f);
+    c[ImGuiCol_ScrollbarGrabActive]  = UiTheme::AccentBlue;
+    c[ImGuiCol_CheckMark]            = UiTheme::AccentCyan;
+    c[ImGuiCol_SliderGrab]           = UiTheme::AccentBlue;
+    c[ImGuiCol_SliderGrabActive]     = UiTheme::AccentCyan;
+    c[ImGuiCol_Button]               = UiTheme::PanelAlt;
+    c[ImGuiCol_ButtonHovered]        = ImVec4(0.055f, 0.245f, 0.400f, 1.0f);
+    c[ImGuiCol_ButtonActive]         = UiTheme::AccentDeep;
+    c[ImGuiCol_Header]               = ImVec4(0.047f, 0.220f, 0.365f, 0.78f);
+    c[ImGuiCol_HeaderHovered]        = ImVec4(0.055f, 0.350f, 0.570f, 0.92f);
+    c[ImGuiCol_HeaderActive]         = ImVec4(0.075f, 0.430f, 0.720f, 1.0f);
+    c[ImGuiCol_Separator]            = UiTheme::Border;
+    c[ImGuiCol_SeparatorHovered]     = UiTheme::AccentBlue;
+    c[ImGuiCol_SeparatorActive]      = UiTheme::AccentCyan;
+    c[ImGuiCol_Tab]                  = ImVec4(0.039f, 0.086f, 0.137f, 1.0f);
+    c[ImGuiCol_TabHovered]           = ImVec4(0.055f, 0.300f, 0.480f, 1.0f);
+    c[ImGuiCol_TabActive]            = ImVec4(0.043f, 0.373f, 0.843f, 0.82f);
+    c[ImGuiCol_TabUnfocused]         = UiTheme::Root;
+    c[ImGuiCol_TabUnfocusedActive]   = UiTheme::PanelAlt;
+    c[ImGuiCol_DockingPreview]       = ImVec4(0.075f, 0.549f, 1.000f, 0.68f);
+    c[ImGuiCol_DockingEmptyBg]       = UiTheme::Root;
+    c[ImGuiCol_NavHighlight]         = UiTheme::AccentCyan;
+    c[ImGuiCol_TableHeaderBg]        = UiTheme::PanelAlt;
+    c[ImGuiCol_TableBorderStrong]    = UiTheme::Border;
+    c[ImGuiCol_TableBorderLight]     = ImVec4(0.090f, 0.165f, 0.235f, 1.0f);
+    c[ImGuiCol_TableRowBg]           = ImVec4(0, 0, 0, 0);
+    c[ImGuiCol_TableRowBgAlt]        = ImVec4(0.035f, 0.078f, 0.122f, 0.62f);
 }
 
 #ifdef _WIN32
@@ -3327,8 +3350,8 @@ const char* MobSceneGroupLabel(int speciesCount) {
 bool SceneQuickFilterButton(const char* id,const char* label,bool active) {
     ImGui::PushID(id);
     if(active) {
-        ImGui::PushStyleColor(ImGuiCol_Button,ImVec4(0.16f,0.43f,0.72f,0.95f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered,ImVec4(0.20f,0.52f,0.84f,1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Button,UiTheme::AccentDeep);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered,UiTheme::AccentBlue);
     }
     const bool clicked=UI::SmallButton(label);
     if(active) ImGui::PopStyleColor(2);
@@ -3444,7 +3467,7 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
     LoadWorkspaceSettings(state);
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(11.0f, 7.0f));
 
-    ImGui::TextColored(ImVec4(0.20f, 0.72f, 1.0f, 1.0f), "NG");
+    ImGui::TextColored(UiTheme::AccentCyan, "NG");
     ImGui::SameLine();
     ImGui::TextUnformatted("NextGen-Editor");
     if (breadcrumbTitle && breadcrumbTitle[0]) {
@@ -3467,8 +3490,8 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
             (item.target == AppScreen::ProjectHub &&
              (state.screen == AppScreen::ProjectHub || state.screen == AppScreen::NewProjectConfig)) ||
             state.screen == item.target;
-        ImGui::PushStyleColor(ImGuiCol_Button, active ? IM_COL32(10, 91, 151, 255) : IM_COL32(8, 25, 38, 255));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(20, 78, 118, 255));
+        ImGui::PushStyleColor(ImGuiCol_Button, active ? IM_COL32(11, 95, 215, 235) : IM_COL32(16, 35, 56, 255));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(14, 83, 137, 255));
         if (UI::Button(T(item.key))) state.screen = item.target;
         ImGui::PopStyleColor(2);
         ImGui::SameLine();
@@ -15793,7 +15816,7 @@ int main() {
         int displayW = 0, displayH = 0;
         glfwGetFramebufferSize(window, &displayW, &displayH);
         glViewport(0, 0, displayW, displayH);
-        glClearColor(0.025f, 0.035f, 0.05f, 1.0f);
+        glClearColor(UiTheme::Root.x, UiTheme::Root.y, UiTheme::Root.z, UiTheme::Root.w);
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
