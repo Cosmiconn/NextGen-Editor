@@ -13183,6 +13183,9 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
     std::size_t embeddedTextureCount = 0;
     std::size_t missingTextureCount = 0;
     std::size_t animatedTextureCount = 0;
+    std::size_t flipbookFrameCount = 0;
+    std::size_t missingFlipbookFrameCount = 0;
+    std::set<std::string> missingTextureRefs;
     for (const auto& part : model.parts) {
         triangleCount += part.triangleIndices.size() / 3;
         for (const auto& slot : part.textureSlots) {
@@ -13192,12 +13195,25 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                 ++embeddedTextureCount;
             } else if (!slot.texture.empty()) {
                 ++externalTextureCount;
-                if (!ResolveNifInspectorTexturePathCached(state, root, slot.texture))
+                if (!ResolveNifInspectorTexturePathCached(state, root, slot.texture)) {
                     ++missingTextureCount;
+                    missingTextureRefs.insert(slot.texture);
+                }
             }
         }
         animatedTextureCount += part.textureTransformAnimations.size();
         animatedTextureCount += part.textureFlipAnimations.size();
+        for (const auto& animation : part.textureFlipAnimations) {
+            for (const auto& frame : animation.frames) {
+                ++flipbookFrameCount;
+                if (!frame.embeddedTexture &&
+                    (frame.texture.empty() ||
+                     !ResolveNifInspectorTexturePathCached(state, root, frame.texture))) {
+                    ++missingFlipbookFrameCount;
+                    missingTextureRefs.insert(frame.texture.empty() ? "(leerer Flipbook-Frame)" : frame.texture);
+                }
+            }
+        }
     }
 
     ImGui::Text("Root: %s", model.rootName.empty() ? "(unbenannt)" : model.rootName.c_str());
@@ -13205,11 +13221,27 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                         model.parts.size(), triangleCount, textureCount);
     ImGui::TextDisabled("%zu extern · %zu eingebettet · %zu Textur-Animationen",
                         externalTextureCount, embeddedTextureCount, animatedTextureCount);
-    if (missingTextureCount > 0)
-        ImGui::TextColored(ImVec4(1.0f,0.48f,0.34f,1.0f), "%zu Texturdatei(en) nicht gefunden",
-                           missingTextureCount);
-    else if (externalTextureCount > 0)
-        ImGui::TextColored(ImVec4(0.42f,0.86f,0.62f,1.0f), "Alle externen Texturen gefunden");
+    if (flipbookFrameCount > 0)
+        ImGui::TextDisabled("%zu Flipbook-Frames · %zu nicht auflösbar",
+                            flipbookFrameCount, missingFlipbookFrameCount);
+    const std::size_t totalMissingTextureRefs = missingTextureCount + missingFlipbookFrameCount;
+    if (totalMissingTextureRefs > 0) {
+        ImGui::TextColored(ImVec4(1.0f,0.48f,0.34f,1.0f), "%zu Textur-Referenz(en) nicht gefunden",
+                           totalMissingTextureRefs);
+        ImGui::SameLine();
+        if (UI::SmallButton("Fehlende kopieren##nifInspector")) {
+            std::string report;
+            for (const auto& ref : missingTextureRefs) {
+                if (!report.empty()) report += "\n";
+                report += ref;
+            }
+            ImGui::SetClipboardText(report.c_str());
+            state.statusMessage = std::to_string(missingTextureRefs.size()) +
+                                  " fehlende NIF-Texturpfade kopiert.";
+        }
+    } else if (externalTextureCount > 0 || flipbookFrameCount > 0) {
+        ImGui::TextColored(ImVec4(0.42f,0.86f,0.62f,1.0f), "Alle externen Textur-Referenzen gefunden");
+    }
     ImGui::TextDisabled("%zu Nodes · %u dekodierte eingebettete Texturen",
                         model.nodes.size(), model.decodedEmbeddedTextures);
     if (model.recovered || model.partial) {
@@ -13242,6 +13274,15 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
             if (!slot.embeddedTexture && !slot.texture.empty() &&
                 !ResolveNifInspectorTexturePathCached(state, root, slot.texture))
                 partHasMissingTexture = true;
+        }
+        for (const auto& animation : part.textureFlipAnimations) {
+            for (const auto& frame : animation.frames) {
+                if (!frame.texture.empty()) partSearch += " " + LowerAscii(frame.texture);
+                if (!frame.embeddedTexture &&
+                    (frame.texture.empty() ||
+                     !ResolveNifInspectorTexturePathCached(state, root, frame.texture)))
+                    partHasMissingTexture = true;
+            }
         }
         if (!inspectorNeedle.empty() && partSearch.find(inspectorNeedle) == std::string::npos)
             continue;
@@ -13338,6 +13379,7 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
             if (!part.textureTransformAnimations.empty() || !part.textureFlipAnimations.empty()) {
                 ImGui::SeparatorText("Textur-Animationen");
                 for (std::size_t ai = 0; ai < part.textureTransformAnimations.size(); ++ai) {
+                    if (state.nifInspectorMissingOnly) continue;
                     const auto& animation = part.textureTransformAnimations[ai];
                     ImGui::PushID(static_cast<int>(ai));
                     ImGui::BulletText("%s · %s",
@@ -13368,6 +13410,10 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                                    !ResolveNifInspectorTexturePathCached(state, root, frame.texture)) {
                             ++missingFrames;
                         }
+                    }
+                    if (state.nifInspectorMissingOnly && missingFrames == 0) {
+                        ImGui::PopID();
+                        continue;
                     }
 
                     ImGui::BulletText("%s · Flipbook · %zu Frames",
