@@ -2,13 +2,15 @@
 
 ## Verbindliche Quelle
 
-Für den UI-Retrofit ist das vom Nutzer gelieferte Paket **`NextGen_Icons_Complete_PNG_SVG.zip`** die verbindliche Artwork-Quelle.
+Für den UI-Retrofit gelten zwei komplementäre, technisch verifizierte Quellen:
 
+- **Vector-Master:** `NextGen_Icons_True_Vector_Set_With_Sizes.zip/svg/` – 54 echte pfadbasierte SVGs, ohne eingebettete Rasterbilder.
+- **Raster-/Appearance-Referenz:** `NextGen_Icons_Complete_PNG_SVG.zip/png/` – hochwertige 256/1024-PNGs.
+- **Runtime Small Sizes:** `NextGen_Icons_True_Vector_Set_With_Sizes.zip/icons_png/{16,24,32,48,64,128}/`.
+- Die „SVGs“ des Complete-Pakets sind eingebettete PNG-Container und **keine** Vector-Master.
 - vollständiges Inventar/Mapping: [ICON_INVENTORY.md](ICON_INVENTORY.md)
-- bestehende Lucide-SVGs und native ImDrawList-Symbole sind Legacy-Implementierung und werden schrittweise ersetzt
-- kein neues Ersatzicon zeichnen, solange ein passendes Paket-Icon existiert
-- die verbesserten SVG-Dateien aus diesem neuen Paket sind die bevorzugten Vektor-Master; die PNGs dienen als Rasterreferenz und für Small-Size-QA
-- das frühere Paket `NextGen_Icons_True_Vector_Set_With_Sizes.zip` ist superseded und darf nicht mehr als Masterquelle verwendet werden
+- bestehende Lucide-SVGs und native ImDrawList-Symbole sind nur Migrationsbestand bzw. Fallback für tatsächlich fehlende Paketicons.
+- kein neues Ersatzicon zeichnen, solange ein passendes Paketicon existiert.
 
 ## Grundstil
 
