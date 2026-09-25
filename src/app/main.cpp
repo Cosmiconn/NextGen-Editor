@@ -3244,9 +3244,15 @@ SceneSemanticIcon ResolveNpcSceneIcon(const std::string& role, const std::string
 }
 
 SceneSemanticIcon ResolveMobZoneSceneIcon(int speciesCount) {
-    if (speciesCount <= 0) return {DrawIconSpawn,IM_COL32(125,135,150,220),"Leere Spawn-Zone"};
-    if (speciesCount == 1) return {DrawIconSpawn,IM_COL32(95,195,255,245),"Spawn-Zone · eine Monsterart"};
-    return {DrawIconPack,IM_COL32(255,165,90,245),"Gemischte Mob-Gruppe · mehrere Monsterarten"};
+    if (speciesCount <= 0)
+        return {DrawIconSpawn,IM_COL32(125,135,150,220),
+                L("Leere Spawn-Zone","Empty spawn zone")};
+    if (speciesCount == 1)
+        return {DrawIconSpawn,IM_COL32(95,195,255,245),
+                L("Spawn-Zone · eine Monsterart","Spawn zone · one monster species")};
+    return {DrawIconPack,IM_COL32(255,165,90,245),
+            L("Gemischte Mob-Gruppe · mehrere Monsterarten",
+              "Mixed mob group · multiple monster species")};
 }
 
 
@@ -3272,25 +3278,25 @@ int NpcSceneGroupRank(const std::string& role, const std::string& arg) {
 }
 
 std::string NpcSceneGroupLabel(const std::string& role, const std::string& arg) {
-    if (role == "QuestNpc") return arg == "GBDice" ? "Quests / Würfel" : "Quests";
+    if (role == "QuestNpc") return arg == "GBDice" ? L("Quests / Würfel","Quests / Dice") : "Quests";
     if (role == "Merchant") {
-        if (arg == "Weapon" || arg == "WeaponTitle") return "Handel / Waffen";
-        if (arg == "Skill") return "Handel / Skills";
-        if (arg == "SoulStone") return "Handel / SoulStone";
-        if (arg == "Guild") return "Handel / Gilde";
-        return "Handel / Händler";
+        if (arg == "Weapon" || arg == "WeaponTitle") return L("Handel / Waffen","Trade / Weapons");
+        if (arg == "Skill") return L("Handel / Skills","Trade / Skills");
+        if (arg == "SoulStone") return L("Handel / SoulStone","Trade / SoulStone");
+        if (arg == "Guild") return L("Handel / Gilde","Trade / Guild");
+        return L("Handel / Händler","Trade / Merchant");
     }
-    if (role == "StoreManager") return "Handel / Lager";
+    if (role == "StoreManager") return L("Handel / Lager","Trade / Storage");
     if (role == "NPCMenu") {
-        if (arg == "Guild") return "Service / Gilde";
-        if (arg == "ExchangeCoin") return "Service / Münztausch";
-        if (arg == "RandomOption") return "Service / Random Option";
-        return "Service / Menü";
+        if (arg == "Guild") return L("Service / Gilde","Service / Guild");
+        if (arg == "ExchangeCoin") return L("Service / Münztausch","Service / Coin exchange");
+        if (arg == "RandomOption") return L("Service / Random Option","Service / Random Option");
+        return L("Service / Menü","Service / Menu");
     }
-    if (role == "Guard") return "Service / Wache";
+    if (role == "Guard") return L("Service / Wache","Service / Guard");
     if (role == "Gate") return "Gates";
-    if (!role.empty() && role != "-") return "Sonstige / " + role;
-    return "Sonstige";
+    if (!role.empty() && role != "-") return std::string(L("Sonstige / ","Other / ")) + role;
+    return L("Sonstige","Other");
 }
 
 int MobSceneGroupRank(int speciesCount) {
@@ -3300,9 +3306,9 @@ int MobSceneGroupRank(int speciesCount) {
 }
 
 const char* MobSceneGroupLabel(int speciesCount) {
-    if (speciesCount <= 0) return "Leere Zonen";
-    if (speciesCount == 1) return "Eine Monsterart";
-    return "Gemischte Gruppen";
+    if (speciesCount <= 0) return L("Leere Zonen","Empty zones");
+    if (speciesCount == 1) return L("Eine Monsterart","One monster species");
+    return L("Gemischte Gruppen","Mixed groups");
 }
 
 bool SceneQuickFilterButton(const char* id,const char* label,bool active) {
@@ -12379,47 +12385,47 @@ void DrawWorkspaceTabBar(EditorState& state) {
 
 
 void DrawSceneOutlinerPanel(EditorState& state) {
-    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "SZENE");
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), L("SZENE","SCENE"));
     ImGui::SameLine();
 
-    const char* context = "Objekte";
+    const char* context = L("Objekte","Objects");
     if (state.editMode == EditMode::Npcs) context = "NPCs";
-    else if (state.editMode == EditMode::Mobs) context = "Mob-Zonen";
-    else if (state.editMode == EditMode::Portals) context = "Portale";
+    else if (state.editMode == EditMode::Mobs) context = L("Mob-Zonen","Mob zones");
+    else if (state.editMode == EditMode::Portals) context = L("Portale","Portals");
     ImGui::TextDisabled("%s", context);
     ImGui::Separator();
 
-    UI::InputTextWithHint("##objectOutlinerFilter", "Szene filtern...",
+    UI::InputTextWithHint("##objectOutlinerFilter", L("Szene filtern...","Filter scene..."),
                           state.objectOutlinerFilter, sizeof(state.objectOutlinerFilter));
     const std::string needle = LowerAscii(state.objectOutlinerFilter);
 
     if (state.editMode == EditMode::Npcs) {
         EnsureNpcTextLoaded(state);
         if (!state.npcTextLoaded || state.legacySaveStem[0] == '\0') {
-            ImGui::TextDisabled("Keine NPC-Daten für die aktuelle Karte verfügbar.");
+            ImGui::TextDisabled("%s",L("Keine NPC-Daten für die aktuelle Karte verfügbar.","No NPC data is available for the current map."));
             return;
         }
         auto* table = state.npcTextFile.FindTable("ShineNPC");
-        if (!table) { ImGui::TextDisabled("ShineNPC-Tabelle fehlt."); return; }
+        if (!table) { ImGui::TextDisabled("%s",L("ShineNPC-Tabelle fehlt.","ShineNPC table is missing.")); return; }
         const auto indices = NpcRecordsForCurrentMap(state);
         ImGui::TextDisabled("%zu NPCs", indices.size());
         ImGui::SameLine();
         if (DrawTinyIconButton("npcRouteOverlayVisible", DrawIconRoute, state.showRoamRoutes,
-                               state.showRoamRoutes ? "Routen-Overlay ausblenden" : "Routen-Overlay einblenden")) {
+                               state.showRoamRoutes ? L("Routen-Overlay ausblenden","Hide route overlay") : L("Routen-Overlay einblenden","Show route overlay"))) {
             state.showRoamRoutes = !state.showRoamRoutes;
             state.roamOverlayKey.clear();
         }
         ImGui::SameLine();
         ImGui::BeginDisabled(!state.showRoamRoutes);
-        if (UI::Checkbox("Alle Routen##npcRouteOverlayAll", &state.showAllRoamRoutes))
+        if (UI::Checkbox(L("Alle Routen##npcRouteOverlayAll","All routes##npcRouteOverlayAll"), &state.showAllRoamRoutes))
             state.roamOverlayKey.clear();
         ImGui::EndDisabled();
 
-        if(SceneQuickFilterButton("npcAll","Alle",state.sceneNpcQuickFilter==0)) state.sceneNpcQuickFilter=0;
+        if(SceneQuickFilterButton("npcAll",L("Alle","All"),state.sceneNpcQuickFilter==0)) state.sceneNpcQuickFilter=0;
         ImGui::SameLine();
         if(SceneQuickFilterButton("npcQuest","Quest",state.sceneNpcQuickFilter==1)) state.sceneNpcQuickFilter=1;
         ImGui::SameLine();
-        if(SceneQuickFilterButton("npcTrade","Handel",state.sceneNpcQuickFilter==2)) state.sceneNpcQuickFilter=2;
+        if(SceneQuickFilterButton("npcTrade",L("Handel","Trade"),state.sceneNpcQuickFilter==2)) state.sceneNpcQuickFilter=2;
         ImGui::SameLine();
         if(SceneQuickFilterButton("npcService","Service",state.sceneNpcQuickFilter==3)) state.sceneNpcQuickFilter=3;
         ImGui::SameLine();
@@ -12484,18 +12490,18 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                         state.selectedNpcRecordIdx = static_cast<int>(entry.idx);
                         ImGui::TextDisabled("%s",entry.semantic.tooltip.c_str());
                         ImGui::Separator();
-                        if (UI::MenuItem("Im 3D-Viewport fokussieren")) FocusCurrentSceneSelection(state);
-                        if (UI::MenuItem("Dialog bearbeiten")) OpenNpcDialogEditor(state,rec.values[0]);
-                        if (UI::MenuItem("Lua / AI bearbeiten")) OpenAiScriptEditor(state,rec.values[0]);
-                        if (UI::MenuItem("Route bearbeiten")) OpenPatrolRouteEditor(state,rec.values[0]);
-                        if (entry.role == "Merchant" && UI::MenuItem("Shop / Inventar bearbeiten")) {
+                        if (UI::MenuItem(L("Im 3D-Viewport fokussieren","Focus in 3D viewport"))) FocusCurrentSceneSelection(state);
+                        if (UI::MenuItem(L("Dialog bearbeiten","Edit dialog"))) OpenNpcDialogEditor(state,rec.values[0]);
+                        if (UI::MenuItem(L("Lua / AI bearbeiten","Edit Lua / AI"))) OpenAiScriptEditor(state,rec.values[0]);
+                        if (UI::MenuItem(L("Route bearbeiten","Edit route"))) OpenPatrolRouteEditor(state,rec.values[0]);
+                        if (entry.role == "Merchant" && UI::MenuItem(L("Shop / Inventar bearbeiten","Edit shop / inventory"))) {
                             EnsureShopTextLoaded(state,rec.values[0]);
                             state.shopEditorOpen=true;
                         }
                         if (entry.role == "Gate") {
                             for (const auto& marker : CollectPortalMarkers(state)) {
                                 if (marker.kind != kPortalKindGateLink || marker.idx != entry.idx) continue;
-                                if (UI::MenuItem("Gate-Ziel öffnen")) NavigateToPortalTarget(state,marker);
+                                if (UI::MenuItem(L("Gate-Ziel öffnen","Open gate target"))) NavigateToPortalTarget(state,marker);
                                 break;
                             }
                         }
@@ -12509,21 +12515,21 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                         if (hasSelectedRoute) {
                             ImGui::SameLine();
                             DrawInlineIcon("route", DrawIconRoute, IM_COL32(90,220,255,245),
-                                           "MobRoam-Route vorhanden");
+                                           L("MobRoam-Route vorhanden","MobRoam route available"));
                         }
 
                         ImGui::Indent(24.0f);
-                        if (DrawTinyIconButton("npcInlineDialog",DrawIconDialog,false,"Dialog bearbeiten"))
+                        if (DrawTinyIconButton("npcInlineDialog",DrawIconDialog,false,L("Dialog bearbeiten","Edit dialog")))
                             OpenNpcDialogEditor(state,rec.values[0]);
                         ImGui::SameLine(0,3);
-                        if (DrawTinyIconButton("npcInlineAi",DrawIconCode,false,"Lua / AI bearbeiten"))
+                        if (DrawTinyIconButton("npcInlineAi",DrawIconCode,false,L("Lua / AI bearbeiten","Edit Lua / AI")))
                             OpenAiScriptEditor(state,rec.values[0]);
                         ImGui::SameLine(0,3);
-                        if (DrawTinyIconButton("npcInlineRoute",DrawIconRoute,false,"Route bearbeiten"))
+                        if (DrawTinyIconButton("npcInlineRoute",DrawIconRoute,false,L("Route bearbeiten","Edit route")))
                             OpenPatrolRouteEditor(state,rec.values[0]);
                         if (entry.role == "Merchant") {
                             ImGui::SameLine(0,3);
-                            if (DrawTinyIconButton("npcInlineShop",DrawIconShop,false,"Shop / Inventar bearbeiten")) {
+                            if (DrawTinyIconButton("npcInlineShop",DrawIconShop,false,L("Shop / Inventar bearbeiten","Edit shop / inventory"))) {
                                 EnsureShopTextLoaded(state,rec.values[0]);
                                 state.shopEditorOpen=true;
                             }
@@ -12532,7 +12538,7 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                             for (const auto& marker : CollectPortalMarkers(state)) {
                                 if (marker.kind != kPortalKindGateLink || marker.idx != entry.idx) continue;
                                 ImGui::SameLine(0,3);
-                                if (DrawTinyIconButton("npcInlineGate",DrawIconPortal,false,"Gate-Ziel öffnen"))
+                                if (DrawTinyIconButton("npcInlineGate",DrawIconPortal,false,L("Gate-Ziel öffnen","Open gate target")))
                                     NavigateToPortalTarget(state,marker);
                                 break;
                             }
@@ -12545,7 +12551,7 @@ void DrawSceneOutlinerPanel(EditorState& state) {
             ImGui::PopID();
             first = last;
         }
-        if (npcEntries.empty()) ImGui::TextDisabled("Keine passenden NPCs.");
+        if (npcEntries.empty()) ImGui::TextDisabled("%s",L("Keine passenden NPCs.","No matching NPCs."));
         ImGui::EndChild();
         return;
     }
@@ -12553,12 +12559,12 @@ void DrawSceneOutlinerPanel(EditorState& state) {
     if (state.editMode == EditMode::Mobs) {
         EnsureMobRegenLoaded(state);
         if (!state.mobRegenTextLoaded || state.legacySaveStem[0] == '\0') {
-            ImGui::TextDisabled("Keine MobRegen-Daten für die aktuelle Karte verfügbar.");
+            ImGui::TextDisabled("%s",L("Keine MobRegen-Daten für die aktuelle Karte verfügbar.","No MobRegen data is available for the current map."));
             return;
         }
         auto* zones = state.mobRegenTextFile.FindTable("MobRegenGroup");
         auto* spawns = state.mobRegenTextFile.FindTable("MobRegen");
-        if (!zones) { ImGui::TextDisabled("MobRegenGroup-Tabelle fehlt."); return; }
+        if (!zones) { ImGui::TextDisabled("%s",L("MobRegenGroup-Tabelle fehlt.","MobRegenGroup table is missing.")); return; }
         std::unordered_map<std::string,int> groupCounts;
         std::unordered_map<std::string,int> totalMobCounts;
         if (spawns) {
@@ -12569,26 +12575,26 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                     totalMobCounts[rec.values[0]] += std::max(0,std::atoi(rec.values[2].c_str()));
             }
         }
-        ImGui::TextDisabled("%zu Spawn-Zonen", zones->records.size());
+        ImGui::TextDisabled(L("%zu Spawn-Zonen","%zu spawn zones"), zones->records.size());
         ImGui::SameLine();
         if (DrawTinyIconButton("mobRouteOverlayVisible", DrawIconRoute, state.showRoamRoutes,
-                               state.showRoamRoutes ? "Routen-Overlay ausblenden" : "Routen-Overlay einblenden")) {
+                               state.showRoamRoutes ? L("Routen-Overlay ausblenden","Hide route overlay") : L("Routen-Overlay einblenden","Show route overlay"))) {
             state.showRoamRoutes = !state.showRoamRoutes;
             state.roamOverlayKey.clear();
         }
         ImGui::SameLine();
         ImGui::BeginDisabled(!state.showRoamRoutes);
-        if (UI::Checkbox("Alle Routen##mobRouteOverlayAll", &state.showAllRoamRoutes))
+        if (UI::Checkbox(L("Alle Routen##mobRouteOverlayAll","All routes##mobRouteOverlayAll"), &state.showAllRoamRoutes))
             state.roamOverlayKey.clear();
         ImGui::EndDisabled();
 
-        if(SceneQuickFilterButton("mobAll","Alle",state.sceneMobQuickFilter==0)) state.sceneMobQuickFilter=0;
+        if(SceneQuickFilterButton("mobAll",L("Alle","All"),state.sceneMobQuickFilter==0)) state.sceneMobQuickFilter=0;
         ImGui::SameLine();
-        if(SceneQuickFilterButton("mobEmpty","Leer",state.sceneMobQuickFilter==1)) state.sceneMobQuickFilter=1;
+        if(SceneQuickFilterButton("mobEmpty",L("Leer","Empty"),state.sceneMobQuickFilter==1)) state.sceneMobQuickFilter=1;
         ImGui::SameLine();
-        if(SceneQuickFilterButton("mobSingle","1 Art",state.sceneMobQuickFilter==2)) state.sceneMobQuickFilter=2;
+        if(SceneQuickFilterButton("mobSingle",L("1 Art","1 species"),state.sceneMobQuickFilter==2)) state.sceneMobQuickFilter=2;
         ImGui::SameLine();
-        if(SceneQuickFilterButton("mobMixed","Gemischt",state.sceneMobQuickFilter==3)) state.sceneMobQuickFilter=3;
+        if(SceneQuickFilterButton("mobMixed",L("Gemischt","Mixed"),state.sceneMobQuickFilter==3)) state.sceneMobQuickFilter=3;
 
         struct MobSceneEntry {
             std::size_t idx = 0;
@@ -12612,7 +12618,7 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                                       (state.sceneMobQuickFilter==3 && groups>1);
             if(!groupMatches) continue;
             const std::string label = rec.values[0] + "  ·  " + std::to_string(groups) +
-                                      (groups == 1 ? " Art" : " Arten") + " · " +
+                                      (groups == 1 ? L(" Art"," species") : L(" Arten"," species")) + " · " +
                                       std::to_string(totalMobs) + (totalMobs == 1 ? " Mob" : " Mobs");
             if (!needle.empty() && LowerAscii(label).find(needle) == std::string::npos) continue;
             mobEntries.push_back({i,groups,totalMobs,MobSceneGroupRank(groups),MobSceneGroupLabel(groups),
@@ -12647,22 +12653,22 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                     if (ImGui::BeginPopupContextItem("##mobSceneContext")) {
                         state.selectedMobZoneIdx = static_cast<int>(entry.idx);
                         ImGui::TextDisabled("%s",entry.semantic.tooltip.c_str());
-                        ImGui::TextDisabled("%d Arten · %d Mobs",entry.speciesCount,entry.totalMobs);
+                        ImGui::TextDisabled(L("%d Arten · %d Mobs","%d species · %d mobs"),entry.speciesCount,entry.totalMobs);
                         ImGui::Separator();
-                        if (UI::MenuItem("Im 3D-Viewport fokussieren")) FocusCurrentSceneSelection(state);
-                        if (spawns && ImGui::BeginMenu("Monster in dieser Zone")) {
+                        if (UI::MenuItem(L("Im 3D-Viewport fokussieren","Focus in 3D viewport"))) FocusCurrentSceneSelection(state);
+                        if (spawns && ImGui::BeginMenu(L("Monster in dieser Zone","Monsters in this zone"))) {
                             bool any=false;
                             for (const auto& spawn : spawns->records) {
                                 if (spawn.values.size() < 2 || spawn.values[0] != rec.values[0]) continue;
                                 any=true;
                                 const std::string mobName=spawn.values[1];
                                 if (ImGui::BeginMenu(mobName.c_str())) {
-                                    if (UI::MenuItem("Lua / AI bearbeiten")) OpenAiScriptEditor(state,mobName);
-                                    if (UI::MenuItem("MobRoam-Route bearbeiten")) OpenPatrolRouteEditor(state,mobName);
+                                    if (UI::MenuItem(L("Lua / AI bearbeiten","Edit Lua / AI"))) OpenAiScriptEditor(state,mobName);
+                                    if (UI::MenuItem(L("MobRoam-Route bearbeiten","Edit MobRoam route"))) OpenPatrolRouteEditor(state,mobName);
                                     ImGui::EndMenu();
                                 }
                             }
-                            if (!any) ImGui::TextDisabled("Keine Monster");
+                            if (!any) ImGui::TextDisabled("%s",L("Keine Monster","No monsters"));
                             ImGui::EndMenu();
                         }
                         ImGui::EndPopup();
@@ -12683,7 +12689,7 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                         if (hasSelectedRoute) {
                             ImGui::SameLine();
                             DrawInlineIcon("route", DrawIconRoute, IM_COL32(90,220,255,245),
-                                           "Mindestens eine MobRoam-Route vorhanden");
+                                           L("Mindestens eine MobRoam-Route vorhanden","At least one MobRoam route is available"));
                         }
 
                         if (spawns) {
@@ -12692,15 +12698,15 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                                 const auto& spawn=spawns->records[si];
                                 if (spawn.values.size()<2 || spawn.values[0]!=rec.values[0]) continue;
                                 ImGui::PushID(static_cast<int>(si));
-                                DrawInlineIcon("mobEntry",DrawIconPerson,IM_COL32(180,195,215,235),"MobRegen-Eintrag",ImVec2(18,18));
+                                DrawInlineIcon("mobEntry",DrawIconPerson,IM_COL32(180,195,215,235),L("MobRegen-Eintrag","MobRegen entry"),ImVec2(18,18));
                                 ImGui::SameLine(0,3);
                                 const int amount=spawn.values.size()>=3?std::max(0,std::atoi(spawn.values[2].c_str())):0;
                                 ImGui::Text("%s  x%d",spawn.values[1].c_str(),amount);
                                 ImGui::SameLine();
-                                if (DrawTinyIconButton("mobEntryAi",DrawIconCode,false,"Lua / AI bearbeiten",ImVec2(19,19)))
+                                if (DrawTinyIconButton("mobEntryAi",DrawIconCode,false,L("Lua / AI bearbeiten","Edit Lua / AI"),ImVec2(19,19)))
                                     OpenAiScriptEditor(state,spawn.values[1]);
                                 ImGui::SameLine(0,2);
-                                if (DrawTinyIconButton("mobEntryRoute",DrawIconRoute,false,"MobRoam-Route bearbeiten",ImVec2(19,19)))
+                                if (DrawTinyIconButton("mobEntryRoute",DrawIconRoute,false,L("MobRoam-Route bearbeiten","Edit MobRoam route"),ImVec2(19,19)))
                                     OpenPatrolRouteEditor(state,spawn.values[1]);
                                 ImGui::PopID();
                             }
@@ -12713,7 +12719,7 @@ void DrawSceneOutlinerPanel(EditorState& state) {
             ImGui::PopID();
             first = last;
         }
-        if (mobEntries.empty()) ImGui::TextDisabled("Keine passenden Spawn-Zonen.");
+        if (mobEntries.empty()) ImGui::TextDisabled("%s",L("Keine passenden Spawn-Zonen.","No matching spawn zones."));
         ImGui::EndChild();
         return;
     }
@@ -12723,9 +12729,9 @@ void DrawSceneOutlinerPanel(EditorState& state) {
         const auto markers = CollectPortalMarkers(state);
         const std::size_t outboundCount = static_cast<std::size_t>(std::count_if(
             markers.begin(),markers.end(),[](const PortalMarker& m){ return m.kind==kPortalKindGateLink; }));
-        ImGui::TextDisabled("%zu Marker · %zu ausgehend", markers.size(), outboundCount);
+        ImGui::TextDisabled(L("%zu Marker · %zu ausgehend","%zu markers · %zu outbound"), markers.size(), outboundCount);
 
-        if(SceneQuickFilterButton("portalAll","Alle",state.scenePortalQuickFilter==0)) state.scenePortalQuickFilter=0;
+        if(SceneQuickFilterButton("portalAll",L("Alle","All"),state.scenePortalQuickFilter==0)) state.scenePortalQuickFilter=0;
         ImGui::SameLine();
         if(SceneQuickFilterButton("portalGates","Gates",state.scenePortalQuickFilter==1)) state.scenePortalQuickFilter=1;
         ImGui::SameLine();
@@ -12755,7 +12761,7 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                                        : ("Gate · " + m.label);
             if (!needle.empty() && LowerAscii(label).find(needle) == std::string::npos) continue;
             const int groupRank = m.kind == kPortalKindGateLink ? 0 : town ? 1 : 2;
-            const char* group = m.kind == kPortalKindGateLink ? "Ausgehende Gates"
+            const char* group = m.kind == kPortalKindGateLink ? L("Ausgehende Gates","Outbound gates")
                               : town ? "TownPortal"
                                      : "RecallCoord";
             portalEntries.push_back({i,groupRank,group,label});
@@ -12784,7 +12790,7 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                                    town ? IM_COL32(95,195,255,245)
                                         : recall ? IM_COL32(190,125,255,245)
                                                  : IM_COL32(100,225,160,245),
-                                   town ? "TownPortal" : recall ? "RecallCoord / Schriftrolle" : "Ausgehender Gate-Link");
+                                   town ? "TownPortal" : recall ? L("RecallCoord / Schriftrolle","RecallCoord / scroll") : L("Ausgehender Gate-Link","Outbound gate link"));
                     ImGui::SameLine(0,4);
                     if (UI::Selectable((entry.label + "##portalScene").c_str(), selected)) {
                         state.selectedPortalKind = m.kind;
@@ -12795,10 +12801,10 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                     if (ImGui::BeginPopupContextItem("##portalSceneContext")) {
                         state.selectedPortalKind = m.kind;
                         state.selectedPortalIdx = static_cast<int>(m.idx);
-                        if (UI::MenuItem("Im 3D-Viewport fokussieren")) FocusCurrentSceneSelection(state);
+                        if (UI::MenuItem(L("Im 3D-Viewport fokussieren","Focus in 3D viewport"))) FocusCurrentSceneSelection(state);
                         if (m.kind == kPortalKindGateLink) {
-                            if (UI::MenuItem("Zielkarte öffnen")) NavigateToPortalTarget(state,m);
-                        } else if (UI::MenuItem("Position per 2D-Klick setzen")) {
+                            if (UI::MenuItem(L("Zielkarte öffnen","Open target map"))) NavigateToPortalTarget(state,m);
+                        } else if (UI::MenuItem(L("Position per 2D-Klick setzen","Set position by 2D click"))) {
                             state.portalPickMode=true;
                         }
                         ImGui::EndPopup();
@@ -12807,14 +12813,14 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                         ImGui::Indent(24.0f);
                         if (m.kind == kPortalKindGateLink) {
                             const std::string target=PortalTargetMapName(m);
-                            ImGui::TextDisabled("→ %s  (%.0f, %.0f)",target.empty()?"(kein Ziel)":target.c_str(),m.targetX,m.targetY);
+                            ImGui::TextDisabled("→ %s  (%.0f, %.0f)",target.empty()?L("(kein Ziel)","(no target)"):target.c_str(),m.targetX,m.targetY);
                             ImGui::SameLine();
-                            if (DrawTinyIconButton("portalInlineOpen",DrawIconPortal,false,"Zielkarte öffnen",ImVec2(19,19)))
+                            if (DrawTinyIconButton("portalInlineOpen",DrawIconPortal,false,L("Zielkarte öffnen","Open target map"),ImVec2(19,19)))
                                 NavigateToPortalTarget(state,m);
                         } else {
                             ImGui::TextDisabled("Position: %.0f / %.0f",m.x,m.y);
                             ImGui::SameLine();
-                            if (DrawTinyIconButton("portalInlinePick",DrawIconMove,state.portalPickMode,"Position per 2D-Klick setzen",ImVec2(19,19)))
+                            if (DrawTinyIconButton("portalInlinePick",DrawIconMove,state.portalPickMode,L("Position per 2D-Klick setzen","Set position by 2D click"),ImVec2(19,19)))
                                 state.portalPickMode=!state.portalPickMode;
                         }
                         ImGui::Unindent(24.0f);
@@ -12825,7 +12831,7 @@ void DrawSceneOutlinerPanel(EditorState& state) {
             ImGui::PopID();
             first = last;
         }
-        if (portalEntries.empty()) ImGui::TextDisabled("Keine passenden Portal-Marker.");
+        if (portalEntries.empty()) ImGui::TextDisabled("%s",L("Keine passenden Portal-Marker.","No matching portal markers."));
         ImGui::EndChild();
         return;
     }
