@@ -3429,13 +3429,16 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Befehlspalette öffnen");
 
     const std::size_t dirtyShn = DirtyShnDocumentCount(state);
-    if (state.mapDirty || dirtyShn > 0) {
+    if (state.mapDirty || dirtyShn > 0 || state.aiScriptDirty || state.dropTableDirty) {
         ImGui::SameLine();
         ImGui::TextColored(ImVec4(1.0f,0.68f,0.25f,1.0f), "●");
         if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("Ungespeichert%s%s",
-                state.mapDirty ? "\n• Karte geändert" : "",
-                dirtyShn > 0 ? ("\n• " + std::to_string(dirtyShn) + " SHN-Datei(en) geändert").c_str() : "");
+            std::string dirtyText = "Ungespeichert";
+            if (state.mapDirty) dirtyText += "\n• Karte geändert";
+            if (dirtyShn > 0) dirtyText += "\n• " + std::to_string(dirtyShn) + " SHN-Datei(en) geändert";
+            if (state.aiScriptDirty) dirtyText += "\n• AI-Skript geändert";
+            if (state.dropTableDirty) dirtyText += "\n• ItemDropTable geändert";
+            ImGui::SetTooltip("%s", dirtyText.c_str());
         }
     }
 
@@ -9643,6 +9646,8 @@ void DrawCommandPalette(EditorState& state) {
     add("Spieldaten: Drop Table Browser", "", [&] { state.shnSubTab = 10; state.screen = AppScreen::ShnEditor; });
     if (state.aiScriptDirty && !state.aiScriptEditorPath.empty())
         add("AI: Aktuelles Skript speichern", ShortcutLabel(state.shortcutSave), [&] { SaveAiScript(state); });
+    if (state.dropTableDirty)
+        add("Drops: ItemDropTable speichern", ShortcutLabel(state.shortcutSave), [&] { SaveDropTable(state); });
     add("Animationen: KFM", "", [&] { state.screen = AppScreen::KfmBrowser; });
     add("Hilfe: Handbuch", "F1", [&] { state.manualOpen = true; });
     add("Einstellungen: Shortcuts & Workspace", "", [&] { state.settingsOpen = true; });
