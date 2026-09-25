@@ -803,6 +803,12 @@ struct EditorState {
     bool nifListScanned = false;
     std::string assetPickerFilter;
     char workspaceAssetFilter[128] = "";
+    // Read-only NIF-/Material-Inspector im Asset Browser. Der Parser ist verifiziert,
+    // schreibende NIF-Aenderungen bleiben bewusst deaktiviert, bis ein verlustfreier Writer
+    // fuer die betroffenen Blocktypen belegt ist.
+    std::string nifInspectorAsset;
+    std::optional<core::NifModel> nifInspectorModel;
+    std::string nifInspectorError;
     char objectOutlinerFilter[128] = "";
     int sceneNpcQuickFilter = 0;    // 0 alle, 1 Quest, 2 Handel, 3 Service, 4 Gates
     int sceneMobQuickFilter = 0;    // 0 alle, 1 leer, 2 eine Art, 3 gemischt
@@ -13031,6 +13037,126 @@ void DrawLayerManagerPanel(EditorState& state) {
     ImGui::EndDisabled();
 }
 
+const char* NifTextureSlotLabel(std::size_t slot) {
+    static constexpr const char* kLabels[] = {
+        "Base", "Dark", "Detail", "Gloss", "Glow",
+        "Bump", "Decal 0", "Decal 1", "Decal 2", "Decal 3"
+    };
+    return slot < std::size(kLabels) ? kLabels[slot] : "Textur";
+}
+
+void LoadNifAssetInspector(EditorState& state, const std::filesystem::path& path,
+                           const std::string& relativeAsset) {
+    state.nifInspectorAsset = relativeAsset;
+    state.nifInspectorModel.reset();
+    state.nifInspectorError.clear();
+    auto loaded = core::LoadNifMesh(path);
+    if (loaded) {
+        state.nifInspectorModel = std::move(*loaded);
+    } else {
+        state.nifInspectorError = loaded.error();
+    }
+}
+
+void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root) {
+    if (state.nifInspectorAsset.empty()) return;
+
+    ImGui::Separator();
+    ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "NIF / MATERIAL");
+    ImGui::SameLine();
+    ImGui::TextDisabled("nur lesen");
+    ImGui::SameLine();
+    if (UI::SmallButton("Neu laden##nifInspector"))
+        LoadNifAssetInspector(state, root / state.nifInspectorAsset, state.nifInspectorAsset);
+
+    ImGui::TextWrapped("%s", state.nifInspectorAsset.c_str());
+    if (!state.nifInspectorError.empty()) {
+        ImGui::TextWrapped("NIF konnte nicht gelesen werden: %s", state.nifInspectorError.c_str());
+        return;
+    }
+    if (!state.nifInspectorModel) {
+        ImGui::TextDisabled("Kein NIF ausgewählt.");
+        return;
+    }
+
+    const auto& model = *state.nifInspectorModel;
+    std::size_t triangleCount = 0;
+    std::size_t textureCount = 0;
+    std::size_t animatedTextureCount = 0;
+    for (const auto& part : model.parts) {
+        triangleCount += part.triangleIndices.size() / 3;
+        for (const auto& slot : part.textureSlots)
+            if (slot.present) ++textureCount;
+        animatedTextureCount += part.textureTransformAnimations.size();
+        animatedTextureCount += part.textureFlipAnimations.size();
+    }
+
+    ImGui::Text("Root: %s", model.rootName.empty() ? "(unbenannt)" : model.rootName.c_str());
+    ImGui::TextDisabled("%zu Mesh-Teile · %zu Dreiecke · %zu Textur-Slots",
+                        model.parts.size(), triangleCount, textureCount);
+    ImGui::TextDisabled("%zu Nodes · %u eingebettete Texturen · %zu Textur-Animationen",
+                        model.nodes.size(), model.decodedEmbeddedTextures, animatedTextureCount);
+    if (model.recovered || model.partial) {
+        ImGui::TextDisabled("%s%s",
+                            model.recovered ? "Kompatibilitäts-Recovery aktiv" : "",
+                            model.partial ? (model.recovered ? " · partiell dekodiert" : "Partiell dekodiert") : "");
+    }
+
+    ImGui::BeginChild("##nifMaterialInspectorBody", ImVec2(0,0), true);
+    for (std::size_t pi = 0; pi < model.parts.size(); ++pi) {
+        const auto& part = model.parts[pi];
+        ImGui::PushID(static_cast<int>(pi));
+        const std::string partName = part.name.empty() ? ("Mesh " + std::to_string(pi + 1)) : part.name;
+        const std::string header = partName + "  (" + std::to_string(part.positions.size()) +
+                                   " V / " + std::to_string(part.triangleIndices.size()/3) + " T)";
+        if (UI::CollapsingHeader(header.c_str())) {
+            const auto& m = part.material;
+            ImGui::TextDisabled("Material");
+            ImGui::Text("Diffuse  %.2f  %.2f  %.2f · Alpha %.2f",
+                        m.diffuse[0],m.diffuse[1],m.diffuse[2],m.alpha);
+            ImGui::Text("Ambient  %.2f  %.2f  %.2f",m.ambient[0],m.ambient[1],m.ambient[2]);
+            ImGui::Text("Specular %.2f  %.2f  %.2f · Gloss %.2f",
+                        m.specular[0],m.specular[1],m.specular[2],m.glossiness);
+            ImGui::Text("Emissive %.2f  %.2f  %.2f",m.emissive[0],m.emissive[1],m.emissive[2]);
+            ImGui::TextDisabled("UV-Sets: %zu · ApplyMode: %u · %s%s",
+                                part.uvSets.size(), part.textureApplyMode,
+                                part.alphaBlend ? "AlphaBlend " : "",
+                                part.alphaTest ? "AlphaTest" : "");
+
+            bool anyTexture=false;
+            for (std::size_t si=0; si<part.textureSlots.size(); ++si) {
+                const auto& slot=part.textureSlots[si];
+                if (!slot.present) continue;
+                anyTexture=true;
+                ImGui::PushID(static_cast<int>(si));
+                ImGui::SeparatorText(NifTextureSlotLabel(si));
+                if (slot.embeddedTexture) {
+                    ImGui::Text("Eingebettet · %u × %u",
+                                slot.embeddedTexture->width, slot.embeddedTexture->height);
+                } else {
+                    ImGui::TextWrapped("%s", slot.texture.empty() ? "(keine externe Datei)" : slot.texture.c_str());
+                }
+                ImGui::TextDisabled("UV %u · Clamp %u · Filter %u",
+                                    slot.uvSet, slot.clampMode, slot.filterMode);
+                if (slot.hasTransform) {
+                    ImGui::TextDisabled("Transform: Offset %.3f / %.3f · Scale %.3f / %.3f · Rot %.3f",
+                                        slot.translation.u,slot.translation.v,
+                                        slot.scale.u,slot.scale.v,slot.rotation);
+                }
+                ImGui::PopID();
+            }
+            if (!anyTexture) ImGui::TextDisabled("Keine NiTexturingProperty-Slots.");
+            if (part.skinned)
+                ImGui::TextDisabled("Skinning: %u Bones · max. %u Einflüsse",
+                                    part.skinBoneCount, part.maxSkinInfluences);
+            if (part.billboard) ImGui::TextDisabled("Billboard-Modus: %u", part.billboardMode);
+            if (part.lodControlled) ImGui::TextDisabled("LOD: %.1f – %.1f", part.lodNear, part.lodFar);
+        }
+        ImGui::PopID();
+    }
+    ImGui::EndChild();
+}
+
 void DrawWorkspaceAssetBrowser(EditorState& state) {
     const bool objectMode = state.editMode == EditMode::ObjectPlacement;
     const bool textureMode = state.editMode == EditMode::TexturePaint;
@@ -13077,7 +13203,11 @@ void DrawWorkspaceAssetBrowser(EditorState& state) {
     }
     ImGui::TextDisabled("%zu / %zu Assets", matching.size(), files.size());
 
-    ImGui::BeginChild("##workspaceAssetList", ImVec2(0,0), true);
+    const bool showNifInspector = objectMode && !state.nifInspectorAsset.empty();
+    const float assetListHeight = showNifInspector
+        ? std::max(160.0f, ImGui::GetContentRegionAvail().y * 0.48f)
+        : 0.0f;
+    ImGui::BeginChild("##workspaceAssetList", ImVec2(0,assetListHeight), true);
     constexpr float thumbSize = 38.0f;
     ImGuiListClipper clipper;
     clipper.Begin(static_cast<int>(matching.size()));
@@ -13098,6 +13228,7 @@ void DrawWorkspaceAssetBrowser(EditorState& state) {
                 if (objectMode) {
                     const std::string legacy = ToLegacyResmapModelPath(rel);
                     std::snprintf(state.newObjectModelPath, sizeof(state.newObjectModelPath), "%s", legacy.c_str());
+                    LoadNifAssetInspector(state, root / rel, rel);
                     state.statusMessage = "Objekt-Asset gewählt: " + legacy;
                 } else {
                     std::snprintf(state.newLayerDiffuse, sizeof(state.newLayerDiffuse), "%s", rel.c_str());
@@ -13121,6 +13252,8 @@ void DrawWorkspaceAssetBrowser(EditorState& state) {
         }
     }
     ImGui::EndChild();
+    if (objectMode && !state.nifInspectorAsset.empty())
+        DrawNifAssetInspector(state, root);
 }
 
 // Der eigentliche Arbeitsbereich (siehe Mockup, zweites/rechtes Bild): Tab-Leiste oben,
