@@ -1,11 +1,12 @@
 # NextGen Editor – Icon Inventory
 
 **Status:** verbindliche Inventar-/Mapping-Datei für `ui-upgrade`  
-**Authoritative source package:** `NextGen_Icons_True_Vector_Set_With_Sizes.zip`
+**Authoritative source package:** `NextGen_Icons_Complete_PNG_SVG.zip`  
+**Supersedes:** `NextGen_Icons_True_Vector_Set_With_Sizes.zip`
 
 ## Source-of-truth rule
 
-The uploaded package above is the only approved source for the new in-app icon artwork. Existing Lucide-based SVGs and old ImDrawList primitives are implementation legacy and may only remain until the corresponding approved package icon is wired in.
+The newly uploaded `NextGen_Icons_Complete_PNG_SVG.zip` is the only approved source for new in-app icon artwork. It explicitly supersedes the earlier icon ZIP. Existing Lucide-based SVGs, old ImDrawList primitives, and SVGs from the superseded ZIP are implementation legacy and may only remain until the corresponding approved icon from the new package is wired in.
 
 Rules:
 
@@ -17,7 +18,9 @@ Rules:
 
 ## Package structure
 
-The approved package contains **54 logical icons** and ships the following production/export material:
+The previous package documented **54 logical icons**. The exact contents, filenames and counts of the new `NextGen_Icons_Complete_PNG_SVG.zip` must be taken from the archive itself and must not be inferred from the superseded package. The new archive is expected to provide both PNG and improved SVG artwork; its manifest/inventory will replace the provisional rows below after extraction.
+
+The superseded package shipped the following production/export material:
 
 - `manifest.csv`
 - `svg/`
@@ -36,12 +39,13 @@ The 16/24/32/48/64/128 PNG exports are intended for actual UI size classes. The 
 
 ## Vector quality note
 
-The package SVGs must be evaluated against the raster masters before runtime adoption. Previous automatic raster-to-vector reconstruction lost part of the original glow/gradient/highlight treatment. Therefore:
+The user supplied `NextGen_Icons_Complete_PNG_SVG.zip` specifically because these SVG files are the improved/correct vector source. Therefore:
 
-1. raster masters define the visual appearance;
-2. SVGs are used only when they reproduce that appearance cleanly at target size;
-3. PNG runtime icons are acceptable where they are visually superior and rendering cost is negligible;
-4. a future hand-authored/vector-master pass must preserve the same silhouette and material language rather than redesigning the icons.
+1. the SVG artwork from the **new** package is the preferred master for scalable editor icons;
+2. matching PNGs remain the raster reference for visual parity and small-size QA;
+3. SVGs from the superseded package must not be promoted as masters;
+4. for 16/24 px use, compare the rendered SVG against the package PNG and use the provided small raster export if it is visibly crisper;
+5. do not redraw or reinterpret the approved silhouette merely to make implementation easier.
 
 ## Required logical coverage
 
@@ -73,7 +77,7 @@ Toolbar, panel header, outliner and module-launcher code consume these semantic 
 
 ## Inventory table
 
-The exact per-file rows are imported from the package `manifest.csv`. Until that import is committed, **do not rename, replace or delete package artwork by inference**.
+The exact per-file rows must be imported from the new package inventory/manifest (or generated directly from its archive listing if it has no manifest). Until that import is committed, **do not rename, replace or delete package artwork by inference**.
 
 Required columns:
 
@@ -83,7 +87,7 @@ Required columns:
 
 ## Integration checklist
 
-- [ ] Import the package manifest verbatim.
+- [ ] Extract and inventory `NextGen_Icons_Complete_PNG_SVG.zip` verbatim; import its manifest when present.
 - [ ] Visually inspect all 54 logical icons.
 - [ ] Record duplicates / near-duplicates and any misleading semantics.
 - [ ] Freeze logical icon ids.
