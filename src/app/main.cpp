@@ -3418,6 +3418,18 @@ void DrawInlineIcon(const char* id, IconDrawFn icon, ImU32 color,
     ImGui::PopID();
 }
 
+bool DrawSearchInput(const char* id, const char* hint, char* buffer, std::size_t bufferSize,
+                     float inputWidth = -1.0f) {
+    ImGui::PushID(id);
+    DrawInlineIcon("searchIcon", nullptr, IM_COL32(100,205,255,245), hint,
+                   ImVec2(18.0f,18.0f), "panel.search");
+    ImGui::SameLine(0.0f,5.0f);
+    ImGui::SetNextItemWidth(inputWidth);
+    const bool changed=UI::InputTextWithHint("##searchInput",hint,buffer,bufferSize);
+    ImGui::PopID();
+    return changed;
+}
+
 void DrawPanelHeader(const char* id, const char* title, IconDrawFn fallbackIcon,
                      const char* semanticIcon, const char* subtitle = nullptr) {
     DrawInlineIcon(id, fallbackIcon, IM_COL32(100,205,255,245), nullptr,
@@ -8640,8 +8652,8 @@ void DrawAiWorkspace(EditorState& state) {
         state.aiWorkspaceScanKey.clear();
         ScanAiWorkspace(state);
     }
-    UI::InputTextWithHint("##aiWorkspaceFilter",L("Lua/PineScript filtern...","Filter Lua/PineScript..."),
-                          state.aiWorkspaceFilter,sizeof(state.aiWorkspaceFilter));
+    DrawSearchInput("aiWorkspaceFilter",L("Lua/PineScript filtern...","Filter Lua/PineScript..."),
+                    state.aiWorkspaceFilter,sizeof(state.aiWorkspaceFilter));
     const std::string needle=LowerAscii(state.aiWorkspaceFilter);
     std::vector<std::size_t> visible;
     visible.reserve(state.aiWorkspaceLabels.size());
@@ -14397,8 +14409,8 @@ void DrawSceneOutlinerPanel(EditorState& state) {
     DrawPanelHeader("sceneOutlinerHeader", L("SZENE","SCENE"), DrawIconGrid,
                     "panel.outliner", context);
 
-    UI::InputTextWithHint("##objectOutlinerFilter", L("Szene filtern...","Filter scene..."),
-                          state.objectOutlinerFilter, sizeof(state.objectOutlinerFilter));
+    DrawSearchInput("objectOutlinerFilter", L("Szene filtern...","Filter scene..."),
+                    state.objectOutlinerFilter, sizeof(state.objectOutlinerFilter));
     const std::string needle = LowerAscii(state.objectOutlinerFilter);
 
     if (state.editMode == EditMode::Npcs) {
@@ -15537,8 +15549,11 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                             model.partial ? (model.recovered ? L(" · partiell dekodiert"," · partially decoded") : L("Partiell dekodiert","Partially decoded")) : "");
     }
 
-    UI::InputTextWithHint("##nifInspectorFilter", L("Mesh oder Textur filtern...","Filter mesh or texture..."),
-                          state.nifInspectorFilter, sizeof(state.nifInspectorFilter));
+    DrawSearchInput("nifInspectorFilter", L("Mesh oder Textur filtern...","Filter mesh or texture..."),
+                    state.nifInspectorFilter, sizeof(state.nifInspectorFilter));
+    DrawInlineIcon("nifInspectorFilterIcon", nullptr, IM_COL32(100,205,255,245),
+                   L("Filter","Filter"), ImVec2(18,18), "panel.filter");
+    ImGui::SameLine(0.0f,5.0f);
     UI::Checkbox(L("Nur fehlende Texturen##nifInspector","Missing textures only##nifInspector"), &state.nifInspectorMissingOnly);
     ImGui::SameLine();
     if (UI::SmallButton(L("Filter zurücksetzen##nifInspector","Reset filter##nifInspector"))) {
@@ -16530,8 +16545,11 @@ void DrawInterfaceWorkspace(EditorState& state) {
     }
 
     ImGui::TextDisabled("%s", state.interfaceRoot.c_str());
-    UI::InputTextWithHint("##interfaceFilter", L("Interface-Assets filtern...","Filter interface assets..."),
-                          state.interfaceAssetFilter, sizeof(state.interfaceAssetFilter));
+    DrawSearchInput("interfaceFilter", L("Interface-Assets filtern...","Filter interface assets..."),
+                    state.interfaceAssetFilter, sizeof(state.interfaceAssetFilter));
+    DrawInlineIcon("interfaceFilterIcon", nullptr, IM_COL32(100,205,255,245),
+                   L("Filter","Filter"), ImVec2(18,18), "panel.filter");
+    ImGui::SameLine(0.0f,5.0f);
     UI::Checkbox(L("Nur Projekt-Overrides##interface","Project overrides only##interface"),
                  &state.interfaceOverridesOnly);
     ImGui::SameLine();
@@ -16807,8 +16825,8 @@ void DrawWorkspaceAssetBrowser(EditorState& state) {
         return;
     }
 
-    UI::InputTextWithHint("##workspaceAssetFilter", L("Assets filtern...","Filter assets..."),
-                          state.workspaceAssetFilter, sizeof(state.workspaceAssetFilter));
+    DrawSearchInput("workspaceAssetFilter", L("Assets filtern...","Filter assets..."),
+                    state.workspaceAssetFilter, sizeof(state.workspaceAssetFilter));
 
     const auto& files = objectMode ? state.availableNifFiles : state.availableTextureFiles;
     const auto& root = objectMode ? state.nifAssetRoot : state.textureAssetRoot;
