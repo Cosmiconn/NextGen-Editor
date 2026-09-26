@@ -6354,8 +6354,8 @@ void DrawMapEditorLauncher(EditorState& state) {
                 state.screen = AppScreen::NewProjectConfig;
         } else {
             if (!state.recentMaps.empty()) {
-                DrawInlineIcon("recentMapsHeader", DrawIconTable, IM_COL32(100,205,255,245), nullptr,
-                               ImVec2(18.0f,18.0f), "system.recent_projects");
+                DrawInlineIcon("recentMapsHeader", DrawIconGlobe, IM_COL32(100,205,255,245), nullptr,
+                               ImVec2(18.0f,18.0f), "file.open");
                 ImGui::SameLine(0.0f, 5.0f);
                 ImGui::TextColored(UiTheme::AccentCyan, "%s", L("ZULETZT GEÖFFNET","RECENTLY OPENED"));
                 const std::size_t showCount = std::min<std::size_t>(5, state.recentMaps.size());
