@@ -28,6 +28,9 @@ jobs:
         if: runner.os == 'Windows'
         run: cmake -S . -B build -DNEXTGEN_EDITOR_CORE_ONLY=ON
       - run: cmake --build build --config Release --parallel 2
+      - name: Inventory fixture NIF materials
+        if: runner.os == 'Linux'
+        run: ./build/nif_material_inventory tests/fixtures
       - run: ctest --test-dir build -C Release --output-on-failure
 
   windows-gui:
