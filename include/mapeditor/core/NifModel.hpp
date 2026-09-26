@@ -68,6 +68,10 @@ struct NifEmbeddedTexture {
 // 0 Base, 1 Dark, 2 Detail, 3 Gloss, 4 Glow, 5 Bump, 6..9 Decal 0..3.
 // Die Struktur bleibt absichtlich generisch, damit jeder Slot sein eigenes UV-Set, Sampling
 // und seine optionale NIF-Texturmatrix behalten kann.
+inline constexpr std::uint32_t kNifTextureTransformMayaDeprecated = 0;
+inline constexpr std::uint32_t kNifTextureTransformMax = 1;
+inline constexpr std::uint32_t kNifTextureTransformMaya = 2;
+
 struct NifTextureSlot {
     bool present = false;
     std::string texture;
@@ -84,9 +88,15 @@ struct NifTextureSlot {
     NifVec2 translation{};
     NifVec2 scale{1.0f, 1.0f};
     float rotation = 0.0f;
-    std::uint32_t transformType = 0;
+    // nif.xml TransformMethod: 0=TM_Maya Deprecated, 1=TM_Max, 2=TM_Maya.
+    // Die Reihenfolge von Scale/Rotation/Translation unterscheidet sich sichtbar.
+    std::uint32_t transformType = kNifTextureTransformMayaDeprecated;
     NifVec2 center{0.5f, 0.5f};
 };
+
+// Reine CPU-Referenz derselben TexDesc-UV-Matrix, die der OpenGL-Renderer im Shader
+// auswertet. Sie hält die Gamebryo-TransformMethod-Semantik testbar, ohne GL-Kontext.
+[[nodiscard]] NifVec2 ApplyNifTextureTransform(const NifTextureSlot& slot, NifVec2 uv);
 
 // Zeitabhaengige Float-Spur fuer NiTextureTransformController/NiFlipController.
 // extrapolation: 0=cycle, 1=reverse, 2=constant/clamp (NiTimeController flags bits 1..2).
