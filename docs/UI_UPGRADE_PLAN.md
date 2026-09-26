@@ -358,8 +358,10 @@ Vor weiterer UI-Politur hat die visuelle Übereinstimmung echter Fiesta-NIFs Vor
 - Base/Dark/Detail/Gloss/Glow/Bump/Decal0..3, bis zu acht UV-Sets, Alpha/Z/Stencil/VertexColor/Specular, Skinning, LOD, Billboard sowie TextureTransform-/Flip-Controller sind bereits im Rendererpfad vorhanden;
 - `NiTextureEffect` wird jetzt vom Szenengraph auf die betroffenen Mesh-Parts gebunden und seine SourceTexture/embedded PixelData aufgelöst;
 - der im echten Fixture `DarkVally_Frog.nif` belegte Pfad `TEX_ENVIRONMENT_MAP + CG_SPHERE_MAP` wird additiv gerendert; andere TextureEffect-/CoordGen-Kombinationen bleiben bis zur Datenverifikation diagnostisch;
-- verbleibende benannte `ShaderTexDesc`-Semantik außerhalb des verifizierten `VCAlphaTextureBlender` wird als nächster Material-Fidelity-Schritt anhand echter Fiesta-NIFs inventarisiert und erst danach implementiert;
-- NIF-Inspector/Tests müssen zwischen **Texturdatei nicht gefunden**, **PixelData nicht dekodiert**, **Semantik bekannt aber noch nicht gerendert** und **generischem Shader-Fallback** unterscheiden.
+- `ShaderTexDesc` wird jetzt unabhängig von Renderer-Unterstützung verlustfrei pro Mesh-Part erhalten (Map-ID, UV-/Sampler-/Transformdaten sowie aufgelöste SourceTexture/Embedded-PixelData). Nur `VCAlphaTextureBlender` besitzt weiterhin eine verifizierte Map-ID→Renderer-Slot-Semantik; alle anderen Shader-Maps bleiben Diagnose;
+- Fixture-Materialaudit: 101/101 NIFs laden, 413 Embedded-Texturen werden dekodiert, 0 bleiben undecodiert. Die benannten Shader-Fixtures `FxSkinningBaseMap` (3 Parts in `EglackMad.nif`/`M_MajesticLion.nif`) und `NsPgToonNoAni` (44 Parts in `Female_Hat_Antler00.nif`/`KingdomC00.nif`/`Male_Hat_Antler00.nif`) enthalten im aktuellen Fixture-Korpus **keine ShaderTexDesc-Einträge**; aus dem Shadernamen allein wird daher keine zusätzliche Textursemantik abgeleitet;
+- `MapLinkGate2.nif` enthält als einziger Fixture-Fall drei Parts mit `NiTexturingProperty ApplyMode=4 / APPLY_HILIGHT2`. Der Enum-Name ist dokumentiert, die Fiesta-spezifische visuelle Semantik aber nicht; bis zu einer echten Renderverifikation bleibt der bestehende Modulate-Fallback explizit sichtbar statt spekulativ ersetzt zu werden;
+- NIF-Inspector/Tests unterscheiden **Texturdatei nicht gefunden**, **PixelData nicht dekodiert**, **ShaderTexDesc-Quelle nicht auflösbar**, **Semantik bekannt aber noch nicht gerendert**, **nicht materialisierten ApplyMode** und **generischen Shader-Fallback**.
 
 
 ### Karten-/Level-Editor
