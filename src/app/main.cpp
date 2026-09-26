@@ -719,13 +719,13 @@ struct EditorState {
     bool showRoamRoutes = true;
     bool showAllRoamRoutes = false; // false = nur aktuelle Auswahl, true = alle Routen des aktuellen NPC-/Mob-Kontexts
 
-    // Grundfläche (Bounding-Box in X/Z, aus den echten NIF-Vertex-Positionen) für die
-    // 2D-Anzeige - siehe CHANGELOG [0.44.24]. Schlüssel: PlacedObject::modelPath (innerhalb
-    // einer Kartensitzung eindeutig genug, da Modelle relativ zum selben Kartenordner
-    // aufgelöst werden).
+    // Gecachte 2D-Geometrie je NIF-Modell. contactSegments ist die exakte Schnittkontur der
+    // Mesh-Dreiecke mit der authored Boden-/Pivotebene und damit die primaere Editor-Darstellung.
+    // Die konvexe Huelle bleibt vorerst nur fuer den bestehenden Walk/Block-Polygonpfad erhalten.
     struct ObjectFootprint {
         float minX = 0.0f, maxX = 0.0f, minZ = 0.0f, maxZ = 0.0f;
-        std::vector<std::pair<float, float>> hull; // konvexe Huelle der untersten Schicht (siehe ComputeFootprintHull)
+        std::vector<core::NifGroundContactSegment> contactSegments;
+        std::vector<std::pair<float, float>> hull;
         bool valid = false;
     };
     std::unordered_map<std::string, ObjectFootprint> footprintCache;
@@ -12566,6 +12566,7 @@ const EditorState::ObjectFootprint& GetOrComputeFootprint(EditorState& state, co
                     }
                 }
                 fp.valid = !first;
+                fp.contactSegments = core::ComputeGroundContactSegments(*model);
                 fp.hull = core::ComputeFootprintHull(*model);
             }
         }
@@ -12626,31 +12627,49 @@ static void StampObjectFootprints(EditorState& state, bool blocked) {
     }
 }
 
-void DrawObjectFootprint2D(EditorState& state, const core::PlacedObject& obj, ImDrawList* drawList,
-                            const ImVec2& cursorScreenPos, const ImVec2& imageSize,
-                            float spanX, float spanZ, ImU32 color, float thickness) {
+static std::vector<core::NifGroundContactSegment> ObjectGroundContactWorldSegments(
+    EditorState& state, const core::PlacedObject& obj) {
     const auto& fp = GetOrComputeFootprint(state, obj.modelPath);
-    if (!fp.valid) return;
+    if (!fp.valid || fp.contactSegments.empty()) return {};
+
     const float angle = 2.0f * std::atan2(obj.rotY, obj.rotW);
     const float c = std::cos(angle), s = std::sin(angle);
-    // Praezise Grundflaeche: konvexe Huelle der untersten Modellschicht (CHANGELOG [0.44.27]),
-    // Rueckfall auf die Bounding-Box, wenn keine Huelle berechenbar war.
-    std::vector<std::pair<float, float>> localPoints = fp.hull;
-    if (localPoints.size() < 3) {
-        localPoints = {{fp.minX, fp.minZ}, {fp.maxX, fp.minZ}, {fp.maxX, fp.maxZ}, {fp.minX, fp.maxZ}};
+    auto transform = [&](float lx, float lz) {
+        const float sx = lx * obj.scale;
+        const float sz = lz * obj.scale;
+        return std::pair<float,float>{
+            obj.posX + (sx * c + sz * s),
+            obj.posZ + (-sx * s + sz * c)
+        };
+    };
+
+    std::vector<core::NifGroundContactSegment> world;
+    world.reserve(fp.contactSegments.size());
+    for (const auto& edge : fp.contactSegments) {
+        const auto a = transform(edge.x0, edge.z0);
+        const auto b = transform(edge.x1, edge.z1);
+        world.push_back({a.first, a.second, b.first, b.second});
     }
-    std::vector<ImVec2> screenCorners;
-    screenCorners.reserve(localPoints.size());
-    for (const auto& [lx, lz] : localPoints) {
-        const float sx = lx * obj.scale, sz = lz * obj.scale;
-        // R_y(angle) wie das 3D-Quaternion (0,sin,0,cos): x' = x*c + z*s, z' = -x*s + z*c.
-        const float wx = obj.posX + (sx * c + sz * s);
-        const float wz = obj.posZ + (-sx * s + sz * c);
-        const float ou = spanX > 0.0f ? wx / spanX : 0.0f;
-        const float ov = 1.0f - (spanZ > 0.0f ? wz / spanZ : 0.0f);
-        screenCorners.emplace_back(cursorScreenPos.x + ou * imageSize.x, cursorScreenPos.y + ov * imageSize.y);
+    return world;
+}
+
+bool DrawObjectFootprint2D(EditorState& state, const core::PlacedObject& obj, ImDrawList* drawList,
+                           const ImVec2& cursorScreenPos, const ImVec2& imageSize,
+                           float spanX, float spanZ, ImU32 color, float thickness) {
+    if (spanX <= 0.0f || spanZ <= 0.0f) return false;
+    const auto edges = ObjectGroundContactWorldSegments(state, obj);
+    if (edges.empty()) return false;
+
+    for (const auto& edge : edges) {
+        const ImVec2 a(
+            cursorScreenPos.x + (edge.x0 / spanX) * imageSize.x,
+            cursorScreenPos.y + (1.0f - edge.z0 / spanZ) * imageSize.y);
+        const ImVec2 b(
+            cursorScreenPos.x + (edge.x1 / spanX) * imageSize.x,
+            cursorScreenPos.y + (1.0f - edge.z1 / spanZ) * imageSize.y);
+        drawList->AddLine(a, b, color, thickness);
     }
-    drawList->AddPolyline(screenCorners.data(), static_cast<int>(screenCorners.size()), color, ImDrawFlags_Closed, thickness);
+    return true;
 }
 
 void RefreshRoamOverlayRoutes(EditorState& state);
