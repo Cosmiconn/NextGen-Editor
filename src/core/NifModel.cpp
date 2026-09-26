@@ -4342,6 +4342,59 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
 
 } // namespace
 
+NifVec2 ApplyNifTextureTransform(const NifTextureSlot& slot, NifVec2 uv) {
+    if (!slot.hasTransform) return uv;
+
+    const float c = std::cos(slot.rotation);
+    const float sn = std::sin(slot.rotation);
+    const auto rotate = [&](NifVec2 p) {
+        return NifVec2{c * p.u - sn * p.v, sn * p.u + c * p.v};
+    };
+    const auto scale = [&](NifVec2 p) {
+        return NifVec2{p.u * slot.scale.u, p.v * slot.scale.v};
+    };
+    const auto translate = [&](NifVec2 p) {
+        return NifVec2{p.u + slot.translation.u, p.v + slot.translation.v};
+    };
+    const auto back = [&](NifVec2 p) {
+        return NifVec2{p.u - slot.center.u, p.v - slot.center.v};
+    };
+    const auto center = [&](NifVec2 p) {
+        return NifVec2{p.u + slot.center.u, p.v + slot.center.v};
+    };
+
+    // nif.xml TransformMethod matrix order (column-vector convention):
+    // 0 TM_Maya Deprecated: Center * Rotation * Back * Translate * Scale
+    // 1 TM_Max:             Center * Scale * Rotation * Translate * Back
+    // 2 TM_Maya:            Center * Rotation * Back * FromMaya * Translate * Scale
+    // FromMaya flips V and translates it by +1 => (u, 1-v).
+    switch (slot.transformType) {
+        case kNifTextureTransformMax: {
+            NifVec2 p = back(uv);
+            p = translate(p);
+            p = rotate(p);
+            p = scale(p);
+            return center(p);
+        }
+        case kNifTextureTransformMaya: {
+            NifVec2 p = scale(uv);
+            p = translate(p);
+            p.v = 1.0f - p.v;
+            p = back(p);
+            p = rotate(p);
+            return center(p);
+        }
+        case kNifTextureTransformMayaDeprecated:
+        default: {
+            NifVec2 p = scale(uv);
+            p = translate(p);
+            p = back(p);
+            p = rotate(p);
+            return center(p);
+        }
+    }
+}
+
 std::expected<NifModel, std::string> LoadNifMesh(const std::filesystem::path& file, bool allowRecovery) {
     std::ifstream in(file, std::ios::binary | std::ios::ate);
     if (!in) {
