@@ -5911,9 +5911,10 @@ void DrawShnEditor(EditorState& state) {
 
     if (rawShnWorkspace) {
         ImGui::BeginChild("##shnLeft", ImVec2(leftW, avail.y), true);
-        ImGui::TextColored(ImVec4(0.55f,0.82f,1.0f,1.0f),
-                           state.shnSubTab==0 ? "Single SHN Editor" : "SHN Dateien");
-        ImGui::Separator();
+        DrawPanelHeader("rawShnWorkspaceHeader",
+                        state.shnSubTab==0 ? "SINGLE SHN EDITOR" : L("SHN DATEIEN","SHN FILES"),
+                        DrawIconTable,
+                        state.shnSubTab==0 ? "module.shn.single" : "module.shn.multi");
 #ifdef _WIN32
         if (UI::Button("CLIENT: SHN-Ordner einlesen", ImVec2(-1,0)))
             if(auto p=BrowseForFolderWindows("CLIENT SHN Ordner wählen"))
