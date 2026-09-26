@@ -6189,10 +6189,9 @@ void AdvanceNifPrecache(EditorState& state, int filesPerFrame);
 void DrawMapEditorLauncher(EditorState& state) {
     DrawTopNav(state, L("Karte","Map"));
 
-    ImGui::TextColored(UiTheme::AccentCyan, "KARTEN");
-    ImGui::SameLine();
-    ImGui::TextDisabled("Neue Karte anlegen oder vorhandene Fiesta-Karte öffnen");
-    ImGui::Dummy(ImVec2(0,6));
+    DrawPanelHeader("mapLauncherHeader", L("KARTEN","MAPS"), DrawIconGlobe, "nav.world",
+                    L("Neue Karte anlegen oder vorhandene Fiesta-Karte öffnen",
+                      "Create a new map or open an existing Fiesta map"));
 
     const bool onNewMap = state.mapLauncherView == EditorState::MapLauncherView::NewMap;
     const bool onBrowse = state.mapLauncherView == EditorState::MapLauncherView::Browse;
@@ -6236,8 +6235,11 @@ void DrawMapEditorLauncher(EditorState& state) {
         const float frac = totalQ == 0 ? 1.0f
             : static_cast<float>(state.nifPrecacheCursor) / static_cast<float>(totalQ);
         ImGui::BeginChild("##assetPreparation", ImVec2(std::min(680.0f, ImGui::GetContentRegionAvail().x), 150.0f), true);
-        ImGui::TextColored(UiTheme::AccentCyan, "ASSET-BIBLIOTHEK");
-        ImGui::TextWrapped("NIF-Vorschaubilder werden einmalig vorbereitet. Danach öffnet sich der Asset Browser ohne Erstlade-Ruckler.");
+        DrawPanelHeader("assetPreparationHeader", L("ASSET-BIBLIOTHEK","ASSET LIBRARY"),
+                        DrawIconCube, "panel.asset_browser");
+        ImGui::TextWrapped("%s",L(
+            "NIF-Vorschaubilder werden einmalig vorbereitet. Danach öffnet sich der Asset Browser ohne Erstlade-Ruckler.",
+            "NIF thumbnails are prepared once. Afterwards the Asset Browser opens without the initial loading hitch."));
         ImGui::ProgressBar(frac, ImVec2(-1.0f, 0.0f));
         ImGui::TextDisabled("%zu / %zu Modelle", state.nifPrecacheCursor, totalQ);
         ImGui::EndChild();
@@ -6248,10 +6250,8 @@ void DrawMapEditorLauncher(EditorState& state) {
 
     if (onNewMap) {
         ImGui::BeginChild("##createNewMap", ImVec2(panelW, 0), true);
-        ImGui::TextColored(UiTheme::AccentCyan, "NEUE KARTE");
-        ImGui::SameLine();
-        ImGui::TextDisabled("Grunddaten festlegen");
-        ImGui::Separator();
+        DrawPanelHeader("newMapHeader", L("NEUE KARTE","NEW MAP"), DrawIconTerrain, "file.new",
+                        L("Grunddaten festlegen","Configure base data"));
 
         ImGui::TextDisabled("KARTENNAME");
         ImGui::SetNextItemWidth(-1.0f);
@@ -6300,10 +6300,10 @@ void DrawMapEditorLauncher(EditorState& state) {
 
     if (onBrowse) {
         ImGui::BeginChild("##browseMaps", ImVec2(panelW, 0), true);
-        ImGui::TextColored(UiTheme::AccentCyan, "KARTE ÖFFNEN");
-        ImGui::SameLine();
-        ImGui::TextDisabled("%zu gefunden", state.discoveredMaps.size());
-        ImGui::Separator();
+        const std::string browseMapMeta = std::to_string(state.discoveredMaps.size()) +
+                                          L(" gefunden"," found");
+        DrawPanelHeader("browseMapsHeader", L("KARTE ÖFFNEN","OPEN MAP"), DrawIconGlobe,
+                        "file.open", browseMapMeta.c_str());
 
         if (state.project.clientFolder[0] == '\0') {
             ImGui::TextWrapped("%s", T("mapeditor.noclientfolder"));
@@ -7262,10 +7262,10 @@ void DrawQuestEditor(EditorState& state) {
 
     const float listWidth = std::clamp(ImGui::GetContentRegionAvail().x * 0.30f, 310.0f, 430.0f);
     ImGui::BeginChild("QuestList", ImVec2(listWidth, 0.0f), true);
-    ImGui::TextColored(UiTheme::AccentCyan, "%s", L("QUESTS", "QUESTS"));
-    ImGui::SameLine();
-    ImGui::TextDisabled(L("%zu sichtbar", "%zu visible"), state.questVisible.size());
-    ImGui::Separator();
+    const std::string questListMeta = std::to_string(state.questVisible.size()) +
+                                      L(" sichtbar"," visible");
+    DrawPanelHeader("questListHeader", "QUESTS", DrawIconBook, "module.quest",
+                    questListMeta.c_str());
     {
         ImGuiListClipper clipper;
         clipper.Begin(static_cast<int>(state.questVisible.size()));
@@ -7281,8 +7281,8 @@ void DrawQuestEditor(EditorState& state) {
     ImGui::EndChild();
     ImGui::SameLine();
     ImGui::BeginChild("QuestDetail", ImVec2(0.0f, 0.0f), true);
-    ImGui::TextColored(UiTheme::AccentCyan, "%s", L("EIGENSCHAFTEN", "PROPERTIES"));
-    ImGui::Separator();
+    DrawPanelHeader("questPropertiesHeader", L("EIGENSCHAFTEN","PROPERTIES"),
+                    DrawIconGear, "panel.properties");
     if (state.selectedQuestIdx < 0 || static_cast<std::size_t>(state.selectedQuestIdx) >= quests.size()) {
         ImGui::TextDisabled("%s", L("Quest links auswählen.", "Choose a quest on the left."));
         ImGui::EndChild();
@@ -8646,7 +8646,10 @@ void DrawAiWorkspace(EditorState& state) {
 
     const float listW=std::clamp(ImGui::GetContentRegionAvail().x*0.30f,300.0f,420.0f);
     ImGui::BeginChild("##aiLibrary",ImVec2(listW,0),true);
-    ImGui::TextColored(ImVec4(0.55f,0.82f,1.0f,1.0f),"%s",L("SKRIPTBIBLIOTHEK","SCRIPT LIBRARY"));
+    DrawInlineIcon("aiLibraryHeaderIcon",DrawIconCode,IM_COL32(100,205,255,245),nullptr,
+                   ImVec2(18,18),"module.ai");
+    ImGui::SameLine(0,5);
+    ImGui::TextColored(UiTheme::AccentCyan,"%s",L("SKRIPTBIBLIOTHEK","SCRIPT LIBRARY"));
     ImGui::SameLine();
     if(UI::SmallButton(L("Neu scannen","Rescan"))) {
         state.aiWorkspaceScanKey.clear();
@@ -8694,7 +8697,10 @@ void DrawAiWorkspace(EditorState& state) {
     ImGui::SameLine();
 
     ImGui::BeginChild("##aiEditor",ImVec2(0,0),true);
-    ImGui::TextColored(ImVec4(0.55f,0.82f,1.0f,1.0f),"%s",L("EDITOR","EDITOR"));
+    DrawInlineIcon("aiEditorHeaderIcon",DrawIconCode,IM_COL32(100,205,255,245),nullptr,
+                   ImVec2(18,18),"module.ai");
+    ImGui::SameLine(0,5);
+    ImGui::TextColored(UiTheme::AccentCyan,"%s",L("EDITOR","EDITOR"));
     if(state.aiScriptEditorPath.empty()) {
         ImGui::Separator();
         ImGui::TextDisabled("%s",L("Links ein Skript auswählen.","Choose a script on the left."));
@@ -10928,11 +10934,12 @@ void DrawSkillEditor(EditorState& state) {
     }
     const float skillListW = std::clamp(ImGui::GetContentRegionAvail().x * 0.29f, 320.0f, 430.0f);
     ImGui::BeginChild("##skilllist", ImVec2(skillListW, 0.0f), true);
-    ImGui::TextColored(UiTheme::AccentCyan, "%s", L("SKILLS", "SKILLS"));
-    ImGui::SameLine();
-    ImGui::TextDisabled("%zu / %zu · %s: %zu", ed.visible.size(), asf.rows.size(),
-                        L("Sync-Probleme","Sync issues"), ed.syncIssues.size());
-    ImGui::Separator();
+    const std::string skillListMeta = std::to_string(ed.visible.size()) + " / " +
+                                      std::to_string(asf.rows.size()) + " · " +
+                                      L("Sync-Probleme: ","Sync issues: ") +
+                                      std::to_string(ed.syncIssues.size());
+    DrawPanelHeader("skillListHeader", "SKILLS", DrawIconBolt, "module.skill",
+                    skillListMeta.c_str());
     {
         struct SeriesGroup {
             std::string key;
@@ -11006,8 +11013,8 @@ void DrawSkillEditor(EditorState& state) {
     ImGui::EndChild();
     ImGui::SameLine();
     ImGui::BeginChild("##skilldetail", ImVec2(0.0f, 0.0f), true);
-    ImGui::TextColored(UiTheme::AccentCyan, "%s", L("EIGENSCHAFTEN", "PROPERTIES"));
-    ImGui::Separator();
+    DrawPanelHeader("skillPropertiesHeader", L("EIGENSCHAFTEN","PROPERTIES"),
+                    DrawIconGear, "panel.properties");
     const long long sel = ed.selectedId;
     const long long selRow = sel >= 0 ? SkillRowIn(state, d.skillC, sel) : -1;
     if (selRow < 0) {
@@ -15446,6 +15453,9 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
     if (state.nifInspectorAsset.empty()) return;
 
     ImGui::Separator();
+    DrawInlineIcon("nifMaterialHeaderIcon",DrawIconCube,IM_COL32(100,205,255,245),nullptr,
+                   ImVec2(18,18),"panel.asset_browser");
+    ImGui::SameLine(0,5);
     ImGui::TextColored(UiTheme::AccentCyan, "NIF / MATERIAL");
     ImGui::SameLine();
     ImGui::TextDisabled("%s",L("nur lesen","read-only"));
@@ -17050,8 +17060,8 @@ void DrawMapEditorWorkspace(EditorState& state) {
     ImGui::TextDisabled("%s",L("Objekte","Objects"));
     ImGui::Text("%zu", state.placementSet.Count() + state.shmdCategoryRenderSet.Count());
     ImGui::Separator();
-    ImGui::TextColored(UiTheme::AccentCyan, "%s",L("AKTIVES WERKZEUG","ACTIVE TOOL"));
-    ImGui::TextWrapped("%s", modeName());
+    DrawPanelHeader("activeToolHeader", L("AKTIVES WERKZEUG","ACTIVE TOOL"),
+                    DrawIconGear, "panel.tools", modeName());
     ImGui::Dummy(ImVec2(0,6));
     if (UI::Button(L("Karte wechseln","Change map"), ImVec2(-1,0))) state.screen = AppScreen::MapEditorLauncher;
     if (UI::Button(L("Spieldaten öffnen","Open game data"), ImVec2(-1,0))) state.screen = AppScreen::ShnEditor;
