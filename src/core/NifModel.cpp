@@ -1764,10 +1764,41 @@ void SkipNiBoolData(ByteReader& r) {
     (void)ParseNiBoolData(r);
 }
 
-// NiColorData: eine einzelne KeyGroup<Color4> (4 Floats pro Wert, z.B. Partikelfarbe über
-// die Zeit, referenziert von NiPSysColorModifier).
+// NiColorData: one KeyGroup<Color4>, evaluated by NiPSysColorModifier over normalized
+// particle lifetime. Preserve full quadratic/TBC payload instead of discarding it.
+NifColorTrack ParseNiColorData(ByteReader& r) {
+    NifColorTrack out;
+    const std::uint32_t numKeys = r.CountU32(200000u);
+    if (numKeys == 0) return out;
+    out.interpolation = r.U32();
+    if (out.interpolation != 1u && out.interpolation != 2u &&
+        out.interpolation != 3u && out.interpolation != 5u) {
+        r.Invalidate();
+        return out;
+    }
+    const auto readColor = [&]() {
+        return NifColor4{r.F32(), r.F32(), r.F32(), r.F32()};
+    };
+    out.keys.reserve(numKeys);
+    for (std::uint32_t i = 0; i < numKeys; ++i) {
+        NifColorKey key;
+        key.time = r.F32();
+        key.value = readColor();
+        if (out.interpolation == 2u) {
+            key.forwardTangent = readColor();
+            key.backwardTangent = readColor();
+        } else if (out.interpolation == 3u) {
+            key.tension = r.F32();
+            key.bias = r.F32();
+            key.continuity = r.F32();
+        }
+        out.keys.push_back(key);
+    }
+    return out;
+}
+
 void SkipNiColorData(ByteReader& r) {
-    SkipKeyGroup(r, 4);
+    (void)ParseNiColorData(r);
 }
 
 // NiPathInterpolator: NiKeyBasedInterpolator (leere Basis) + flags(u16) + bank_dir(i32) +
@@ -2788,6 +2819,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
     std::unordered_map<std::uint32_t, NifFloatDataState> floatDataByBlock;
     std::unordered_map<std::uint32_t, NifBoolInterpolatorState> boolInterpolatorsByBlock;
     std::unordered_map<std::uint32_t, NifBoolDataState> boolDataByBlock;
+    std::unordered_map<std::uint32_t, NifColorTrack> colorDataByBlock;
     std::unordered_map<std::uint32_t, NifParticleControllerInfo> particleControllersByBlock;
     std::unordered_map<std::uint32_t, NifTextureTransformControllerState> texTransformControllersByBlock;
     std::unordered_map<std::uint32_t, NifFlipControllerState> flipControllersByBlock;
@@ -3263,7 +3295,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         } else if (type == "NiBoolData") {
             boolDataByBlock[blockIdx] = ParseNiBoolData(r);
         } else if (type == "NiColorData") {
-            SkipNiColorData(r);
+            colorDataByBlock[blockIdx] = ParseNiColorData(r);
         } else if (type == "NiPSysAgeDeathModifier") {
             particleModifierByBlock[blockIdx] = ParseAgeDeathModifier(r);
         } else if (type == "NiPSysBoxEmitter") {
@@ -4908,7 +4940,17 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         for (const auto ref : system.modifierRefs) {
             if (ref < 0) continue;
             const auto it = particleModifierByBlock.find(static_cast<std::uint32_t>(ref));
-            if (it != particleModifierByBlock.end()) system.modifiers.push_back(it->second);
+            if (it != particleModifierByBlock.end()) {
+                auto modifier = it->second;
+                if (modifier.type == "NiPSysColorModifier" && modifier.colorDataRef >= 0) {
+                    const auto colorIt = colorDataByBlock.find(static_cast<std::uint32_t>(modifier.colorDataRef));
+                    if (colorIt != colorDataByBlock.end()) {
+                        modifier.hasColorTrack = true;
+                        modifier.colorTrack = colorIt->second;
+                    }
+                }
+                system.modifiers.push_back(std::move(modifier));
+            }
         }
     }
 
@@ -5052,6 +5094,36 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
 }
 
 } // namespace
+
+std::optional<NifColor4> EvaluateNifColorTrack(const NifColorTrack& track, float time) {
+    if (track.keys.empty()) return std::nullopt;
+    if (time <= track.keys.front().time) return track.keys.front().value;
+    if (time >= track.keys.back().time) return track.keys.back().value;
+    const auto upper = std::upper_bound(track.keys.begin(), track.keys.end(), time,
+        [](float value, const NifColorKey& key) { return value < key.time; });
+    if (upper == track.keys.begin()) return upper->value;
+    const auto& k2 = *upper;
+    const auto& k1 = *(upper - 1);
+    const float dt = k2.time - k1.time;
+    const float x = dt > 1.0e-8f ? std::clamp((time - k1.time) / dt, 0.0f, 1.0f) : 0.0f;
+    if (track.interpolation == 5u) return x < 0.5f ? k1.value : k2.value;
+
+    const auto combine = [&](float a, float b, float t1, float t2) {
+        if (track.interpolation != 2u) return a + (b - a) * x;
+        const float x2 = x * x, x3 = x2 * x;
+        return a * (2.0f * x3 - 3.0f * x2 + 1.0f) +
+               b * (-2.0f * x3 + 3.0f * x2) +
+               t1 * (x3 - 2.0f * x2 + x) +
+               t2 * (x3 - x2);
+    };
+    // NifSkope currently treats TBC keygroups linearly in its generic controller path.
+    return NifColor4{
+        combine(k1.value.r, k2.value.r, k1.backwardTangent.r, k2.forwardTangent.r),
+        combine(k1.value.g, k2.value.g, k1.backwardTangent.g, k2.forwardTangent.g),
+        combine(k1.value.b, k2.value.b, k1.backwardTangent.b, k2.forwardTangent.b),
+        combine(k1.value.a, k2.value.a, k1.backwardTangent.a, k2.forwardTangent.a),
+    };
+}
 
 NifVec2 ApplyNifTextureTransform(const NifTextureSlot& slot, NifVec2 uv) {
     if (!slot.hasTransform) return uv;

@@ -212,6 +212,14 @@ int main(int argc, char** argv) {
                 for (const auto& modifier : system.modifiers) {
                     check(!modifier.type.empty(), "parsed particle modifier keeps its concrete type");
                     check(modifier.targetRef >= 0, "parsed particle modifier keeps target system reference");
+                    if (modifier.type == "NiPSysColorModifier" && modifier.colorDataRef >= 0) {
+                        check(modifier.hasColorTrack, "particle color modifier resolves NiColorData");
+                        if (modifier.hasColorTrack && !modifier.colorTrack.keys.empty()) {
+                            const auto first = EvaluateNifColorTrack(modifier.colorTrack,
+                                                                   modifier.colorTrack.keys.front().time);
+                            check(first.has_value(), "particle color track is CPU-evaluable");
+                        }
+                    }
                 }
             }
             check(parsedModifiers > 0u, "MapLinkGate2 preserves particle modifier parameters");

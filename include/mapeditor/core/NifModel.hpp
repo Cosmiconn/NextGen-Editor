@@ -164,6 +164,25 @@ struct NifBoolTrack {
     std::vector<NifBoolKey> keys;
 };
 
+struct NifColorKey {
+    float time = 0.0f;
+    NifColor4 value{};
+    NifColor4 forwardTangent{};
+    NifColor4 backwardTangent{};
+    float tension = 0.0f;
+    float bias = 0.0f;
+    float continuity = 0.0f;
+};
+
+struct NifColorTrack {
+    std::uint32_t interpolation = 1;
+    std::vector<NifColorKey> keys;
+};
+
+// Gamebryo/NifSkope-compatible interpolation for NiColorData. Particle ColorModifier
+// evaluates this on normalized lifetime (age/lifespan), not global scene time.
+[[nodiscard]] std::optional<NifColor4> EvaluateNifColorTrack(const NifColorTrack& track, float time);
+
 // Verifizierte Transformdarstellung für NIF-Szene/Skinning im ursprünglichen
 // Gamebryo-Koordinatenrahmen. Sie wird zusätzlich zur bereits gerenderten Bind-Pose erhalten,
 // damit KF-Playback dieselben Bone-/Skin-Matrizen erneut auswerten kann.
@@ -322,6 +341,8 @@ struct NifParticleModifierInfo {
 
     // Color/rotation/forces.
     std::int32_t colorDataRef = -1;
+    bool hasColorTrack = false;
+    NifColorTrack colorTrack;
     float initialRotationSpeed = 0.0f, initialRotationSpeedVariation = 0.0f;
     float initialRotationAngle = 0.0f, initialRotationAngleVariation = 0.0f;
     bool randomRotationSpeedSign = false, randomInitialAxis = false;

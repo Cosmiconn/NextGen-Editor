@@ -111,6 +111,8 @@ int main(int argc, char** argv) {
     std::size_t emitterControllersWithoutRate = 0;
     std::size_t emitterControllersWithoutVisibility = 0;
     std::size_t activeControllersWithoutBoolTrack = 0;
+    std::size_t colorModifiersWithoutTrack = 0;
+    std::map<std::uint32_t, std::size_t> particleColorInterpolations;
     std::size_t invalidParticleModifierRefs = 0;
     std::size_t particleCapacity = 0;
     std::size_t activeParticles = 0;
@@ -227,6 +229,15 @@ int main(int argc, char** argv) {
                     for (const auto& modifierType : system.modifierTypes) {
                         ++particleModifierTypes[modifierType];
                         if (modifierType == "<invalid>") ++invalidParticleModifierRefs;
+                    }
+                    for (const auto& modifier : system.modifiers) {
+                        if (modifier.type != "NiPSysColorModifier") continue;
+                        if (modifier.colorDataRef >= 0 && !modifier.hasColorTrack) {
+                            ++colorModifiersWithoutTrack;
+                            rendererGapFiles.insert(entry.path().string());
+                        }
+                        if (modifier.hasColorTrack)
+                            ++particleColorInterpolations[modifier.colorTrack.interpolation];
                     }
                     resolvedParticleControllers += system.controllers.size();
                     for (const auto& controller : system.controllers) {
@@ -684,6 +695,7 @@ int main(int argc, char** argv) {
               << "\temitterControllersWithoutRate=" << emitterControllersWithoutRate
               << "\temitterControllersWithoutVisibility=" << emitterControllersWithoutVisibility
               << "\tactiveControllersWithoutBoolTrack=" << activeControllersWithoutBoolTrack
+              << "\tcolorModifiersWithoutTrack=" << colorModifiersWithoutTrack
               << "\tparticleTextureBindings=" << particleTextureBindings
               << "\tparticleShaderDescriptors=" << particleShaderDescriptors
               << "\tparticleUnresolvedEmbedded=" << particleUnresolvedEmbedded
@@ -828,6 +840,9 @@ int main(int argc, char** argv) {
     for (const auto& [type, count] : particleControllerTypes)
         std::cout << "PARTICLECTLR\ttype=" << Clean(type)
                   << "\tbindings=" << count << '\n';
+    for (const auto& [mode, count] : particleColorInterpolations)
+        std::cout << "PARTICLECOLOR\tinterpolation=" << mode
+                  << "\ttracks=" << count << '\n';
     for (const auto& [path, count] : particleFiles) {
         (void)count;
     }
