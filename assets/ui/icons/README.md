@@ -64,3 +64,7 @@ the approved size set and every PNG that is actually committed under
 `assets/ui/icons/png/`. It intentionally permits semantic IDs with no committed
 runtime raster yet; those remain on the documented DrawList fallback until the
 approved Final ZIP is imported.
+
+At runtime, `UiIconAssets::IsKnownSemantic(...)` provides the same semantic boundary.
+`Texture(...)` logs an unknown semantic ID once, while a known ID whose approved PNG
+has not been committed yet remains a silent, intentional DrawList fallback.
