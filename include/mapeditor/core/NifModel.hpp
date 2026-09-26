@@ -190,6 +190,11 @@ struct NifMeshPart {
     std::uint8_t alphaSrcBlend = 6; // SRC_ALPHA
     std::uint8_t alphaDstBlend = 7; // INV_SRC_ALPHA
     std::uint8_t alphaTestFunc = 4; // GREATER
+    // NiZBufferProperty. Defaults match the normal fixed-function editor path when
+    // no explicit Z property is attached: test + write, LESS_EQUAL comparison.
+    bool depthTest = true;
+    bool depthWrite = true;
+    std::uint32_t depthFunction = 3; // ZCOMP_LESS_EQUAL
     std::uint32_t baseUvSet = 0;
     std::uint32_t textureClampMode = 3;
     std::uint32_t textureFilterMode = 2;
