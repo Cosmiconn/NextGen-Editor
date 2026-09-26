@@ -351,6 +351,17 @@ Noch offen innerhalb von Priorität 1/2:
 
 Dieser Abschnitt ist der verbindliche Ausbau-Fahrplan für den laufenden Branch `ui-upgrade`.
 
+### Priorität 0 – NIF-Renderer-Fidelity
+
+Vor weiterer UI-Politur hat die visuelle Übereinstimmung echter Fiesta-NIFs Vorrang:
+- alle streng belegten Geometrie-/Material-/Renderstate-Pfade müssen sichtbar werden, ohne still auf plausible Ersatzsemantik zu fallen;
+- Base/Dark/Detail/Gloss/Glow/Bump/Decal0..3, bis zu acht UV-Sets, Alpha/Z/Stencil/VertexColor/Specular, Skinning, LOD, Billboard sowie TextureTransform-/Flip-Controller sind bereits im Rendererpfad vorhanden;
+- `NiTextureEffect` wird jetzt vom Szenengraph auf die betroffenen Mesh-Parts gebunden und seine SourceTexture/embedded PixelData aufgelöst;
+- der im echten Fixture `DarkVally_Frog.nif` belegte Pfad `TEX_ENVIRONMENT_MAP + CG_SPHERE_MAP` wird additiv gerendert; andere TextureEffect-/CoordGen-Kombinationen bleiben bis zur Datenverifikation diagnostisch;
+- verbleibende benannte `ShaderTexDesc`-Semantik außerhalb des verifizierten `VCAlphaTextureBlender` wird als nächster Material-Fidelity-Schritt anhand echter Fiesta-NIFs inventarisiert und erst danach implementiert;
+- NIF-Inspector/Tests müssen zwischen **Texturdatei nicht gefunden**, **PixelData nicht dekodiert**, **Semantik bekannt aber noch nicht gerendert** und **generischem Shader-Fallback** unterscheiden.
+
+
 ### Karten-/Level-Editor
 1. 3D Transform-Gizmo für Move / Rotate / Scale mit X/Y/Z-Achsen.
 2. Grid-, Winkel- und Scale-Snapping, World/Local, „Auf Boden setzen“ und „Auswahl fokussieren“.
@@ -432,4 +443,6 @@ Dieser Abschnitt ist der verbindliche Ausbau-Fahrplan für den laufenden Branch 
 
 ### Priorität
 Die unmittelbare Reihenfolge ist:
-**Icon-/UI-Vision festziehen → App-Shell/Map-UI-Retrofit → Minimap-Metadaten + Editor-Preview (erreicht; Exportformat weiter gesperrt) → Walk/Block-Footprints (Preview/Apply erreicht) → SHN-Referenzen (verifizierte Kernfamilien erreicht) → Skill Animation/VFX (datenbelegte Picker/Referenz-Vorschau erreicht) → KFM-Playback (Timeline + Skeleton + echte CPU-Skinned-Mesh-Deformation erreicht; B-Splines/materialisiertes Preview offen) → Quest-Flow (verifizierte predecessor-Sicht erreicht) → globale QA/Politur.**
+**NIF-Renderer-Fidelity / echte Textur- und Materialsemantik → verbleibende NIF-Parser-/Shader-Sonderfälle über reale Fixtures/Korpus absichern → danach globale UI-QA/Politur → Minimap-Export erst nach realer Fiesta-Formatverifikation → KFM-B-Spline/TBC/Quadratic nur nach Datenverifikation.**
+
+Die großen UI-/Editor-Meilensteine (App-Shell, Transform-Gizmo, Minimap-Preview, Walk/Block-Footprints, SHN-Referenzen, Skill-Picker, KFM-Timeline/Skeleton/Skinning und Quest-Flow) bleiben erreicht und werden während des Renderer-Fidelity-Passes nicht zurückgebaut.
