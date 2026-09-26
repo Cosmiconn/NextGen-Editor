@@ -261,11 +261,24 @@ struct NifModel {
 std::expected<NifModel, std::string> LoadNifMesh(const std::filesystem::path& file,
                                               bool allowRecovery = true);
 
-// Grundflaeche eines Modells fuer die 2D-Draufsicht: konvexe Huelle (x,z) der Vertices in der
-// UNTERSTEN Hoehenschicht (Band = 12 % der Modellhoehe, begrenzt auf 20..120 Einheiten) - so
-// bekommt ein Baum die Stammflaeche statt der Krone, ein Haus den Wandumriss statt des
-// Dachueberstands. Punkte in Modell-Koordinaten (Y-up, x/z = Grundebene), gegen den Uhrzeigersinn.
-// Leer, wenn das Modell keine Geometrie hat. Konvex: L-foermige Grundrisse werden ueberdeckt.
+struct NifGroundContactSegment {
+    float x0 = 0.0f;
+    float z0 = 0.0f;
+    float x1 = 0.0f;
+    float z1 = 0.0f;
+};
+
+// Exakte 2D-Kontaktkontur fuer den Editor: Schnitt der echten Mesh-Dreiecke mit der lokalen
+// Bodenebene des platzierten Modells. Wenn y=0 innerhalb der Modellhoehe liegt, wird diese
+// authored Pivot-/Placement-Ebene verwendet; andernfalls die tiefste Modellhoehe. Koplanare
+// Bodenflaechen werden auf ihre Randkanten reduziert, interne Triangulationskanten entfernt.
+// Dadurch bleiben konkave und getrennte Standflaechen erhalten statt zu einer konvexen Huelle
+// zusammengeschmolzen zu werden. Leer, wenn keine belastbare Kontaktlinie ableitbar ist.
+std::vector<NifGroundContactSegment> ComputeGroundContactSegments(const NifModel& model);
+
+// Legacy-/Walk-Fallback: konvexe Huelle (x,z) der Vertices in der untersten Hoehenschicht.
+// Fuer die sichtbare 2D-Objektkontur NICHT verwenden; konkave Grundrisse werden hier bewusst
+// ueberdeckt. Der Pfad bleibt vorerst fuer bestehende Walk/Block-Polygonoperationen erhalten.
 std::vector<std::pair<float, float>> ComputeFootprintHull(const NifModel& model);
 
 } // namespace theseed::mapeditor::core
