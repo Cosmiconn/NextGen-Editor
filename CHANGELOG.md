@@ -5,6 +5,8 @@
 - Extend the NIF Inspector with separate external / embedded / embedded-failure counts, PixelData block IDs, missing-only filtering for embedded failures, and decoded/undecoded PixelData totals.
 - Expand `test_nif_model` coverage to all UV sets and all embedded material slots.
 - Fixture structure audit: 83 supplied NIFs, 81 containing NiPixelData; for those 81, NiPixelData and NiSourceTexture block counts match one-for-one.
+- Binary source audit: all 296 directly readable texture filename fields in the supplied fixture NIFs have `Use External = 0`; even names ending in `.dds` are metadata for embedded sources, not permission to fall back to disk.
+- Embedded payload audit: 293 directly readable PixelData payloads use supported formats (203 DXT1, 80 DXT3, 5 DXT5, 4 RGBA32, 1 RGB24). The older 10.2.0.0 fixtures use DXT1/DXT3 and are covered separately by CI.
 
 ## UI Upgrade QA – Icon consistency, section chrome and viewport input capture
 - Add `tools/ui/check_icon_consistency.py` and run it in Linux CI before the core build. It verifies the frozen 68 semantic IDs against `UiIconAssets.cpp`, approved size levels and every checked-in runtime PNG while explicitly allowing the intentional partial runtime subset.
