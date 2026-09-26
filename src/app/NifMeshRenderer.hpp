@@ -107,6 +107,10 @@ private:
         std::vector<FlipAnimation> textureFlipAnimations;
         std::uint32_t textureApplyMode = 2;
         bool vcAlphaTextureBlender = false;
+        // Effektiver klassischer NIF-Vertexfarbenmodus: 0 ignore, 1 emission,
+        // 2 ambient+diffuse. Der dedizierte VCAlphaTextureBlender nutzt weiterhin
+        // seinen eigenen Shadervertrag und wertet Vertex-RGB/Alpha separat aus.
+        std::uint32_t vertexColorMode = 0;
         std::array<float, 3> ambientColor{1.0f, 1.0f, 1.0f};
         std::array<float, 3> diffuseColor{1.0f, 1.0f, 1.0f};
         std::array<float, 3> specularColor{1.0f, 1.0f, 1.0f};
@@ -154,7 +158,7 @@ private:
     std::unordered_map<std::string, std::uint32_t> textureCache_; // Schlüssel: aufgelöster Textur-Pfad
     std::vector<const LoadedModel*> perObjectModel_;             // parallel zu set, nullptr = kein Mesh
     struct UniformLocations {
-        int locViewProj = -1, locModel = -1, locLightDir = -1, locCameraPos = -1, locAmbientColor = -1, locDiffuseColor = -1, locSpecularColor = -1, locEmissiveColor = -1, locGlossiness = -1, locSpecularEnabled = -1, locApplyMode = -1, locVcAlphaTextureBlender = -1, locBumpLumaScale = -1, locBumpLumaOffset = -1, locBumpMatrix = -1, locAlphaTest = -1, locAlphaCutoff = -1, locAlphaTestFunc = -1, locMaterialAlpha = -1;
+        int locViewProj = -1, locModel = -1, locLightDir = -1, locCameraPos = -1, locAmbientColor = -1, locDiffuseColor = -1, locSpecularColor = -1, locEmissiveColor = -1, locGlossiness = -1, locSpecularEnabled = -1, locApplyMode = -1, locVcAlphaTextureBlender = -1, locVertexColorMode = -1, locBumpLumaScale = -1, locBumpLumaOffset = -1, locBumpMatrix = -1, locAlphaTest = -1, locAlphaCutoff = -1, locAlphaTestFunc = -1, locMaterialAlpha = -1;
         std::array<int, 10> locHasTex{}, locUvSet{}, locHasTransform{}, locTranslation{}, locScale{}, locRotation{}, locCenter{}, locSampler{};
     } uniforms_;
     struct DrawItem {
