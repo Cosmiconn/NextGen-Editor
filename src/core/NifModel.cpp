@@ -3541,8 +3541,26 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
     }
 
     // Konsistenzpruefung der Parts; bei Widerspruch aus den Geometrie-Knoten neu aufbauen.
+    // Die reine Anzahl ist NICHT ausreichend: Particle-Systeme besitzen eigene
+    // NiMaterialProperty/NiTexturingProperty-Bloecke, erzeugen aber keine renderbaren Mesh-Parts.
+    // In store.nif kompensierten sich dadurch zufaellig ein Phantom-Partikel-Material und ein
+    // zusaetzlicher echter Geometrieblock (3 Materialien == 3 GeometryData-Bloecke). Der alte
+    // Count-Check hielt das fuer konsistent und der sequentielle Textur-Fallback band anschliessend
+    // die Partikel-Fliptextur fly01.dds an das 60-Vertex-Map-Mesh ohne UVs.
     {
-        bool consistent = rawByData.size() == model.parts.size();
+        bool consistent = rawByData.size() == model.parts.size() &&
+                          partDataBlock.size() == model.parts.size();
+        std::unordered_set<std::int32_t> mappedData;
+        if (consistent) {
+            for (const auto dataRef : partDataBlock) {
+                if (dataRef < 0 || rawByData.find(dataRef) == rawByData.end() ||
+                    !mappedData.insert(dataRef).second) {
+                    consistent = false;
+                    break;
+                }
+            }
+        }
+        if (consistent && mappedData.size() != rawByData.size()) consistent = false;
         for (const auto& part : model.parts) {
             if (!consistent) break;
             for (const auto idx : part.triangleIndices) {

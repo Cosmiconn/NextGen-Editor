@@ -121,6 +121,45 @@ void CheckNamedShader(const fs::path& root, const ShaderExpectation& expected) {
               std::to_string(externalBaseCount));
 }
 
+void CheckParticleTextureIsolationFixture(const fs::path& root) {
+    constexpr const char* kFile = "store.nif";
+    const auto path = FindFixture(root, kFile);
+    Check(path.has_value(), std::string("Fixture vorhanden: ") + kFile);
+    if (!path) return;
+
+    const auto model = core::LoadNifMesh(*path, false);
+    Check(model.has_value(), std::string("Fixture lädt vollständig: ") + kFile);
+    if (!model) {
+        std::fprintf(stderr, "         %s\n", model.error().c_str());
+        return;
+    }
+
+    bool leakedParticleTexture = false;
+    bool phantomEmptyPart = false;
+    std::size_t untexturedSixtyVertexParts = 0;
+    for (const auto& part : model->parts) {
+        if (part.positions.empty()) phantomEmptyPart = true;
+        if (part.positions.size() == 60u && part.uvSets.empty()) {
+            bool textured = false;
+            for (const auto& slot : part.textureSlots) textured |= slot.present;
+            if (!textured) ++untexturedSixtyVertexParts;
+        }
+        if (part.diffuseTexture.find("fly01.dds") != std::string::npos) leakedParticleTexture = true;
+        for (const auto& slot : part.textureSlots)
+            if (slot.texture.find("fly01.dds") != std::string::npos) leakedParticleTexture = true;
+        for (const auto& anim : part.textureFlipAnimations)
+            for (const auto& frame : anim.frames)
+                if (frame.texture.find("fly01.dds") != std::string::npos) leakedParticleTexture = true;
+    }
+
+    Check(!phantomEmptyPart,
+          std::string(kFile) + ": Particle-Material erzeugt keinen leeren Mesh-Part");
+    Check(untexturedSixtyVertexParts > 0u,
+          std::string(kFile) + ": 60-Vertex-Map-Mesh bleibt korrekt als authored untexturiert/ohne UVs erhalten");
+    Check(!leakedParticleTexture,
+          std::string(kFile) + ": fly01.dds bleibt am NiParticleSystem und wird keinem Map-Mesh zugeordnet");
+}
+
 void CheckLargeWrappedUvFixture(const fs::path& root) {
     constexpr const char* kFile = "ship.nif";
     const auto path = FindFixture(root, kFile);
@@ -226,6 +265,7 @@ int main(int argc, char** argv) {
         18u,
     });
 
+    CheckParticleTextureIsolationFixture(root);
     CheckLargeWrappedUvFixture(root);
     CheckStencilFixture(root);
     CheckHilite2Fixture(root);
