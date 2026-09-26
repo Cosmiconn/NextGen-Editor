@@ -45,7 +45,9 @@
 - Übergänge und Detailarrays.
 - Dateiverweisprüfung.
 - Verlustfreier Kopie-Export.
-- Noch **kein** Skelettanimations-Playback und keine KFM-Feldbearbeitung.
+- KF-Transport/Timeline mit Text-Key-Markern und Track-Sampling.
+- echter Skeleton-Viewport aus expliziter KFM-NIF-Hierarchie + verifizierten KF-Local-Transforms.
+- animierte Mesh-Deformation und nicht verifizierte B-Spline/TBC-Semantik bleiben offen.
 
 ### Projekt / Hilfe
 - Projekt mit Client-/Serverpfad.
@@ -191,7 +193,7 @@ Zusätzlich in der laufenden zweiten Ausbaustufe umgesetzt:
 - Terrain-/Walk-Brush-Overlays und Presets sowie Layer-DnD, DDS-Drop, Duplizieren und größere Thumbnails umgesetzt.
 - Single-SHN modernisiert: sortierbare/fixierte Tabelle, Spaltenfilter, Dirty-/Fehler-Markierungen, Inline-Editing, Copy/Paste, Undo/Redo und Client/Server-Diff.
 - Multi-SHN zu einer Client/Server-Vergleichsansicht mit Schema-/Zeilen-/Zell-Diffs ausgebaut.
-- KFM-Playback-Grundlage ergänzt: ausgewählte KF-Dateien können geladen, auf einer Timeline abgespielt und pro Transform-Track live gesampelt werden; Play/Pause, Loop und Geschwindigkeit sind vorhanden. Komprimierte Fiesta-B-Spline-Tracks bleiben bewusst als noch nicht verifiziert markiert, statt falsches Skelett-Playback vorzutäuschen.
+- KFM-Playback ausgebaut: ausgewählte KF-Dateien können geladen und mit Play/Pause, Loop, Geschwindigkeit und Scrub abgespielt werden; die Timeline zeigt echte KF-Text-Key-Marker. Zusätzlich rendert ein interaktiver Skeleton-Viewport die explizit referenzierte KFM-NIF-Hierarchie und wendet verifizierte KF-Local-Transforms nach Knotennamen darauf an. Nicht samplebare B-Spline/TBC-/Quadratic-Tracks bleiben sichtbar in Bind-Pose; animierte Mesh-Deformation wird noch nicht behauptet.
 - Globales UX nachgezogen: persistente Recent Projects/Recent Maps, getrennter Unsaved-Status für Karte und SHN, Toast-Meldungen, Strg+P-Command-Palette und Strg+S für Map-Speichern.
 - Dock-/Workspace-Layout wird dauerhaft im NextGen-Benutzerordner gespeichert und beim nächsten Start wiederhergestellt; ein expliziter Reset stellt das Standardlayout wieder her.
 
@@ -270,9 +272,11 @@ Diese Roadmap ist ab jetzt die verbindliche Reihenfolge für den weiteren Ausbau
 - **Custom NPC/Mob:** echter 5-Schritt-Assistent mit permanenter Vorschau.
 
 ### Priorität 4 – Animationen
-- echtes KFM-/KF-Playback.
-- Preview-Viewport und Timeline.
-- KFM-/Transition-Bearbeitung erst dort, wo der Codec nachweislich verlustfrei und sicher schreiben kann.
+- echtes KFM-/KF-Playback; **Timeline/Transport umgesetzt**
+- Preview-Viewport; **Skeleton-Viewport aus echter NIF-Hierarchie + verifizierten KF-Tracks umgesetzt**
+- animierte Mesh-Deformation/Skinned-Mesh-Playback; **offen**
+- komprimierte Fiesta-B-Spline-/TBC-/Quadratic-Sampler nur nach Verifikation; **offen**
+- KFM-/Transition-Bearbeitung nur dort, wo der Codec nachweislich verlustfrei und die Runtime-Semantik belegt ist.
 
 ### Priorität 5 – Globales UX
 - Workspace-Layouts speichern.
@@ -388,8 +392,11 @@ Dieser Abschnitt ist der verbindliche Ausbau-Fahrplan für den laufenden Branch 
 - permanente Modell-/Avatar-Vorschau.
 
 ### KFM / Animation
-- echtes Playback mit Preview-Viewport und Timeline;
-- erst danach schreibende Transition-/KFM-Feldbearbeitung, wenn der Codec dafür ausreichend verifiziert ist.
+- echtes KF-Playback mit Text-Key-Timeline; **umgesetzt**
+- interaktiver Skeleton-Viewport über die echte KFM-NIF-Hierarchie; **umgesetzt für verifizierte, samplebare Transformtracks**
+- Skinned-Mesh-Deformation; **offen**
+- B-Spline/TBC/Quadratic nur nach Datenverifikation; **offen**
+- erst danach weitergehende schreibende Transition-/KFM-Feldbearbeitung, wenn zusätzlich zur Codec-Erhaltung auch die Runtime-Semantik ausreichend verifiziert ist.
 
 ### Globales UX
 - gespeicherte Workspace-Layouts;
@@ -402,4 +409,4 @@ Dieser Abschnitt ist der verbindliche Ausbau-Fahrplan für den laufenden Branch 
 
 ### Priorität
 Die unmittelbare Reihenfolge ist:
-**Icon-/UI-Vision festziehen → App-Shell/Map-UI-Retrofit → Minimap-Metadaten + Editor-Preview (erreicht; Exportformat weiter gesperrt) → Walk/Block-Footprints (Preview/Apply erreicht) → SHN-Referenzen (verifizierte Kernfamilien erreicht) → Skill Animation/VFX (datenbelegte Picker/Referenz-Vorschau erreicht; Asset-Playback noch offen) → KFM-Playback → Quest-Flow optional → globale QA/Politur.**
+**Icon-/UI-Vision festziehen → App-Shell/Map-UI-Retrofit → Minimap-Metadaten + Editor-Preview (erreicht; Exportformat weiter gesperrt) → Walk/Block-Footprints (Preview/Apply erreicht) → SHN-Referenzen (verifizierte Kernfamilien erreicht) → Skill Animation/VFX (datenbelegte Picker/Referenz-Vorschau erreicht) → KFM-Playback (Timeline + echtes Skeleton-Preview erreicht; Mesh-Deformation/B-Splines offen) → Quest-Flow optional → globale QA/Politur.**
