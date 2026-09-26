@@ -9,6 +9,7 @@
 - Embedded payload audit: 293 directly readable PixelData payloads use supported formats (203 DXT1, 80 DXT3, 5 DXT5, 4 RGBA32, 1 RGB24). The older 10.2.0.0 fixtures use DXT1/DXT3 and are covered separately by CI.
 
 ## UI Upgrade QA – Icon consistency, section chrome and viewport input capture
+- Keep semantic icon meanings strict: recent map history now uses `file.open`; the dedicated `system.recent_projects` asset remains reserved for actual project history.
 - Complete DE/EN coverage for the main entry flow: Project Hub cards/recent projects, project configuration help and Map Launcher creation/browse/rescan/error text now follow the global language switch.
 - Localize the Topbar unsaved-changes tooltip, including map/SHN/quest/portal/AI/drop-table dirty details.
 - Finish the semantic section-header pass: Quest Flow now uses the Quest package icon/header and the creature wizard preview switches between the approved Custom NPC / Custom Mob icons. Entity labels and specialist inline pickers remain intentionally compact.
