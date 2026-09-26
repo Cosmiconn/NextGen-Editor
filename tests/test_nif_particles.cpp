@@ -185,6 +185,16 @@ int main(int argc, char** argv) {
                 check(!system.modifierRefs.empty(), "particle system keeps modifier wiring");
                 check(system.modifierTypes.size() == system.modifierRefs.size(),
                       "particle modifier references resolve to explicit block types");
+                check(!system.controllers.empty(),
+                      "particle ObjectNET controller chain resolves to runtime controller data");
+                check(std::any_of(system.controllers.begin(), system.controllers.end(), [](const auto& controller) {
+                          return controller.type == "NiPSysEmitterCtlr" && controller.hasFloatTrack;
+                      }),
+                      "particle system preserves its emitter rate controller track");
+                check(std::any_of(system.controllers.begin(), system.controllers.end(), [](const auto& controller) {
+                          return controller.type == "NiPSysUpdateCtlr";
+                      }),
+                      "particle system preserves its update controller");
                 for (const auto& modifierType : system.modifierTypes)
                     check(modifierType != "<invalid>", "particle modifier type reference is valid");
                 if (system.hasParticleData) {

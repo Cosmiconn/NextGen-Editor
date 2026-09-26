@@ -1366,11 +1366,30 @@ void SkipNiMorphData(ByteReader& r) {
 // NiPSysUpdateCtlr: NUR die reine NiTimeController-Basis (26 Byte, OHNE interpolator_ref) -
 // anders als die meisten anderen Controller in dieser Datei, die über
 // NiSingleInterpController laufen. Treibt pro Frame die Partikelsimulation an.
+struct NifTimeControllerState {
+    std::int32_t nextRef = -1;
+    std::uint16_t flags = 0;
+    float frequency = 1.0f;
+    float phase = 0.0f;
+    float startTime = 0.0f;
+    float stopTime = 0.0f;
+    std::int32_t targetRef = -1;
+};
+
+NifTimeControllerState ParseNiTimeController(ByteReader& r) {
+    NifTimeControllerState out;
+    out.nextRef = r.I32();
+    out.flags = r.U16();
+    out.frequency = r.F32();
+    out.phase = r.F32();
+    out.startTime = r.F32();
+    out.stopTime = r.F32();
+    out.targetRef = r.I32();
+    return out;
+}
+
 void SkipNiPSysUpdateCtlr(ByteReader& r) {
-    r.I32();   // next_controller
-    r.U16();   // flags
-    r.F32(); r.F32(); r.F32(); r.F32(); // frequency, phase, start_time, stop_time
-    r.I32();   // target
+    (void)ParseNiTimeController(r);
 }
 
 void SkipNiControllerManager(ByteReader& r) {
@@ -1459,22 +1478,57 @@ void ParseFiestaToonExtraData(ByteReader& r) {
     r.F32(); r.F32();
 }
 
-// NiPSysEmitterCtlr: NiPSysModifierCtlr (= NiSingleInterpController(30 Byte) +
-// modifier_name(String)) + visibility_interpolator_ref(i32).
-void SkipNiPSysEmitterCtlr(ByteReader& r) {
-    SkipNiTransformController(r); // identische 30-Byte-NiSingleInterpController-Basis
-    r.SizedString(); // modifier_name
-    r.I32();          // visibility_interpolator_ref
+void CopyParticleControllerBase(NifParticleControllerInfo& out, const NifSingleControllerState& base) {
+    out.nextRef = base.nextRef;
+    out.flags = base.flags;
+    out.frequency = base.frequency;
+    out.phase = base.phase;
+    out.startTime = base.startTime;
+    out.stopTime = base.stopTime;
+    out.targetRef = base.targetRef;
+    out.interpolatorRef = base.interpolatorRef;
 }
 
-// NiPSysModifierActiveCtlr: NiPSysModifierCtlr = NiSingleInterpController(30 Byte) +
-// modifier_name(String) - KEIN zusätzliches Feld danach (anders als NiPSysEmitterCtlr, das
-// noch visibility_interpolator_ref ergänzt). Byte-exakt verifiziert an
-// Yak_VaporGenerater.nif: target=116 zeigt exakt auf die zugehörige NiParticleSystem,
-// modifier_name="NiPSysDragModifier(Z-Axis):10" ist ein eindeutig lesbarer, gültiger Name.
-void SkipNiPSysModifierActiveCtlr(ByteReader& r) {
-    SkipNiTransformController(r);
-    r.SizedString(); // modifier_name
+void CopyParticleControllerBase(NifParticleControllerInfo& out, const NifTimeControllerState& base) {
+    out.nextRef = base.nextRef;
+    out.flags = base.flags;
+    out.frequency = base.frequency;
+    out.phase = base.phase;
+    out.startTime = base.startTime;
+    out.stopTime = base.stopTime;
+    out.targetRef = base.targetRef;
+}
+
+// NiPSysEmitterCtlr: its inherited SingleInterpController is the emitter value track;
+// 10.2+ additionally stores a separate visibility interpolator.
+NifParticleControllerInfo ParseNiPSysEmitterCtlr(ByteReader& r) {
+    NifParticleControllerInfo out;
+    out.type = "NiPSysEmitterCtlr";
+    const auto base = ParseNiSingleController(r);
+    CopyParticleControllerBase(out, base);
+    out.modifierName = r.SizedString();
+    out.visibilityInterpolatorRef = r.I32();
+    return out;
+}
+void SkipNiPSysEmitterCtlr(ByteReader& r) { (void)ParseNiPSysEmitterCtlr(r); }
+
+// NiPSysModifierActiveCtlr uses its SingleInterpController's bool interpolator to toggle
+// the named modifier. There is no extra field after modifier_name.
+NifParticleControllerInfo ParseNiPSysModifierActiveCtlr(ByteReader& r) {
+    NifParticleControllerInfo out;
+    out.type = "NiPSysModifierActiveCtlr";
+    const auto base = ParseNiSingleController(r);
+    CopyParticleControllerBase(out, base);
+    out.modifierName = r.SizedString();
+    return out;
+}
+void SkipNiPSysModifierActiveCtlr(ByteReader& r) { (void)ParseNiPSysModifierActiveCtlr(r); }
+
+NifParticleControllerInfo ParseNiPSysUpdateController(ByteReader& r, const char* type) {
+    NifParticleControllerInfo out;
+    out.type = type;
+    CopyParticleControllerBase(out, ParseNiTimeController(r));
+    return out;
 }
 
 // NiFlipController: NiFloatInterpController (= identische 30-Byte-NiSingleInterpController-
@@ -1637,9 +1691,17 @@ void SkipNiPosData(ByteReader& r) {
 // NiBoolInterpolator: aktueller Wert(u8, als bool) + data_ref(i32, zeigt auf NiBoolData) =
 // 5 Byte. Gleiches Muster wie NiFloatInterpolator/NiPoint3Interpolator, nur mit einem
 // Byte statt eines Floats als aktuellem Wert.
+struct NifBoolInterpolatorState {
+    bool value = true;
+    std::int32_t dataRef = -1;
+};
+
+NifBoolInterpolatorState ParseNiBoolInterpolator(ByteReader& r) {
+    return {r.U8() != 0, r.I32()};
+}
+
 void SkipNiBoolInterpolator(ByteReader& r) {
-    r.U8();  // aktueller Wert
-    r.I32(); // data ref
+    (void)ParseNiBoolInterpolator(r);
 }
 
 // NiLookAtInterpolator: flags(u16) + look_at_ref(i32, Ptr auf NiNode) + look_at_name(String) +
@@ -1668,8 +1730,38 @@ void SkipNiLookAtInterpolator(ByteReader& r) {
 
 // NiBoolData: eine einzelne KeyGroup<u8> (Boolean-Keyframes, z.B. Partikel-Emitter
 // sichtbar/unsichtbar über die Zeit).
+struct NifBoolDataState {
+    std::uint32_t interpolation = 5;
+    std::vector<NifBoolKey> keys;
+};
+
+NifBoolDataState ParseNiBoolData(ByteReader& r) {
+    NifBoolDataState out;
+    const std::uint32_t numKeys = r.CountU32(200000u);
+    if (numKeys == 0) return out;
+    out.interpolation = r.U32();
+    if (out.interpolation != 1u && out.interpolation != 2u &&
+        out.interpolation != 3u && out.interpolation != 5u) {
+        r.Invalidate();
+        return out;
+    }
+    out.keys.reserve(numKeys);
+    for (std::uint32_t i = 0; i < numKeys; ++i) {
+        NifBoolKey key;
+        key.time = r.F32();
+        key.value = r.U8() != 0;
+        if (out.interpolation == 2u) {
+            r.U8(); r.U8(); // bool forward/backward tangents, irrelevant for discrete state
+        } else if (out.interpolation == 3u) {
+            r.F32(); r.F32(); r.F32(); // T/B/C
+        }
+        out.keys.push_back(key);
+    }
+    return out;
+}
+
 void SkipNiBoolData(ByteReader& r) {
-    SkipKeyGroupBytes(r);
+    (void)ParseNiBoolData(r);
 }
 
 // NiColorData: eine einzelne KeyGroup<Color4> (4 Floats pro Wert, z.B. Partikelfarbe über
@@ -2694,6 +2786,9 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
     std::unordered_map<std::uint32_t, PendingPalettedTexture> pendingPalettedPixelTextures;
     std::unordered_map<std::uint32_t, NifFloatInterpolatorState> floatInterpolatorsByBlock;
     std::unordered_map<std::uint32_t, NifFloatDataState> floatDataByBlock;
+    std::unordered_map<std::uint32_t, NifBoolInterpolatorState> boolInterpolatorsByBlock;
+    std::unordered_map<std::uint32_t, NifBoolDataState> boolDataByBlock;
+    std::unordered_map<std::uint32_t, NifParticleControllerInfo> particleControllersByBlock;
     std::unordered_map<std::uint32_t, NifTextureTransformControllerState> texTransformControllersByBlock;
     std::unordered_map<std::uint32_t, NifFlipControllerState> flipControllersByBlock;
     std::unordered_map<std::size_t, std::int32_t> partBaseTextureRef;      // Legacy-Alias fuer Slot 0
@@ -3088,6 +3183,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             publicSystem.hasShader = psys.hasShader;
             publicSystem.shaderName = psys.shaderName;
             publicSystem.dataRef = psys.dataRef;
+            publicSystem.controllerRef = psys.base.net.controller;
             publicSystem.propertyRefs = psys.base.properties;
             publicSystem.modifierRefs = psys.modifiers;
             publicSystem.modifierTypes.reserve(psys.modifiers.size());
@@ -3129,9 +3225,13 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         } else if (type == "NiParticlesData" || type == "NiRotatingParticlesData") {
             SkipNiParticlesData(r, hdr.version);
         } else if (type == "NiPSysEmitterCtlr") {
-            SkipNiPSysEmitterCtlr(r);
+            auto info = ParseNiPSysEmitterCtlr(r);
+            info.blockRef = static_cast<std::int32_t>(blockIdx);
+            particleControllersByBlock[blockIdx] = std::move(info);
         } else if (type == "NiPSysModifierActiveCtlr") {
-            SkipNiPSysModifierActiveCtlr(r);
+            auto info = ParseNiPSysModifierActiveCtlr(r);
+            info.blockRef = static_cast<std::int32_t>(blockIdx);
+            particleControllersByBlock[blockIdx] = std::move(info);
         } else if (type == "NiPSysGravityStrengthCtlr") {
             // NiPSysGravityStrengthCtlr = NiPSysModifierFloatCtlr = NiPSysModifierCtlr, exakt
             // dieselbe Struktur wie NiPSysModifierActiveCtlr (30-Byte-Basis + modifier_name).
@@ -3152,16 +3252,16 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         } else if (type == "NiFlipController") {
             flipControllersByBlock[blockIdx] = ParseNiFlipController(r);
         } else if (type == "NiPSysUpdateCtlr" || type == "NiPSysResetOnLoopCtlr") {
-            SkipNiPSysUpdateCtlr(r);
+            auto info = ParseNiPSysUpdateController(r, type.c_str());
+            info.blockRef = static_cast<std::int32_t>(blockIdx);
+            particleControllersByBlock[blockIdx] = std::move(info);
         } else if (type == "NiBoolInterpolator" || type == "NiBoolTimelineInterpolator") {
-            // NiBoolTimelineInterpolator ist laut Referenz identisch zu NiBoolInterpolator
-            // (keine eigenen Zusatzfelder) - unterscheidet sich nur im Laufzeitverhalten
-            // (verpasste Keys werden nachgeholt), nicht in der Byte-Struktur.
-            SkipNiBoolInterpolator(r);
+            // Same byte layout; timeline semantics only affect missed-key delivery.
+            boolInterpolatorsByBlock[blockIdx] = ParseNiBoolInterpolator(r);
         } else if (type == "NiLookAtInterpolator") {
             SkipNiLookAtInterpolator(r);
         } else if (type == "NiBoolData") {
-            SkipNiBoolData(r);
+            boolDataByBlock[blockIdx] = ParseNiBoolData(r);
         } else if (type == "NiColorData") {
             SkipNiColorData(r);
         } else if (type == "NiPSysAgeDeathModifier") {
@@ -4695,6 +4795,84 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 }
             }
             controllerRef = nextRef;
+        }
+    }
+
+    // Resolve particle controller chains and their referenced interpolator/data blocks.
+    // The particle system's ObjectNET controller is the authored chain head; no controller
+    // is synthesized when a link or interpolator is missing.
+    const auto makeFloatTrack = [&](const NifParticleControllerInfo& controller) -> std::optional<NifFloatTrack> {
+        if (controller.interpolatorRef < 0) return std::nullopt;
+        const auto ii = floatInterpolatorsByBlock.find(static_cast<std::uint32_t>(controller.interpolatorRef));
+        if (ii == floatInterpolatorsByBlock.end()) return std::nullopt;
+        NifFloatTrack track;
+        track.active = (controller.flags & 0x0008u) != 0;
+        track.extrapolation = static_cast<std::uint8_t>((controller.flags & 0x0006u) >> 1u);
+        track.frequency = controller.frequency;
+        track.phase = controller.phase;
+        track.startTime = controller.startTime;
+        track.stopTime = controller.stopTime;
+        track.currentValue = ii->second.value;
+        if (ii->second.dataRef >= 0) {
+            const auto di = floatDataByBlock.find(static_cast<std::uint32_t>(ii->second.dataRef));
+            if (di != floatDataByBlock.end()) {
+                track.interpolation = di->second.interpolation;
+                track.keys = di->second.keys;
+            }
+        }
+        return track;
+    };
+    const auto makeBoolTrack = [&](const NifParticleControllerInfo& controller,
+                                   std::int32_t interpolatorRef) -> std::optional<NifBoolTrack> {
+        if (interpolatorRef < 0) return std::nullopt;
+        const auto ii = boolInterpolatorsByBlock.find(static_cast<std::uint32_t>(interpolatorRef));
+        if (ii == boolInterpolatorsByBlock.end()) return std::nullopt;
+        NifBoolTrack track;
+        track.active = (controller.flags & 0x0008u) != 0;
+        track.extrapolation = static_cast<std::uint8_t>((controller.flags & 0x0006u) >> 1u);
+        track.frequency = controller.frequency;
+        track.phase = controller.phase;
+        track.startTime = controller.startTime;
+        track.stopTime = controller.stopTime;
+        track.currentValue = ii->second.value;
+        if (ii->second.dataRef >= 0) {
+            const auto di = boolDataByBlock.find(static_cast<std::uint32_t>(ii->second.dataRef));
+            if (di != boolDataByBlock.end()) {
+                track.interpolation = di->second.interpolation;
+                track.keys = di->second.keys;
+            }
+        }
+        return track;
+    };
+
+    for (auto& [block, controller] : particleControllersByBlock) {
+        if (controller.type == "NiPSysEmitterCtlr") {
+            if (auto track = makeFloatTrack(controller)) {
+                controller.hasFloatTrack = true;
+                controller.floatTrack = std::move(*track);
+            }
+            if (auto track = makeBoolTrack(controller, controller.visibilityInterpolatorRef)) {
+                controller.hasVisibilityTrack = true;
+                controller.visibilityTrack = std::move(*track);
+            }
+        } else if (controller.type == "NiPSysModifierActiveCtlr") {
+            if (auto track = makeBoolTrack(controller, controller.interpolatorRef)) {
+                controller.hasBoolTrack = true;
+                controller.boolTrack = std::move(*track);
+            }
+        }
+    }
+
+    for (auto& system : model.particleSystems) {
+        system.controllers.clear();
+        std::int32_t controllerRef = system.controllerRef;
+        std::unordered_set<std::int32_t> seen;
+        for (int guard = 0; controllerRef >= 0 && guard < 128; ++guard) {
+            if (!seen.insert(controllerRef).second) break;
+            const auto it = particleControllersByBlock.find(static_cast<std::uint32_t>(controllerRef));
+            if (it == particleControllersByBlock.end()) break;
+            system.controllers.push_back(it->second);
+            controllerRef = it->second.nextRef;
         }
     }
 

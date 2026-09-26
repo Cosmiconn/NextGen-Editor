@@ -147,6 +147,23 @@ struct NifFloatTrack {
     std::vector<NifFloatKey> keys;
 };
 
+struct NifBoolKey {
+    float time = 0.0f;
+    bool value = false;
+};
+
+struct NifBoolTrack {
+    bool active = false;
+    std::uint8_t extrapolation = 2;
+    float frequency = 1.0f;
+    float phase = 0.0f;
+    float startTime = 0.0f;
+    float stopTime = 0.0f;
+    bool currentValue = true;
+    std::uint32_t interpolation = 5;
+    std::vector<NifBoolKey> keys;
+};
+
 // Verifizierte Transformdarstellung für NIF-Szene/Skinning im ursprünglichen
 // Gamebryo-Koordinatenrahmen. Sie wird zusätzlich zur bereits gerenderten Bind-Pose erhalten,
 // damit KF-Playback dieselben Bone-/Skin-Matrizen erneut auswerten kann.
@@ -251,6 +268,28 @@ struct NifParticleDataInfo {
     std::vector<NifParticleState> particles;
 };
 
+struct NifParticleControllerInfo {
+    std::int32_t blockRef = -1;
+    std::string type;
+    std::int32_t nextRef = -1;
+    std::uint16_t flags = 0;
+    float frequency = 1.0f;
+    float phase = 0.0f;
+    float startTime = 0.0f;
+    float stopTime = 0.0f;
+    std::int32_t targetRef = -1;
+    std::int32_t interpolatorRef = -1;
+    std::string modifierName;
+    std::int32_t visibilityInterpolatorRef = -1;
+
+    bool hasFloatTrack = false;
+    NifFloatTrack floatTrack;
+    bool hasBoolTrack = false;
+    NifBoolTrack boolTrack;
+    bool hasVisibilityTrack = false;
+    NifBoolTrack visibilityTrack;
+};
+
 struct NifParticleModifierInfo {
     std::string type;
     std::string name;
@@ -309,12 +348,14 @@ struct NifParticleSystemInfo {
     bool hasShader = false;
     std::string shaderName;
     std::int32_t dataRef = -1;
+    std::int32_t controllerRef = -1;
     std::vector<std::int32_t> propertyRefs;
     std::vector<std::int32_t> modifierRefs;
     // Parallel zu modifierRefs; direkt aus der Header-Blocktyp-Tabelle aufgelöst. Dadurch kann
     // der Renderer exakt die im Corpus vorkommenden Modifier implementieren statt Typen zu raten.
     std::vector<std::string> modifierTypes;
     std::vector<NifParticleModifierInfo> modifiers;
+    std::vector<NifParticleControllerInfo> controllers;
     bool hasParticleData = false;
     NifParticleDataInfo particleData;
 
