@@ -334,6 +334,7 @@ struct EditorState {
     core::TexturePaintUndoStack textureUndo;
     int selectedLayer = -1;
     int layerRenameIndex = -1;
+    bool layerRenameFocusPending = false;
     char layerRenameBuffer[128] = "";
     core::PaintMode paintMode = core::PaintMode::Increase;
     core::TexturePaintSettings paintSettings;
@@ -15212,10 +15213,13 @@ void DrawLayerManagerPanel(EditorState& state) {
         const std::string label = layer.name.empty() ? ("Layer " + std::to_string(i + 1)) : layer.name;
         if (state.layerRenameIndex == static_cast<int>(i)) {
             ImGui::SetNextItemWidth(-1.0f);
+            if (state.layerRenameFocusPending) {
+                ImGui::SetKeyboardFocusHere();
+                state.layerRenameFocusPending=false;
+            }
             const bool enter=ImGui::InputText("##layerRename",state.layerRenameBuffer,
                                               sizeof(state.layerRenameBuffer),
                                               ImGuiInputTextFlags_EnterReturnsTrue);
-            if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere(-1);
             if (enter || ImGui::IsItemDeactivatedAfterEdit()) {
                 if (state.layerRenameBuffer[0] != '\0' && layer.name != state.layerRenameBuffer) {
                     layer.name=state.layerRenameBuffer;
@@ -15229,6 +15233,7 @@ void DrawLayerManagerPanel(EditorState& state) {
             state.layerPreviewDirty = true;
             if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
                 state.layerRenameIndex=static_cast<int>(i);
+                state.layerRenameFocusPending=true;
                 std::snprintf(state.layerRenameBuffer,sizeof(state.layerRenameBuffer),"%s",label.c_str());
             }
         }
@@ -15269,7 +15274,15 @@ void DrawLayerManagerPanel(EditorState& state) {
         }
 
         if (ImGui::BeginPopupContextItem("##layerContext")) {
+            state.selectedLayer=static_cast<int>(i);
+            state.editMode=EditMode::TexturePaint;
+            state.layerPreviewDirty=true;
             DrawContextMenuHeader("layerContextHeader","LAYER",DrawIconLayers,"nav.layers",label.c_str());
+            if (UI::MenuItem(L("Umbenennen","Rename"))) {
+                state.layerRenameIndex=static_cast<int>(i);
+                state.layerRenameFocusPending=true;
+                std::snprintf(state.layerRenameBuffer,sizeof(state.layerRenameBuffer),"%s",label.c_str());
+            }
             if (UI::MenuItem(L("Duplizieren","Duplicate"))) {
                 const auto copy=layer;
                 const std::size_t ni=state.textureStack.AddLayer(copy.name+" Kopie",copy.diffuseFileName,copy.uvScaleDiffuse);
