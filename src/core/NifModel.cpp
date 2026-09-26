@@ -1421,19 +1421,63 @@ void SkipNiControllerSequence(ByteReader& r) {
     r.I32(); // string palette
 }
 
-void SkipNiBlendInterpolator(ByteReader& r) {
-    // Versions currently encountered with these blocks are 10.2 and 20.0.
-    if (r.Version() < 0x0A020000u) { r.Invalidate(); return; }
+NifBlendInterpolatorInfo ParseNiBlendInterpolator(ByteReader& r) {
+    NifBlendInterpolatorInfo out;
+    // Fiesta uses the 10.1.0.112+ layout: flags, item count, weight threshold,
+    // then runtime cache/item data only when not manager-controlled.
+    if (r.Version() < 0x0A020000u) { r.Invalidate(); return out; }
     const auto flags = r.U8();
     const auto size = r.U8();
-    r.F32(); // weight threshold
-    if ((flags & 1u) == 0) {
-        r.U8(); r.U8(); r.U8(); r.U8(); // count, single index, two priorities
-        for (int i = 0; i < 4; ++i) r.F32(); // time and weight sums/ease spinner
+    out.managerControlled = (flags & 1u) != 0;
+    out.onlyUseHighestWeight = (flags & 2u) != 0;
+    out.weightThreshold = r.F32();
+    if (!out.managerControlled) {
+        out.interpolatorCount = r.U8();
+        out.singleIndex = r.U8();
+        out.highPriority = static_cast<std::int8_t>(r.U8());
+        out.nextHighPriority = static_cast<std::int8_t>(r.U8());
+        out.singleTime = r.F32();
+        out.highWeightsSum = r.F32();
+        out.nextHighWeightsSum = r.F32();
+        out.highEaseSpinner = r.F32();
+        out.items.reserve(size);
         for (unsigned i = 0; i < size; ++i) {
-            r.I32(); r.F32(); r.F32(); r.U8(); r.F32(); // InterpBlendItem
+            NifBlendInterpolatorItem item;
+            item.interpolatorRef = r.I32();
+            item.weight = r.F32();
+            item.normalizedWeight = r.F32();
+            item.priority = static_cast<std::int8_t>(r.U8());
+            item.easeSpinner = r.F32();
+            out.items.push_back(item);
         }
     }
+    return out;
+}
+
+void SkipNiBlendInterpolator(ByteReader& r) {
+    (void)ParseNiBlendInterpolator(r);
+}
+
+struct NifBlendFloatInterpolatorState {
+    NifBlendInterpolatorInfo blend;
+    float value = 0.0f;
+};
+struct NifBlendBoolInterpolatorState {
+    NifBlendInterpolatorInfo blend;
+    bool value = false;
+};
+
+NifBlendFloatInterpolatorState ParseNiBlendFloatInterpolator(ByteReader& r) {
+    NifBlendFloatInterpolatorState out;
+    out.blend = ParseNiBlendInterpolator(r);
+    out.value = r.F32();
+    return out;
+}
+NifBlendBoolInterpolatorState ParseNiBlendBoolInterpolator(ByteReader& r) {
+    NifBlendBoolInterpolatorState out;
+    out.blend = ParseNiBlendInterpolator(r);
+    out.value = r.U8() != 0;
+    return out;
 }
 
 void ParseFiestaAccumulationState(ByteReader& r) {
@@ -2819,6 +2863,8 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
     std::unordered_map<std::uint32_t, NifFloatDataState> floatDataByBlock;
     std::unordered_map<std::uint32_t, NifBoolInterpolatorState> boolInterpolatorsByBlock;
     std::unordered_map<std::uint32_t, NifBoolDataState> boolDataByBlock;
+    std::unordered_map<std::uint32_t, NifBlendFloatInterpolatorState> blendFloatInterpolatorsByBlock;
+    std::unordered_map<std::uint32_t, NifBlendBoolInterpolatorState> blendBoolInterpolatorsByBlock;
     std::unordered_map<std::uint32_t, NifColorTrack> colorDataByBlock;
     std::unordered_map<std::uint32_t, NifParticleControllerInfo> particleControllersByBlock;
     std::unordered_map<std::uint32_t, NifTextureTransformControllerState> texTransformControllersByBlock;
@@ -3127,12 +3173,13 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             ParseFiestaShaderReference(r);
         } else if (type == "NsPgToonExtraData") {
             ParseFiestaToonExtraData(r);
-        } else if (type == "NiBlendFloatInterpolator" || type == "NiBlendBoolInterpolator" ||
-                   type == "NiBlendTransformInterpolator" || type == "NiBlendPoint3Interpolator") {
+        } else if (type == "NiBlendFloatInterpolator") {
+            blendFloatInterpolatorsByBlock[blockIdx] = ParseNiBlendFloatInterpolator(r);
+        } else if (type == "NiBlendBoolInterpolator") {
+            blendBoolInterpolatorsByBlock[blockIdx] = ParseNiBlendBoolInterpolator(r);
+        } else if (type == "NiBlendTransformInterpolator" || type == "NiBlendPoint3Interpolator") {
             SkipNiBlendInterpolator(r);
-            if (type == "NiBlendFloatInterpolator") r.F32();
-            else if (type == "NiBlendBoolInterpolator") r.U8();
-            else if (type == "NiBlendPoint3Interpolator") { r.F32(); r.F32(); r.F32(); }
+            if (type == "NiBlendPoint3Interpolator") { r.F32(); r.F32(); r.F32(); }
         } else if (type == "NiGeomMorpherController") {
             SkipNiGeomMorpherController(r);
         } else if (type == "NiMorphData") {
@@ -4856,10 +4903,24 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
     // Resolve particle controller chains and their referenced interpolator/data blocks.
     // The particle system's ObjectNET controller is the authored chain head; no controller
     // is synthesized when a link or interpolator is missing.
-    const auto makeFloatTrack = [&](const NifParticleControllerInfo& controller) -> std::optional<NifFloatTrack> {
+    struct ResolvedFloatControllerTrack {
+        NifFloatTrack track;
+        std::optional<NifBlendInterpolatorInfo> blend;
+    };
+    struct ResolvedBoolControllerTrack {
+        NifBoolTrack track;
+        std::optional<NifBlendInterpolatorInfo> blend;
+    };
+    const auto interpolatorTypeFor = [&](std::int32_t ref) -> std::string {
+        if (ref < 0 || static_cast<std::size_t>(ref) >= hdr.blockTypeIndex.size()) return {};
+        const auto typeIndex = hdr.blockTypeIndex[static_cast<std::size_t>(ref)];
+        if (typeIndex >= hdr.blockTypes.size()) return "<invalid>";
+        return hdr.blockTypes[typeIndex];
+    };
+    const auto makeFloatTrack = [&](const NifParticleControllerInfo& controller)
+        -> std::optional<ResolvedFloatControllerTrack> {
         if (controller.interpolatorRef < 0) return std::nullopt;
-        const auto ii = floatInterpolatorsByBlock.find(static_cast<std::uint32_t>(controller.interpolatorRef));
-        if (ii == floatInterpolatorsByBlock.end()) return std::nullopt;
+        const auto ref = static_cast<std::uint32_t>(controller.interpolatorRef);
         NifFloatTrack track;
         track.active = (controller.flags & 0x0008u) != 0;
         track.extrapolation = static_cast<std::uint8_t>((controller.flags & 0x0006u) >> 1u);
@@ -4867,21 +4928,32 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         track.phase = controller.phase;
         track.startTime = controller.startTime;
         track.stopTime = controller.stopTime;
-        track.currentValue = ii->second.value;
-        if (ii->second.dataRef >= 0) {
-            const auto di = floatDataByBlock.find(static_cast<std::uint32_t>(ii->second.dataRef));
-            if (di != floatDataByBlock.end()) {
-                track.interpolation = di->second.interpolation;
-                track.keys = di->second.keys;
+
+        const auto ii = floatInterpolatorsByBlock.find(ref);
+        if (ii != floatInterpolatorsByBlock.end()) {
+            track.currentValue = ii->second.value;
+            if (ii->second.dataRef >= 0) {
+                const auto di = floatDataByBlock.find(static_cast<std::uint32_t>(ii->second.dataRef));
+                if (di != floatDataByBlock.end()) {
+                    track.interpolation = di->second.interpolation;
+                    track.keys = di->second.keys;
+                }
             }
+            return ResolvedFloatControllerTrack{std::move(track), std::nullopt};
         }
-        return track;
+
+        const auto bi = blendFloatInterpolatorsByBlock.find(ref);
+        if (bi != blendFloatInterpolatorsByBlock.end()) {
+            track.currentValue = bi->second.value;
+            return ResolvedFloatControllerTrack{std::move(track), bi->second.blend};
+        }
+        return std::nullopt;
     };
     const auto makeBoolTrack = [&](const NifParticleControllerInfo& controller,
-                                   std::int32_t interpolatorRef) -> std::optional<NifBoolTrack> {
+                                   std::int32_t interpolatorRef)
+        -> std::optional<ResolvedBoolControllerTrack> {
         if (interpolatorRef < 0) return std::nullopt;
-        const auto ii = boolInterpolatorsByBlock.find(static_cast<std::uint32_t>(interpolatorRef));
-        if (ii == boolInterpolatorsByBlock.end()) return std::nullopt;
+        const auto ref = static_cast<std::uint32_t>(interpolatorRef);
         NifBoolTrack track;
         track.active = (controller.flags & 0x0008u) != 0;
         track.extrapolation = static_cast<std::uint8_t>((controller.flags & 0x0006u) >> 1u);
@@ -4889,31 +4961,48 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         track.phase = controller.phase;
         track.startTime = controller.startTime;
         track.stopTime = controller.stopTime;
-        track.currentValue = ii->second.value;
-        if (ii->second.dataRef >= 0) {
-            const auto di = boolDataByBlock.find(static_cast<std::uint32_t>(ii->second.dataRef));
-            if (di != boolDataByBlock.end()) {
-                track.interpolation = di->second.interpolation;
-                track.keys = di->second.keys;
+
+        const auto ii = boolInterpolatorsByBlock.find(ref);
+        if (ii != boolInterpolatorsByBlock.end()) {
+            track.currentValue = ii->second.value;
+            if (ii->second.dataRef >= 0) {
+                const auto di = boolDataByBlock.find(static_cast<std::uint32_t>(ii->second.dataRef));
+                if (di != boolDataByBlock.end()) {
+                    track.interpolation = di->second.interpolation;
+                    track.keys = di->second.keys;
+                }
             }
+            return ResolvedBoolControllerTrack{std::move(track), std::nullopt};
         }
-        return track;
+
+        const auto bi = blendBoolInterpolatorsByBlock.find(ref);
+        if (bi != blendBoolInterpolatorsByBlock.end()) {
+            track.currentValue = bi->second.value;
+            return ResolvedBoolControllerTrack{std::move(track), bi->second.blend};
+        }
+        return std::nullopt;
     };
 
     for (auto& [block, controller] : particleControllersByBlock) {
+        (void)block;
+        controller.interpolatorType = interpolatorTypeFor(controller.interpolatorRef);
+        controller.visibilityInterpolatorType = interpolatorTypeFor(controller.visibilityInterpolatorRef);
         if (controller.type == "NiPSysEmitterCtlr") {
-            if (auto track = makeFloatTrack(controller)) {
+            if (auto resolved = makeFloatTrack(controller)) {
                 controller.hasFloatTrack = true;
-                controller.floatTrack = std::move(*track);
+                controller.floatTrack = std::move(resolved->track);
+                controller.floatBlend = std::move(resolved->blend);
             }
-            if (auto track = makeBoolTrack(controller, controller.visibilityInterpolatorRef)) {
+            if (auto resolved = makeBoolTrack(controller, controller.visibilityInterpolatorRef)) {
                 controller.hasVisibilityTrack = true;
-                controller.visibilityTrack = std::move(*track);
+                controller.visibilityTrack = std::move(resolved->track);
+                controller.visibilityBlend = std::move(resolved->blend);
             }
         } else if (controller.type == "NiPSysModifierActiveCtlr") {
-            if (auto track = makeBoolTrack(controller, controller.interpolatorRef)) {
+            if (auto resolved = makeBoolTrack(controller, controller.interpolatorRef)) {
                 controller.hasBoolTrack = true;
-                controller.boolTrack = std::move(*track);
+                controller.boolTrack = std::move(resolved->track);
+                controller.boolBlend = std::move(resolved->blend);
             }
         }
     }

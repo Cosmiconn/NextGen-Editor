@@ -111,6 +111,9 @@ int main(int argc, char** argv) {
     std::size_t emitterControllersWithoutRate = 0;
     std::size_t emitterControllersWithoutVisibility = 0;
     std::size_t activeControllersWithoutBoolTrack = 0;
+    std::size_t blendParticleControllerTracks = 0;
+    std::size_t managerControlledParticleBlendTracks = 0;
+    std::size_t weightedParticleBlendTracks = 0;
     std::size_t colorModifiersWithoutTrack = 0;
     std::map<std::uint32_t, std::size_t> particleColorInterpolations;
     std::size_t invalidParticleModifierRefs = 0;
@@ -241,6 +244,21 @@ int main(int argc, char** argv) {
                     }
                     resolvedParticleControllers += system.controllers.size();
                     for (const auto& controller : system.controllers) {
+                        const auto auditBlend = [&](const auto& blend) {
+                            if (!blend) return;
+                            ++blendParticleControllerTracks;
+                            if (blend->managerControlled) {
+                                ++managerControlledParticleBlendTracks;
+                                rendererGapFiles.insert(entry.path().string());
+                            }
+                            if (!blend->items.empty()) {
+                                ++weightedParticleBlendTracks;
+                                rendererGapFiles.insert(entry.path().string());
+                            }
+                        };
+                        auditBlend(controller.floatBlend);
+                        auditBlend(controller.boolBlend);
+                        auditBlend(controller.visibilityBlend);
                         if (controller.type == "NiPSysEmitterCtlr") {
                             if (controller.interpolatorRef >= 0 && !controller.hasFloatTrack) {
                                 ++emitterControllersWithoutRate;
@@ -344,9 +362,14 @@ int main(int argc, char** argv) {
                         if (ci != 0) detail << ',';
                         const auto& controller = system.controllers[ci];
                         detail << Clean(controller.type);
-                        if (controller.type == "NiPSysEmitterCtlr")
+                        if (controller.type == "NiPSysEmitterCtlr") {
                             detail << "[rate=" << (controller.hasFloatTrack ? 1 : 0)
-                                   << ";vis=" << (controller.hasVisibilityTrack ? 1 : 0) << ']';
+                                   << ";rateType=" << Clean(controller.interpolatorType)
+                                   << ";rateBlend=" << (controller.floatBlend ? 1 : 0)
+                                   << ";vis=" << (controller.hasVisibilityTrack ? 1 : 0)
+                                   << ";visType=" << Clean(controller.visibilityInterpolatorType)
+                                   << ";visBlend=" << (controller.visibilityBlend ? 1 : 0) << ']';
+                        }
                     }
                     detail << "\tmodifiers=";
                     for (std::size_t mi = 0; mi < system.modifierTypes.size(); ++mi) {
@@ -695,6 +718,9 @@ int main(int argc, char** argv) {
               << "\temitterControllersWithoutRate=" << emitterControllersWithoutRate
               << "\temitterControllersWithoutVisibility=" << emitterControllersWithoutVisibility
               << "\tactiveControllersWithoutBoolTrack=" << activeControllersWithoutBoolTrack
+              << "\tblendParticleControllerTracks=" << blendParticleControllerTracks
+              << "\tmanagerControlledParticleBlendTracks=" << managerControlledParticleBlendTracks
+              << "\tweightedParticleBlendTracks=" << weightedParticleBlendTracks
               << "\tcolorModifiersWithoutTrack=" << colorModifiersWithoutTrack
               << "\tparticleTextureBindings=" << particleTextureBindings
               << "\tparticleShaderDescriptors=" << particleShaderDescriptors

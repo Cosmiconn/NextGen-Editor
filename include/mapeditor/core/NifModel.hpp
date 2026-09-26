@@ -287,6 +287,29 @@ struct NifParticleDataInfo {
     std::vector<NifParticleState> particles;
 };
 
+struct NifBlendInterpolatorItem {
+    std::int32_t interpolatorRef = -1;
+    float weight = 0.0f;
+    float normalizedWeight = 0.0f;
+    std::int8_t priority = 0;
+    float easeSpinner = 0.0f;
+};
+
+struct NifBlendInterpolatorInfo {
+    bool managerControlled = false;
+    bool onlyUseHighestWeight = false;
+    float weightThreshold = 0.0f;
+    std::uint8_t interpolatorCount = 0;
+    std::uint8_t singleIndex = 0;
+    std::int8_t highPriority = 0;
+    std::int8_t nextHighPriority = 0;
+    float singleTime = 0.0f;
+    float highWeightsSum = 0.0f;
+    float nextHighWeightsSum = 0.0f;
+    float highEaseSpinner = 0.0f;
+    std::vector<NifBlendInterpolatorItem> items;
+};
+
 struct NifParticleControllerInfo {
     std::int32_t blockRef = -1;
     std::string type;
@@ -298,15 +321,20 @@ struct NifParticleControllerInfo {
     float stopTime = 0.0f;
     std::int32_t targetRef = -1;
     std::int32_t interpolatorRef = -1;
+    std::string interpolatorType;
     std::string modifierName;
     std::int32_t visibilityInterpolatorRef = -1;
+    std::string visibilityInterpolatorType;
 
     bool hasFloatTrack = false;
     NifFloatTrack floatTrack;
+    std::optional<NifBlendInterpolatorInfo> floatBlend;
     bool hasBoolTrack = false;
     NifBoolTrack boolTrack;
+    std::optional<NifBlendInterpolatorInfo> boolBlend;
     bool hasVisibilityTrack = false;
     NifBoolTrack visibilityTrack;
+    std::optional<NifBlendInterpolatorInfo> visibilityBlend;
 };
 
 struct NifParticleModifierInfo {

@@ -117,6 +117,23 @@ int main(int argc, char** argv) {
         SkipNiPSysData(r, 0x14000004u, true);
         check(!r.Ok(), "oversized NiMeshPSysData array rejected");
     }
+    {
+        Bytes b;
+        b.u8(0);  // not manager-controlled, not highest-weight-only
+        b.u8(1);  // one blend item
+        b.zero(4); // weight threshold
+        b.u8(1); b.u8(0); b.u8(3); b.u8(2); // count/index/priorities
+        b.zero(16); // single time + weight sums + ease
+        b.u32(17); b.zero(8); b.u8(4); b.zero(4); // blend item
+        b.zero(4); // typed float value
+        ByteReader r(b.data);
+        r.SetVersion(0x14000004u);
+        const auto blend = ParseNiBlendFloatInterpolator(r);
+        check(r.Ok() && r.Remaining() == 0 && blend.blend.items.size() == 1 &&
+              blend.blend.items[0].interpolatorRef == 17 &&
+              blend.blend.highPriority == 3 && blend.blend.nextHighPriority == 2,
+              "20.0 NiBlendFloatInterpolator payload preserved");
+    }
     // Modifier base with nonempty name, plus independently specified suffix sizes.
     for (const auto& [parser, suffix] : std::vector<std::pair<void(*)(ByteReader&), int>>{
              {SkipNiPSysCylinderEmitter, 68}, {SkipNiPSysSphereEmitter, 64}, {SkipNiPSysBombModifier, 32}}) {
@@ -169,6 +186,28 @@ int main(int argc, char** argv) {
         const auto model = LoadNifMesh(fixtures / name, false);
         check(model && !model->parts.empty() && !model->recovered && !model->partial, name);
         if (!model) std::cerr << model.error() << '\n';
+    }
+    {
+        const auto helga = LoadNifMesh(fixtures / "nif-extensions" / "Helga.nif", false);
+        check(helga.has_value(), "Helga blend particle metadata loads");
+        if (helga) {
+            const auto system = std::find_if(helga->particleSystems.begin(), helga->particleSystems.end(),
+                [](const auto& candidate) { return candidate.name == "SuperSpray03"; });
+            check(system != helga->particleSystems.end(), "Helga SuperSpray03 particle system found");
+            if (system != helga->particleSystems.end()) {
+                const auto emitter = std::find_if(system->controllers.begin(), system->controllers.end(),
+                    [](const auto& controller) { return controller.type == "NiPSysEmitterCtlr"; });
+                check(emitter != system->controllers.end(), "Helga SuperSpray03 emitter controller found");
+                if (emitter != system->controllers.end()) {
+                    check(emitter->hasFloatTrack && emitter->floatBlend.has_value() &&
+                          emitter->interpolatorType == "NiBlendFloatInterpolator",
+                          "Helga blend emitter rate is preserved");
+                    check(emitter->hasVisibilityTrack && emitter->visibilityBlend.has_value() &&
+                          emitter->visibilityInterpolatorType == "NiBlendBoolInterpolator",
+                          "Helga blend emitter visibility is preserved");
+                }
+            }
+        }
     }
     {
         const auto gate = LoadNifMesh(fixtures / "MapLinkGate2.nif", false);
