@@ -3638,6 +3638,11 @@ bool DrawEditorCard(const char* id, ImVec2 size, ImU32 bodyColor, ImU32 headerCo
     return clicked;
 }
 
+// Später definierte Aktionen, die auch aus der globalen Menüleiste erreichbar sein müssen.
+void SaveTownPortalFiles(EditorState& state);
+bool SaveRecallCoordFile(EditorState& state);
+void FocusCurrentSceneSelection(EditorState& state);
+
 // Obere Navigationsleiste, auf allen Bildschirmen der neuen Oberfläche sichtbar - links die
 // Tabs, rechts Credits/Donate/? und die Sprachumschaltung (DE/EN, siehe Localization.hpp).
 // tabs==nullptr blendet die linken Tabs aus (Detail-Bildschirme zeigen stattdessen NUR den
@@ -3649,8 +3654,10 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
 
     ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::PanelDeep);
     ImGui::PushStyleColor(ImGuiCol_Border, UiTheme::Border);
-    ImGui::BeginChild("##nextgenTopBar", ImVec2(0.0f, 50.0f), true,
-                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    ImGui::PushStyleColor(ImGuiCol_MenuBarBg, IM_COL32(5,17,29,252));
+    ImGui::BeginChild("##nextgenTopBar", ImVec2(0.0f, 76.0f), true,
+                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse |
+                      ImGuiWindowFlags_MenuBar);
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(11.0f, 7.0f));
 
     ImDrawList* topDl = ImGui::GetWindowDrawList();
@@ -3662,6 +3669,214 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
     topDl->AddLine(ImVec2(topMin.x + 1.0f, topMax.y - 2.0f),
                    ImVec2(topMax.x - 1.0f, topMax.y - 2.0f),
                    IM_COL32(19,140,255,120), 1.0f);
+
+    const bool mapWorkspace = state.screen == AppScreen::MapEditorWorkspace;
+    const bool mapLoaded = state.hasLegacyIniMeta || state.legacySaveStem[0] != '\0';
+    const bool mapCanSave = state.legacySaveDir[0] != '\0' && state.legacySaveStem[0] != '\0';
+
+    auto createNewProject = [&] {
+        state.project = ProjectConfig{};
+        state.screen = AppScreen::NewProjectConfig;
+    };
+    auto openProjectFolder = [&] {
+#ifdef _WIN32
+        if (auto picked = BrowseForFolderWindows(L("Projekt-Ordner wählen","Choose project folder")))
+            LoadProjectFolderIntoState(state, *picked);
+#endif
+    };
+    auto saveProjectConfig = [&] {
+        std::string err;
+        if (SaveProjectConfig(state.project, &err)) {
+            TouchRecentProject(state, state.project.projectFolder);
+            state.statusMessage = T("newproject.saved");
+        } else {
+            state.statusMessage = T("newproject.savefailed") + err;
+        }
+    };
+    auto saveCurrentMap = [&] {
+        if (!mapCanSave) return;
+        auto project = BuildProjectFromState(state);
+        auto result = core::legacy::SaveLegacyMap(project, state.legacySaveDir, state.legacySaveStem);
+        if (result) {
+            state.legacyIniMeta = project.ini;
+            state.mapDirty = false;
+            TouchRecentMap(state, (std::filesystem::path(state.legacySaveDir) /
+                                  (std::string(state.legacySaveStem) + ".ini")).string());
+            state.statusMessage = std::string(T("workspace.savedas")) + state.legacySaveDir;
+            if (state.editMode == EditMode::Portals) {
+                if (state.townPortalDirty) SaveTownPortalFiles(state);
+                if (state.recallCoordDirty) SaveRecallCoordFile(state);
+            }
+        } else {
+            state.statusMessage = L("Fehler: ","Error: ") + result.error();
+        }
+    };
+    auto canMapHistory = [&](bool redo) {
+        if (!mapWorkspace) return false;
+        switch (state.editMode) {
+            case EditMode::Heightmap: return redo ? state.undo.CanRedo() : state.undo.CanUndo();
+            case EditMode::TexturePaint: return redo ? state.textureUndo.CanRedo() : state.textureUndo.CanUndo();
+            case EditMode::BlockWalk: return redo ? state.walkUndo.CanRedo() : state.walkUndo.CanUndo();
+            default: return false;
+        }
+    };
+    auto applyMapHistory = [&](bool redo) {
+        switch (state.editMode) {
+            case EditMode::Heightmap:
+                if (redo ? state.undo.Redo(state.heightmap) : state.undo.Undo(state.heightmap)) {
+                    state.meshDirty = true; state.mapDirty = true;
+                }
+                break;
+            case EditMode::TexturePaint:
+                if (redo ? state.textureUndo.Redo(state.textureStack) : state.textureUndo.Undo(state.textureStack)) {
+                    state.layerPreviewDirty = true; state.mapDirty = true;
+                    state.renderer.UpdateBlendTextures(state.textureStack);
+                }
+                break;
+            case EditMode::BlockWalk:
+                if (redo ? state.walkUndo.Redo(state.walkGrid) : state.walkUndo.Undo(state.walkGrid)) {
+                    state.walkPreviewDirty = true; state.mapDirty = true;
+                }
+                break;
+            default: break;
+        }
+    };
+    auto selectMapTool = [&](EditMode mode) {
+        if (!mapLoaded) return;
+        state.editMode = mode;
+        state.screen = AppScreen::MapEditorWorkspace;
+    };
+
+    if (ImGui::BeginMenuBar()) {
+        if (ImGui::BeginMenu(L("Datei","File"))) {
+            if (ImGui::MenuItem(T("nav.new"))) createNewProject();
+            if (ImGui::MenuItem(T("nav.open"))) openProjectFolder();
+            if (ImGui::MenuItem(L("Projekt speichern","Save project"), nullptr, false, state.project.hasProject))
+                saveProjectConfig();
+            ImGui::Separator();
+            const std::string saveShortcut = ShortcutLabel(state.shortcutSave);
+            if (ImGui::MenuItem(L("Karte speichern","Save map"), saveShortcut.c_str(), false, mapCanSave))
+                saveCurrentMap();
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu(L("Bearbeiten","Edit"))) {
+            if (ImGui::MenuItem(L("Rückgängig","Undo"), L("Strg+Z","Ctrl+Z"), false, canMapHistory(false)))
+                applyMapHistory(false);
+            if (ImGui::MenuItem(L("Wiederholen","Redo"), L("Strg+Y","Ctrl+Y"), false, canMapHistory(true)))
+                applyMapHistory(true);
+            ImGui::Separator();
+            const bool objectMode = mapWorkspace && state.editMode == EditMode::ObjectPlacement;
+            if (ImGui::MenuItem(L("Kopieren","Copy"), L("Strg+C","Ctrl+C"), false,
+                                objectMode && !state.selectedObjects.empty()))
+                CopySelectedObjects(state);
+            if (ImGui::MenuItem(L("Einfügen","Paste"), L("Strg+V","Ctrl+V"), false,
+                                objectMode && !state.objectClipboard.empty()))
+                PasteObjectClipboard(state);
+            if (ImGui::MenuItem(L("Duplizieren","Duplicate"), ShortcutLabel(state.shortcutDuplicate).c_str(), false,
+                                objectMode && !state.selectedObjects.empty()))
+                DuplicateSelectedObjects(state);
+            if (ImGui::MenuItem(L("Löschen","Delete"), ShortcutLabel(state.shortcutDelete).c_str(), false,
+                                objectMode && !state.selectedObjects.empty()))
+                DeleteSelectedObjects(state);
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu(L("Ansicht","View"))) {
+            if (ImGui::MenuItem(L("Workspace: Standard","Workspace: Standard")))
+                RequestMapWorkspacePreset(state,0);
+            if (ImGui::MenuItem(L("Workspace: 3D-Fokus","Workspace: 3D focus")))
+                RequestMapWorkspacePreset(state,1);
+            if (ImGui::MenuItem(L("Workspace: Terrain / 2D","Workspace: Terrain / 2D")))
+                RequestMapWorkspacePreset(state,2);
+            if (ImGui::MenuItem(L("Workspace: Daten / Szene","Workspace: Data / scene")))
+                RequestMapWorkspacePreset(state,3);
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu(L("Map","Map"))) {
+            if (ImGui::MenuItem(L("Terrain","Terrain"), nullptr, state.editMode==EditMode::Heightmap, mapLoaded))
+                selectMapTool(EditMode::Heightmap);
+            if (ImGui::MenuItem(L("Texturen","Textures"), nullptr, state.editMode==EditMode::TexturePaint, mapLoaded))
+                selectMapTool(EditMode::TexturePaint);
+            if (ImGui::MenuItem("Block & Walk", nullptr, state.editMode==EditMode::BlockWalk, mapLoaded))
+                selectMapTool(EditMode::BlockWalk);
+            if (ImGui::MenuItem(L("Objekte","Objects"), nullptr, state.editMode==EditMode::ObjectPlacement, mapLoaded))
+                selectMapTool(EditMode::ObjectPlacement);
+            if (ImGui::MenuItem("NPCs", nullptr, state.editMode==EditMode::Npcs, mapLoaded))
+                selectMapTool(EditMode::Npcs);
+            if (ImGui::MenuItem("Mobs", nullptr, state.editMode==EditMode::Mobs, mapLoaded))
+                selectMapTool(EditMode::Mobs);
+            if (ImGui::MenuItem(L("Portale","Portals"), nullptr, state.editMode==EditMode::Portals, mapLoaded))
+                selectMapTool(EditMode::Portals);
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu(L("Objekte","Objects"))) {
+            const bool hasSceneSelection = !state.selectedObjects.empty() || state.selectedNpc>=0 ||
+                                           state.selectedMobZone>=0 || state.selectedPortal>=0;
+            if (ImGui::MenuItem(L("Auswahl fokussieren","Focus selection"),
+                                ShortcutLabel(state.shortcutFocus).c_str(), false,
+                                mapWorkspace && hasSceneSelection))
+                FocusCurrentSceneSelection(state);
+            if (ImGui::MenuItem(L("Auf Terrain setzen","Drop to terrain"),
+                                ShortcutLabel(state.shortcutGround).c_str(), false,
+                                mapWorkspace && state.editMode==EditMode::ObjectPlacement &&
+                                !state.selectedObjects.empty()))
+                GroundSelectedObjects(state);
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu(L("Terrain","Terrain"))) {
+            if (ImGui::MenuItem(L("Terrain-Werkzeug öffnen","Open terrain tool"), nullptr, false, mapLoaded))
+                selectMapTool(EditMode::Heightmap);
+            ImGui::Separator();
+            const bool terrainEnabled = mapWorkspace && state.editMode==EditMode::Heightmap;
+            if (ImGui::MenuItem(L("Anheben","Raise"), nullptr, state.brushMode==core::BrushMode::Raise, terrainEnabled))
+                state.brushMode=core::BrushMode::Raise;
+            if (ImGui::MenuItem(L("Absenken","Lower"), nullptr, state.brushMode==core::BrushMode::Lower, terrainEnabled))
+                state.brushMode=core::BrushMode::Lower;
+            if (ImGui::MenuItem(L("Glätten","Smooth"), nullptr, state.brushMode==core::BrushMode::Smooth, terrainEnabled))
+                state.brushMode=core::BrushMode::Smooth;
+            if (ImGui::MenuItem(L("Einebnen","Flatten"), nullptr, state.brushMode==core::BrushMode::Flatten, terrainEnabled))
+                state.brushMode=core::BrushMode::Flatten;
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu(L("Layer","Layer"))) {
+            if (ImGui::MenuItem(L("Textur-/Layer-Werkzeug öffnen","Open texture/layer tool"), nullptr, false, mapLoaded))
+                selectMapTool(EditMode::TexturePaint);
+            ImGui::Separator();
+            const int layerCount = static_cast<int>(state.textureStack.LayerCount());
+            if (ImGui::MenuItem(L("Vorheriger Layer","Previous layer"), nullptr, false,
+                                layerCount>0 && state.selectedLayer>0))
+                --state.selectedLayer;
+            if (ImGui::MenuItem(L("Nächster Layer","Next layer"), nullptr, false,
+                                layerCount>0 && state.selectedLayer>=0 && state.selectedLayer+1<layerCount))
+                ++state.selectedLayer;
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu(L("Werkzeuge","Tools"))) {
+            const std::string paletteShortcut = ShortcutLabel(state.shortcutPalette);
+            if (ImGui::MenuItem(L("Befehlspalette","Command palette"), paletteShortcut.c_str())) {
+                state.commandPaletteOpen = true;
+                state.commandPaletteSelection = 0;
+            }
+            if (ImGui::MenuItem(L("Einstellungen","Settings"))) state.settingsOpen = true;
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu(L("Fenster","Window"))) {
+            if (ImGui::MenuItem(L("Standardlayout wiederherstellen","Restore default layout")))
+                RequestMapWorkspacePreset(state,0);
+            if (ImGui::MenuItem(L("Projektübersicht","Project overview")))
+                state.screen=AppScreen::ProjectHub;
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu(L("Hilfe","Help"))) {
+            if (ImGui::MenuItem(L("Handbuch","Manual"), "F1")) state.manualOpen=true;
+            ImGui::Separator();
+            if (ImGui::MenuItem("Deutsch", nullptr, app::CurrentLanguage()==app::Language::German))
+                app::SetLanguage(app::Language::German);
+            if (ImGui::MenuItem("English", nullptr, app::CurrentLanguage()==app::Language::English))
+                app::SetLanguage(app::Language::English);
+            ImGui::EndMenu();
+        }
+        ImGui::EndMenuBar();
+    }
 
     const ImVec2 brandPos = ImGui::GetCursorScreenPos();
     ImGui::Dummy(ImVec2(34.0f, 30.0f));
@@ -3728,29 +3943,18 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
 
     if (DrawCompactIconTextButton("topNew", T("nav.new"), nullptr, "file.new", true,
                                   L("Neues Projekt / neue Karte konfigurieren","Configure new project / map"))) {
-        state.project = ProjectConfig{};
-        state.screen = AppScreen::NewProjectConfig;
+        createNewProject();
     }
     ImGui::SameLine();
     if (DrawCompactIconTextButton("topOpen", T("nav.open"), nullptr, "file.open", true,
                                   L("Projektordner öffnen","Open project folder"))) {
-#ifdef _WIN32
-        if (auto picked = BrowseForFolderWindows("Projekt-Ordner wählen")) {
-            LoadProjectFolderIntoState(state, *picked);
-        }
-#endif
+        openProjectFolder();
     }
     ImGui::SameLine();
     if (DrawCompactIconTextButton("topSave", T("nav.save"), DrawIconSave, "file.save",
                                   state.project.hasProject,
                                   L("Projektkonfiguration speichern","Save project configuration"))) {
-        std::string err;
-        if (SaveProjectConfig(state.project, &err)) {
-            TouchRecentProject(state, state.project.projectFolder);
-            state.statusMessage = T("newproject.saved");
-        } else {
-            state.statusMessage = T("newproject.savefailed") + err;
-        }
+        saveProjectConfig();
     }
     ImGui::SameLine();
     const std::string paletteShortcutLabel = ShortcutLabel(state.shortcutPalette);
@@ -3798,7 +4002,7 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
 
     ImGui::PopStyleVar();
     ImGui::EndChild();
-    ImGui::PopStyleColor(2);
+    ImGui::PopStyleColor(3);
     ImGui::Dummy(ImVec2(0.0f, 6.0f));
 }
 
