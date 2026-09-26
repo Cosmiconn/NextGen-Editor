@@ -27,6 +27,53 @@ void Check(bool condition, const char* what) {
 } // namespace
 
 int main(int argc, char** argv) {
+    {
+        std::printf("== Synthetische konkave Boden-Kontaktkontur ==\n");
+        NifModel contactModel;
+        NifMeshPart part;
+        // L-förmige, komplett in y=0 liegende Bodenfläche. Eine konvexe Hülle würde
+        // den fehlenden oberen rechten Quadranten fälschlich überdecken.
+        part.positions = {
+            {0.0f, 0.0f, 0.0f},
+            {2.0f, 0.0f, 0.0f},
+            {2.0f, 0.0f, 1.0f},
+            {1.0f, 0.0f, 1.0f},
+            {1.0f, 0.0f, 2.0f},
+            {0.0f, 0.0f, 2.0f},
+        };
+        part.triangleIndices = {
+            0, 1, 3,
+            1, 2, 3,
+            0, 3, 5,
+            3, 4, 5,
+        };
+        contactModel.parts.push_back(std::move(part));
+
+        const auto segments = ComputeGroundContactSegments(contactModel);
+        Check(segments.size() == 6,
+              "Konkave L-Grundfläche behält genau ihre sechs Außenkanten");
+        double perimeter = 0.0;
+        bool hasInteriorDiagonal = false;
+        auto samePoint = [](float ax, float az, float bx, float bz) {
+            return std::abs(ax - bx) < 1.0e-5f && std::abs(az - bz) < 1.0e-5f;
+        };
+        for (const auto& edge : segments) {
+            const double dx = static_cast<double>(edge.x1 - edge.x0);
+            const double dz = static_cast<double>(edge.z1 - edge.z0);
+            perimeter += std::sqrt(dx * dx + dz * dz);
+            const bool zeroToInner =
+                (samePoint(edge.x0, edge.z0, 0.0f, 0.0f) &&
+                 samePoint(edge.x1, edge.z1, 1.0f, 1.0f)) ||
+                (samePoint(edge.x1, edge.z1, 0.0f, 0.0f) &&
+                 samePoint(edge.x0, edge.z0, 1.0f, 1.0f));
+            if (zeroToInner) hasInteriorDiagonal = true;
+        }
+        Check(std::abs(perimeter - 8.0) < 1.0e-4,
+              "Kontaktkontur entspricht dem echten L-Umfang statt der konvexen Hülle");
+        Check(!hasInteriorDiagonal,
+              "Interne Triangulationskanten werden aus der 2D-Kontur entfernt");
+    }
+
     if (argc < 2) {
         std::printf("(Test \u00fcbersprungen - Aufruf mit: %s <einfache.nif> [<texturierte.nif>])\n", argv[0]);
         return 0;
