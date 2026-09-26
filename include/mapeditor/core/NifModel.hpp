@@ -94,6 +94,17 @@ struct NifTextureSlot {
     NifVec2 center{0.5f, 0.5f};
 };
 
+// ShaderTexDesc aus NiTexturingProperty bleibt getrennt von den klassischen zehn Slots erhalten.
+// mapId ist shader-spezifisch und darf erst nach Verifikation eines konkreten Shadernamens als
+// feste Rendersemantik interpretiert werden. sourceTextureRef bleibt für Diagnose/Audits sichtbar;
+// texture enthält nach der Deferred-Auflösung dieselben SourceTexture-/Embedded-Daten wie ein
+// klassischer NifTextureSlot.
+struct NifShaderTextureSlot {
+    std::uint32_t mapId = 0;
+    std::int32_t sourceTextureRef = -1;
+    NifTextureSlot texture;
+};
+
 // Reine CPU-Referenz derselben TexDesc-UV-Matrix, die der OpenGL-Renderer im Shader
 // auswertet. Sie hält die Gamebryo-TransformMethod-Semantik testbar, ohne GL-Kontext.
 [[nodiscard]] NifVec2 ApplyNifTextureTransform(const NifTextureSlot& slot, NifVec2 uv);
@@ -207,6 +218,9 @@ struct NifMeshPart {
     // Vollstaendige klassische NiTexturingProperty-Slots. Die alten Base-Felder bleiben als
     // Kompatibilitaets-/Diagnose-Alias fuer Slot 0 erhalten.
     std::array<NifTextureSlot, 10> textureSlots{};
+    // Shader-spezifische NiTexturingProperty::ShaderTexDesc-Einträge. Diese Rohsemantik wird
+    // bewusst erhalten, auch wenn der Renderer den betreffenden Shader noch nicht materialisiert.
+    std::vector<NifShaderTextureSlot> shaderTextureSlots;
     std::vector<NifTextureTransformAnimation> textureTransformAnimations;
     std::vector<NifTextureFlipAnimation> textureFlipAnimations;
     std::vector<NifTextureEffectBinding> textureEffects;
