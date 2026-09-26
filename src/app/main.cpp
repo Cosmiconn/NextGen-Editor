@@ -3419,11 +3419,12 @@ void DrawInlineIcon(const char* id, IconDrawFn icon, ImU32 color,
 }
 
 bool DrawSearchInput(const char* id, const char* hint, char* buffer, std::size_t bufferSize,
-                     float inputWidth = -1.0f) {
+                     float inputWidth = -1.0f, bool focusInput = false) {
     ImGui::PushID(id);
     DrawInlineIcon("searchIcon", nullptr, IM_COL32(100,205,255,245), hint,
                    ImVec2(18.0f,18.0f), "panel.search");
     ImGui::SameLine(0.0f,5.0f);
+    if (focusInput) ImGui::SetKeyboardFocusHere();
     ImGui::SetNextItemWidth(inputWidth);
     const bool changed=UI::InputTextWithHint("##searchInput",hint,buffer,bufferSize);
     ImGui::PopID();
@@ -5911,8 +5912,8 @@ void DrawShnEditor(EditorState& state) {
         if (!state.shnClientRoot.empty()) ImGui::TextDisabled("Client: %s", state.shnClientRoot.c_str());
         if (!state.shnServerRoot.empty()) ImGui::TextDisabled("Server: %s", state.shnServerRoot.c_str());
         ImGui::Separator();
-        UI::InputTextWithHint("##shnFileFilter",L("SHN-Datei suchen...","Search SHN file..."),
-                              state.shnFileFilter,sizeof(state.shnFileFilter));
+        DrawSearchInput("shnFileFilter",L("SHN-Datei suchen...","Search SHN file..."),
+                        state.shnFileFilter,sizeof(state.shnFileFilter));
         DrawShnSourceList(state, EditorState::ShnSource::Client, "##shnClientFiles");
         DrawShnSourceList(state, EditorState::ShnSource::Server, "##shnServerFiles");
         if (state.shnSelectedFile>=0 && state.shnSelectedFile<static_cast<int>(state.shnFiles.size())) {
@@ -5925,8 +5926,8 @@ void DrawShnEditor(EditorState& state) {
                 ReloadShnDocument(state,state.shnSelectedFile);
             ImGui::EndDisabled();
             ImGui::Separator();
-            if (UI::InputTextWithHint("##shnSearch",L("Zeilen durchsuchen...","Search rows..."),
-                                      state.shnSearch,sizeof(state.shnSearch))) {
+            if (DrawSearchInput("shnSearch",L("Zeilen durchsuchen...","Search rows..."),
+                                state.shnSearch,sizeof(state.shnSearch))) {
                 state.shnVisibleKey.clear();
             }
             state.shnFilterActive = state.shnSearch[0] != '\0';
@@ -6562,7 +6563,8 @@ bool DrawAssetPickerPopup(const char* popupId, const std::vector<std::string>& f
     if (ImGui::BeginPopup(popupId)) {
         char filterCstr[128];
         std::snprintf(filterCstr, sizeof(filterCstr), "%s", filterBuf.c_str());
-        if (UI::InputTextWithHint("##filter", "Filtern...", filterCstr, sizeof(filterCstr))) {
+        if (DrawSearchInput("assetPickerFilter",L("Filtern...","Filter..."),
+                            filterCstr,sizeof(filterCstr),455.0f)) {
             filterBuf = filterCstr;
         }
 
@@ -7176,9 +7178,9 @@ void DrawQuestEditor(EditorState& state) {
             "Erzeugt eine vollständige Kopie mit freier Quest-ID. Unbekannte Reward-/Raw-Felder bleiben bytegetreu aus der Vorlage erhalten.",
             "Creates a full copy with a free quest ID. Unknown reward/raw fields are preserved from the template."));
     ImGui::Separator();
-    ImGui::SetNextItemWidth(430.0f);
-    UI::InputTextWithHint("##questsearch", L("Quest-ID oder Titeltext suchen...", "Search quest ID or title text..."),
-                          state.questSearch, sizeof(state.questSearch));
+    DrawSearchInput("questSearch",
+                    L("Quest-ID oder Titeltext suchen...", "Search quest ID or title text..."),
+                    state.questSearch, sizeof(state.questSearch), 405.0f);
     ImGui::SameLine();
     if (SceneQuickFilterButton("questAll",L("Alle","All"),state.questQuickFilter==0)) state.questQuickFilter=0;
     ImGui::SameLine();
@@ -9400,12 +9402,12 @@ void DrawShopEditorPopup(EditorState& state) {
                 state.shopPickRequested = false;
             }
             if (ImGui::BeginPopup(itemPickerTitle)) {
-                if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
-                ImGui::SetNextItemWidth(520.0f);
-                UI::InputTextWithHint("##itemfilter",
-                                      L("Suche (Name oder Item-Bezeichnung)",
-                                        "Search (name or item description)"),
-                                      state.shopItemFilter, sizeof(state.shopItemFilter));
+                const bool focusItemSearch = ImGui::IsWindowAppearing();
+                DrawSearchInput("shopItemFilter",
+                                L("Suche (Name oder Item-Bezeichnung)",
+                                  "Search (name or item description)"),
+                                state.shopItemFilter, sizeof(state.shopItemFilter),
+                                490.0f, focusItemSearch);
                 const std::string needle = LowerAscii(state.shopItemFilter);
                 ImGui::BeginChild("##itemlist", ImVec2(520.0f, 320.0f), true);
                 if (UI::Selectable(L("(leer) -","(empty) -"))) {
@@ -9493,9 +9495,9 @@ static bool StringPickerPopup(const char* popupId, const std::vector<std::string
     if (ImGui::BeginPopup(popupId)) {
         // Popups sind AlwaysAutoResize: eine relative Kindhoehe (0/-x) schrumpfte das Fenster auf ein
         // Minimum ("minimiert"). Deshalb FESTE Breite/Hoehe (CHANGELOG [0.44.29]).
-        if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
-        ImGui::SetNextItemWidth(520.0f);
-        UI::InputTextWithHint("##pickfilter", "Suche", filterBuf, filterSize);
+        const bool focusPickerSearch = ImGui::IsWindowAppearing();
+        DrawSearchInput("stringPickerFilter",L("Suche","Search"),
+                        filterBuf,filterSize,490.0f,focusPickerSearch);
         const std::string needle = LowerAscii(filterBuf);
         ImGui::BeginChild("##picklist", ImVec2(520.0f, 320.0f), true);
         if (UI::Selectable("(leer) -")) { chosen = "-"; picked = true; ImGui::CloseCurrentPopup(); }
@@ -9956,8 +9958,9 @@ void DrawCustomCreatureEditor(EditorState& state) {
         ImGui::TextWrapped("%s", L("MobInfo.shn (Client) nicht geladen - Client-Ordner im Projekt prüfen.", "MobInfo.shn (client) is not loaded - check the client folder in the project."));
     } else {
     auto& mobInfo = state.shnFiles[static_cast<std::size_t>(mi)].file;
-    ImGui::SetNextItemWidth(260.0f);
-    UI::InputTextWithHint("##tplfilter", L("Vorlage suchen (Name/InxName)", "Search template (name/InxName)"), w.templateFilter, sizeof(w.templateFilter));
+    DrawSearchInput("creatureTemplateFilter",
+                    L("Vorlage suchen (Name/InxName)", "Search template (name/InxName)"),
+                    w.templateFilter, sizeof(w.templateFilter), 235.0f);
     ImGui::SameLine();
     ImGui::TextDisabled(w.templateId >= 0 ? L("gewählt: %s (#%lld)", "selected: %s (#%lld)") : L("noch keine Vorlage", "no template selected"), w.templateInx.c_str(), w.templateId);
     ImGui::BeginChild("##tpllist", ImVec2(0.0f, 130.0f), true);
@@ -10522,9 +10525,9 @@ static bool SkillPresentationPickerPopup(EditorState& state,const SkillDocs& d,
                                                         : L("VFX PICKER","VFX PICKER"));
     ImGui::SameLine();
     ImGui::TextDisabled("[%s]",field.col);
-    ImGui::SetNextItemWidth(720.0f);
-    UI::InputTextWithHint("##skillPresentationFilter",L("Wert oder Referenz-Skill suchen","Search value or reference skill"),
-                          ed.pickFilter,sizeof(ed.pickFilter));
+    DrawSearchInput("skillPresentationFilter",
+                    L("Wert oder Referenz-Skill suchen","Search value or reference skill"),
+                    ed.pickFilter,sizeof(ed.pickFilter),695.0f);
     ImGui::Separator();
 
     const auto& options=ed.pickerOptions[mapKey];
@@ -10849,8 +10852,9 @@ void DrawSkillEditor(EditorState& state) {
     }
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) ImGui::SetTooltip("%s", L("Schreibt alle geänderten SHN-Tabellen (Client und Server) auf die Platte.", "Writes all modified SHN tables (client and server) to disk."));
     ImGui::SameLine();
-    ImGui::SetNextItemWidth(260.0f);
-    UI::InputTextWithHint("##skillfilter", L("Suche: Name oder InxName oder ID", "Search: name, InxName or ID"), ed.filter, sizeof(ed.filter));
+    DrawSearchInput("skillFilter",
+                    L("Suche: Name oder InxName oder ID", "Search: name, InxName or ID"),
+                    ed.filter, sizeof(ed.filter), 235.0f);
     ImGui::SameLine();
     if (SceneQuickFilterButton("skillAll",L("Alle","All"),ed.quickFilter==0)) ed.quickFilter=0;
     ImGui::SameLine();
@@ -11207,8 +11211,8 @@ static void DrawColumnReference(EditorState& state) {
         ImGui::EndCombo();
     }
     ImGui::SameLine();
-    ImGui::SetNextItemWidth(200.0f);
-    ImGui::InputTextWithHint("##colfilter", L("Spalte suchen", "Search column"), state.manualColumnFilter, sizeof(state.manualColumnFilter));
+    DrawSearchInput("manualColumnFilter",L("Spalte suchen","Search column"),
+                    state.manualColumnFilter,sizeof(state.manualColumnFilter),175.0f);
     const auto& doc = state.shnFiles[static_cast<std::size_t>(state.manualColumnDoc)];
     std::string table = doc.file.FileName();
     if (table.size() > 4 && LowerAscii(table.substr(table.size() - 4)) == ".shn") table.resize(table.size() - 4);
@@ -11249,8 +11253,10 @@ void DrawManualWindow(EditorState& state) {
     ImGui::SetNextWindowSize(ImVec2(1050.0f, 720.0f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowPos(ImVec2(120.0f, 60.0f), ImGuiCond_FirstUseEver);
     if (!ImGui::Begin(L("Handbuch", "Manual"), &state.manualOpen)) { ImGui::End(); return; }
-    ImGui::SetNextItemWidth(340.0f);
-    ImGui::InputTextWithHint("##manualsearch", L("Suchen (z.B. Kamera, Skill, Shop, Walk ...)", "Search (e.g. camera, skill, shop, walk ...)"), state.manualQuery, sizeof(state.manualQuery));
+    DrawSearchInput("manualSearch",
+                    L("Suchen (z.B. Kamera, Skill, Shop, Walk ...)",
+                      "Search (e.g. camera, skill, shop, walk ...)"),
+                    state.manualQuery,sizeof(state.manualQuery),315.0f);
     ImGui::SameLine();
     ImGui::TextDisabled("%s", L("F1 = Handbuch öffnen/schließen", "F1 = open/close the manual"));
     ImGui::Separator();
@@ -11638,14 +11644,12 @@ void DrawCommandPalette(EditorState& state) {
     ImGui::TextDisabled("%s", paletteCloseHint.c_str());
     ImGui::Separator();
 
-    if (ImGui::IsWindowAppearing()) {
-        state.commandPaletteQuery[0] = '\0';
-        ImGui::SetKeyboardFocusHere();
-    }
-    ImGui::SetNextItemWidth(-1.0f);
-    if (ImGui::InputTextWithHint("##commandQuery",
-                                 L("Befehl oder Werkzeug suchen...","Search command or tool..."),
-                                 state.commandPaletteQuery, sizeof(state.commandPaletteQuery)))
+    const bool focusCommandSearch = ImGui::IsWindowAppearing();
+    if (focusCommandSearch) state.commandPaletteQuery[0] = '\0';
+    if (DrawSearchInput("commandPaletteQuery",
+                        L("Befehl oder Werkzeug suchen...","Search command or tool..."),
+                        state.commandPaletteQuery,sizeof(state.commandPaletteQuery),
+                        -1.0f,focusCommandSearch))
         state.commandPaletteSelection = 0;
 
     std::string needle = state.commandPaletteQuery;
@@ -15942,8 +15946,9 @@ void DrawDropTableEditor(EditorState& state) {
         exclusionColumns[static_cast<std::size_t>(i-1)] =
             FindShineColumn(*table, "ExcItem" + std::to_string(i));
 
-    UI::InputTextWithHint("##dropFilter", L("Mob, MapArea oder Drop-Item filtern...","Filter mob, MapArea or drop item..."),
-                          state.dropTableFilter, sizeof(state.dropTableFilter));
+    DrawSearchInput("dropTableFilter",
+                    L("Mob, MapArea oder Drop-Item filtern...","Filter mob, MapArea or drop item..."),
+                    state.dropTableFilter,sizeof(state.dropTableFilter),300.0f);
     ImGui::SameLine();
     UI::Checkbox(L("Nur Probleme##dropTable","Problems only##dropTable"), &state.dropTableProblemsOnly);
     const std::string needle = LowerAscii(state.dropTableFilter);
