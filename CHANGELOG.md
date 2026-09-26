@@ -1,3 +1,11 @@
+## NIF rendering follow-up — embedded texture source fidelity
+- Treat `NiSourceTexture::Use External = 0` as a first-class material/flipbook source even when its file-name field is empty; preserve the PixelData block reference into runtime material slots.
+- Sanitize every authored UV set, not only the legacy base-UV alias. Invalid secondary sets are cleared so the existing deterministic UV0 fallback can render valid embedded Detail/Glow/Bump/Decal layers instead of sampling with corrupt coordinates.
+- Never reinterpret a failed embedded source as an external texture lookup. Renderer diagnostics now report the exact undecoded PixelData block instead.
+- Extend the NIF Inspector with separate external / embedded / embedded-failure counts, PixelData block IDs, missing-only filtering for embedded failures, and decoded/undecoded PixelData totals.
+- Expand `test_nif_model` coverage to all UV sets and all embedded material slots.
+- Fixture structure audit: 83 supplied NIFs, 81 containing NiPixelData; for those 81, NiPixelData and NiSourceTexture block counts match one-for-one.
+
 ## UI Upgrade QA – Icon consistency, section chrome and viewport input capture
 - Add `tools/ui/check_icon_consistency.py` and run it in Linux CI before the core build. It verifies the frozen 68 semantic IDs against `UiIconAssets.cpp`, approved size levels and every checked-in runtime PNG while explicitly allowing the intentional partial runtime subset.
 - Current audit result: 55 committed runtime PNGs cover 51/68 semantic IDs; the remaining IDs stay on functional DrawList fallbacks until the approved final icon package can be materialized/imported.
