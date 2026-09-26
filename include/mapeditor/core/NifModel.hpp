@@ -181,11 +181,24 @@ struct NifMeshPart {
     NifVec3 lodCenter{};
 };
 
-// Benannter Knoten (z.B. Skelett-Knochen "Bip01 Head") mit Weltposition (Editor-Rahmen, wie die
-// Vertices der Parts) und Weltrotation (Legacy-Rahmen, zeilenweise) - Anbringpunkte fuer Gesicht, Haare,
-// Waffen in der Charakter-Vorschau (AvatarPreview).
+// Scene-Graph-Knoten (z.B. Skelett-Knochen "Bip01 Head"). Neben der bisherigen
+// Weltposition/-rotation bleiben jetzt auch Parent und lokaler Bind-Transform erhalten. Das ist
+// reine, aus dem NIF gelesene Strukturinformation und erlaubt dem KFM-Preview, verifizierte
+// KF-Transformtracks auf die echte NIF-Hierarchie anzuwenden, ohne eine Bone-Hierarchie zu raten.
+//
+// Coordinate conventions:
+// - position: Weltposition im Editor-Rahmen (x, z, y), wie die gerenderten Vertices.
+// - rotation: bisherige Weltrotation im Legacy/Gamebryo-Rahmen, row-major.
+// - localTranslation/localRotation/localScale: unveränderter lokaler NIF-Transform im
+//   Legacy/Gamebryo-Rahmen. KF-Transforms verwenden denselben lokalen Rahmen.
 struct NifNodeInfo {
     std::string name;
+    std::int32_t parentIndex = -1; // Index in NifModel::nodes, -1 = keine erfasste Node-Parent.
+    NifVec3 localTranslation{};
+    std::array<float, 9> localRotation{1.0f, 0.0f, 0.0f,
+                                       0.0f, 1.0f, 0.0f,
+                                       0.0f, 0.0f, 1.0f};
+    float localScale = 1.0f;
     NifVec3 position;
     std::array<float, 9> rotation{};
 };
@@ -197,7 +210,7 @@ struct NifModel {
     std::uint32_t undecodedEmbeddedTextures = 0;
     std::string rootName;
     std::vector<NifMeshPart> parts;
-    std::vector<NifNodeInfo> nodes; // alle benannten NiNode-Knoten (Weltposition)
+    std::vector<NifNodeInfo> nodes; // NiNode-Hierarchie inkl. lokaler Bind-Transforms; Namen können bei reinen Hierarchie-Knoten leer sein.
 };
 
 // Disable recovery for deterministic corpus validation of the standard parser.
