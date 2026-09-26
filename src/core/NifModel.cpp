@@ -2196,13 +2196,15 @@ NifUvSetDiagnostic SanitizeUvs(std::vector<NifVec2>& uvs) {
             if (std::abs(uv.u) > 1000.0f || std::abs(uv.v) > 1000.0f)
                 ++diagnostic.extremeCount;
         }
-        const bool implausible = !finite || std::abs(uv.u) > 1000.0f || std::abs(uv.v) > 1000.0f;
-        if (implausible && !diagnostic.discarded) {
+        // UVs are not range-limited by the NIF format. Large finite coordinates are valid
+        // input for repeat/mirror-style sampling and occur in real ResMap assets (ship.nif).
+        // Sanitization therefore rejects only values that cannot participate in arithmetic.
+        if (!finite && !diagnostic.discarded) {
             diagnostic.discarded = true;
             diagnostic.firstBadIndex = static_cast<std::uint32_t>(
                 std::min<std::size_t>(i, std::numeric_limits<std::uint32_t>::max()));
             diagnostic.firstBadValue = uv;
-            diagnostic.nonFinite = !finite;
+            diagnostic.nonFinite = true;
         }
     }
     if (diagnostic.discarded) uvs.clear();

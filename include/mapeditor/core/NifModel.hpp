@@ -42,10 +42,10 @@ struct NifVec2 {
     float u = 0.0f, v = 0.0f;
 };
 
-// Diagnose fuer UV-Sets, die das harte Plausibilitaets-Sicherheitsnetz verworfen hat.
-// Die eigentlichen Rohwerte werden weiterhin nicht an den Renderer durchgereicht; wir
-// behalten nur genug Information, um Parser-/Layoutvarianten datenbasiert untersuchen zu
-// koennen, statt bei einer fehlenden Texturbelegung UVs zu raten.
+// Diagnose fuer auffaellige UV-Sets. Endliche UVs duerfen ausserhalb [0,1] und auch sehr
+// weit ausserhalb liegen (insbesondere bei Repeat-Wrapping) und bleiben deshalb erhalten.
+// Nur NaN/Inf wird als nicht renderbar verworfen; grosse endliche Werte werden weiterhin
+// inventarisiert, damit echte Parser-/Layoutfehler im Korpus sichtbar bleiben.
 struct NifUvSetDiagnostic {
     bool discarded = false;
     std::uint32_t originalCount = 0;

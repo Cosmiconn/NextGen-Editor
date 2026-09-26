@@ -121,6 +121,39 @@ void CheckNamedShader(const fs::path& root, const ShaderExpectation& expected) {
               std::to_string(externalBaseCount));
 }
 
+void CheckLargeWrappedUvFixture(const fs::path& root) {
+    constexpr const char* kFile = "ship.nif";
+    const auto path = FindFixture(root, kFile);
+    Check(path.has_value(), std::string("Fixture vorhanden: ") + kFile);
+    if (!path) return;
+
+    const auto model = core::LoadNifMesh(*path, false);
+    Check(model.has_value(), std::string("Fixture lädt vollständig: ") + kFile);
+    if (!model) {
+        std::fprintf(stderr, "         %s\n", model.error().c_str());
+        return;
+    }
+
+    std::size_t extremeFiniteSets = 0;
+    std::size_t retainedExtremeSets = 0;
+    for (const auto& part : model->parts) {
+        for (std::size_t uvSet = 0;
+             uvSet < part.uvSetDiagnostics.size() && uvSet < part.uvSets.size(); ++uvSet) {
+            const auto& diagnostic = part.uvSetDiagnostics[uvSet];
+            if (diagnostic.extremeCount == 0u || diagnostic.nonFinite) continue;
+            ++extremeFiniteSets;
+            if (!diagnostic.discarded && part.uvSets[uvSet].size() == part.positions.size())
+                ++retainedExtremeSets;
+        }
+    }
+
+    Check(extremeFiniteSets > 0u,
+          std::string(kFile) + ": enthaelt den belegten grossen endlichen Repeat-UV-Fall");
+    Check(retainedExtremeSets == extremeFiniteSets,
+          std::string(kFile) +
+              ": grosse endliche UVs bleiben erhalten statt wegen einer kuenstlichen Bereichsgrenze zu verschwinden");
+}
+
 void CheckStencilFixture(const fs::path& root) {
     constexpr const char* kFile = "Rou_M_Tube.nif";
     const auto path = FindFixture(root, kFile);
@@ -193,6 +226,7 @@ int main(int argc, char** argv) {
         18u,
     });
 
+    CheckLargeWrappedUvFixture(root);
     CheckStencilFixture(root);
     CheckHilite2Fixture(root);
 
