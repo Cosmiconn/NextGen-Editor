@@ -11166,14 +11166,14 @@ void DrawSettingsWindow(EditorState& state) {
     if (!state.settingsOpen) return;
 
     ImGui::SetNextWindowSize(ImVec2(760.0f, 560.0f), ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin("Einstellungen##nextgenSettings", &state.settingsOpen)) {
+    if (!ImGui::Begin(L("Einstellungen##nextgenSettings","Settings##nextgenSettings"), &state.settingsOpen)) {
         ImGui::End();
         return;
     }
 
     ImGui::TextColored(ImVec4(0.30f,0.78f,1.0f,1.0f), "SHORTCUTS");
     ImGui::SameLine();
-    ImGui::TextDisabled("werden unter %s gespeichert",
+    ImGui::TextDisabled(L("werden unter %s gespeichert","saved under %s"),
                         (NextGenUserSettingsDir() / "shortcuts.txt").string().c_str());
     ImGui::Separator();
 
@@ -11182,26 +11182,26 @@ void DrawSettingsWindow(EditorState& state) {
         EditorState::ShortcutBinding* binding;
     };
     const std::array<ShortcutRow,9> rows = {{
-        {"Befehlspalette", &state.shortcutPalette},
-        {"Karte speichern", &state.shortcutSave},
-        {"Gizmo: Move", &state.shortcutGizmoMove},
-        {"Gizmo: Rotate", &state.shortcutGizmoRotate},
-        {"Gizmo: Scale", &state.shortcutGizmoScale},
-        {"Auswahl fokussieren", &state.shortcutFocus},
-        {"Auf Terrain setzen", &state.shortcutGround},
-        {"Objekte duplizieren", &state.shortcutDuplicate},
-        {"Objekte löschen", &state.shortcutDelete},
+        {L("Befehlspalette","Command palette"), &state.shortcutPalette},
+        {L("Karte speichern","Save map"), &state.shortcutSave},
+        {L("Gizmo: Move","Gizmo: Move"), &state.shortcutGizmoMove},
+        {L("Gizmo: Rotate","Gizmo: Rotate"), &state.shortcutGizmoRotate},
+        {L("Gizmo: Scale","Gizmo: Scale"), &state.shortcutGizmoScale},
+        {L("Auswahl fokussieren","Focus selection"), &state.shortcutFocus},
+        {L("Auf Terrain setzen","Drop to terrain"), &state.shortcutGround},
+        {L("Objekte duplizieren","Duplicate objects"), &state.shortcutDuplicate},
+        {L("Objekte löschen","Delete objects"), &state.shortcutDelete},
     }};
 
     bool changed = false;
     if (ImGui::BeginTable("##shortcutSettings", 6,
             ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp)) {
-        ImGui::TableSetupColumn("Aktion", ImGuiTableColumnFlags_WidthStretch, 1.8f);
-        ImGui::TableSetupColumn("Strg", ImGuiTableColumnFlags_WidthFixed, 50.0f);
+        ImGui::TableSetupColumn(L("Aktion","Action"), ImGuiTableColumnFlags_WidthStretch, 1.8f);
+        ImGui::TableSetupColumn(L("Strg","Ctrl"), ImGuiTableColumnFlags_WidthFixed, 50.0f);
         ImGui::TableSetupColumn("Shift", ImGuiTableColumnFlags_WidthFixed, 55.0f);
         ImGui::TableSetupColumn("Alt", ImGuiTableColumnFlags_WidthFixed, 45.0f);
-        ImGui::TableSetupColumn("Taste", ImGuiTableColumnFlags_WidthFixed, 120.0f);
-        ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed, 100.0f);
+        ImGui::TableSetupColumn(L("Taste","Key"), ImGuiTableColumnFlags_WidthFixed, 120.0f);
+        ImGui::TableSetupColumn(L("Status","Status"), ImGuiTableColumnFlags_WidthFixed, 100.0f);
         ImGui::TableHeadersRow();
 
         for (std::size_t i=0;i<rows.size();++i) {
@@ -11233,7 +11233,7 @@ void DrawSettingsWindow(EditorState& state) {
             }
             ImGui::TableNextColumn();
             if (conflict)
-                ImGui::TextColored(ImVec4(1.0f,0.45f,0.35f,1.0f),"Konflikt");
+                ImGui::TextColored(ImVec4(1.0f,0.45f,0.35f,1.0f),"%s",L("Konflikt","Conflict"));
             else
                 ImGui::TextColored(ImVec4(0.45f,0.85f,0.60f,1.0f),"OK");
             ImGui::PopID();
@@ -11244,33 +11244,33 @@ void DrawSettingsWindow(EditorState& state) {
     if (changed) SaveShortcutSettings(state);
 
     ImGui::Separator();
-    if (UI::Button("Shortcuts zurücksetzen")) {
+    if (UI::Button(L("Shortcuts zurücksetzen","Reset shortcuts"))) {
         ResetShortcutSettings(state);
         SaveShortcutSettings(state);
-        state.statusMessage = "Shortcuts auf Standard zurückgesetzt.";
+        state.statusMessage = L("Shortcuts auf Standard zurückgesetzt.","Shortcuts reset to defaults.");
     }
     ImGui::SameLine();
-    if (UI::Button("Map-Workspace zurücksetzen")) {
+    if (UI::Button(L("Map-Workspace zurücksetzen","Reset map workspace"))) {
         RequestMapWorkspacePreset(state,0);
     }
 
     ImGui::SeparatorText("Workspace");
-    ImGui::TextWrapped("Dock-Größen und Positionen werden automatisch zwischen Sitzungen gespeichert.");
+    ImGui::TextWrapped("%s",L("Dock-Größen und Positionen werden automatisch zwischen Sitzungen gespeichert.","Dock sizes and positions are saved automatically between sessions."));
     ImGui::TextDisabled("%s", (NextGenUserSettingsDir() / "layout.ini").string().c_str());
-    ImGui::TextWrapped("Zusätzlich kann ein Ausgangs-Preset gewählt werden. Nach dem Anwenden bleibt das Layout frei dockbar.");
-    const char* presetNames[]={"Standard","3D-Fokus","Terrain / 2D","Daten / Szene"};
+    ImGui::TextWrapped("%s",L("Zusätzlich kann ein Ausgangs-Preset gewählt werden. Nach dem Anwenden bleibt das Layout frei dockbar.","You can also choose a starting preset. After applying it, the layout remains freely dockable."));
+    const char* presetNames[]={L("Standard","Standard"),L("3D-Fokus","3D focus"),L("Terrain / 2D","Terrain / 2D"),L("Daten / Szene","Data / scene")};
     int settingsPreset=state.mapWorkspacePreset;
     ImGui::SetNextItemWidth(220.0f);
-    if (UI::Combo("Map-Workspace-Preset", &settingsPreset, presetNames, 4) &&
+    if (UI::Combo(L("Map-Workspace-Preset","Map workspace preset"), &settingsPreset, presetNames, 4) &&
         settingsPreset != state.mapWorkspacePreset) {
         RequestMapWorkspacePreset(state,settingsPreset);
     }
     ImGui::SameLine();
-    if (UI::Button("Anwenden"))
+    if (UI::Button(L("Anwenden","Apply")))
         RequestMapWorkspacePreset(state,settingsPreset);
-    ImGui::TextDisabled("Auswahl gespeichert in %s",
+    ImGui::TextDisabled(L("Auswahl gespeichert in %s","Selection saved in %s"),
                         (NextGenUserSettingsDir() / "workspace.txt").string().c_str());
-    ImGui::TextWrapped("Gizmo-Shortcuts verwenden standardmäßig 1 / 2 / 3, damit sie nicht mit der WASD-Kamera kollidieren.");
+    ImGui::TextWrapped("%s",L("Gizmo-Shortcuts verwenden standardmäßig 1 / 2 / 3, damit sie nicht mit der WASD-Kamera kollidieren.","Gizmo shortcuts default to 1 / 2 / 3 so they do not conflict with the WASD camera."));
 
     ImGui::End();
 }
