@@ -251,6 +251,54 @@ struct NifParticleDataInfo {
     std::vector<NifParticleState> particles;
 };
 
+struct NifParticleModifierInfo {
+    std::string type;
+    std::string name;
+    std::uint32_t order = 0;
+    std::int32_t targetRef = -1;
+    bool active = true;
+
+    // Shared emitter payload (valid for Box/Cylinder/Sphere/Mesh emitters).
+    bool emitter = false;
+    float speed = 0.0f, speedVariation = 0.0f;
+    float declination = 0.0f, declinationVariation = 0.0f;
+    float planarAngle = 0.0f, planarAngleVariation = 0.0f;
+    NifColor4 initialColor{};
+    float initialRadius = 1.0f, radiusVariation = 0.0f;
+    float lifeSpan = 0.0f, lifeSpanVariation = 0.0f;
+    std::int32_t emitterObjectRef = -1;
+    float emitterWidth = 0.0f, emitterHeight = 0.0f, emitterDepth = 0.0f, emitterRadius = 0.0f;
+    std::vector<std::int32_t> emitterMeshRefs;
+    std::uint32_t initialVelocityType = 0, emissionType = 0;
+    NifVec3 emissionAxis{};
+
+    // Lifecycle/spawn/grow-fade.
+    bool spawnOnDeath = false;
+    std::int32_t spawnModifierRef = -1;
+    std::uint16_t numSpawnGenerations = 0, minNumToSpawn = 0, maxNumToSpawn = 0;
+    float percentageSpawned = 0.0f, spawnSpeedVariation = 0.0f, spawnDirVariation = 0.0f;
+    float spawnLifeSpan = 0.0f, spawnLifeSpanVariation = 0.0f;
+    float growTime = 0.0f, fadeTime = 0.0f;
+    std::uint16_t growGeneration = 0, fadeGeneration = 0;
+
+    // Color/rotation/forces.
+    std::int32_t colorDataRef = -1;
+    float initialRotationSpeed = 0.0f, initialRotationSpeedVariation = 0.0f;
+    float initialRotationAngle = 0.0f, initialRotationAngleVariation = 0.0f;
+    bool randomRotationSpeedSign = false, randomInitialAxis = false;
+    NifVec3 initialAxis{0.0f, 1.0f, 0.0f};
+    std::int32_t forceObjectRef = -1;
+    NifVec3 forceAxis{};
+    float forceDecay = 0.0f, forceStrength = 0.0f;
+    std::uint32_t forceType = 0;
+    float turbulence = 0.0f, turbulenceScale = 0.0f;
+    float dragPercentage = 0.0f, dragRange = 0.0f, dragRangeFalloff = 0.0f;
+
+    std::uint16_t updateSkip = 0;
+    std::vector<std::int32_t> meshRefs;
+    std::int32_t linkedRef = -1;
+};
+
 // Authored NiParticleSystem/NiMeshParticleSystem scene wiring. Keeping this separate from
 // NifMeshPart is intentional: particle systems are dynamic scene objects, not triangle meshes.
 struct NifParticleSystemInfo {
@@ -265,6 +313,7 @@ struct NifParticleSystemInfo {
     // Parallel zu modifierRefs; direkt aus der Header-Blocktyp-Tabelle aufgelöst. Dadurch kann
     // der Renderer exakt die im Corpus vorkommenden Modifier implementieren statt Typen zu raten.
     std::vector<std::string> modifierTypes;
+    std::vector<NifParticleModifierInfo> modifiers;
     bool hasParticleData = false;
     NifParticleDataInfo particleData;
     NifVec3 translation{};

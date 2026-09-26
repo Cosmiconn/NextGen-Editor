@@ -196,6 +196,15 @@ int main(int argc, char** argv) {
                     authoredParticles += system.particleData.particles.size();
                 }
             }
+            std::size_t parsedModifiers = 0;
+            for (const auto& system : gate->particleSystems) {
+                parsedModifiers += system.modifiers.size();
+                for (const auto& modifier : system.modifiers) {
+                    check(!modifier.type.empty(), "parsed particle modifier keeps its concrete type");
+                    check(modifier.targetRef >= 0, "parsed particle modifier keeps target system reference");
+                }
+            }
+            check(parsedModifiers > 0u, "MapLinkGate2 preserves particle modifier parameters");
             check(systemsWithData == gate->particleSystems.size(),
                   "every MapLinkGate2 particle system resolves its NiPSysData block");
             check(authoredParticles > 0u,

@@ -1001,205 +1001,143 @@ std::uint32_t SkipNiParticlesData(ByteReader& r, std::uint32_t version) {
     return numVerts;
 }
 
-// NiPSysModifier-Basis (gemeinsam für alle Partikel-Modifier/Emitter): name(String) +
-// order(u32) + target_ref(i32) + active(u8).
-void SkipNiPSysModifierBase(ByteReader& r) {
-    r.SizedString(); // name
-    r.U32();         // order
-    r.I32();         // target_ref
-    r.U8();          // active
+// Particle modifier parser. These fields were already byte-exact in the old Skip* helpers;
+// the same layout is now retained as runtime data so rendering/simulation never needs guessed
+// defaults. Legacy test entry points remain as wrappers below.
+NifParticleModifierInfo ParseNiPSysModifierBase(ByteReader& r, const char* type) {
+    NifParticleModifierInfo out;
+    out.type = type;
+    out.name = r.SizedString();
+    out.order = r.U32();
+    out.targetRef = r.I32();
+    out.active = r.U8() != 0;
+    return out;
 }
 
-// NiPSysColliderManager: NiPSysModifier-Basis + collider_ref(i32).
-void SkipNiPSysColliderManager(ByteReader& r) {
-    SkipNiPSysModifierBase(r);
-    r.I32(); // collider_ref
+void ParseEmitterBase(ByteReader& r, NifParticleModifierInfo& out) {
+    out.emitter = true;
+    out.speed = r.F32(); out.speedVariation = r.F32();
+    out.declination = r.F32(); out.declinationVariation = r.F32();
+    out.planarAngle = r.F32(); out.planarAngleVariation = r.F32();
+    out.initialColor = {r.F32(), r.F32(), r.F32(), r.F32()};
+    out.initialRadius = r.F32();
+    if (r.LegacyLayout() || r.Version() >= 0x0A040001u) out.radiusVariation = r.F32();
+    out.lifeSpan = r.F32(); out.lifeSpanVariation = r.F32();
 }
 
-// NiPSysCollider-Basis (gemeinsam für alle Kollider-Typen): KEINE NiObjectNET-Basis (reines
-// NiObject!) - bounce(f32) + spawn_on_collide(u8) + die_on_collide(u8) +
-// spawn_modifier_ref(i32) + parent_ptr(i32) + next_collider_ref(i32) + collider_object_ptr
-// (i32) = 22 Byte.
-void SkipNiPSysColliderBase(ByteReader& r) {
-    r.F32(); // bounce
-    r.U8();  // spawn_on_collide
-    r.U8();  // die_on_collide
-    r.I32(); // spawn_modifier_ref
-    r.I32(); // parent
-    r.I32(); // next_collider_ref
-    r.I32(); // collider_object
+NifParticleModifierInfo ParseVolumeEmitter(ByteReader& r, const char* type) {
+    auto out = ParseNiPSysModifierBase(r, type);
+    ParseEmitterBase(r, out);
+    out.emitterObjectRef = r.I32();
+    return out;
 }
 
-// NiPSysPlanarCollider: NiPSysCollider-Basis + width(f32) + height(f32) + x_axis(Vector3) +
-// y_axis(Vector3).
-void SkipNiPSysPlanarCollider(ByteReader& r) {
-    SkipNiPSysColliderBase(r);
-    r.Skip(4 + 4 + 12 + 12);
+NifParticleModifierInfo ParseBoxEmitter(ByteReader& r) {
+    auto out = ParseVolumeEmitter(r, "NiPSysBoxEmitter");
+    out.emitterWidth = r.F32(); out.emitterHeight = r.F32(); out.emitterDepth = r.F32();
+    return out;
 }
-
-// NiPSysEmitter-Basis (gemeinsam für alle Emitter-Typen): NiPSysModifier + 6 Floats
-// (speed/speed_variation/declination/declination_variation/planar_angle/
-// planar_angle_variation) + initial_color(Color4=16 Byte) + 4 Floats (initial_radius/
-// radius_variation/life_span/life_span_variation).
-void SkipNiPSysEmitterBase(ByteReader& r) {
-    SkipNiPSysModifierBase(r);
-    r.Skip(6 * 4);  // 6 Floats
-    r.Skip(16);     // initial_color (Color4)
-    r.F32(); // initial radius
-    if (r.LegacyLayout() || r.Version() >= 0x0A040001u) r.F32(); // radius variation
-    r.F32(); r.F32(); // lifespan, lifespan variation
+NifParticleModifierInfo ParseCylinderEmitter(ByteReader& r) {
+    auto out = ParseVolumeEmitter(r, "NiPSysCylinderEmitter");
+    out.emitterRadius = r.F32(); out.emitterHeight = r.F32();
+    return out;
 }
-
-// NiPSysVolumeEmitter-Basis: NiPSysEmitter + emitter_object_ref(i32).
-void SkipNiPSysVolumeEmitterBase(ByteReader& r) {
-    SkipNiPSysEmitterBase(r);
-    r.I32(); // emitter_object_ref
+NifParticleModifierInfo ParseSphereEmitter(ByteReader& r) {
+    auto out = ParseVolumeEmitter(r, "NiPSysSphereEmitter");
+    out.emitterRadius = r.F32();
+    return out;
 }
-
-// NiPSysBoxEmitter: NiPSysVolumeEmitter + width/height/depth (3 Floats).
-void SkipNiPSysBoxEmitter(ByteReader& r) {
-    SkipNiPSysVolumeEmitterBase(r);
-    r.Skip(3 * 4);
+NifParticleModifierInfo ParseMeshEmitter(ByteReader& r) {
+    auto out = ParseNiPSysModifierBase(r, "NiPSysMeshEmitter");
+    ParseEmitterBase(r, out);
+    const auto count = r.CountU32(256u);
+    out.emitterMeshRefs.reserve(count);
+    for (std::uint32_t i = 0; i < count; ++i) out.emitterMeshRefs.push_back(r.I32());
+    out.initialVelocityType = r.U32();
+    out.emissionType = r.U32();
+    const float x=r.F32(), y=r.F32(), z=r.F32();
+    out.emissionAxis = {x,z,y};
+    return out;
 }
-
-void SkipNiPSysCylinderEmitter(ByteReader& r) {
-    SkipNiPSysVolumeEmitterBase(r);
-    r.F32(); // radius
-    r.F32(); // height
+NifParticleModifierInfo ParseAgeDeathModifier(ByteReader& r) {
+    auto out=ParseNiPSysModifierBase(r,"NiPSysAgeDeathModifier");
+    out.spawnOnDeath=r.U8()!=0; out.spawnModifierRef=r.I32(); return out;
 }
-
-void SkipNiPSysSphereEmitter(ByteReader& r) {
-    SkipNiPSysVolumeEmitterBase(r);
-    r.F32(); // radius
+NifParticleModifierInfo ParseSpawnModifier(ByteReader& r) {
+    auto out=ParseNiPSysModifierBase(r,"NiPSysSpawnModifier");
+    out.numSpawnGenerations=r.U16(); out.percentageSpawned=r.F32();
+    out.minNumToSpawn=r.U16(); out.maxNumToSpawn=r.U16();
+    out.spawnSpeedVariation=r.F32(); out.spawnDirVariation=r.F32();
+    out.spawnLifeSpan=r.F32(); out.spawnLifeSpanVariation=r.F32(); return out;
 }
-
-void SkipNiPSysBombModifier(ByteReader& r) {
-    SkipNiPSysModifierBase(r);
-    r.I32(); // bomb object
-    r.F32(); r.F32(); r.F32(); // bomb axis
-    r.F32(); // decay
-    r.F32(); // deltaV
-    r.U32(); // decay type
-    r.U32(); // symmetry type
+NifParticleModifierInfo ParseGrowFadeModifier(ByteReader& r) {
+    auto out=ParseNiPSysModifierBase(r,"NiPSysGrowFadeModifier");
+    out.growTime=r.F32(); out.growGeneration=r.U16(); out.fadeTime=r.F32(); out.fadeGeneration=r.U16(); return out;
 }
-
-// NiPSysMeshEmitter: NiPSysEmitter + num_emitter_meshes(u32)+Refs + initial_velocity_type(u32)
-// + emission_axis(Vector3) + emission_type(u32) laut Referenz (PyFFI) - deren genaue
-// Reihenfolge/Typgrößen aber NICHT eindeutig dokumentiert sind (siehe docs/MAP_FORMAT.md
-// Abschnitt 19). STATT die einzelnen Felder zu raten, wird hier nur die GESAMTLÄNGE
-// empirisch verwendet: über 70 reale Dateien hinweg beginnt der jeweils nächste Block
-// (erkennbar an seiner NiPSysModifierBase) mit überwältigender Mehrheit (41 von 70, weitere
-// 4 nur 2 Byte versetzt) rund 315 Byte nach Blockbeginn - unabhängig vom genauen Feld-
-// Layout innerhalb dieser Byte (die Werte selbst werden ohnehin nirgends weiterverwendet, da
-// keine Partikel gerendert werden). Ein systematischer Massentest-Scan über viele
-// Kandidatenwerte (236-260) zeigte KEIN einzelnes eindeutiges Optimum, sondern ein Plateau
-// mehrerer Werte (236/243/244/247/258/260) bei gleichauf bestem Ergebnis (1818/3436) - ein
-// klares Indiz, dass `num_emitter_meshes` in der Praxis PRO INSTANZ variiert (eine fest
-// codierte Länge kann also grundsätzlich nie für alle Dateien exakt stimmen). 244 gewählt,
-// da es der ursprünglichen 246-Byte-Schätzung am nächsten liegt.
-// NiPSysMeshEmitter: NiPSysEmitter + num_emitter_meshes(u32) + emitter_meshes(Ptr, je i32) +
-// initial_velocity_type(u32-Enum VelocityType) + emission_type(u32-Enum EmitFrom) +
-// emission_axis(Vector3). Struktur aus der autoritativen offiziellen niftools/nifxml-
-// Referenzdatei (nif.xml, direkt von GitHub geladen) übernommen - ersetzt den früheren
-// empirischen Kompromiss (fester Skip von 244 Byte, siehe docs/MAP_FORMAT.md Abschnitt 19),
-// der auf zwischenzeitlich durch andere Fixes veränderte (jetzt falsche) Blockpositionen
-// zurückging.
-void SkipNiPSysMeshEmitter(ByteReader& r) {
-    SkipNiPSysEmitterBase(r);
-    const std::uint32_t numEmitterMeshes = r.CountU32(256u);
-    for (std::uint32_t i = 0; i < numEmitterMeshes; ++i) {
-        r.I32();
-    }
-    r.U32(); // initial_velocity_type
-    r.U32(); // emission_type
-    r.Skip(12); // emission_axis (Vector3)
+NifParticleModifierInfo ParseColorModifier(ByteReader& r) {
+    auto out=ParseNiPSysModifierBase(r,"NiPSysColorModifier"); out.colorDataRef=r.I32(); return out;
 }
-
-// NiPSysAgeDeathModifier: NiPSysModifier + spawn_on_death(u8) + spawn_modifier_ref(i32).
-void SkipNiPSysAgeDeathModifier(ByteReader& r) {
-    SkipNiPSysModifierBase(r);
-    r.U8();
-    r.I32();
-}
-
-// NiPSysSpawnModifier: NiPSysModifier + num_spawn_generations(u16) + percentage_spawned(f32) +
-// min/max_num_to_spawn(je u16) + spawn_speed_variation/spawn_dir_variation/life_span/
-// life_span_variation (je f32).
-void SkipNiPSysSpawnModifier(ByteReader& r) {
-    SkipNiPSysModifierBase(r);
-    r.U16(); r.F32(); r.U16(); r.U16(); r.F32(); r.F32(); r.F32(); r.F32();
-}
-
-// NiPSysGrowFadeModifier: NiPSysModifier + grow_time(f32) + grow_generation(u16) +
-// fade_time(f32) + fade_generation(u16).
-void SkipNiPSysGrowFadeModifier(ByteReader& r) {
-    SkipNiPSysModifierBase(r);
-    r.F32(); r.U16(); r.F32(); r.U16();
-}
-
-// NiPSysColorModifier: NiPSysModifier + data_ref(i32, zeigt auf NiColorData).
-void SkipNiPSysColorModifier(ByteReader& r) {
-    SkipNiPSysModifierBase(r);
-    r.I32();
-}
-
-// NiPSysRotationModifier: NiPSysModifier + 4 Floats (initial_rotation_speed/_variation,
-// initial_rotation_angle/_variation) + 2 Bytes (random_rot_speed_sign, random_initial_axis) +
-// initial_axis (Vector3).
-void SkipNiPSysRotationModifier(ByteReader& r) {
-    SkipNiPSysModifierBase(r);
-    r.F32(); // rotation speed
+NifParticleModifierInfo ParseRotationModifier(ByteReader& r) {
+    auto out=ParseNiPSysModifierBase(r,"NiPSysRotationModifier");
+    out.initialRotationSpeed=r.F32();
     if (r.LegacyLayout() || r.Version() >= 0x14000002u) {
-        r.F32(); r.F32(); r.F32(); // speed variation, angle, angle variation
-        r.U8(); // random speed sign
+        out.initialRotationSpeedVariation=r.F32(); out.initialRotationAngle=r.F32();
+        out.initialRotationAngleVariation=r.F32(); out.randomRotationSpeedSign=r.U8()!=0;
     }
-    r.U8(); // random axis
-    r.Skip(12);
+    out.randomInitialAxis=r.U8()!=0;
+    const float x=r.F32(), y=r.F32(), z=r.F32(); out.initialAxis={x,z,y}; return out;
+}
+NifParticleModifierInfo ParseGravityModifier(ByteReader& r) {
+    auto out=ParseNiPSysModifierBase(r,"NiPSysGravityModifier"); out.forceObjectRef=r.I32();
+    const float x=r.F32(), y=r.F32(), z=r.F32(); out.forceAxis={x,z,y};
+    out.forceDecay=r.F32(); out.forceStrength=r.F32(); out.forceType=r.U32();
+    out.turbulence=r.F32(); out.turbulenceScale=r.F32(); return out;
+}
+NifParticleModifierInfo ParseDragModifier(ByteReader& r) {
+    auto out=ParseNiPSysModifierBase(r,"NiPSysDragModifier"); out.forceObjectRef=r.I32();
+    const float x=r.F32(), y=r.F32(), z=r.F32(); out.forceAxis={x,z,y};
+    out.dragPercentage=r.F32(); out.dragRange=r.F32(); out.dragRangeFalloff=r.F32(); return out;
+}
+NifParticleModifierInfo ParsePositionModifier(ByteReader& r) { return ParseNiPSysModifierBase(r,"NiPSysPositionModifier"); }
+NifParticleModifierInfo ParseBoundUpdateModifier(ByteReader& r) {
+    auto out=ParseNiPSysModifierBase(r,"NiPSysBoundUpdateModifier"); out.updateSkip=r.U16(); return out;
+}
+NifParticleModifierInfo ParseMeshUpdateModifier(ByteReader& r) {
+    auto out=ParseNiPSysModifierBase(r,"NiPSysMeshUpdateModifier"); const auto count=r.CountU32(256u);
+    out.meshRefs.reserve(count); for(std::uint32_t i=0;i<count;++i) out.meshRefs.push_back(r.I32()); return out;
+}
+NifParticleModifierInfo ParseBombModifier(ByteReader& r) {
+    auto out=ParseNiPSysModifierBase(r,"NiPSysBombModifier"); out.forceObjectRef=r.I32();
+    const float x=r.F32(), y=r.F32(), z=r.F32(); out.forceAxis={x,z,y};
+    out.forceDecay=r.F32(); out.forceStrength=r.F32(); out.initialVelocityType=r.U32(); out.emissionType=r.U32(); return out;
+}
+NifParticleModifierInfo ParseColliderManager(ByteReader& r) {
+    auto out=ParseNiPSysModifierBase(r,"NiPSysColliderManager"); out.linkedRef=r.I32(); return out;
 }
 
-// NiPSysGravityModifier: NiPSysModifier + gravity_object_ref(i32) + gravity_axis(Vector3) +
-// decay/strength(je f32) + force_type(u32) + turbulence/turbulence_scale(je f32).
-void SkipNiPSysGravityModifier(ByteReader& r) {
-    SkipNiPSysModifierBase(r);
-    r.I32();
-    r.Skip(12);
-    r.F32(); r.F32();
-    r.U32();
-    r.F32(); r.F32();
+void SkipNiPSysModifierBase(ByteReader& r) { (void)ParseNiPSysModifierBase(r,"NiPSysModifier"); }
+void SkipNiPSysColliderManager(ByteReader& r) { (void)ParseColliderManager(r); }
+void SkipNiPSysColliderBase(ByteReader& r) {
+    r.F32(); r.U8(); r.U8(); r.I32(); r.I32(); r.I32(); r.I32();
 }
-
-// NiPSysDragModifier: NiPSysModifier + drag_object_ptr(i32) + drag_axis(Vector3) +
-// percentage/range/range_falloff (je f32). Struktur aus der autoritativen nif.xml-Referenz.
-void SkipNiPSysDragModifier(ByteReader& r) {
-    SkipNiPSysModifierBase(r);
-    r.I32();    // drag_object
-    r.Skip(12); // drag_axis (Vector3)
-    r.F32();    // percentage
-    r.F32();    // range
-    r.F32();    // range_falloff
-}
-
-// NiPSysPositionModifier: NiPSysModifier, keine eigenen Felder.
-void SkipNiPSysPositionModifier(ByteReader& r) {
-    SkipNiPSysModifierBase(r);
-}
-
-// NiPSysBoundUpdateModifier: NiPSysModifier + update_skip(u16).
-void SkipNiPSysBoundUpdateModifier(ByteReader& r) {
-    SkipNiPSysModifierBase(r);
-    r.U16();
-}
-
-// NiPSysMeshUpdateModifier: NiPSysModifier + num_meshes(u32) + meshes(Refs, je i32) - laut
-// Referenz (PyFFI) eine einfache, unzweideutige Ref-Liste (kein Sonderfall wie bei
-// NiPSysMeshEmitter, siehe Abschnitt 19).
-void SkipNiPSysMeshUpdateModifier(ByteReader& r) {
-    SkipNiPSysModifierBase(r);
-    const std::uint32_t numMeshes = r.CountU32(256u);
-    for (std::uint32_t i = 0; i < numMeshes; ++i) {
-        r.I32();
-    }
-}
+void SkipNiPSysPlanarCollider(ByteReader& r) { SkipNiPSysColliderBase(r); r.Skip(4+4+12+12); }
+void SkipNiPSysEmitterBase(ByteReader& r) { auto out=ParseNiPSysModifierBase(r,"NiPSysEmitter"); ParseEmitterBase(r,out); }
+void SkipNiPSysVolumeEmitterBase(ByteReader& r) { auto out=ParseVolumeEmitter(r,"NiPSysVolumeEmitter"); (void)out; }
+void SkipNiPSysBoxEmitter(ByteReader& r) { (void)ParseBoxEmitter(r); }
+void SkipNiPSysCylinderEmitter(ByteReader& r) { (void)ParseCylinderEmitter(r); }
+void SkipNiPSysSphereEmitter(ByteReader& r) { (void)ParseSphereEmitter(r); }
+void SkipNiPSysBombModifier(ByteReader& r) { (void)ParseBombModifier(r); }
+void SkipNiPSysMeshEmitter(ByteReader& r) { (void)ParseMeshEmitter(r); }
+void SkipNiPSysAgeDeathModifier(ByteReader& r) { (void)ParseAgeDeathModifier(r); }
+void SkipNiPSysSpawnModifier(ByteReader& r) { (void)ParseSpawnModifier(r); }
+void SkipNiPSysGrowFadeModifier(ByteReader& r) { (void)ParseGrowFadeModifier(r); }
+void SkipNiPSysColorModifier(ByteReader& r) { (void)ParseColorModifier(r); }
+void SkipNiPSysRotationModifier(ByteReader& r) { (void)ParseRotationModifier(r); }
+void SkipNiPSysGravityModifier(ByteReader& r) { (void)ParseGravityModifier(r); }
+void SkipNiPSysDragModifier(ByteReader& r) { (void)ParseDragModifier(r); }
+void SkipNiPSysPositionModifier(ByteReader& r) { (void)ParsePositionModifier(r); }
+void SkipNiPSysBoundUpdateModifier(ByteReader& r) { (void)ParseBoundUpdateModifier(r); }
+void SkipNiPSysMeshUpdateModifier(ByteReader& r) { (void)ParseMeshUpdateModifier(r); }
 
 // NiDynamicEffect-Basis (gemeinsam für NiTextureEffect und NiLight/NiDirectionalLight):
 // AVObjectBase + switch_state(u8) + num_affected_nodes(u32) + je Knoten ein Ref(i32).
@@ -2820,6 +2758,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
     std::unordered_map<std::uint32_t, SkinDataBlock> skinDataByBlock;
     std::unordered_map<std::uint32_t, SkinPartitionBlock> skinPartitionByBlock;
     std::unordered_map<std::uint32_t, NifParticleDataInfo> particleDataByBlock;
+    std::unordered_map<std::uint32_t, NifParticleModifierInfo> particleModifierByBlock;
     struct LodRangeData {
         NifVec3 center{};
         std::vector<std::pair<float, float>> ranges;
@@ -3070,7 +3009,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         } else if (type == "NiMorphData") {
             SkipNiMorphData(r);
         } else if (type == "NiPSysColliderManager") {
-            SkipNiPSysColliderManager(r);
+            particleModifierByBlock[blockIdx] = ParseColliderManager(r);
         } else if (type == "NiFogProperty") {
             SkipNiFogProperty(r);
             SkipExtraBytesIfFollowedByTriData(r, hdr, blockIdx);
@@ -3223,35 +3162,35 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         } else if (type == "NiColorData") {
             SkipNiColorData(r);
         } else if (type == "NiPSysAgeDeathModifier") {
-            SkipNiPSysAgeDeathModifier(r);
+            particleModifierByBlock[blockIdx] = ParseAgeDeathModifier(r);
         } else if (type == "NiPSysBoxEmitter") {
-            SkipNiPSysBoxEmitter(r);
+            particleModifierByBlock[blockIdx] = ParseBoxEmitter(r);
         } else if (type == "NiPSysCylinderEmitter") {
-            SkipNiPSysCylinderEmitter(r);
+            particleModifierByBlock[blockIdx] = ParseCylinderEmitter(r);
         } else if (type == "NiPSysSphereEmitter") {
-            SkipNiPSysSphereEmitter(r);
+            particleModifierByBlock[blockIdx] = ParseSphereEmitter(r);
         } else if (type == "NiPSysBombModifier") {
-            SkipNiPSysBombModifier(r);
+            particleModifierByBlock[blockIdx] = ParseBombModifier(r);
         } else if (type == "NiPSysMeshEmitter") {
-            SkipNiPSysMeshEmitter(r);
+            particleModifierByBlock[blockIdx] = ParseMeshEmitter(r);
         } else if (type == "NiPSysSpawnModifier") {
-            SkipNiPSysSpawnModifier(r);
+            particleModifierByBlock[blockIdx] = ParseSpawnModifier(r);
         } else if (type == "NiPSysGrowFadeModifier") {
-            SkipNiPSysGrowFadeModifier(r);
+            particleModifierByBlock[blockIdx] = ParseGrowFadeModifier(r);
         } else if (type == "NiPSysColorModifier") {
-            SkipNiPSysColorModifier(r);
+            particleModifierByBlock[blockIdx] = ParseColorModifier(r);
         } else if (type == "NiPSysRotationModifier") {
-            SkipNiPSysRotationModifier(r);
+            particleModifierByBlock[blockIdx] = ParseRotationModifier(r);
         } else if (type == "NiPSysGravityModifier") {
-            SkipNiPSysGravityModifier(r);
+            particleModifierByBlock[blockIdx] = ParseGravityModifier(r);
         } else if (type == "NiPSysDragModifier") {
-            SkipNiPSysDragModifier(r);
+            particleModifierByBlock[blockIdx] = ParseDragModifier(r);
         } else if (type == "NiPSysPositionModifier") {
-            SkipNiPSysPositionModifier(r);
+            particleModifierByBlock[blockIdx] = ParsePositionModifier(r);
         } else if (type == "NiPSysBoundUpdateModifier") {
-            SkipNiPSysBoundUpdateModifier(r);
+            particleModifierByBlock[blockIdx] = ParseBoundUpdateModifier(r);
         } else if (type == "NiPSysMeshUpdateModifier") {
-            SkipNiPSysMeshUpdateModifier(r);
+            particleModifierByBlock[blockIdx] = ParseMeshUpdateModifier(r);
         } else if (type == "NiSkinInstance") {
             skinInstanceByBlock[blockIdx] = ParseNiSkinInstance(r);
         } else if (type == "NiSkinData") {
@@ -4549,6 +4488,19 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             std::memcpy(b, row.data(), rowBytes);
         }
         embeddedPixelTextures[pixelBlock] = std::move(out);
+    }
+
+    // Resolve authored modifier refs to their parsed payloads in exactly the order stored by
+    // NiParticleSystem. Missing refs remain visible through modifierRefs/modifierTypes and do
+    // not get replaced by synthetic defaults.
+    for (auto& system : model.particleSystems) {
+        system.modifiers.clear();
+        system.modifiers.reserve(system.modifierRefs.size());
+        for (const auto ref : system.modifierRefs) {
+            if (ref < 0) continue;
+            const auto it = particleModifierByBlock.find(static_cast<std::uint32_t>(ref));
+            if (it != particleModifierByBlock.end()) system.modifiers.push_back(it->second);
+        }
     }
 
     // Resolve each dynamic particle system to its authored NiPSysData/NiMeshPSysData block.
