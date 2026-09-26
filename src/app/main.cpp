@@ -3809,8 +3809,10 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu(L("Objekte","Objects"))) {
-            const bool hasSceneSelection = !state.selectedObjects.empty() || state.selectedNpc>=0 ||
-                                           state.selectedMobZone>=0 || state.selectedPortal>=0;
+            const bool hasSceneSelection = !state.selectedObjects.empty() ||
+                                           state.selectedNpcRecordIdx >= 0 ||
+                                           state.selectedMobZoneIdx >= 0 ||
+                                           state.selectedPortalIdx >= 0;
             if (ImGui::MenuItem(L("Auswahl fokussieren","Focus selection"),
                                 ShortcutLabel(state.shortcutFocus).c_str(), false,
                                 mapWorkspace && hasSceneSelection))
