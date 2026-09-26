@@ -13145,30 +13145,91 @@ void DrawEditor2DContent(EditorState& state) {
             }
         }
 
-        auto applyAreaSelection = [&](const auto& inside, const char* kind) {
+        auto screenPointFromWorldXZ = [&](float wx, float wz) {
+            const float u = spanX > 0.0f ? wx / spanX : 0.0f;
+            const float v = 1.0f - (spanZ > 0.0f ? wz / spanZ : 0.0f);
+            return ImVec2(cursorScreenPos.x + u * imageSize.x,
+                          cursorScreenPos.y + v * imageSize.y);
+        };
+        auto segmentIntersectsSegment = [](const ImVec2& a, const ImVec2& b,
+                                           const ImVec2& c, const ImVec2& d) {
+            auto orient = [](const ImVec2& p, const ImVec2& q, const ImVec2& r) {
+                return (q.x - p.x) * (r.y - p.y) -
+                       (q.y - p.y) * (r.x - p.x);
+            };
+            auto onSegment = [](const ImVec2& p, const ImVec2& q, const ImVec2& r) {
+                constexpr float eps = 1.0e-4f;
+                return q.x >= std::min(p.x,r.x)-eps && q.x <= std::max(p.x,r.x)+eps &&
+                       q.y >= std::min(p.y,r.y)-eps && q.y <= std::max(p.y,r.y)+eps;
+            };
+            constexpr float eps = 1.0e-4f;
+            const float o1=orient(a,b,c), o2=orient(a,b,d);
+            const float o3=orient(c,d,a), o4=orient(c,d,b);
+            if (((o1 > eps && o2 < -eps) || (o1 < -eps && o2 > eps)) &&
+                ((o3 > eps && o4 < -eps) || (o3 < -eps && o4 > eps)))
+                return true;
+            if (std::abs(o1)<=eps && onSegment(a,c,b)) return true;
+            if (std::abs(o2)<=eps && onSegment(a,d,b)) return true;
+            if (std::abs(o3)<=eps && onSegment(c,a,d)) return true;
+            if (std::abs(o4)<=eps && onSegment(c,b,d)) return true;
+            return false;
+        };
+
+        auto objectCrossesArea = [&](const core::PlacedObject& obj,
+                                     const auto& inside,
+                                     const auto& segmentCrosses,
+                                     bool allowOriginFallback) {
+            const auto worldEdges=ObjectGroundContactWorldSegments(state,obj);
+            if (!worldEdges.empty()) {
+                for (const auto& edge:worldEdges) {
+                    const ImVec2 a=screenPointFromWorldXZ(edge.x0,edge.z0);
+                    const ImVec2 b=screenPointFromWorldXZ(edge.x1,edge.z1);
+                    if (inside(a)||inside(b)||segmentCrosses(a,b)) return true;
+                }
+                // A small marquee entirely inside a large closed footprint might not cross
+                // an outer edge. Including the authored pivot as an additional probe handles
+                // that case without reverting to pivot-only selection.
+                return inside(screenPointFromWorldXZ(obj.posX,obj.posZ));
+            }
+            return allowOriginFallback && inside(screenPointFromWorldXZ(obj.posX,obj.posZ));
+        };
+
+        auto applyAreaSelection = [&](const auto& inside, const auto& segmentCrosses,
+                                      const char* kind) {
             std::vector<int> hits;
-            RefreshObjectVisibility(state);
-            for(std::size_t i=0;i<state.placementSet.Count();++i) {
-                if(IsObjectHidden(state,i)||IsObjectEditorLocked(state,static_cast<int>(i))) continue;
-                const auto& obj=state.placementSet.At(i);
-                const float ou=spanX>0.0f?obj.posX/spanX:0.0f;
-                const float ov=1.0f-(spanZ>0.0f?obj.posZ/spanZ:0.0f);
-                const ImVec2 p(cursorScreenPos.x+ou*imageSize.x,cursorScreenPos.y+ov*imageSize.y);
-                if(inside(p)) hits.push_back(static_cast<int>(i));
+            if (state.showObjects2D) {
+                RefreshObjectVisibility(state);
+                for(std::size_t i=0;i<state.placementSet.Count();++i) {
+                    if(IsObjectHidden(state,i)||IsObjectEditorLocked(state,static_cast<int>(i))) continue;
+                    const auto& obj=state.placementSet.At(i);
+                    if(objectCrossesArea(obj,inside,segmentCrosses,true))
+                        hits.push_back(static_cast<int>(i));
+                }
+
+                RefreshShmdCategoryVisibility(state);
+                for(std::size_t i=0;i<state.shmdCategoryRenderSet.Count();++i) {
+                    if(i<state.shmdCategoryHidden.size()&&state.shmdCategoryHidden[i]) continue;
+                    const int id=ShmdSelectionId(i);
+                    if(IsObjectEditorLocked(state,id)) continue;
+                    const auto& obj=state.shmdCategoryRenderSet.At(i);
+                    if(objectCrossesArea(obj,inside,segmentCrosses,false)) {
+                        hits.push_back(id);
+                        continue;
+                    }
+
+                    // SHMD scene models may already contain absolute world geometry while their
+                    // placement origin remains zero. Only models without an exact contact contour
+                    // fall back to the legacy footprint center.
+                    if(!ObjectGroundContactWorldSegments(state,obj).empty()) continue;
+                    const auto poly=ObjectFootprintWorldPolygon(state,obj);
+                    if(poly.empty()) continue;
+                    float cx=0.0f,cz=0.0f;
+                    for(const auto& p:poly){cx+=p.first;cz+=p.second;}
+                    cx/=static_cast<float>(poly.size());cz/=static_cast<float>(poly.size());
+                    if(inside(screenPointFromWorldXZ(cx,cz))) hits.push_back(id);
+                }
             }
-            RefreshShmdCategoryVisibility(state);
-            for(std::size_t i=0;i<state.shmdCategoryRenderSet.Count();++i) {
-                if(i<state.shmdCategoryHidden.size()&&state.shmdCategoryHidden[i]) continue;
-                if(IsObjectEditorLocked(state,ShmdSelectionId(i))) continue;
-                const auto poly=ObjectFootprintWorldPolygon(state,state.shmdCategoryRenderSet.At(i));
-                if(poly.empty()) continue;
-                float cx=0.0f,cz=0.0f;
-                for(const auto& p:poly){cx+=p.first;cz+=p.second;}
-                cx/=static_cast<float>(poly.size());cz/=static_cast<float>(poly.size());
-                const ImVec2 p(cursorScreenPos.x+(cx/spanX)*imageSize.x,
-                               cursorScreenPos.y+(1.0f-cz/spanZ)*imageSize.y);
-                if(inside(p)) hits.push_back(ShmdSelectionId(i));
-            }
+
             if(!ioBox.KeyCtrl) state.selectedObjects.clear();
             for(const int id:hits)
                 if(std::find(state.selectedObjects.begin(),state.selectedObjects.end(),id)==state.selectedObjects.end())
@@ -13176,7 +13237,9 @@ void DrawEditor2DContent(EditorState& state) {
             state.selectedObject=state.selectedObjects.empty()?kNoObjectSelection:state.selectedObjects.back();
             state.selectedObjectModelPathFor=kNoObjectSelection;
             state.objectGizmoMatrixValid=false;
-            state.statusMessage=std::to_string(hits.size())+" Objekt(e) per "+kind+" ausgewählt.";
+            state.statusMessage=std::to_string(hits.size())+" "+
+                L("Objekt(e) per ","object(s) selected by ")+kind+
+                L(" ausgewählt.",".");
         };
 
         if (state.objectBoxSelectActive) {
@@ -13189,9 +13252,19 @@ void DrawEditor2DContent(EditorState& state) {
             dl->AddRect(lo,hi,IM_COL32(80,190,255,235),0.0f,0,1.5f);
 
             if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-                applyAreaSelection([&](const ImVec2& p){
+                auto insideRect=[&](const ImVec2& p){
                     return p.x>=lo.x&&p.x<=hi.x&&p.y>=lo.y&&p.y<=hi.y;
-                },"Rechteck");
+                };
+                auto crossesRect=[&](const ImVec2& a,const ImVec2& b){
+                    if(insideRect(a)||insideRect(b)) return true;
+                    const ImVec2 tl(lo.x,lo.y), tr(hi.x,lo.y);
+                    const ImVec2 br(hi.x,hi.y), bl(lo.x,hi.y);
+                    return segmentIntersectsSegment(a,b,tl,tr)||
+                           segmentIntersectsSegment(a,b,tr,br)||
+                           segmentIntersectsSegment(a,b,br,bl)||
+                           segmentIntersectsSegment(a,b,bl,tl);
+                };
+                applyAreaSelection(insideRect,crossesRect,L("Rechteck","rectangle"));
                 state.objectBoxSelectActive=false;
             }
         }
@@ -13231,7 +13304,13 @@ void DrawEditor2DContent(EditorState& state) {
                         }
                         return result;
                     };
-                    applyAreaSelection(inside,"Lasso");
+                    auto crossesLasso=[&](const ImVec2& a,const ImVec2& b) {
+                        if(inside(a)||inside(b)) return true;
+                        for(std::size_t i=0,j=points.size()-1;i<points.size();j=i++)
+                            if(segmentIntersectsSegment(a,b,points[j],points[i])) return true;
+                        return false;
+                    };
+                    applyAreaSelection(inside,crossesLasso,"Lasso");
                 } else {
                     state.statusMessage="Lasso verworfen: zu wenige Punkte.";
                 }
