@@ -124,6 +124,9 @@ private:
         std::uint8_t alphaSrcBlend = 6;
         std::uint8_t alphaDstBlend = 7;
         std::uint8_t alphaTestFunc = 4;
+        bool depthTest = true;
+        bool depthWrite = true;
+        std::uint32_t depthFunction = 3; // ZCOMP_LESS_EQUAL
         std::uint32_t faceDrawMode = 3;
 
         bool billboard = false;
