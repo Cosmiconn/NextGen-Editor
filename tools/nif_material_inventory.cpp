@@ -115,7 +115,7 @@ int main(int argc, char** argv) {
                 ++parts;
                 const std::string shader = part.shaderName.empty() ? "<fixed-function>" : part.shaderName;
                 ++shaderParts[shader];
-                shaderFiles[shader].insert(entry.path().filename().string());
+                shaderFiles[shader].insert(entry.path().string());
                 ++uvSetCounts[part.uvSets.size()];
                 ++applyModes[part.textureApplyMode];
                 applyModeFiles[part.textureApplyMode].insert(entry.path().string());
