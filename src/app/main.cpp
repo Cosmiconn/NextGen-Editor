@@ -15520,6 +15520,8 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
     std::size_t externalTextureCount = 0;
     std::size_t embeddedTextureCount = 0;
     std::size_t unresolvedEmbeddedTextureCount = 0;
+    std::size_t uvFallbackTextureCount = 0;
+    std::size_t missingUvTextureCount = 0;
     std::size_t missingTextureCount = 0;
     std::size_t animatedTextureCount = 0;
     std::size_t flipbookFrameCount = 0;
@@ -15531,6 +15533,18 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
         for (const auto& slot : part.textureSlots) {
             if (!slot.present) continue;
             ++textureCount;
+            const bool hasTextureSource =
+                slot.sourceUsesEmbeddedPixelData || slot.embeddedTexture || !slot.texture.empty();
+            if (hasTextureSource) {
+                const bool hasSlotUvs =
+                    slot.uvSet < part.uvSets.size() &&
+                    part.uvSets[slot.uvSet].size() == part.positions.size();
+                const bool hasBaseFallbackUvs = part.uvs.size() == part.positions.size();
+                if (!hasSlotUvs) {
+                    if (hasBaseFallbackUvs) ++uvFallbackTextureCount;
+                    else ++missingUvTextureCount;
+                }
+            }
             if (slot.sourceUsesEmbeddedPixelData) {
                 if (slot.embeddedTexture) ++embeddedTextureCount;
                 else ++unresolvedEmbeddedTextureCount;
@@ -15570,6 +15584,19 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                           "%zu external · %zu embedded · %zu embedded failures · %zu texture animations"),
                         externalTextureCount, embeddedTextureCount, totalEmbeddedFailures,
                         animatedTextureCount);
+    if (uvFallbackTextureCount > 0 || missingUvTextureCount > 0) {
+        ImGui::TextDisabled(
+            L("%zu Texturslot(s) mit UV0-Fallback · %zu ohne brauchbare UVs",
+              "%zu texture slot(s) using UV0 fallback · %zu without usable UVs"),
+            uvFallbackTextureCount, missingUvTextureCount);
+    }
+    if (missingUvTextureCount > 0) {
+        ImGui::TextColored(
+            ImVec4(1.0f,0.48f,0.34f,1.0f),
+            L("%zu Texturslot(s) können wegen fehlender UV-Daten nicht gerendert werden",
+              "%zu texture slot(s) cannot render because usable UV data is missing"),
+            missingUvTextureCount);
+    }
     if (flipbookFrameCount > 0)
         ImGui::TextDisabled(L("%zu Flipbook-Frames · %zu nicht auflösbar","%zu flipbook frames · %zu unresolved"),
                             flipbookFrameCount, missingFlipbookFrameCount);
@@ -15633,6 +15660,15 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
             if (!slot.present) continue;
             if (!slot.texture.empty()) partSearch += " " + LowerAscii(slot.texture);
             if (slot.sourceUsesEmbeddedPixelData) partSearch += " embedded pixeldata";
+            const bool hasTextureSource =
+                slot.sourceUsesEmbeddedPixelData || slot.embeddedTexture || !slot.texture.empty();
+            const bool hasSlotUvs =
+                slot.uvSet < part.uvSets.size() &&
+                part.uvSets[slot.uvSet].size() == part.positions.size();
+            const bool hasBaseFallbackUvs = part.uvs.size() == part.positions.size();
+            if (hasTextureSource && !hasSlotUvs && !hasBaseFallbackUvs) {
+                partHasMissingTexture = true;
+            }
             if (slot.sourceUsesEmbeddedPixelData && !slot.embeddedTexture) {
                 partHasMissingTexture = true;
             } else if (!slot.embeddedTexture && !slot.texture.empty() &&
@@ -15750,8 +15786,25 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                         }
                     }
                 }
-                ImGui::TextDisabled("UV %u · Clamp %u · Filter %u",
-                                    slot.uvSet, slot.clampMode, slot.filterMode);
+                const bool slotHasRequestedUvs =
+                    slot.uvSet < part.uvSets.size() &&
+                    part.uvSets[slot.uvSet].size() == part.positions.size();
+                const bool slotHasBaseFallbackUvs = part.uvs.size() == part.positions.size();
+                if (slotHasRequestedUvs) {
+                    ImGui::TextDisabled("UV %u · Clamp %u · Filter %u",
+                                        slot.uvSet, slot.clampMode, slot.filterMode);
+                } else if (slotHasBaseFallbackUvs) {
+                    ImGui::TextDisabled(
+                        L("UV %u nicht verfügbar → UV0-Fallback · Clamp %u · Filter %u",
+                          "UV %u unavailable → UV0 fallback · Clamp %u · Filter %u"),
+                        slot.uvSet, slot.clampMode, slot.filterMode);
+                } else {
+                    ImGui::TextColored(
+                        ImVec4(1.0f,0.48f,0.34f,1.0f),
+                        L("UV %u nicht verfügbar · kein brauchbarer UV0-Fallback",
+                          "UV %u unavailable · no usable UV0 fallback"),
+                        slot.uvSet);
+                }
                 if (slot.hasTransform) {
                     ImGui::TextDisabled("Transform: Offset %.3f / %.3f · Scale %.3f / %.3f · Rot %.3f",
                                         slot.translation.u,slot.translation.v,
