@@ -322,7 +322,13 @@ struct NifParticleSystemInfo {
     // NiParticleSystem itself (including inherited parent-node properties), not a nearby mesh.
     NifMaterial material;
     std::array<NifTextureSlot, 10> textureSlots{};
+    std::vector<NifShaderTextureSlot> shaderTextureSlots;
     std::uint32_t textureApplyMode = 2;
+    float bumpMapLumaScale = 1.0f;
+    float bumpMapLumaOffset = 0.0f;
+    std::array<float, 4> bumpMapMatrix{1.0f, 0.0f, 0.0f, 1.0f};
+    std::vector<NifTextureTransformAnimation> textureTransformAnimations;
+    std::vector<NifTextureFlipAnimation> textureFlipAnimations;
     bool specularEnabled = true;
     bool alphaBlend = false, alphaTest = false;
     std::uint8_t alphaThreshold = 0, alphaSrcBlend = 6, alphaDstBlend = 7, alphaTestFunc = 4;

@@ -4508,71 +4508,191 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
     }
 
     // Resolve effective particle material/render state directly from the particle system's
-    // property references. This is deliberately independent of mesh-part adjacency: particle
-    // textures such as store.nif/fly01.dds must never leak onto a static map mesh.
+    // property references. propertyRefs is child-first, so the first property of each family
+    // wins and inherited parent state cannot overwrite an authored child override.
     for (auto& system : model.particleSystems) {
         const NifTextureState* textureState = nullptr;
+        std::uint32_t texturePropertyBlock = 0;
+        bool haveMaterial = false, haveAlpha = false, haveDepth = false;
+        bool haveStencil = false, haveSpecular = false;
         for (const auto ref : system.propertyRefs) {
             if (ref < 0) continue;
             const auto key = static_cast<std::uint32_t>(ref);
-            if (const auto it = materialByBlock.find(key); it != materialByBlock.end())
-                system.material = it->second;
+            if (!haveMaterial) {
+                const auto it = materialByBlock.find(key);
+                if (it != materialByBlock.end()) { system.material = it->second; haveMaterial = true; }
+            }
             if (textureState == nullptr) {
                 const auto it = texStateByBlock.find(key);
-                if (it != texStateByBlock.end()) textureState = &it->second;
-            }
-            if (const auto it = alphaByBlock.find(key); it != alphaByBlock.end()) {
-                system.alphaBlend = it->second.blend;
-                system.alphaTest = it->second.test;
-                system.alphaThreshold = it->second.threshold;
-                system.alphaSrcBlend = it->second.srcBlend;
-                system.alphaDstBlend = it->second.dstBlend;
-                system.alphaTestFunc = it->second.testFunc;
-            }
-            if (const auto it = zBufferByBlock.find(key); it != zBufferByBlock.end()) {
-                system.depthTest = it->second.test;
-                system.depthWrite = it->second.write;
-                system.depthFunction = it->second.function;
-            }
-            if (const auto it = stencilByBlock.find(key); it != stencilByBlock.end()) {
-                system.hasStencilProperty = true;
-                system.stencilEnabled = it->second.enabled;
-                system.stencilFunction = it->second.function;
-                system.stencilReference = it->second.reference;
-                system.stencilMask = it->second.mask;
-                system.stencilFailAction = it->second.failAction;
-                system.stencilZFailAction = it->second.zFailAction;
-                system.stencilPassAction = it->second.passAction;
-            }
-            if (const auto it = specularByBlock.find(key); it != specularByBlock.end())
-                system.specularEnabled = it->second;
-        }
-        if (textureState != nullptr) {
-            system.textureApplyMode = textureState->applyMode;
-            for (std::size_t slotIndex = 0; slotIndex < textureState->slots.size(); ++slotIndex) {
-                const auto& src = textureState->slots[slotIndex];
-                auto& dst = system.textureSlots[slotIndex];
-                dst.present = src.present;
-                dst.uvSet = src.uvSet;
-                dst.clampMode = src.clampMode;
-                dst.filterMode = src.filterMode;
-                dst.hasTransform = src.hasTransform;
-                dst.translation = src.translation;
-                dst.scale = src.scale;
-                dst.rotation = src.rotation;
-                dst.transformType = src.transformType;
-                dst.center = src.center;
-                if (!src.present || src.sourceRef < 0) continue;
-                const auto st = sourceTextures.find(static_cast<std::uint32_t>(src.sourceRef));
-                if (st == sourceTextures.end()) continue;
-                dst.texture = st->second.filename;
-                dst.sourceUsesEmbeddedPixelData = st->second.useExternal == 0;
-                dst.sourcePixelDataRef = st->second.pixelDataRef;
-                if (st->second.useExternal == 0 && st->second.pixelDataRef >= 0) {
-                    const auto pix = embeddedPixelTextures.find(static_cast<std::uint32_t>(st->second.pixelDataRef));
-                    if (pix != embeddedPixelTextures.end()) dst.embeddedTexture = pix->second;
+                if (it != texStateByBlock.end()) {
+                    textureState = &it->second;
+                    texturePropertyBlock = key;
                 }
             }
+            if (!haveAlpha) {
+                const auto it = alphaByBlock.find(key);
+                if (it != alphaByBlock.end()) {
+                    system.alphaBlend = it->second.blend;
+                    system.alphaTest = it->second.test;
+                    system.alphaThreshold = it->second.threshold;
+                    system.alphaSrcBlend = it->second.srcBlend;
+                    system.alphaDstBlend = it->second.dstBlend;
+                    system.alphaTestFunc = it->second.testFunc;
+                    haveAlpha = true;
+                }
+            }
+            if (!haveDepth) {
+                const auto it = zBufferByBlock.find(key);
+                if (it != zBufferByBlock.end()) {
+                    system.depthTest = it->second.test;
+                    system.depthWrite = it->second.write;
+                    system.depthFunction = it->second.function;
+                    haveDepth = true;
+                }
+            }
+            if (!haveStencil) {
+                const auto it = stencilByBlock.find(key);
+                if (it != stencilByBlock.end()) {
+                    system.hasStencilProperty = true;
+                    system.stencilEnabled = it->second.enabled;
+                    system.stencilFunction = it->second.function;
+                    system.stencilReference = it->second.reference;
+                    system.stencilMask = it->second.mask;
+                    system.stencilFailAction = it->second.failAction;
+                    system.stencilZFailAction = it->second.zFailAction;
+                    system.stencilPassAction = it->second.passAction;
+                    haveStencil = true;
+                }
+            }
+            if (!haveSpecular) {
+                const auto it = specularByBlock.find(key);
+                if (it != specularByBlock.end()) { system.specularEnabled = it->second; haveSpecular = true; }
+            }
+        }
+
+        if (textureState == nullptr) continue;
+        system.textureApplyMode = textureState->applyMode;
+        system.bumpMapLumaScale = textureState->bumpMapLumaScale;
+        system.bumpMapLumaOffset = textureState->bumpMapLumaOffset;
+        system.bumpMapMatrix = textureState->bumpMapMatrix;
+
+        const auto resolveSource = [&](NifTextureSlot& dst, std::int32_t sourceRef) {
+            if (sourceRef < 0) return;
+            const auto st = sourceTextures.find(static_cast<std::uint32_t>(sourceRef));
+            if (st == sourceTextures.end()) return;
+            dst.texture = st->second.filename;
+            dst.sourceUsesEmbeddedPixelData = st->second.useExternal == 0;
+            dst.sourcePixelDataRef = st->second.pixelDataRef;
+            if (st->second.useExternal == 0 && st->second.pixelDataRef >= 0) {
+                const auto pix = embeddedPixelTextures.find(static_cast<std::uint32_t>(st->second.pixelDataRef));
+                if (pix != embeddedPixelTextures.end()) dst.embeddedTexture = pix->second;
+            }
+        };
+        const auto copyTexDesc = [&](NifTextureSlot& dst, const NifTextureSlotState& src) {
+            dst.present = src.present;
+            dst.uvSet = src.uvSet;
+            dst.clampMode = src.clampMode;
+            dst.filterMode = src.filterMode;
+            dst.hasTransform = src.hasTransform;
+            dst.translation = src.translation;
+            dst.scale = src.scale;
+            dst.rotation = src.rotation;
+            dst.transformType = src.transformType;
+            dst.center = src.center;
+            if (src.present) resolveSource(dst, src.sourceRef);
+        };
+
+        for (std::size_t slotIndex = 0; slotIndex < textureState->slots.size(); ++slotIndex)
+            copyTexDesc(system.textureSlots[slotIndex], textureState->slots[slotIndex]);
+
+        system.shaderTextureSlots.clear();
+        system.shaderTextureSlots.reserve(textureState->shaderSlots.size());
+        for (const auto& [mapId, src] : textureState->shaderSlots) {
+            NifShaderTextureSlot shaderSlot;
+            shaderSlot.mapId = mapId;
+            shaderSlot.sourceTextureRef = src.sourceRef;
+            copyTexDesc(shaderSlot.texture, src);
+            system.shaderTextureSlots.push_back(std::move(shaderSlot));
+        }
+        // Same verified mapping as mesh materials: VCAlphaTextureBlender map IDs 0/1/2 are
+        // Texture1/Texture2/Detail. Other shader map IDs remain preserved but diagnostic-only.
+        if (system.shaderName == "VCAlphaTextureBlender") {
+            for (const auto& [mapId, src] : textureState->shaderSlots) {
+                if (mapId <= 2u) copyTexDesc(system.textureSlots[mapId], src);
+            }
+        }
+
+        const auto makeTrack = [&](const NifSingleControllerState& controller) {
+            NifFloatTrack track;
+            track.active = (controller.flags & 0x0008u) != 0;
+            track.extrapolation = static_cast<std::uint8_t>((controller.flags & 0x0006u) >> 1u);
+            track.frequency = controller.frequency;
+            track.phase = controller.phase;
+            track.startTime = controller.startTime;
+            track.stopTime = controller.stopTime;
+            if (controller.interpolatorRef >= 0) {
+                const auto ii = floatInterpolatorsByBlock.find(
+                    static_cast<std::uint32_t>(controller.interpolatorRef));
+                if (ii != floatInterpolatorsByBlock.end()) {
+                    track.currentValue = ii->second.value;
+                    if (ii->second.dataRef >= 0) {
+                        const auto di = floatDataByBlock.find(static_cast<std::uint32_t>(ii->second.dataRef));
+                        if (di != floatDataByBlock.end()) {
+                            track.interpolation = di->second.interpolation;
+                            track.keys = di->second.keys;
+                        }
+                    }
+                }
+            }
+            return track;
+        };
+
+        system.textureTransformAnimations.clear();
+        system.textureFlipAnimations.clear();
+        std::int32_t controllerRef = textureState->controllerRef;
+        std::unordered_set<std::int32_t> seenControllers;
+        for (int guard = 0; controllerRef >= 0 && guard < 128; ++guard) {
+            if (!seenControllers.insert(controllerRef).second) break;
+            std::int32_t nextRef = -1;
+            const auto tt = texTransformControllersByBlock.find(static_cast<std::uint32_t>(controllerRef));
+            if (tt != texTransformControllersByBlock.end()) {
+                nextRef = tt->second.base.nextRef;
+                if (tt->second.base.targetRef == static_cast<std::int32_t>(texturePropertyBlock) &&
+                    tt->second.operation <= 4u) {
+                    NifTextureTransformAnimation animation;
+                    animation.slot = tt->second.textureSlot & 7u;
+                    animation.operation = tt->second.operation;
+                    animation.track = makeTrack(tt->second.base);
+                    system.textureTransformAnimations.push_back(std::move(animation));
+                }
+            } else {
+                const auto ff = flipControllersByBlock.find(static_cast<std::uint32_t>(controllerRef));
+                if (ff == flipControllersByBlock.end()) break;
+                nextRef = ff->second.base.nextRef;
+                if (ff->second.base.targetRef == static_cast<std::int32_t>(texturePropertyBlock)) {
+                    NifTextureFlipAnimation animation;
+                    animation.slot = ff->second.textureSlot & 7u;
+                    animation.track = makeTrack(ff->second.base);
+                    animation.frames.reserve(ff->second.sourceRefs.size());
+                    for (const auto sourceRef : ff->second.sourceRefs) {
+                        if (sourceRef < 0) continue;
+                        const auto st = sourceTextures.find(static_cast<std::uint32_t>(sourceRef));
+                        if (st == sourceTextures.end()) continue;
+                        NifTextureFlipFrame frame;
+                        frame.texture = st->second.filename;
+                        frame.sourceUsesEmbeddedPixelData = st->second.useExternal == 0;
+                        frame.sourcePixelDataRef = st->second.pixelDataRef;
+                        if (st->second.useExternal == 0 && st->second.pixelDataRef >= 0) {
+                            const auto pix = embeddedPixelTextures.find(
+                                static_cast<std::uint32_t>(st->second.pixelDataRef));
+                            if (pix != embeddedPixelTextures.end()) frame.embeddedTexture = pix->second;
+                        }
+                        animation.frames.push_back(std::move(frame));
+                    }
+                    system.textureFlipAnimations.push_back(std::move(animation));
+                }
+            }
+            controllerRef = nextRef;
         }
     }
 

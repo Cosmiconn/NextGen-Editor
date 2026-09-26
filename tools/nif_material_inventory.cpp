@@ -112,6 +112,11 @@ int main(int argc, char** argv) {
     std::size_t texturedParticleSystems = 0;
     std::size_t meshParticleSystems = 0;
     std::size_t worldSpaceParticleSystems = 0;
+    std::size_t particleTextureBindings = 0;
+    std::size_t particleShaderDescriptors = 0;
+    std::size_t particleUnresolvedEmbedded = 0;
+    std::size_t particleTextureTransformTracks = 0;
+    std::size_t particleTextureFlipTracks = 0;
     std::vector<std::string> particleSystemDetails;
     std::size_t recoveredModels = 0;
     std::size_t partialModels = 0;
@@ -225,6 +230,63 @@ int main(int argc, char** argv) {
                     const bool textured = system.textureSlots[0].present &&
                         (!system.textureSlots[0].texture.empty() || system.textureSlots[0].embeddedTexture);
                     texturedParticleSystems += textured ? 1u : 0u;
+                    for (const auto& texture : system.textureSlots) {
+                        if (!texture.present) continue;
+                        ++particleTextureBindings;
+                        if (texture.sourceUsesEmbeddedPixelData && !texture.embeddedTexture) {
+                            ++particleUnresolvedEmbedded;
+                            rendererGapFiles.insert(entry.path().string());
+                        }
+                        if (texture.clampMode > 3u) { ++unsupportedClampBindings; rendererGapFiles.insert(entry.path().string()); }
+                        if (texture.filterMode > 6u) { ++unsupportedFilterBindings; rendererGapFiles.insert(entry.path().string()); }
+                        if (texture.hasTransform && texture.transformType > core::kNifTextureTransformMaya) {
+                            ++unsupportedTextureTransforms;
+                            rendererGapFiles.insert(entry.path().string());
+                        }
+                    }
+                    for (const auto& shaderSlot : system.shaderTextureSlots) {
+                        ++particleShaderDescriptors;
+                        if (system.shaderName != "VCAlphaTextureBlender" || shaderSlot.mapId > 2u) {
+                            ++unmaterializedShaderDescriptors;
+                            rendererGapFiles.insert(entry.path().string());
+                        }
+                        if (shaderSlot.texture.sourceUsesEmbeddedPixelData && !shaderSlot.texture.embeddedTexture) {
+                            ++particleUnresolvedEmbedded;
+                            rendererGapFiles.insert(entry.path().string());
+                        }
+                    }
+                    particleTextureTransformTracks += system.textureTransformAnimations.size();
+                    particleTextureFlipTracks += system.textureFlipAnimations.size();
+                    for (const auto& animation : system.textureTransformAnimations) {
+                        if (animation.slot >= system.textureSlots.size() || animation.operation > 4u) {
+                            ++unsupportedTransformAnimations;
+                            rendererGapFiles.insert(entry.path().string());
+                        }
+                    }
+                    for (const auto& animation : system.textureFlipAnimations) {
+                        if (animation.slot >= system.textureSlots.size() || animation.frames.empty()) {
+                            ++unsupportedFlipAnimations;
+                            rendererGapFiles.insert(entry.path().string());
+                        }
+                    }
+                    if (system.textureApplyMode > 2u) {
+                        ++unmaterializedApplyModeParts;
+                        rendererGapFiles.insert(entry.path().string());
+                    }
+                    if (system.alphaBlend && (system.alphaSrcBlend > 10u || system.alphaDstBlend > 10u)) {
+                        ++unsupportedBlendParts; rendererGapFiles.insert(entry.path().string());
+                    }
+                    if (system.alphaTest && system.alphaTestFunc > 7u) {
+                        ++unsupportedAlphaTestParts; rendererGapFiles.insert(entry.path().string());
+                    }
+                    if (system.depthTest && system.depthFunction > 7u) {
+                        ++unsupportedDepthParts; rendererGapFiles.insert(entry.path().string());
+                    }
+                    if (system.stencilEnabled &&
+                        (system.stencilFunction > 7u || system.stencilFailAction > 5u ||
+                         system.stencilZFailAction > 5u || system.stencilPassAction > 5u)) {
+                        ++unsupportedStencilParts; rendererGapFiles.insert(entry.path().string());
+                    }
                     std::ostringstream detail;
                     detail << "PARTICLESYSTEM"
                            << "\tpath=" << Clean(entry.path().string())
@@ -579,6 +641,11 @@ int main(int argc, char** argv) {
               << "\ttexturedParticleSystems=" << texturedParticleSystems
               << "\tmeshParticleSystems=" << meshParticleSystems
               << "\tworldSpaceParticleSystems=" << worldSpaceParticleSystems
+              << "\tparticleTextureBindings=" << particleTextureBindings
+              << "\tparticleShaderDescriptors=" << particleShaderDescriptors
+              << "\tparticleUnresolvedEmbedded=" << particleUnresolvedEmbedded
+              << "\tparticleTextureTransformTracks=" << particleTextureTransformTracks
+              << "\tparticleTextureFlipTracks=" << particleTextureFlipTracks
               << "\trecovered=" << recoveredModels
               << "\tpartial=" << partialModels
               << "\tuvOverflowParts=" << uvRendererOverflowParts

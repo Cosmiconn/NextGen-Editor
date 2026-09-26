@@ -216,6 +216,17 @@ int main(int argc, char** argv) {
                     ++texturedSystems;
             check(texturedSystems > 0u,
                   "MapLinkGate2 particle materials resolve their authored base textures");
+            for (const auto& system : gate->particleSystems) {
+                for (const auto& animation : system.textureTransformAnimations)
+                    check(animation.slot < system.textureSlots.size() && animation.operation <= 4u,
+                          "particle texture-transform controller targets supported slot/operation");
+                for (const auto& animation : system.textureFlipAnimations)
+                    check(animation.slot < system.textureSlots.size() && !animation.frames.empty(),
+                          "particle flip controller resolves authored frame textures");
+                for (const auto& shaderSlot : system.shaderTextureSlots)
+                    check(shaderSlot.texture.present,
+                          "particle ShaderTexDesc stays attached to its particle material");
+            }
         }
     }
     // Strict standard loading must reject both missing and trailing footer bytes.
