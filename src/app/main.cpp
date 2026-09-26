@@ -15888,6 +15888,12 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
               "NiZBufferProperty: %u block(s) · Z test/write/function rendered per mesh"),
             model.zBufferPropertyBlocks);
     }
+    if (model.inheritedPropertyBindings > 0) {
+        ImGui::TextDisabled(
+            L("Vererbte NiProperty-Bindings: %u · Parent-Node-Material/Texture/Renderstate aktiv",
+              "Inherited NiProperty bindings: %u · parent-node material/texture/render state active"),
+            model.inheritedPropertyBindings);
+    }
     if (model.recovered || model.partial) {
         ImGui::TextDisabled("%s%s",
                             model.recovered ? L("Kompatibilitäts-Recovery aktiv","Compatibility recovery active") : "",
