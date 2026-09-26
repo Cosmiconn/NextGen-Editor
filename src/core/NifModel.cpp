@@ -2130,6 +2130,11 @@ void SanitizeUvs(std::vector<NifVec2>& uvs) {
     }
 }
 
+void SanitizeUvSets(std::vector<std::vector<NifVec2>>& uvSets, std::vector<NifVec2>& baseUvs) {
+    for (auto& uvSet : uvSets) SanitizeUvs(uvSet);
+    baseUvs = uvSets.empty() ? std::vector<NifVec2>{} : uvSets.front();
+}
+
 RawTriStripsData ParseNiTriStripsData(ByteReader& r, bool hasTrailer, bool isOlderVersion) {
     if (!r.LegacyLayout() && r.Version() >= 0x0A020000u) r.U32(); // group ID
     RawTriStripsData d;
@@ -2286,7 +2291,7 @@ RawTriStripsData ParseNiTriStripsData(ByteReader& r, bool hasTrailer, bool isOld
             r.Skip(8);
         }
     }
-    SanitizeUvs(d.uvs);
+    SanitizeUvSets(d.uvSets, d.uvs);
     return d;
 }
 
@@ -2444,7 +2449,7 @@ RawTriShapeData ParseNiTriShapeData(ByteReader& r, bool hasTrailer, bool isOlder
             r.Skip(8);
         }
     }
-    SanitizeUvs(d.uvs);
+    SanitizeUvSets(d.uvSets, d.uvs);
     return d;
 }
 
