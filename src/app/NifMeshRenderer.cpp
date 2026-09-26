@@ -88,6 +88,7 @@ out vec4 FragColor;
 
 uniform vec3 uLightDir;
 uniform vec3 uCameraPos;
+uniform mat4 uView;
 uniform vec3 uAmbientColor;
 uniform vec3 uDiffuseColor;
 uniform vec3 uSpecularColor;
@@ -203,10 +204,17 @@ vec3 bumpNormal(vec3 baseNormal) {
     return normalize(baseNormal - tangent * grad.x - bitangent * grad.y);
 }
 
-vec2 environmentSphereUv(vec3 normal, vec3 viewDir) {
-    // Classic OpenGL sphere-map generation: reflect the eye ray around the final
-    // (including bump) surface normal and project the reflection vector to [0,1]^2.
-    vec3 r = normalize(reflect(-viewDir, normal));
+vec2 environmentSphereUv(vec3 worldNormal) {
+    // Classic GL_SPHERE_MAP is defined in eye coordinates: u points from the eye-space
+    // origin to the fragment/vertex and n is the normal transformed to eye space.
+    // Projecting a world-space reflection vector would make the environment pattern rotate
+    // with the world instead of remaining camera-relative.
+    vec3 eyePosition = (uView * vec4(vWorldPos, 1.0)).xyz;
+    vec3 eyeNormal = normalize(mat3(uView) * worldNormal);
+    float eyeLen2 = dot(eyePosition, eyePosition);
+    if (eyeLen2 <= 1e-12) return vec2(0.5);
+    vec3 u = eyePosition * inversesqrt(eyeLen2);
+    vec3 r = normalize(reflect(u, eyeNormal));
     float m2 = r.x * r.x + r.y * r.y + (r.z + 1.0) * (r.z + 1.0);
     if (m2 <= 1e-12) return vec2(0.5);
     float m = 2.0 * sqrt(m2);
@@ -301,7 +309,7 @@ void main() {
     // NIF TextureType::TEX_ENVIRONMENT_MAP is additive to the ordinary textured,
     // lit/decal result. It does not replace or multiply the base material.
     vec3 environment = uEnvironmentSphereCount > 0
-        ? environmentSphereColor(environmentSphereUv(n, v))
+        ? environmentSphereColor(environmentSphereUv(n))
         : vec3(0.0);
     FragColor = vec4(ambient + diffuse + specular + emissive + environment, alpha);
 }
@@ -537,6 +545,7 @@ void NifMeshRenderer::Init() {
     const std::uint32_t fs = CompileShader(GL_FRAGMENT_SHADER, kFragmentShaderSrc);
     shaderProgram_ = LinkProgram(vs, fs);
     uniforms_.locViewProj = glGetUniformLocation(shaderProgram_, "uViewProj");
+    uniforms_.locView = glGetUniformLocation(shaderProgram_, "uView");
     uniforms_.locModel = glGetUniformLocation(shaderProgram_, "uModel");
     uniforms_.locLightDir = glGetUniformLocation(shaderProgram_, "uLightDir");
     uniforms_.locCameraPos = glGetUniformLocation(shaderProgram_, "uCameraPos");
@@ -1408,6 +1417,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     const float animationTime = std::chrono::duration<float>(std::chrono::steady_clock::now() - animationEpoch).count();
 
     const auto& locViewProj = uniforms_.locViewProj;
+    const auto& locView = uniforms_.locView;
     const auto& locModel = uniforms_.locModel;
     const auto& locLightDir = uniforms_.locLightDir;
     const auto& locCameraPos = uniforms_.locCameraPos;
@@ -1443,6 +1453,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
         glUniform1i(locEnvironmentSampler[effect], 10 + static_cast<int>(effect));
 
     glUniformMatrix4fv(locViewProj, 1, GL_FALSE, viewProj.m);
+    glUniformMatrix4fv(locView, 1, GL_FALSE, view.m);
     glUniform3f(locLightDir, -0.4f, -1.0f, -0.3f);
     glUniform3f(locCameraPos, camera.EyeX(), camera.EyeY(), -camera.EyeZ());
     glEnable(GL_DEPTH_TEST);
