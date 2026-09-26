@@ -3431,6 +3431,21 @@ bool DrawSearchInput(const char* id, const char* hint, char* buffer, std::size_t
     return changed;
 }
 
+void DrawContextMenuHeader(const char* id, const char* title, IconDrawFn fallbackIcon,
+                           const char* semanticIcon, const char* subtitle = nullptr) {
+    ImGui::PushID(id);
+    DrawInlineIcon("contextIcon", fallbackIcon, IM_COL32(100,205,255,245), nullptr,
+                   ImVec2(18.0f,18.0f), semanticIcon);
+    ImGui::SameLine(0.0f,5.0f);
+    ImGui::TextUnformatted(title);
+    if (subtitle != nullptr && subtitle[0] != '\0') {
+        ImGui::SameLine(0.0f,7.0f);
+        ImGui::TextDisabled("%s",subtitle);
+    }
+    ImGui::PopID();
+    ImGui::Separator();
+}
+
 void DrawPanelHeader(const char* id, const char* title, IconDrawFn fallbackIcon,
                      const char* semanticIcon, const char* subtitle = nullptr) {
     DrawInlineIcon(id, fallbackIcon, IM_COL32(100,205,255,245), nullptr,
@@ -5062,8 +5077,11 @@ void DrawShnGrid(EditorState& state) {
                                 state.shnSelectedRow = static_cast<int>(ri);
                                 state.shnSelectedColumn = static_cast<int>(ci);
                             }
-                            ImGui::TextDisabled("%s · Zeile %zu", file.columns[ci].name.c_str(), ri);
-                            ImGui::Separator();
+                            const std::string shnCellMeta =
+                                file.columns[ci].name + " · " +
+                                std::string(L("Zeile ","Row ")) + std::to_string(ri);
+                            DrawContextMenuHeader("shnCellContextHeader",L("SHN-ZELLE","SHN CELL"),
+                                                  DrawIconTable,"module.shn.single",shnCellMeta.c_str());
                             if (UI::MenuItem(L("Inline bearbeiten","Inline edit"), "F2")) {
                                 StartShnInlineEdit(state, static_cast<int>(ri), static_cast<int>(ci));
                             }
@@ -14533,11 +14551,12 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                         FocusCurrentSceneSelection(state);
                     if (ImGui::BeginPopupContextItem("##npcSceneContext")) {
                         state.selectedNpcRecordIdx = static_cast<int>(entry.idx);
-                        ImGui::TextDisabled("%s",entry.semantic.tooltip.c_str());
-                        ImGui::Separator();
+                        DrawContextMenuHeader("npcContextHeader","NPC",DrawIconPerson,"nav.npcs",
+                                              entry.semantic.tooltip.c_str());
                         const std::string npcFocusShortcut=ShortcutLabel(state.shortcutFocus);
                         if (UI::MenuItem(L("Im 3D-Viewport fokussieren","Focus in 3D viewport"),
                                          npcFocusShortcut.c_str())) FocusCurrentSceneSelection(state);
+                        ImGui::Separator();
                         if (UI::MenuItem(L("Dialog bearbeiten","Edit dialog"))) OpenNpcDialogEditor(state,rec.values[0]);
                         if (UI::MenuItem(L("Lua / AI bearbeiten","Edit Lua / AI"))) OpenAiScriptEditor(state,rec.values[0]);
                         if (UI::MenuItem(L("Route bearbeiten","Edit route"))) OpenPatrolRouteEditor(state,rec.values[0]);
@@ -14703,12 +14722,16 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                         FocusCurrentSceneSelection(state);
                     if (ImGui::BeginPopupContextItem("##mobSceneContext")) {
                         state.selectedMobZoneIdx = static_cast<int>(entry.idx);
-                        ImGui::TextDisabled("%s",entry.semantic.tooltip.c_str());
-                        ImGui::TextDisabled(L("%d Arten · %d Mobs","%d species · %d mobs"),entry.speciesCount,entry.totalMobs);
-                        ImGui::Separator();
+                        const std::string mobContextMeta =
+                            entry.semantic.tooltip + " · " +
+                            std::to_string(entry.speciesCount) + " " + L("Arten","species") + " · " +
+                            std::to_string(entry.totalMobs) + " Mobs";
+                        DrawContextMenuHeader("mobContextHeader",L("MOB-ZONE","MOB ZONE"),
+                                              DrawIconPerson,"nav.spawns",mobContextMeta.c_str());
                         const std::string mobFocusShortcut=ShortcutLabel(state.shortcutFocus);
                         if (UI::MenuItem(L("Im 3D-Viewport fokussieren","Focus in 3D viewport"),
                                          mobFocusShortcut.c_str())) FocusCurrentSceneSelection(state);
+                        ImGui::Separator();
                         if (spawns && ImGui::BeginMenu(L("Monster in dieser Zone","Monsters in this zone"))) {
                             bool any=false;
                             for (const auto& spawn : spawns->records) {
@@ -14858,9 +14881,11 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                     if (ImGui::BeginPopupContextItem("##portalSceneContext")) {
                         state.selectedPortalKind = m.kind;
                         state.selectedPortalIdx = static_cast<int>(m.idx);
+                        DrawContextMenuHeader("portalContextHeader","PORTAL",DrawIconPortal,nullptr);
                         const std::string portalFocusShortcut=ShortcutLabel(state.shortcutFocus);
                         if (UI::MenuItem(L("Im 3D-Viewport fokussieren","Focus in 3D viewport"),
                                          portalFocusShortcut.c_str())) FocusCurrentSceneSelection(state);
+                        ImGui::Separator();
                         if (m.kind == kPortalKindGateLink) {
                             if (UI::MenuItem(L("Zielkarte öffnen","Open target map"))) NavigateToPortalTarget(state,m);
                         } else if (UI::MenuItem(L("Position per 2D-Klick setzen","Set position by 2D click"))) {
@@ -15087,7 +15112,9 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                                           "%s",currentGroup.c_str());
                         }
 
-                        ImGui::TextDisabled("%s",entry.modelPath.c_str());
+                        DrawContextMenuHeader("objectContextHeader",
+                                              entry.label.empty()?L("OBJEKT","OBJECT"):entry.label.c_str(),
+                                              DrawIconCube,"nav.objects",entry.modelPath.c_str());
                         ImGui::SeparatorText(L("Editor-Organisation","Editor organization"));
                         UI::InputTextWithHint("Label##objectMeta",L("frei / leer = Modellname","free / empty = model name"),
                                               state.objectMetaLabelBuffer,sizeof(state.objectMetaLabelBuffer));
@@ -15242,6 +15269,7 @@ void DrawLayerManagerPanel(EditorState& state) {
         }
 
         if (ImGui::BeginPopupContextItem("##layerContext")) {
+            DrawContextMenuHeader("layerContextHeader","LAYER",DrawIconLayers,"nav.layers",label.c_str());
             if (UI::MenuItem(L("Duplizieren","Duplicate"))) {
                 const auto copy=layer;
                 const std::size_t ni=state.textureStack.AddLayer(copy.name+" Kopie",copy.diffuseFileName,copy.uvScaleDiffuse);
@@ -15254,6 +15282,7 @@ void DrawLayerManagerPanel(EditorState& state) {
                 state.layerPreviewDirty=true;
                 state.mapDirty=true;
             }
+            ImGui::Separator();
             if (UI::MenuItem(L("Entfernen","Remove"),nullptr,false,state.textureStack.LayerCount()>1)) {
                 state.textureStack.RemoveLayer(i);
                 state.selectedLayer=state.textureStack.LayerCount()==0?-1:
