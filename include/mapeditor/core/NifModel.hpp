@@ -387,6 +387,16 @@ struct NifParticleModifierInfo {
     std::int32_t linkedRef = -1;
 };
 
+// CPU equivalent of Gamebryo's deprecated-particle conversion into the
+// NiPSSimulatorGeneralStep + NiPSSimulatorFinalStep kernels. It advances only
+// already-authored active particles. Emitter creation, forces, colliders and
+// spawn-on-death are separate runtime stages and are intentionally not faked here.
+void AdvanceNifParticleState(
+    std::vector<NifParticleState>& particles,
+    std::uint16_t& activeCount,
+    const std::vector<NifParticleModifierInfo>& modifiers,
+    float deltaTime);
+
 // Authored NiParticleSystem/NiMeshParticleSystem scene wiring. Keeping this separate from
 // NifMeshPart is intentional: particle systems are dynamic scene objects, not triangle meshes.
 struct NifParticleSystemInfo {

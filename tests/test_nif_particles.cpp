@@ -134,6 +134,61 @@ int main(int argc, char** argv) {
               blend.blend.highPriority == 3 && blend.blend.nextHighPriority == 2,
               "20.0 NiBlendFloatInterpolator payload preserved");
     }
+    {
+        std::vector<NifParticleState> state(3);
+        state[0].position = {1.0f, 2.0f, 3.0f};
+        state[0].velocity = {2.0f, -1.0f, 0.5f};
+        state[0].age = 0.25f;
+        state[0].lifeSpan = 2.0f;
+        state[0].lastUpdate = 7.0f;
+        state[0].spawnGeneration = 0;
+
+        state[1].position = {10.0f, 0.0f, 0.0f};
+        state[1].velocity = {1.0f, 0.0f, 0.0f};
+        state[1].age = 1.9f;
+        state[1].lifeSpan = 2.0f;
+        state[1].spawnGeneration = 0;
+
+        state[2].age = 0.25f;
+        state[2].lifeSpan = 2.0f;
+        state[2].spawnGeneration = 1;
+
+        NifParticleModifierInfo grow;
+        grow.type = "NiPSysGrowFadeModifier";
+        grow.active = true;
+        grow.growTime = 1.0f;
+        grow.growGeneration = 0;
+        grow.fadeTime = 0.5f;
+        grow.fadeGeneration = 0;
+
+        NifParticleModifierInfo color;
+        color.type = "NiPSysColorModifier";
+        color.active = true;
+        color.hasColorTrack = true;
+        color.colorTrack.interpolation = 1;
+        color.colorTrack.keys = {
+            NifColorKey{.time = 0.0f, .value = {1.0f, 0.0f, 0.0f, 0.0f}},
+            NifColorKey{.time = 1.0f, .value = {0.0f, 0.0f, 1.0f, 1.0f}},
+        };
+
+        std::uint16_t active = 3;
+        AdvanceNifParticleState(state, active, {grow, color}, 0.5f);
+        check(active == 2, "particle FinalKernel removes age-expired active particles");
+        check(std::abs(state[0].position.x - 2.0f) < 1.0e-6f &&
+              std::abs(state[0].position.y - 1.5f) < 1.0e-6f &&
+              std::abs(state[0].position.z - 3.25f) < 1.0e-6f &&
+              std::abs(state[0].age - 0.75f) < 1.0e-6f &&
+              std::abs(state[0].lastUpdate - 7.5f) < 1.0e-6f,
+              "particle FinalKernel position age and lastUpdate semantics");
+        check(std::abs(state[0].size - 0.25f) < 1.0e-6f,
+              "particle GeneralKernel grow uses pre-step age");
+        check(std::abs(state[0].color.r - 0.875f) < 1.0e-6f &&
+              std::abs(state[0].color.b - 0.125f) < 1.0e-6f &&
+              std::abs(state[0].color.a - 0.125f) < 1.0e-6f,
+              "particle GeneralKernel color uses normalized pre-step lifetime");
+        check(state[1].spawnGeneration == 1 && std::abs(state[1].size - 1.0f) < 1.0e-6f,
+              "grow fade applies only to matching particle generation");
+    }
     // Modifier base with nonempty name, plus independently specified suffix sizes.
     for (const auto& [parser, suffix] : std::vector<std::pair<void(*)(ByteReader&), int>>{
              {SkipNiPSysCylinderEmitter, 68}, {SkipNiPSysSphereEmitter, 64}, {SkipNiPSysBombModifier, 32}}) {

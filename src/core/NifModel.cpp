@@ -5214,6 +5214,67 @@ std::optional<NifColor4> EvaluateNifColorTrack(const NifColorTrack& track, float
     };
 }
 
+void AdvanceNifParticleState(
+    std::vector<NifParticleState>& particles,
+    std::uint16_t& activeCount,
+    const std::vector<NifParticleModifierInfo>& modifiers,
+    float deltaTime) {
+    if (!std::isfinite(deltaTime) || deltaTime <= 0.0f || activeCount == 0) return;
+
+    const NifParticleModifierInfo* growFade = nullptr;
+    const NifParticleModifierInfo* color = nullptr;
+    for (const auto& modifier : modifiers) {
+        if (!modifier.active) continue;
+        if (modifier.type == "NiPSysGrowFadeModifier") growFade = &modifier;
+        else if (modifier.type == "NiPSysColorModifier" && modifier.hasColorTrack) color = &modifier;
+    }
+
+    const std::size_t active = std::min<std::size_t>(activeCount, particles.size());
+    std::size_t write = 0;
+    for (std::size_t read = 0; read < active; ++read) {
+        NifParticleState particle = particles[read];
+
+        // Gamebryo NiPSSimulatorGeneralKernel runs before the FinalKernel:
+        // grow/shrink and color therefore see the age at the beginning of this step.
+        if (growFade != nullptr) {
+            float grow = 1.0f;
+            if (particle.spawnGeneration == growFade->growGeneration &&
+                particle.age < growFade->growTime && growFade->growTime > 0.0f) {
+                grow = particle.age / growFade->growTime;
+            }
+
+            float shrink = 1.0f;
+            const float timeLeft = particle.lifeSpan - particle.age;
+            if (particle.spawnGeneration == growFade->fadeGeneration &&
+                timeLeft < growFade->fadeTime && growFade->fadeTime > 0.0f) {
+                shrink = timeLeft / growFade->fadeTime;
+            }
+            particle.size = std::max(0.0001f, std::min(grow, shrink));
+        }
+
+        if (color != nullptr && particle.lifeSpan > 0.0f) {
+            const float scaledAge = particle.age / particle.lifeSpan;
+            if (const auto evaluated = EvaluateNifColorTrack(color->colorTrack, scaledAge))
+                particle.color = *evaluated;
+        }
+
+        // Gamebryo NiPSSimulatorFinalKernel: position uses velocity over the same time delta,
+        // then age/death is updated and lastUpdate advances to the current simulation time.
+        particle.position.x += particle.velocity.x * deltaTime;
+        particle.position.y += particle.velocity.y * deltaTime;
+        particle.position.z += particle.velocity.z * deltaTime;
+        particle.age += deltaTime;
+        particle.lastUpdate += deltaTime;
+
+        // FinalKernel marks death only when age is strictly greater than lifespan.
+        if (particle.age > particle.lifeSpan) continue;
+        particles[write++] = particle;
+    }
+
+    activeCount = static_cast<std::uint16_t>(
+        std::min<std::size_t>(write, std::numeric_limits<std::uint16_t>::max()));
+}
+
 NifVec2 ApplyNifTextureTransform(const NifTextureSlot& slot, NifVec2 uv) {
     if (!slot.hasTransform) return uv;
 
