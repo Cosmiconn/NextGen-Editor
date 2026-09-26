@@ -6963,16 +6963,15 @@ void DrawQuestFlowView(EditorState& state,
             successors.push_back(i);
     }
 
-    ImGui::TextColored(UiTheme::AccentCyan,"%s",L("QUEST FLOW","QUEST FLOW"));
-    ImGui::SameLine();
-    ImGui::TextDisabled("%s",L("nur verifizierte predecessor-Beziehungen",
-                               "verified predecessor relationships only"));
+    DrawPanelHeader("questFlowHeader", L("QUEST FLOW","QUEST FLOW"),
+                    DrawIconBook, "module.quest",
+                    L("nur verifizierte predecessor-Beziehungen",
+                      "verified predecessor relationships only"));
     if (duplicateIds.contains(current.id)) {
         ImGui::TextColored(UiTheme::Error,"%s",
             L("Diese Quest-ID kommt mehrfach vor; eingehende/ausgehende Links sind dadurch mehrdeutig.",
               "This quest ID occurs more than once; incoming/outgoing links are ambiguous."));
     }
-    ImGui::Separator();
 
     const float avail=ImGui::GetContentRegionAvail().x;
     if (!ImGui::BeginTable("##questFlowLayout",3,
@@ -9834,10 +9833,9 @@ static void UpdateAvatarPreview(EditorState& state) {
 void DrawCreatureWizardPreview(EditorState& state) {
     auto& w = state.wiz;
     ImGui::BeginChild("##creatureWizardPreview", ImVec2(0,0), true);
-    ImGui::TextColored(UiTheme::AccentCyan, "%s", L("VORSCHAU", "PREVIEW"));
-    ImGui::SameLine();
-    ImGui::TextDisabled("%s", w.isNpc ? "NPC" : L("Monster", "Monster"));
-    ImGui::Separator();
+    DrawPanelHeader("creatureWizardPreviewHeader", L("VORSCHAU","PREVIEW"),
+                    DrawIconCube, w.isNpc ? "module.custom_npc" : "module.custom_mob",
+                    w.isNpc ? "NPC" : L("Monster","Monster"));
 
     if (w.templateId < 0) {
         const ImVec2 p = ImGui::GetCursorScreenPos();
