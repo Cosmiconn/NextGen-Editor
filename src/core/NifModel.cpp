@@ -4162,6 +4162,8 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 if (st == sourceTextures.end()) continue;
                 NifTextureFlipFrame frame;
                 frame.texture = st->second.filename;
+                frame.sourceUsesEmbeddedPixelData = st->second.useExternal == 0;
+                frame.sourcePixelDataRef = st->second.pixelDataRef;
                 if (st->second.useExternal == 0 && st->second.pixelDataRef >= 0) {
                     const auto pix = embeddedPixelTextures.find(static_cast<std::uint32_t>(st->second.pixelDataRef));
                     if (pix != embeddedPixelTextures.end()) frame.embeddedTexture = pix->second;
