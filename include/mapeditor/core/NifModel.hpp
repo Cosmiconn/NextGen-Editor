@@ -170,6 +170,27 @@ struct NifTextureFlipAnimation {
     std::vector<NifTextureFlipFrame> frames;
 };
 
+// NiTextureEffect ist ein NiDynamicEffect und kein NiProperty. Fiesta verwendet im echten
+// Corpus vor allem ENVIRONMENT_MAP + SPHERE_MAP. Die vollständigen Wire-Felder bleiben hier
+// trotzdem erhalten, damit andere Effect-/CoordGen-Kombinationen nicht still umgedeutet werden.
+struct NifTextureEffectBinding {
+    bool enabled = true;
+    std::array<float, 9> projectionRotation{1.0f,0.0f,0.0f,
+                                            0.0f,1.0f,0.0f,
+                                            0.0f,0.0f,1.0f};
+    NifVec3 projectionPosition{};
+    std::uint32_t filterMode = 2;
+    std::uint32_t clampMode = 3;
+    std::uint32_t textureType = 0;
+    std::uint32_t coordGenType = 0;
+    std::string texture;
+    bool sourceUsesEmbeddedPixelData = false;
+    std::int32_t sourcePixelDataRef = -1;
+    std::shared_ptr<const NifEmbeddedTexture> embeddedTexture;
+    bool clippingPlaneEnabled = false;
+    std::array<float, 4> clippingPlane{};
+};
+
 struct NifMeshPart {
     std::string name;
     std::string shaderName;            // z.B. VCAlphaTextureBlender
@@ -185,6 +206,7 @@ struct NifMeshPart {
     std::array<NifTextureSlot, 10> textureSlots{};
     std::vector<NifTextureTransformAnimation> textureTransformAnimations;
     std::vector<NifTextureFlipAnimation> textureFlipAnimations;
+    std::vector<NifTextureEffectBinding> textureEffects;
     std::uint32_t textureApplyMode = 2; // APPLY_MODULATE
     float bumpMapLumaScale = 1.0f;
     float bumpMapLumaOffset = 0.0f;
