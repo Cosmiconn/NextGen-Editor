@@ -4328,6 +4328,221 @@ std::expected<NifModel, std::string> LoadNifMesh(const std::filesystem::path& fi
     return std::unexpected(firstError);
 }
 
+
+std::vector<NifGroundContactSegment> ComputeGroundContactSegments(const NifModel& model) {
+    float minY = 0.0f, maxY = 0.0f;
+    bool any = false;
+    for (const auto& part : model.parts) {
+        for (const auto& v : part.positions) {
+            if (!any) {
+                minY = maxY = v.y;
+                any = true;
+            } else {
+                minY = std::min(minY, v.y);
+                maxY = std::max(maxY, v.y);
+            }
+        }
+    }
+    if (!any) return {};
+
+    // Placement-NIFs are authored around their local origin. When the geometry spans y=0,
+    // use that plane: it correctly ignores below-ground foundations/decorations and matches
+    // the plane that is placed on the terrain. Models whose geometry does not span y=0 use
+    // their actual lowest plane instead of assuming a pivot convention they do not follow.
+    const float height = std::max(0.0f, maxY - minY);
+    const float eps = std::clamp(height * 0.0015f, 0.05f, 2.0f);
+    const float planeY = (minY <= eps && maxY >= -eps) ? 0.0f : minY;
+
+    struct Point2 {
+        float x = 0.0f;
+        float z = 0.0f;
+    };
+    struct PointKey {
+        std::int64_t x = 0;
+        std::int64_t z = 0;
+        bool operator==(const PointKey&) const = default;
+    };
+    struct EdgeKey {
+        PointKey a{};
+        PointKey b{};
+        bool operator==(const EdgeKey&) const = default;
+    };
+    struct EdgeHash {
+        std::size_t operator()(const EdgeKey& e) const noexcept {
+            auto mix = [](std::uint64_t v) {
+                v ^= v >> 33;
+                v *= 0xff51afd7ed558ccdULL;
+                v ^= v >> 33;
+                v *= 0xc4ceb9fe1a85ec53ULL;
+                v ^= v >> 33;
+                return v;
+            };
+            const auto ax = mix(static_cast<std::uint64_t>(e.a.x));
+            const auto az = mix(static_cast<std::uint64_t>(e.a.z));
+            const auto bx = mix(static_cast<std::uint64_t>(e.b.x));
+            const auto bz = mix(static_cast<std::uint64_t>(e.b.z));
+            return static_cast<std::size_t>(ax ^ (az << 1) ^ (bx << 2) ^ (bz << 3));
+        }
+    };
+
+    // Millimetre-ish quantization in Fiesta model units. It is only used to identify the
+    // same authored edge across adjacent triangles; returned coordinates remain untouched.
+    constexpr double kQuantize = 1000.0;
+    auto pointKey = [](const Point2& p) {
+        return PointKey{
+            static_cast<std::int64_t>(std::llround(static_cast<double>(p.x) * kQuantize)),
+            static_cast<std::int64_t>(std::llround(static_cast<double>(p.z) * kQuantize))
+        };
+    };
+    auto edgeKey = [&](Point2 a, Point2 b) {
+        PointKey ka = pointKey(a), kb = pointKey(b);
+        if (kb.x < ka.x || (kb.x == ka.x && kb.z < ka.z)) std::swap(ka, kb);
+        return EdgeKey{ka, kb};
+    };
+    auto validSegment = [](const Point2& a, const Point2& b) {
+        const float dx = b.x - a.x;
+        const float dz = b.z - a.z;
+        return dx * dx + dz * dz > 1.0e-8f;
+    };
+
+    std::unordered_map<EdgeKey, NifGroundContactSegment, EdgeHash> uniqueSegments;
+    auto keepSegment = [&](const Point2& a, const Point2& b) {
+        if (!validSegment(a, b)) return;
+        const EdgeKey key = edgeKey(a, b);
+        uniqueSegments.try_emplace(key, NifGroundContactSegment{a.x, a.z, b.x, b.z});
+    };
+
+    auto side = [&](float y) {
+        const float d = y - planeY;
+        if (d > eps) return 1;
+        if (d < -eps) return -1;
+        return 0;
+    };
+
+    for (const auto& part : model.parts) {
+        if (part.positions.empty() || part.triangleIndices.size() < 3) continue;
+
+        // Coplanar floor triangles need special treatment: count their edges within the mesh
+        // part and keep only boundary edges. Otherwise every triangulation diagonal would be
+        // visible in the 2D editor.
+        struct CountedEdge {
+            Point2 a{};
+            Point2 b{};
+            std::uint32_t count = 0;
+        };
+        std::unordered_map<EdgeKey, CountedEdge, EdgeHash> coplanarEdges;
+        auto countCoplanarEdge = [&](const Point2& a, const Point2& b) {
+            if (!validSegment(a, b)) return;
+            const EdgeKey key = edgeKey(a, b);
+            auto [it, inserted] = coplanarEdges.try_emplace(key, CountedEdge{a, b, 0});
+            ++it->second.count;
+        };
+
+        for (std::size_t ti = 0; ti + 2 < part.triangleIndices.size(); ti += 3) {
+            const auto ia = part.triangleIndices[ti + 0];
+            const auto ib = part.triangleIndices[ti + 1];
+            const auto ic = part.triangleIndices[ti + 2];
+            if (ia >= part.positions.size() || ib >= part.positions.size() || ic >= part.positions.size())
+                continue;
+
+            const auto& a3 = part.positions[ia];
+            const auto& b3 = part.positions[ib];
+            const auto& c3 = part.positions[ic];
+            const int sa = side(a3.y), sb = side(b3.y), sc = side(c3.y);
+            const Point2 a{a3.x, a3.z}, b{b3.x, b3.z}, c{c3.x, c3.z};
+
+            if (sa == 0 && sb == 0 && sc == 0) {
+                countCoplanarEdge(a, b);
+                countCoplanarEdge(b, c);
+                countCoplanarEdge(c, a);
+                continue;
+            }
+
+            std::vector<Point2> hits;
+            hits.reserve(4);
+            auto appendUnique = [&](const Point2& p) {
+                const PointKey key = pointKey(p);
+                for (const auto& existing : hits)
+                    if (pointKey(existing) == key) return;
+                hits.push_back(p);
+            };
+            auto intersectEdge = [&](const core::NifVec3& p0, int s0,
+                                     const core::NifVec3& p1, int s1) {
+                const Point2 q0{p0.x, p0.z};
+                const Point2 q1{p1.x, p1.z};
+                if (s0 == 0 && s1 == 0) {
+                    keepSegment(q0, q1);
+                    appendUnique(q0);
+                    appendUnique(q1);
+                    return;
+                }
+                if (s0 == 0) {
+                    appendUnique(q0);
+                    return;
+                }
+                if (s1 == 0) {
+                    appendUnique(q1);
+                    return;
+                }
+                if (s0 == s1) return;
+                const float denom = p1.y - p0.y;
+                if (std::abs(denom) <= 1.0e-8f) return;
+                const float t = std::clamp((planeY - p0.y) / denom, 0.0f, 1.0f);
+                appendUnique(Point2{
+                    p0.x + (p1.x - p0.x) * t,
+                    p0.z + (p1.z - p0.z) * t
+                });
+            };
+
+            intersectEdge(a3, sa, b3, sb);
+            intersectEdge(b3, sb, c3, sc);
+            intersectEdge(c3, sc, a3, sa);
+
+            if (hits.size() >= 2) {
+                // Tolerance can occasionally classify all three edges as touching. Use the
+                // farthest pair; this avoids a tiny spurious segment around a near-coplanar
+                // vertex while preserving the actual plane/triangle intersection.
+                std::size_t bestA = 0, bestB = 1;
+                float bestD2 = -1.0f;
+                for (std::size_t i = 0; i < hits.size(); ++i) {
+                    for (std::size_t j = i + 1; j < hits.size(); ++j) {
+                        const float dx = hits[j].x - hits[i].x;
+                        const float dz = hits[j].z - hits[i].z;
+                        const float d2 = dx * dx + dz * dz;
+                        if (d2 > bestD2) {
+                            bestD2 = d2;
+                            bestA = i;
+                            bestB = j;
+                        }
+                    }
+                }
+                keepSegment(hits[bestA], hits[bestB]);
+            }
+        }
+
+        for (const auto& [key, edge] : coplanarEdges) {
+            (void)key;
+            // Two coplanar triangles share an interior edge. Odd count is retained instead
+            // of requiring exactly one so duplicated triangles cannot erase a real boundary.
+            if ((edge.count & 1u) != 0u) keepSegment(edge.a, edge.b);
+        }
+    }
+
+    std::vector<NifGroundContactSegment> result;
+    result.reserve(uniqueSegments.size());
+    for (const auto& [key, segment] : uniqueSegments) {
+        (void)key;
+        result.push_back(segment);
+    }
+    std::sort(result.begin(), result.end(), [](const auto& a, const auto& b) {
+        if (a.x0 != b.x0) return a.x0 < b.x0;
+        if (a.z0 != b.z0) return a.z0 < b.z0;
+        if (a.x1 != b.x1) return a.x1 < b.x1;
+        return a.z1 < b.z1;
+    });
+    return result;
+}
+
 std::vector<std::pair<float, float>> ComputeFootprintHull(const NifModel& model) {
     float minY = 0.0f, maxY = 0.0f;
     bool any = false;
