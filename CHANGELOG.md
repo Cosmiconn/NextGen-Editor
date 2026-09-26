@@ -1,3 +1,9 @@
+## UI Upgrade QA – Icon consistency, section chrome and viewport input capture
+- Add `tools/ui/check_icon_consistency.py` and run it in Linux CI before the core build. It verifies the frozen 68 semantic IDs against `UiIconAssets.cpp`, approved size levels and every checked-in runtime PNG while explicitly allowing the intentional partial runtime subset.
+- Current audit result: 55 committed runtime PNGs cover 51/68 semantic IDs; the remaining IDs stay on functional DrawList fallbacks until the approved final icon package can be materialized/imported.
+- Align Map Launcher, Quest/Skill subpanels and Active Tool with the shared panel-header chrome; keep compact AI/NIF inline actions but attach their approved semantic package icons.
+- Prevent clicks and drags on the 3D transform toolbar and zoom overlay from leaking into object picking, orbit/pan or keyboard camera handling underneath the viewport image.
+
 ## v0.44.35 / v14 — KFM-Codec und Animationskatalog
 - C++23-Reader/Writer für Fiesta-KFM 1.2.4b und 2.0.0.0b, einschließlich Textschlüsselpaaren und Zwischenanimationen; durch Dateigröße und Speicherbudget begrenzt.
 - 1.380/1.380 echte Dateien bytegleich rekonstruiert; Verweisbefunde getrennt von Codecfehlern.
