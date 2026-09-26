@@ -6,9 +6,13 @@
 > unten dokumentieren bewusst den damaligen Reverse-Engineering-Verlauf und sind nicht alle
 > als aktueller Implementierungsstand zu lesen. Heute sind `NiTexturingProperty`,
 > `NiSourceTexture` und `NiPixelData` im Parser aktiv. Besonders wichtig: Fiesta-NIFs
-> dürfen Texturen vollständig **eingebettet** halten (`Use External = 0`); ein leerer
-> Dateiname ist dann normal und darf nicht als fehlender externer Pfad interpretiert werden.
-> Der Parser erhält eingebettete Quellen bis in den konkreten Materialslot und dekodiert
+> dürfen Texturen vollständig **eingebettet** halten (`Use External = 0`). Dabei ist
+> selbst ein vorhandener `.dds`-/`.tga`-Name **kein Beweis für externes Laden**: Im
+> bereitgestellten Fixture-Korpus tragen alle 296 direkt auslesbaren Textur-Dateinamensfelder
+> `Use External = 0`. Der Name ist in diesen Fällen Metadatum; Renderquelle bleibt
+> `NiPixelData`. Ein leerer Dateiname ist ebenfalls zulässig und darf nicht als fehlender
+> externer Pfad interpretiert werden. Der Parser erhält eingebettete Quellen bis in den
+> konkreten Materialslot und dekodiert
 > verifizierte BC1/DXT1-, BC2/DXT3-, BC3/DXT5-, Roh-RGB(A)- und palettierte
 > `NiPixelData`-Varianten. Der NIF-Inspector unterscheidet deshalb externe Referenzen,
 > erfolgreich dekodierte Embedded-Slots und nicht dekodierbare Embedded-PixelData explizit.
