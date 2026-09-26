@@ -404,9 +404,22 @@ NifZBufferState ParseNiZBufferProperty(ByteReader& r) {
     };
 }
 
-void SkipNiVertexColorProperty(ByteReader& r) {
+struct NifVertexColorState {
+    std::uint16_t flags = 0;
+    std::uint32_t vertexMode = 2;    // SRC_AMB_DIF
+    std::uint32_t lightingMode = 1;  // EMI_AMB_DIF
+};
+
+NifVertexColorState ParseNiVertexColorProperty(ByteReader& r) {
     ParseObjectNetBase(r);
-    r.Skip(10);
+    NifVertexColorState out;
+    // Fiesta's supported NIF layouts store the 10-byte NiVertexColorProperty payload
+    // explicitly as flags(u16), vertex_mode(u32), lighting_mode(u32). This is the same
+    // layout consumed by the previous skip path; only the already-read semantics are kept.
+    out.flags = r.U16();
+    out.vertexMode = r.U32();
+    out.lightingMode = r.U32();
+    return out;
 }
 
 // NiAlphaProperty: ObjectNetBase (bei allen geprüften Dateien leer -> 8 Byte) + flags(u16) +
@@ -2646,6 +2659,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
     std::unordered_map<std::uint32_t, NifAlphaState> alphaByBlock;
     std::unordered_map<std::uint32_t, NifZBufferState> zBufferByBlock;
     std::unordered_map<std::uint32_t, NifStencilState> stencilByBlock;
+    std::unordered_map<std::uint32_t, NifVertexColorState> vertexColorByBlock;
     std::unordered_map<std::uint32_t, bool> specularByBlock;
     std::unordered_map<std::uint32_t, NifTextureState> texStateByBlock;
     std::unordered_map<std::uint32_t, SkinInstanceBlock> skinInstanceByBlock;
@@ -3076,7 +3090,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             }
         } else if (type == "NiVertexColorProperty") {
             ++model.vertexColorPropertyBlocks;
-            SkipNiVertexColorProperty(r);
+            vertexColorByBlock[blockIdx] = ParseNiVertexColorProperty(r);
             SkipExtraBytesIfFollowedByTriData(r, hdr, blockIdx);
         } else if (type == "NiAlphaProperty") {
             alphaByBlock[blockIdx] = ParseNiAlphaProperty(r);
@@ -3499,6 +3513,29 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         for (std::size_t p = 0; p < model.parts.size() && p < partDataBlock.size(); ++p) {
             const auto it = materialByData.find(partDataBlock[p]);
             if (it != materialByData.end()) model.parts[p].material = it->second;
+        }
+    }
+
+    // Resolve NiVertexColorProperty through the same effective child-first property chain.
+    // Direct geometry state wins over inherited parent state because g.properties keeps that order.
+    {
+        std::unordered_map<std::int32_t, NifVertexColorState> vertexColorByData;
+        for (const auto& g : geomNodes) {
+            for (const auto ref : g.properties) {
+                if (ref < 0) continue;
+                const auto it = vertexColorByBlock.find(static_cast<std::uint32_t>(ref));
+                if (it != vertexColorByBlock.end()) {
+                    vertexColorByData[g.dataRef] = it->second;
+                    break;
+                }
+            }
+        }
+        for (std::size_t p = 0; p < model.parts.size() && p < partDataBlock.size(); ++p) {
+            const auto it = vertexColorByData.find(partDataBlock[p]);
+            if (it == vertexColorByData.end()) continue;
+            model.parts[p].hasVertexColorProperty = true;
+            model.parts[p].vertexColorMode = it->second.vertexMode;
+            model.parts[p].vertexLightingMode = it->second.lightingMode;
         }
     }
 
