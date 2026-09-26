@@ -16027,6 +16027,28 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                 partHasMissingTexture = true;
             }
         }
+        for (const auto& shaderSlot : part.shaderTextureSlots) {
+            const auto& slot = shaderSlot.texture;
+            partSearch += " shadertexdesc map" + std::to_string(shaderSlot.mapId);
+            if (!slot.texture.empty()) partSearch += " " + LowerAscii(slot.texture);
+            if (slot.sourceUsesEmbeddedPixelData) partSearch += " embedded pixeldata";
+
+            const bool hasTextureSource =
+                slot.sourceUsesEmbeddedPixelData || slot.embeddedTexture || !slot.texture.empty();
+            const bool hasSlotUvs =
+                slot.uvSet < part.uvSets.size() &&
+                part.uvSets[slot.uvSet].size() == part.positions.size();
+            const bool hasBaseFallbackUvs = part.uvs.size() == part.positions.size();
+            if (hasTextureSource && !hasSlotUvs && !hasBaseFallbackUvs)
+                partHasMissingTexture = true;
+
+            if (slot.sourceUsesEmbeddedPixelData) {
+                if (!slot.embeddedTexture) partHasMissingTexture = true;
+            } else if (slot.texture.empty() ||
+                       !ResolveNifInspectorTexturePathCached(state, root, slot.texture)) {
+                partHasMissingTexture = true;
+            }
+        }
         for (const auto& animation : part.textureFlipAnimations) {
             for (const auto& frame : animation.frames) {
                 if (!frame.texture.empty()) partSearch += " " + LowerAscii(frame.texture);
@@ -16202,7 +16224,125 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                 ImGui::EndGroup();
                 ImGui::PopID();
             }
-            if (!anyTexture) ImGui::TextDisabled("%s",L("Keine NiTexturingProperty-Slots.","No NiTexturingProperty slots."));
+            if (!anyTexture)
+                ImGui::TextDisabled("%s",L("Keine klassischen NiTexturingProperty-Slots.",
+                                           "No classic NiTexturingProperty slots."));
+
+            if (!part.shaderTextureSlots.empty()) {
+                ImGui::SeparatorText("ShaderTexDesc");
+                ImGui::TextDisabled(
+                    "%s",
+                    dedicatedShaderPath
+                        ? L("Rohdescriptoren; VCAlphaTextureBlender Map 0/1/2 ist separat verifiziert und auf die klassischen Slots abgebildet.",
+                            "Raw descriptors; VCAlphaTextureBlender maps 0/1/2 are separately verified and mapped to the classic slots.")
+                        : L("Shader-spezifische Rohdescriptoren; Map-ID bleibt bis zur Verifikation reine Diagnose.",
+                            "Shader-specific raw descriptors; map ID remains diagnostic until verified."));
+
+                for (std::size_t sdi=0; sdi<part.shaderTextureSlots.size(); ++sdi) {
+                    const auto& shaderSlot = part.shaderTextureSlots[sdi];
+                    const auto& slot = shaderSlot.texture;
+                    const bool hasTextureSource =
+                        slot.sourceUsesEmbeddedPixelData || slot.embeddedTexture || !slot.texture.empty();
+                    const bool hasSlotUvs =
+                        slot.uvSet < part.uvSets.size() &&
+                        part.uvSets[slot.uvSet].size() == part.positions.size();
+                    const bool hasBaseFallbackUvs = part.uvs.size() == part.positions.size();
+                    const bool missingUvs = hasTextureSource && !hasSlotUvs && !hasBaseFallbackUvs;
+
+                    std::optional<std::filesystem::path> resolvedTexture;
+                    bool missingSource = false;
+                    if (slot.sourceUsesEmbeddedPixelData) {
+                        missingSource = !slot.embeddedTexture;
+                    } else if (!slot.texture.empty()) {
+                        resolvedTexture = ResolveNifInspectorTexturePathCached(
+                            state, root, slot.texture);
+                        missingSource = !resolvedTexture.has_value();
+                    } else {
+                        missingSource = true;
+                    }
+                    if (state.nifInspectorMissingOnly && !missingSource && !missingUvs)
+                        continue;
+
+                    ImGui::PushID(static_cast<int>(1000 + sdi));
+                    std::string shaderDescLabel =
+                        std::string("Map ") + std::to_string(shaderSlot.mapId) +
+                        " · Source #" + std::to_string(shaderSlot.sourceTextureRef);
+                    ImGui::SeparatorText(shaderDescLabel.c_str());
+
+                    EditorState::AssetThumbnail preview;
+                    if (slot.embeddedTexture && !state.nifInspectorMissingOnly) {
+                        preview = GetOrLoadEmbeddedNifInspectorThumbnail(
+                            state, *slot.embeddedTexture, pi, 1000 + sdi);
+                    } else if (resolvedTexture && !state.nifInspectorMissingOnly) {
+                        preview = GetOrLoadAssetThumbnail(state, *resolvedTexture, false);
+                    }
+                    if (preview.tex) {
+                        constexpr float kPreviewMax = 64.0f;
+                        ImVec2 previewSize(kPreviewMax, kPreviewMax);
+                        if (preview.aspect > 1.0f) previewSize.y /= preview.aspect;
+                        else if (preview.aspect > 0.0f) previewSize.x *= preview.aspect;
+                        ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(preview.tex)),
+                                     previewSize);
+                        ImGui::SameLine();
+                    }
+
+                    ImGui::BeginGroup();
+                    if (slot.embeddedTexture) {
+                        ImGui::Text(
+                            L("Eingebettet · PixelData #%d · %u × %u",
+                              "Embedded · PixelData #%d · %u × %u"),
+                            slot.sourcePixelDataRef,
+                            slot.embeddedTexture->width, slot.embeddedTexture->height);
+                        if (!slot.texture.empty())
+                            ImGui::TextDisabled(
+                                L("NIF-Quellname: %s · Metadatum, nicht extern geladen",
+                                  "NIF source name: %s · metadata, not externally loaded"),
+                                slot.texture.c_str());
+                    } else if (slot.sourceUsesEmbeddedPixelData) {
+                        ImGui::TextColored(
+                            ImVec4(1.0f,0.48f,0.34f,1.0f),
+                            L("Eingebettete PixelData #%d konnte nicht dekodiert werden",
+                              "Embedded PixelData #%d could not be decoded"),
+                            slot.sourcePixelDataRef);
+                    } else if (slot.texture.empty()) {
+                        ImGui::TextColored(
+                            ImVec4(1.0f,0.48f,0.34f,1.0f),
+                            "%s",L("SourceTexture konnte nicht aufgelöst werden.",
+                                   "SourceTexture could not be resolved."));
+                    } else {
+                        ImGui::TextWrapped("%s",slot.texture.c_str());
+                        if (resolvedTexture) {
+                            ImGui::TextDisabled(L("Datei: %s","File: %s"),
+                                                resolvedTexture->filename().string().c_str());
+                            if (ImGui::IsItemHovered())
+                                ImGui::SetTooltip("%s",resolvedTexture->string().c_str());
+                        } else {
+                            ImGui::TextColored(
+                                ImVec4(1.0f,0.48f,0.34f,1.0f),
+                                "%s",L("Datei nicht gefunden","File not found"));
+                        }
+                    }
+                    ImGui::TextDisabled(
+                        "UV %u · Clamp %u · Filter %u%s",
+                        slot.uvSet,slot.clampMode,slot.filterMode,
+                        slot.hasTransform ? " · Transform" : "");
+                    if (missingUvs) {
+                        ImGui::TextColored(
+                            ImVec4(1.0f,0.48f,0.34f,1.0f),
+                            L("UV %u nicht verfügbar · kein brauchbarer UV0-Fallback",
+                              "UV %u unavailable · no usable UV0 fallback"),
+                            slot.uvSet);
+                    }
+                    if (slot.hasTransform) {
+                        ImGui::TextDisabled(
+                            "Transform: Offset %.3f / %.3f · Scale %.3f / %.3f · Rot %.3f · Method %u",
+                            slot.translation.u,slot.translation.v,
+                            slot.scale.u,slot.scale.v,slot.rotation,slot.transformType);
+                    }
+                    ImGui::EndGroup();
+                    ImGui::PopID();
+                }
+            }
 
             if (!part.textureTransformAnimations.empty() || !part.textureFlipAnimations.empty()) {
                 ImGui::SeparatorText(L("Textur-Animationen","Texture animations"));
