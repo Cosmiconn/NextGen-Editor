@@ -102,7 +102,7 @@ void KfmPanel::LoadSelectedKfPreview() {
 void KfmPanel::DrawSkeletonPreview() {
     if (!previewKf_) return;
 
-    ImGui::SeparatorText(L("Skeleton-Viewport", "Skeleton viewport"));
+    ImGui::SeparatorText(L("NIF / Skeleton-Viewport", "NIF / skeleton viewport"));
     if (!previewNif_ || previewNif_->nodes.empty()) {
         ImGui::TextColored(ImVec4(1.0f,0.62f,0.30f,1.0f), "%s",
                            previewNifMessage_.empty()
@@ -112,122 +112,33 @@ void KfmPanel::DrawSkeletonPreview() {
         return;
     }
 
-    struct Transform {
-        core::NifVec3 t{};
-        std::array<float,9> r{1,0,0,0,1,0,0,0,1};
-        float s = 1.0f;
-    };
+    const auto pose = core::PoseNifModelWithKf(*previewNif_, *previewKf_, previewTime_);
+    const auto& nodes = previewNif_->nodes;
 
-    const auto quatMatrix=[](core::KfQuat q) {
-        const float len=std::sqrt(q.w*q.w+q.x*q.x+q.y*q.y+q.z*q.z);
-        if (len > 1.0e-8f) { q.w/=len; q.x/=len; q.y/=len; q.z/=len; }
-        const float xx=q.x*q.x, yy=q.y*q.y, zz=q.z*q.z;
-        const float xy=q.x*q.y, xz=q.x*q.z, yz=q.y*q.z;
-        const float wx=q.w*q.x, wy=q.w*q.y, wz=q.w*q.z;
-        return std::array<float,9>{
-            1.0f-2.0f*(yy+zz), 2.0f*(xy-wz),       2.0f*(xz+wy),
-            2.0f*(xy+wz),       1.0f-2.0f*(xx+zz), 2.0f*(yz-wx),
-            2.0f*(xz-wy),       2.0f*(yz+wx),       1.0f-2.0f*(xx+yy)
-        };
-    };
-    const auto rotate=[](const std::array<float,9>& r,const core::NifVec3& v) {
-        return core::NifVec3{
-            r[0]*v.x+r[1]*v.y+r[2]*v.z,
-            r[3]*v.x+r[4]*v.y+r[5]*v.z,
-            r[6]*v.x+r[7]*v.y+r[8]*v.z
-        };
-    };
-    const auto multiplyRotation=[](const std::array<float,9>& a,const std::array<float,9>& b) {
-        std::array<float,9> out{};
-        for (int row=0;row<3;++row)
-            for (int col=0;col<3;++col)
-                out[static_cast<std::size_t>(row*3+col)] =
-                    a[static_cast<std::size_t>(row*3+0)]*b[static_cast<std::size_t>(0*3+col)] +
-                    a[static_cast<std::size_t>(row*3+1)]*b[static_cast<std::size_t>(1*3+col)] +
-                    a[static_cast<std::size_t>(row*3+2)]*b[static_cast<std::size_t>(2*3+col)];
-        return out;
-    };
+    ImGui::Checkbox(L("Mesh anzeigen", "Show mesh"), &previewShowMesh_);
+    ImGui::SameLine();
+    ImGui::TextDisabled(
+        L("%zu NIF-Nodes · %zu Tracks aktiv · %zu offen · %zu mehrdeutig · %zu ohne NIF-Ziel",
+          "%zu NIF nodes · %zu tracks active · %zu unsupported · %zu ambiguous · %zu without NIF target"),
+        nodes.size(), pose.matchedTracks, pose.unsupportedTracks,
+        pose.ambiguousTracks, pose.unmatchedTracks);
 
-    const auto& nodes=previewNif_->nodes;
-    const auto& kf=*previewKf_;
-    std::unordered_map<std::string,const core::KfControlledTrack*> trackByNode;
-    std::unordered_set<std::string> duplicateTrackNames;
-    for (const auto& track:kf.sequence.transformTracks) {
-        if (track.nodeName.empty()) continue;
-        const auto [it,inserted]=trackByNode.emplace(track.nodeName,&track);
-        if (!inserted) duplicateTrackNames.insert(track.nodeName);
+    if (previewShowMesh_) {
+        ImGui::TextDisabled(
+            L("%zu skinned Parts · %zu animierte Skin-Vertices · statische Parts bleiben sichtbar",
+              "%zu skinned parts · %zu animated skin vertices · static parts remain visible"),
+            pose.skinnedParts, pose.skinnedVertices);
     }
 
-    std::vector<Transform> local(nodes.size());
-    std::vector<char> animated(nodes.size(),0);
-    std::vector<char> unsupported(nodes.size(),0);
-    std::size_t matched=0, unsupportedCount=0;
+    std::vector<core::NifVec3> nodePoints(nodes.size());
     for (std::size_t i=0;i<nodes.size();++i) {
-        local[i].t=nodes[i].localTranslation;
-        local[i].r=nodes[i].localRotation;
-        local[i].s=nodes[i].localScale;
-        if (nodes[i].name.empty()) continue;
-        const auto it=trackByNode.find(nodes[i].name);
-        if (it==trackByNode.end()) continue;
-        auto sampled=core::SampleKfTransformTrack(kf,*it->second,previewTime_);
-        if (!sampled) {
-            unsupported[i]=1;
-            ++unsupportedCount;
-            continue;
-        }
-        local[i].t={sampled->translation.x,sampled->translation.y,sampled->translation.z};
-        local[i].r=quatMatrix(sampled->rotation);
-        local[i].s=sampled->scale;
-        animated[i]=1;
-        ++matched;
-    }
-
-    std::vector<Transform> world(nodes.size());
-    std::vector<std::uint8_t> visit(nodes.size(),0);
-    std::function<void(std::size_t)> buildWorld=[&](std::size_t index) {
-        if (visit[index]==2) return;
-        if (visit[index]==1) { // defensive cycle break: keep local transform.
-            world[index]=local[index];
-            visit[index]=2;
-            return;
-        }
-        visit[index]=1;
-        const int parent=nodes[index].parentIndex;
-        if (parent>=0 && static_cast<std::size_t>(parent)<nodes.size()) {
-            buildWorld(static_cast<std::size_t>(parent));
-            const Transform& p=world[static_cast<std::size_t>(parent)];
-            const core::NifVec3 scaledLocal{
-                local[index].t.x*p.s,local[index].t.y*p.s,local[index].t.z*p.s};
-            const core::NifVec3 rotatedLocal=rotate(p.r,scaledLocal);
-            world[index].t={p.t.x+rotatedLocal.x,p.t.y+rotatedLocal.y,p.t.z+rotatedLocal.z};
-            world[index].r=multiplyRotation(p.r,local[index].r);
-            world[index].s=p.s*local[index].s;
-        } else {
-            world[index]=local[index];
-        }
-        visit[index]=2;
-    };
-    for (std::size_t i=0;i<nodes.size();++i) buildWorld(i);
-
-    // Legacy/Gamebryo (x,y,z) -> Editor frame (x,z,y), matching NifModel::position.
-    std::vector<ImVec2> projected(nodes.size());
-    std::vector<core::NifVec3> editorPoints(nodes.size());
-    for (std::size_t i=0;i<nodes.size();++i)
-        editorPoints[i]={world[i].t.x,world[i].t.z,world[i].t.y};
-
-    ImGui::TextDisabled(L("%zu NIF-Nodes · %zu Tracks gematcht · %zu aktuell nicht samplebar",
-                          "%zu NIF nodes · %zu tracks matched · %zu currently not sampleable"),
-                        nodes.size(),matched,unsupportedCount);
-    if (!duplicateTrackNames.empty()) {
-        ImGui::SameLine();
-        ImGui::TextColored(ImVec4(1.0f,0.68f,0.25f,1.0f),
-                           L("· %zu doppelte Track-Namen","· %zu duplicate track names"),
-                           duplicateTrackNames.size());
+        const auto& t=pose.nodes[i].world.translation;
+        nodePoints[i]={t.x,t.z,t.y}; // Legacy/Gamebryo -> Editor frame.
     }
 
     const ImVec2 avail=ImGui::GetContentRegionAvail();
-    const ImVec2 canvasSize(std::max(260.0f,avail.x),
-                            std::clamp(avail.y*0.48f,220.0f,360.0f));
+    const ImVec2 canvasSize(std::max(300.0f,avail.x),
+                            std::clamp(avail.y*0.52f,250.0f,430.0f));
     const ImVec2 canvasMin=ImGui::GetCursorScreenPos();
     ImGui::InvisibleButton("##kfmSkeletonViewport",canvasSize,
                            ImGuiButtonFlags_MouseButtonLeft);
@@ -244,51 +155,104 @@ void KfmPanel::DrawSkeletonPreview() {
     }
     if (hovered && std::abs(ImGui::GetIO().MouseWheel)>0.0f)
         previewSkeletonZoom_=std::clamp(previewSkeletonZoom_*
-            std::pow(1.12f,ImGui::GetIO().MouseWheel),0.25f,5.0f);
+            std::pow(1.12f,ImGui::GetIO().MouseWheel),0.20f,7.5f);
     if (hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
         previewSkeletonYaw_=0.35f;
         previewSkeletonPitch_=-0.20f;
         previewSkeletonZoom_=1.0f;
     }
 
-    const float cy=std::cos(previewSkeletonYaw_), sy=std::sin(previewSkeletonYaw_);
-    const float cp=std::cos(previewSkeletonPitch_), sp=std::sin(previewSkeletonPitch_);
-    std::vector<ImVec2> rotated2(nodes.size());
+    const float yawC=std::cos(previewSkeletonYaw_), yawS=std::sin(previewSkeletonYaw_);
+    const float pitchC=std::cos(previewSkeletonPitch_), pitchS=std::sin(previewSkeletonPitch_);
+    const auto rotateForView=[&](const core::NifVec3& p) {
+        const float x1=yawC*p.x-yawS*p.z;
+        const float z1=yawS*p.x+yawC*p.z;
+        const float y2=pitchC*p.y-pitchS*z1;
+        return ImVec2(x1,y2);
+    };
+
     float minX=std::numeric_limits<float>::max(),maxX=std::numeric_limits<float>::lowest();
     float minY=std::numeric_limits<float>::max(),maxY=std::numeric_limits<float>::lowest();
-    for (std::size_t i=0;i<nodes.size();++i) {
-        const auto& p=editorPoints[i];
-        const float x1=cy*p.x-sy*p.z;
-        const float z1=sy*p.x+cy*p.z;
-        const float y2=cp*p.y-sp*z1;
-        rotated2[i]={x1,y2};
-        minX=std::min(minX,x1);maxX=std::max(maxX,x1);
-        minY=std::min(minY,y2);maxY=std::max(maxY,y2);
+    const auto includeBounds=[&](const core::NifVec3& p) {
+        const ImVec2 q=rotateForView(p);
+        minX=std::min(minX,q.x);maxX=std::max(maxX,q.x);
+        minY=std::min(minY,q.y);maxY=std::max(maxY,q.y);
+    };
+    for (const auto& p:nodePoints) includeBounds(p);
+    if (previewShowMesh_) {
+        for (const auto& part:pose.parts)
+            for (const auto& p:part.positions) includeBounds(p);
+    }
+
+    if (!std::isfinite(minX) || !std::isfinite(minY)) {
+        minX=minY=-1.0f; maxX=maxY=1.0f;
     }
     const float spanX=std::max(maxX-minX,1.0f),spanY=std::max(maxY-minY,1.0f);
-    const float fit=std::min((canvasSize.x-34.0f)/spanX,(canvasSize.y-34.0f)/spanY)*previewSkeletonZoom_;
-    const float cx=(minX+maxX)*0.5f,cy2=(minY+maxY)*0.5f;
+    const float fit=std::min((canvasSize.x-38.0f)/spanX,(canvasSize.y-38.0f)/spanY)*
+                    previewSkeletonZoom_;
+    const float cx=(minX+maxX)*0.5f, cy=(minY+maxY)*0.5f;
     const ImVec2 center(canvasMin.x+canvasSize.x*0.5f,canvasMin.y+canvasSize.y*0.5f);
-    for (std::size_t i=0;i<nodes.size();++i)
-        projected[i]={center.x+(rotated2[i].x-cx)*fit,
-                      center.y-(rotated2[i].y-cy2)*fit};
+    const auto project=[&](const core::NifVec3& p) {
+        const ImVec2 q=rotateForView(p);
+        return ImVec2(center.x+(q.x-cx)*fit,center.y-(q.y-cy)*fit);
+    };
 
-    // Parent-child lines are the actual NIF hierarchy; cyan marks sampled KF nodes,
-    // amber marks a matching track whose interpolation is intentionally unsupported.
+    // Actual NIF triangles. Skinned parts use the freshly evaluated KF pose; rigid parts use the
+    // model's static vertices. Keep a fixed line budget so large character meshes remain usable.
+    if (previewShowMesh_) {
+        std::size_t totalTriangles=0;
+        for (const auto& part:previewNif_->parts) totalTriangles+=part.triangleIndices.size()/3;
+        const std::size_t triangleBudget=7000;
+        const std::size_t stride=std::max<std::size_t>(1,(totalTriangles+triangleBudget-1)/triangleBudget);
+        std::size_t globalTriangle=0;
+
+        for (const auto& animatedPart:pose.parts) {
+            if (animatedPart.partIndex>=previewNif_->parts.size()) continue;
+            const auto& sourcePart=previewNif_->parts[animatedPart.partIndex];
+            const auto& indices=sourcePart.triangleIndices;
+            const ImU32 edge=animatedPart.skinned
+                ? IM_COL32(45,174,211,92)
+                : IM_COL32(93,118,136,58);
+
+            for (std::size_t tri=0;tri+2<indices.size();tri+=3,++globalTriangle) {
+                if (globalTriangle%stride!=0) continue;
+                const std::size_t ia=indices[tri],ib=indices[tri+1],ic=indices[tri+2];
+                if (ia>=animatedPart.positions.size() ||
+                    ib>=animatedPart.positions.size() ||
+                    ic>=animatedPart.positions.size()) continue;
+                const ImVec2 a=project(animatedPart.positions[ia]);
+                const ImVec2 b=project(animatedPart.positions[ib]);
+                const ImVec2 d=project(animatedPart.positions[ic]);
+                dl->AddLine(a,b,edge,1.0f);
+                dl->AddLine(b,d,edge,1.0f);
+                dl->AddLine(d,a,edge,1.0f);
+            }
+        }
+    }
+
+    std::vector<ImVec2> projected(nodes.size());
+    for (std::size_t i=0;i<nodes.size();++i) projected[i]=project(nodePoints[i]);
+
+    // Parent-child lines are the actual NIF hierarchy. Track-state colours never imply more
+    // support than the sampler has verified.
     for (std::size_t i=0;i<nodes.size();++i) {
         const int parent=nodes[i].parentIndex;
         if (parent<0 || static_cast<std::size_t>(parent)>=nodes.size()) continue;
-        const ImU32 line=unsupported[i] ? IM_COL32(240,166,68,235)
-                          : animated[i] ? IM_COL32(32,221,242,235)
-                                        : IM_COL32(105,132,151,150);
+        const auto state=pose.nodes[i].trackState;
+        const ImU32 line=state==core::NifPoseTrackState::Unsupported ? IM_COL32(240,166,68,235)
+                         : state==core::NifPoseTrackState::Ambiguous ? IM_COL32(221,105,210,235)
+                         : state==core::NifPoseTrackState::Animated ? IM_COL32(32,221,242,235)
+                                                                   : IM_COL32(105,132,151,150);
         dl->AddLine(projected[static_cast<std::size_t>(parent)],projected[i],
-                    line,animated[i]||unsupported[i]?2.0f:1.0f);
+                    line,state==core::NifPoseTrackState::BindPose?1.0f:2.0f);
     }
     for (std::size_t i=0;i<nodes.size();++i) {
-        const ImU32 dot=unsupported[i] ? IM_COL32(255,180,75,255)
-                       : animated[i] ? IM_COL32(128,238,255,255)
-                                     : IM_COL32(135,157,173,205);
-        dl->AddCircleFilled(projected[i],animated[i]||unsupported[i]?2.7f:1.7f,dot);
+        const auto state=pose.nodes[i].trackState;
+        const ImU32 dot=state==core::NifPoseTrackState::Unsupported ? IM_COL32(255,180,75,255)
+                        : state==core::NifPoseTrackState::Ambiguous ? IM_COL32(239,126,225,255)
+                        : state==core::NifPoseTrackState::Animated ? IM_COL32(128,238,255,255)
+                                                                  : IM_COL32(135,157,173,205);
+        dl->AddCircleFilled(projected[i],state==core::NifPoseTrackState::BindPose?1.7f:2.7f,dot);
     }
 
     dl->AddText(ImVec2(canvasMin.x+10.0f,canvasMin.y+8.0f),IM_COL32(169,197,217,225),
@@ -301,8 +265,6 @@ void KfmPanel::DrawSkeletonPreview() {
     }
 
     if (hovered) {
-        // nearest node hover, useful for verifying KF ↔ NIF name matching without cluttering
-        // the viewport with permanent labels.
         const ImVec2 mouse=ImGui::GetMousePos();
         float best=64.0f;
         std::size_t bestIndex=nodes.size();
@@ -312,22 +274,31 @@ void KfmPanel::DrawSkeletonPreview() {
             if (d2<best) { best=d2; bestIndex=i; }
         }
         if (bestIndex<nodes.size() && !nodes[bestIndex].name.empty()) {
-            ImGui::SetTooltip("%s%s",nodes[bestIndex].name.c_str(),
-                unsupported[bestIndex]
-                    ? L("\nKF-Track vorhanden, aber Interpolation noch nicht verifiziert.",
-                        "\nKF track exists, but interpolation is not yet verified.")
-                    : animated[bestIndex]
-                        ? L("\nKF-Track aktiv gesampelt.","\nKF track actively sampled.")
-                        : "");
+            const auto state=pose.nodes[bestIndex].trackState;
+            const char* suffix =
+                state==core::NifPoseTrackState::Unsupported
+                    ? L("\nKF-Track vorhanden, Interpolation noch nicht verifiziert.",
+                        "\nKF track exists; interpolation is not yet verified.")
+                : state==core::NifPoseTrackState::Ambiguous
+                    ? L("\nMehrdeutiger Node-/Track-Name; bleibt bewusst in Bind-Pose.",
+                        "\nAmbiguous node/track name; deliberately kept in bind pose.")
+                : state==core::NifPoseTrackState::Animated
+                    ? L("\nKF-Track aktiv gesampelt; Skinning folgt derselben Pose.",
+                        "\nKF track actively sampled; skinning uses the same pose.")
+                    : "";
+            ImGui::SetTooltip("%s%s",nodes[bestIndex].name.c_str(),suffix);
         }
     }
 
     ImGui::TextDisabled("%s",
-        L("Viewport = echte NIF-Hierarchie + verifizierte KF-Local-Transforms. "
-          "Komprimierte B-Splines/TBC bleiben bewusst in Bind-Pose statt geraten zu werden.",
-          "Viewport = real NIF hierarchy + verified KF local transforms. "
-          "Compressed B-splines/TBC deliberately remain in bind pose instead of being guessed."));
+        L("Viewport = echte KFM-NIF-Geometrie + NIF-Hierarchie + erhaltene NiSkin-Weights/Bind-Matrizen. "
+          "Samplebare KF-Tracks deformieren das Mesh CPU-seitig synchron zur Timeline; "
+          "B-Spline/TBC/Quadratic und mehrdeutige Namen bleiben unverändert in Bind-Pose.",
+          "Viewport = real KFM NIF geometry + NIF hierarchy + preserved NiSkin weights/bind matrices. "
+          "Sampleable KF tracks deform the mesh on CPU in sync with the timeline; "
+          "B-spline/TBC/quadratic and ambiguous names remain unchanged in bind pose."));
 }
+
 
 void KfmPanel::Draw(const std::function<std::optional<std::string>()>& browse) {
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f, 7.0f));
