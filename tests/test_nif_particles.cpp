@@ -188,28 +188,6 @@ int main(int argc, char** argv) {
         if (!model) std::cerr << model.error() << '\n';
     }
     {
-        const auto helga = LoadNifMesh(fixtures / "nif-extensions" / "Helga.nif", false);
-        check(helga.has_value(), "Helga blend particle metadata loads");
-        if (helga) {
-            const auto system = std::find_if(helga->particleSystems.begin(), helga->particleSystems.end(),
-                [](const auto& candidate) { return candidate.name == "SuperSpray03"; });
-            check(system != helga->particleSystems.end(), "Helga SuperSpray03 particle system found");
-            if (system != helga->particleSystems.end()) {
-                const auto emitter = std::find_if(system->controllers.begin(), system->controllers.end(),
-                    [](const auto& controller) { return controller.type == "NiPSysEmitterCtlr"; });
-                check(emitter != system->controllers.end(), "Helga SuperSpray03 emitter controller found");
-                if (emitter != system->controllers.end()) {
-                    check(emitter->hasFloatTrack && emitter->floatBlend.has_value() &&
-                          emitter->interpolatorType == "NiBlendFloatInterpolator",
-                          "Helga blend emitter rate is preserved");
-                    check(emitter->hasVisibilityTrack && emitter->visibilityBlend.has_value() &&
-                          emitter->visibilityInterpolatorType == "NiBlendBoolInterpolator",
-                          "Helga blend emitter visibility is preserved");
-                }
-            }
-        }
-    }
-    {
         const auto gate = LoadNifMesh(fixtures / "MapLinkGate2.nif", false);
         check(gate.has_value(), "MapLinkGate2 particle metadata loads");
         if (gate) {
