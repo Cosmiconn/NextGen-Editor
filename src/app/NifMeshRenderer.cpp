@@ -96,6 +96,7 @@ uniform float uGlossiness;
 uniform bool uSpecularEnabled;
 uniform int uApplyMode;
 uniform bool uVcAlphaTextureBlender;
+uniform int uVertexColorMode;
 uniform bool uHasTex[10];
 uniform int uUvSet[10];
 uniform bool uHasTexTransform[10];
@@ -171,7 +172,24 @@ vec3 bumpNormal(vec3 baseNormal) {
 
 void main() {
     vec4 base = uHasTex[0] ? texture(uTex0, slotUv(0)) : vec4(1.0);
-    vec3 surface = uDiffuseColor;
+
+    // Classic NiVertexColorProperty follows OpenGL color-material semantics.
+    // SRC_AMB_DIF replaces authored ambient+diffuse with the per-vertex color;
+    // SRC_EMISSIVE replaces authored emission. The dedicated VCAlpha shader keeps
+    // its original path below because its RGB/alpha inputs have different semantics.
+    vec3 materialAmbient = uAmbientColor;
+    vec3 materialDiffuse = uDiffuseColor;
+    vec3 materialEmission = uEmissiveColor;
+    if (!uVcAlphaTextureBlender) {
+        if (uVertexColorMode == 2) {
+            materialAmbient = vColor.rgb;
+            materialDiffuse = vColor.rgb;
+        } else if (uVertexColorMode == 1) {
+            materialEmission = vColor.rgb;
+        }
+    }
+
+    vec3 surface = materialDiffuse;
     if (uVcAlphaTextureBlender && uHasTex[0] && uHasTex[1] && uHasTex[2]) {
         // Original Gamebryo VCAlphaTextureBlender-P.hlsl:
         // Texture1/Texture2 are blended by vertex alpha, then multiplied by Detail*2.
@@ -222,10 +240,10 @@ void main() {
     float glossMask = uHasTex[3] ? luma(texture(uTex3, slotUv(3)).rgb) : 1.0;
     vec3 glow = uHasTex[4] ? texture(uTex4, slotUv(4)).rgb : vec3(0.0);
 
-    vec3 ambient = surface * uAmbientColor * 0.28;
+    vec3 ambient = surface * materialAmbient * 0.28;
     vec3 diffuse = surface * (0.22 + 0.78 * ndl);
     vec3 specular = uSpecularColor * specPower * glossMask;
-    vec3 emissive = uEmissiveColor + glow;
+    vec3 emissive = materialEmission + glow;
     FragColor = vec4(ambient + diffuse + specular + emissive, alpha);
 }
 )";
@@ -471,6 +489,7 @@ void NifMeshRenderer::Init() {
     uniforms_.locSpecularEnabled = glGetUniformLocation(shaderProgram_, "uSpecularEnabled");
     uniforms_.locApplyMode = glGetUniformLocation(shaderProgram_, "uApplyMode");
     uniforms_.locVcAlphaTextureBlender = glGetUniformLocation(shaderProgram_, "uVcAlphaTextureBlender");
+    uniforms_.locVertexColorMode = glGetUniformLocation(shaderProgram_, "uVertexColorMode");
     uniforms_.locBumpLumaScale = glGetUniformLocation(shaderProgram_, "uBumpLumaScale");
     uniforms_.locBumpLumaOffset = glGetUniformLocation(shaderProgram_, "uBumpLumaOffset");
     uniforms_.locBumpMatrix = glGetUniformLocation(shaderProgram_, "uBumpMatrix");
@@ -677,6 +696,26 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                     sub.specularEnabled = part.specularEnabled;
                     sub.textureApplyMode = part.textureApplyMode;
                     sub.vcAlphaTextureBlender = part.shaderName == "VCAlphaTextureBlender";
+                    const bool hasVertexColors =
+                        part.vertexColors.size() == part.positions.size();
+                    if (hasVertexColors) {
+                        if (!part.hasVertexColorProperty) {
+                            // Classic NIF default: authored vertex colors feed ambient+diffuse.
+                            sub.vertexColorMode = 2;
+                        } else if (part.vertexColorMode == 0) {
+                            sub.vertexColorMode = 0;
+                        } else if (part.vertexColorMode == 1) {
+                            sub.vertexColorMode = 1;
+                        } else if (part.vertexColorMode == 2) {
+                            // SRC_AMB_DIF + LIGHT_MODE_EMISSIVE disables color-material;
+                            // EMI_AMB_DIF is the normal ambient+diffuse path.
+                            sub.vertexColorMode = part.vertexLightingMode == 0 ? 0u : 2u;
+                        } else {
+                            // Unknown future enum: retain the classic safe default rather than
+                            // dropping authored vertex colors entirely.
+                            sub.vertexColorMode = 2;
+                        }
+                    }
                     sub.bumpMapLumaScale = part.bumpMapLumaScale;
                     sub.bumpMapLumaOffset = part.bumpMapLumaOffset;
                     // NIF Matrix22 is read row-major; glUniformMatrix2fv expects column-major.
@@ -1268,6 +1307,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     const auto& locSpecularEnabled = uniforms_.locSpecularEnabled;
     const auto& locApplyMode = uniforms_.locApplyMode;
     const auto& locVcAlphaTextureBlender = uniforms_.locVcAlphaTextureBlender;
+    const auto& locVertexColorMode = uniforms_.locVertexColorMode;
     const auto& locBumpLumaScale = uniforms_.locBumpLumaScale;
     const auto& locBumpLumaOffset = uniforms_.locBumpLumaOffset;
     const auto& locBumpMatrix = uniforms_.locBumpMatrix;
@@ -1447,6 +1487,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
         glUniform1i(locSpecularEnabled, sub.specularEnabled ? 1 : 0);
         glUniform1i(locApplyMode, static_cast<int>(sub.textureApplyMode));
         glUniform1i(locVcAlphaTextureBlender, sub.vcAlphaTextureBlender ? 1 : 0);
+        glUniform1i(locVertexColorMode, static_cast<int>(sub.vertexColorMode));
         glUniform1f(locBumpLumaScale, sub.bumpMapLumaScale);
         glUniform1f(locBumpLumaOffset, sub.bumpMapLumaOffset);
         glUniformMatrix2fv(locBumpMatrix, 1, GL_FALSE, sub.bumpMapMatrix.data());
