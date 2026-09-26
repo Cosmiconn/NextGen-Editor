@@ -183,6 +183,20 @@ int main(int argc, char** argv) {
                 textureTransformTracks += part.textureTransformAnimations.size();
                 textureFlipTracks += part.textureFlipAnimations.size();
 
+                const auto appendUvDiagnostic = [&](std::ostringstream& out, std::uint32_t uvSet) {
+                    if (uvSet >= part.uvSetDiagnostics.size()) return;
+                    const auto& diagnostic = part.uvSetDiagnostics[uvSet];
+                    out << "\trawUvCount=" << diagnostic.originalCount
+                        << "\tuvDiscarded=" << (diagnostic.discarded ? 1 : 0)
+                        << "\tmaxFiniteAbs=" << diagnostic.maxFiniteAbs;
+                    if (diagnostic.discarded) {
+                        out << "\tfirstBadIndex=" << diagnostic.firstBadIndex
+                            << "\tfirstBadU=" << diagnostic.firstBadValue.u
+                            << "\tfirstBadV=" << diagnostic.firstBadValue.v
+                            << "\tnonFinite=" << (diagnostic.nonFinite ? 1 : 0);
+                    }
+                };
+
                 for (std::size_t slot = 0; slot < part.textureSlots.size(); ++slot) {
                     const auto& texture = part.textureSlots[slot];
                     if (!texture.present) continue;
@@ -232,6 +246,7 @@ int main(int argc, char** argv) {
                                << "\tfallback=" << (hasBaseFallbackUvs ? "uv0" : "none")
                                << "\tshader=" << Clean(shader)
                                << "\tsource=" << Clean(texture.texture);
+                        appendUvDiagnostic(detail, texture.uvSet);
                         uvGapDetails.push_back(detail.str());
                     }
                     if (shader != "<fixed-function>") {
@@ -286,6 +301,7 @@ int main(int argc, char** argv) {
                                    << "\tfallback=" << (hasBaseFallbackUvs ? "uv0" : "none")
                                    << "\tshader=" << Clean(shader)
                                    << "\tsource=" << Clean(shaderSlot.texture.texture);
+                            appendUvDiagnostic(detail, shaderSlot.texture.uvSet);
                             uvGapDetails.push_back(detail.str());
                         }
                     }
