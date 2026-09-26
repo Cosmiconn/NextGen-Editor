@@ -45,11 +45,13 @@ Die genaue Zuordnung steht in [references/README.md](references/README.md).
 
 ## Aktiver Stand
 
-- `src/app/resources/nextgen.ico` enthält jetzt ein echtes NG-Markenicon in allen Windows-Größen.
-- Das Windows-Fenster setzt Ressource 101 zusätzlich explizit für Titlebar/Alt-Tab/Taskleiste.
-- `src/app/resources/branding/ng-app-icon-master.svg` ist die editierbare Produktionsquelle der derzeit eingebauten NG-Fassung.
-- `docs/ui-vision/ICON_INVENTORY.md` definiert die Migration auf das freigegebene 54-Icon-Paket; die bisherigen `src/app/resources/icons/*.svg` sind nur Legacy-Migrationsbestand.
-- Die Rasterreferenzen sind im Manifest erfasst, aber ihre Binärdateien sind im Branch noch nicht vollständig archiviert.
+- `NextGen_Icons_Final.zip` ist die verbindliche Artwork-Quelle des Icon-Systems: 68 geprüfte echte SVG-Vector-Master ohne eingebettete Rasterbilder.
+- Zu allen 68 Icons sind die freigegebenen Runtime-PNGs in 16 / 24 / 32 / 48 / 64 / 128 px unter `assets/ui/icons/` archiviert; die optionalen SVG-with-PNG-Fassungen bleiben getrennt klassifiziert.
+- `assets/ui/icons/icon-map.json` stellt stabile semantische IDs bereit; `src/app/UiIconAssets.hpp/.cpp` lädt die passende Rastergröße und fällt nur bei fehlender exakter Größe auf den nächstgelegenen freigegebenen Export zurück.
+- Die 14 ergänzten UI-Icons für 2D, 3D, KFM, AI, XP, Preise, Visibility, Lock/Unlock, Copy, Duplicate, Delete, Command Palette und Recent Projects sind an reale UI-Funktionen angebunden.
+- Generische DrawList-Icons sind nur noch dokumentierter Funktions-Fallback, wenn das Final-Paket für eine konkrete Semantik kein freigegebenes Icon enthält; vorhandene Paketicons dürfen nicht durch Legacy-Glyphen ersetzt werden.
+- `src/app/resources/nextgen.ico` enthält das NG-Markenicon in den nativen Windows-Größen; das Fenster setzt Ressource 101 zusätzlich für Titlebar, Alt-Tab und Taskleiste.
+- `docs/ui-vision/ICON_INVENTORY.md` dokumentiert Inventar, Mapping und Migrationsstatus des finalen 68-Icon-Pakets.
 
 ## Referenzhierarchie
 
