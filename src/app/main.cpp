@@ -12657,7 +12657,7 @@ float DistanceToObjectGroundContactXZ(EditorState& state, const core::PlacedObje
                                       float worldX, float worldZ) {
     const auto& fp = GetOrComputeFootprint(state, obj.modelPath);
     if (!fp.valid || fp.contactSegments.empty())
-        return std::hypot(obj.posX - worldX, obj.posZ - worldZ);
+        return std::numeric_limits<float>::infinity();
 
     const float angle = 2.0f * std::atan2(obj.rotY, obj.rotW);
     const float c = std::cos(angle), s = std::sin(angle);
@@ -13352,8 +13352,10 @@ void DrawEditor2DContent(EditorState& state) {
                         for (std::size_t i = 0; i < state.placementSet.Count(); ++i) {
                             if (IsObjectHidden(state, i) ||
                                 IsObjectEditorLocked(state, static_cast<int>(i))) continue;
-                            const float dist = DistanceToObjectGroundContactXZ(
-                                state, state.placementSet.At(i), worldX, worldZ);
+                            const auto& obj = state.placementSet.At(i);
+                            float dist = DistanceToObjectGroundContactXZ(state, obj, worldX, worldZ);
+                            if (!std::isfinite(dist))
+                                dist = std::hypot(obj.posX - worldX, obj.posZ - worldZ);
                             if (dist < bestDist) {
                                 bestDist = dist;
                                 bestIdx = static_cast<int>(i);
