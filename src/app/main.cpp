@@ -1218,7 +1218,7 @@ void PushToast(EditorState& state, const std::string& message, bool error = fals
         return;
     }
     state.toasts.push_back({text, 4.0f, error});
-    while (state.toasts.size() > 4) state.toasts.pop_front();
+    while (state.toasts.size() > 3) state.toasts.pop_front();
 }
 
 void SyncStatusToast(EditorState& state) {
@@ -1237,26 +1237,27 @@ void SyncStatusToast(EditorState& state) {
 void DrawToasts(EditorState& state) {
     if (state.toasts.empty()) return;
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
-    float y = viewport->WorkPos.y + 18.0f;
+    ImVec2 anchor(viewport->WorkPos.x + viewport->WorkSize.x - 18.0f,
+                  viewport->WorkPos.y + viewport->WorkSize.y - 18.0f);
     constexpr float width = 390.0f;
-    int index = 0;
-    for (auto& toast : state.toasts) {
+    int index = static_cast<int>(state.toasts.size());
+    for (auto it = state.toasts.rbegin(); it != state.toasts.rend(); ++it) {
+        auto& toast = *it;
         toast.remaining -= ImGui::GetIO().DeltaTime;
-        ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + viewport->WorkSize.x - width - 18.0f, y),
-                                ImGuiCond_Always);
+        ImGui::SetNextWindowPos(anchor, ImGuiCond_Always, ImVec2(1.0f,1.0f));
         ImGui::SetNextWindowSize(ImVec2(width, 0.0f), ImGuiCond_Always);
         ImGui::SetNextWindowBgAlpha(0.96f);
         ImGui::PushStyleColor(ImGuiCol_Border,
             toast.error ? ImVec4(0.85f,0.25f,0.22f,0.95f) : ImVec4(0.12f,0.52f,0.78f,0.95f));
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
-        const std::string id = "##toast" + std::to_string(index++);
+        const std::string id = "##toast" + std::to_string(--index);
         ImGui::Begin(id.c_str(), nullptr,
                      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoDocking |
                      ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoNav |
                      ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs);
         ImGui::TextColored(toast.error ? ImVec4(1.0f,0.42f,0.36f,1.0f)
                                        : ImVec4(0.30f,0.78f,1.0f,1.0f),
-                           "%s", toast.error ? "FEHLER" : "NEXTGEN");
+                           "%s", toast.error ? L("FEHLER","ERROR") : "NEXTGEN");
         ImGui::Separator();
         ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + width - 28.0f);
         ImGui::TextWrapped("%s", toast.text.c_str());
@@ -1265,7 +1266,7 @@ void DrawToasts(EditorState& state) {
         ImGui::End();
         ImGui::PopStyleVar();
         ImGui::PopStyleColor();
-        y += h + 8.0f;
+        anchor.y -= h + 8.0f;
     }
     std::erase_if(state.toasts, [](const EditorState::Toast& t) { return t.remaining <= 0.0f; });
 }
