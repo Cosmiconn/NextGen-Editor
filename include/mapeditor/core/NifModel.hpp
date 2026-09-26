@@ -183,6 +183,9 @@ struct NifTextureEffectBinding {
     std::uint32_t clampMode = 3;
     std::uint32_t textureType = 0;
     std::uint32_t coordGenType = 0;
+    // Deferred NiSourceTexture block reference. Kept until all source/pixel blocks are parsed,
+    // exactly like the classic NiTexturingProperty slots.
+    std::int32_t sourceTextureRef = -1;
     std::string texture;
     bool sourceUsesEmbeddedPixelData = false;
     std::int32_t sourcePixelDataRef = -1;
