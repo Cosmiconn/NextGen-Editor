@@ -17,6 +17,7 @@
 - Prevent clicks and drags on the 3D transform toolbar and zoom overlay from leaking into object picking, orbit/pan or keyboard camera handling underneath the viewport image.
 - Unify SHN, NPC, Mob, Portal, Object and Layer context-menu headers with semantic package icons/fallbacks and separate destructive actions from ordinary edits.
 - Add Layer Rename to the context menu, select the right-clicked layer, and replace the unreliable window-appearance focus check with an explicit one-shot rename-input focus request.
+- Align toast behavior with the component spec: bottom-right placement, newest toast anchored at the bottom, upward stacking, maximum three visible messages, and localized error heading.
 
 ## v0.44.35 / v14 — KFM-Codec und Animationskatalog
 - C++23-Reader/Writer für Fiesta-KFM 1.2.4b und 2.0.0.0b, einschließlich Textschlüsselpaaren und Zwischenanimationen; durch Dateigröße und Speicherbudget begrenzt.
