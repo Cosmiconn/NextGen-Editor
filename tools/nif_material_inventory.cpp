@@ -50,6 +50,7 @@ int main(int argc, char** argv) {
     std::map<std::size_t, std::size_t> uvSetCounts;
     std::map<std::uint32_t, std::size_t> transformMethods;
     std::map<std::uint32_t, std::size_t> applyModes;
+    std::map<std::uint32_t, std::set<std::string>> applyModeFiles;
     std::map<std::uint32_t, std::size_t> vertexColorModes;
     std::map<std::uint32_t, std::size_t> faceDrawModes;
     std::map<std::tuple<std::uint32_t, std::uint32_t, bool>, std::size_t> effects;
@@ -93,6 +94,7 @@ int main(int argc, char** argv) {
                 shaderFiles[shader].insert(entry.path().filename().string());
                 ++uvSetCounts[part.uvSets.size()];
                 ++applyModes[part.textureApplyMode];
+                applyModeFiles[part.textureApplyMode].insert(entry.path().string());
                 ++vertexColorModes[part.hasVertexColorProperty ? part.vertexColorMode : 0xffffffffu];
                 ++faceDrawModes[part.faceDrawMode];
                 alphaBlendParts += part.alphaBlend ? 1u : 0u;
@@ -136,6 +138,11 @@ int main(int argc, char** argv) {
         std::cout << "SHADER\tparts=" << count
                   << "\tfiles=" << shaderFiles[name].size()
                   << "\tname=" << Clean(name) << '\n';
+        if (name != "<fixed-function>") {
+            for (const auto& path : shaderFiles[name])
+                std::cout << "SHADERFILE\tname=" << Clean(name)
+                          << "\tpath=" << Clean(path) << '\n';
+        }
     }
 
     for (std::size_t slot = 0; slot < slots.size(); ++slot) {
@@ -152,8 +159,14 @@ int main(int argc, char** argv) {
         std::cout << "UVSETS\tcount=" << count << "\tparts=" << partCount << '\n';
     for (const auto& [method, partCount] : transformMethods)
         std::cout << "TEXTRANSFORM\tmethod=" << method << "\tparts=" << partCount << '\n';
-    for (const auto& [mode, partCount] : applyModes)
+    for (const auto& [mode, partCount] : applyModes) {
         std::cout << "APPLYMODE\tmode=" << mode << "\tparts=" << partCount << '\n';
+        if (mode != 2u) {
+            for (const auto& path : applyModeFiles[mode])
+                std::cout << "APPLYMODEFILE\tmode=" << mode
+                          << "\tpath=" << Clean(path) << '\n';
+        }
+    }
     for (const auto& [mode, partCount] : vertexColorModes)
         std::cout << "VERTEXCOLOR\tmode=" << mode << "\tparts=" << partCount << '\n';
     for (const auto& [mode, partCount] : faceDrawModes)
