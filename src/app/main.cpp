@@ -649,6 +649,7 @@ struct EditorState {
     std::uint64_t questRevision = 0;
     bool questDirty = false;
     int questQuickFilter = 0; // 0 alle, 1 aktiv, 2 täglich, 3 Referenzprobleme
+    bool questShowFlow = false; // read-only relationship view; no script semantics are inferred
     char questSearch[128] = "";
 
     // Für Item-/Mob-Namensauflösung im Quest-Editor (dient zugleich als einfache Validierung -
@@ -6649,6 +6650,197 @@ static std::string QuestTextOf(EditorState& state, int textId) {
     return t;
 }
 
+
+void DrawQuestFlowView(EditorState& state,
+                       const std::vector<core::legacy::QuestRecord>& quests,
+                       std::size_t currentIndex) {
+    if (currentIndex >= quests.size()) return;
+
+    // Only the explicitly decoded QuestData fields needPred/predecessor create graph edges.
+    // Script GOTO/ACCEPT text is intentionally NOT interpreted as a quest relationship.
+    std::unordered_map<std::uint16_t,std::size_t> byId;
+    std::unordered_set<std::uint16_t> duplicateIds;
+    byId.reserve(quests.size());
+    for (std::size_t i=0;i<quests.size();++i) {
+        const auto [it,inserted]=byId.emplace(quests[i].id,i);
+        if (!inserted) duplicateIds.insert(quests[i].id);
+    }
+
+    const auto titleOf=[&](const core::legacy::QuestRecord& quest) {
+        std::string title=QuestTextOf(state,quest.title);
+        if (title.empty()) title=QuestTextOf(state,quest.description);
+        if (title.empty()) title=L("(ohne Text)","(no text)");
+        return title;
+    };
+    const auto questButton=[&](const char* prefix,std::size_t index,const char* suffix=nullptr) {
+        if (index>=quests.size()) return false;
+        const auto& quest=quests[index];
+        std::string label=std::string(prefix)+" #"+std::to_string(quest.id)+"  "+titleOf(quest);
+        if (suffix && *suffix) label+="  "+std::string(suffix);
+        return UI::Button((label+"##flowQuest"+std::to_string(index)).c_str(),ImVec2(-1.0f,0.0f));
+    };
+
+    const auto& current=quests[currentIndex];
+    std::vector<std::size_t> ancestors;
+    std::unordered_set<std::uint16_t> chainSeen;
+    chainSeen.insert(current.id);
+    bool cycle=false;
+    std::uint16_t missingPredecessor=0;
+    std::size_t cursor=currentIndex;
+    for (int depth=0;depth<12;++depth) {
+        const auto& q=quests[cursor];
+        if (q.needPred==0 || q.predecessor==0) break;
+        if (chainSeen.contains(q.predecessor)) {
+            cycle=true;
+            break;
+        }
+        chainSeen.insert(q.predecessor);
+        const auto it=byId.find(q.predecessor);
+        if (it==byId.end() || duplicateIds.contains(q.predecessor)) {
+            missingPredecessor=q.predecessor;
+            break;
+        }
+        ancestors.push_back(it->second);
+        cursor=it->second;
+    }
+    std::reverse(ancestors.begin(),ancestors.end());
+
+    std::vector<std::size_t> successors;
+    for (std::size_t i=0;i<quests.size();++i) {
+        if (i==currentIndex) continue;
+        if (quests[i].needPred!=0 && quests[i].predecessor==current.id)
+            successors.push_back(i);
+    }
+
+    ImGui::TextColored(UiTheme::AccentCyan,"%s",L("QUEST FLOW","QUEST FLOW"));
+    ImGui::SameLine();
+    ImGui::TextDisabled("%s",L("nur verifizierte predecessor-Beziehungen",
+                               "verified predecessor relationships only"));
+    if (duplicateIds.contains(current.id)) {
+        ImGui::TextColored(UiTheme::Error,"%s",
+            L("Diese Quest-ID kommt mehrfach vor; eingehende/ausgehende Links sind dadurch mehrdeutig.",
+              "This quest ID occurs more than once; incoming/outgoing links are ambiguous."));
+    }
+    ImGui::Separator();
+
+    const float avail=ImGui::GetContentRegionAvail().x;
+    if (!ImGui::BeginTable("##questFlowLayout",3,
+        ImGuiTableFlags_SizingStretchProp|ImGuiTableFlags_BordersInnerV)) return;
+    ImGui::TableSetupColumn("##ancestors",ImGuiTableColumnFlags_WidthStretch,0.31f);
+    ImGui::TableSetupColumn("##current",ImGuiTableColumnFlags_WidthStretch,0.38f);
+    ImGui::TableSetupColumn("##successors",ImGuiTableColumnFlags_WidthStretch,0.31f);
+    ImGui::TableNextRow();
+
+    ImGui::TableSetColumnIndex(0);
+    ImGui::TextColored(UiTheme::TextSecondary,"%s",L("VORGÄNGER-KETTE","PREDECESSOR CHAIN"));
+    ImGui::Separator();
+    if (ancestors.empty() && missingPredecessor==0 && !cycle) {
+        ImGui::TextDisabled("%s",L("Kein Vorgänger.","No predecessor."));
+    } else {
+        const std::size_t first=ancestors.size()>6 ? ancestors.size()-6 : 0;
+        if (first>0) ImGui::TextDisabled(L("… %zu frühere Quest(s)","… %zu earlier quest(s)"),first);
+        for (std::size_t ai=first;ai<ancestors.size();++ai) {
+            const std::size_t idx=ancestors[ai];
+            if (questButton("←",idx)) state.selectedQuestIdx=static_cast<int>(idx);
+            if (ai+1<ancestors.size()) {
+                const float x=ImGui::GetCursorPosX()+18.0f;
+                ImGui::SetCursorPosX(x);
+                ImGui::TextColored(UiTheme::TextSecondary,"↓");
+            }
+        }
+        if (missingPredecessor!=0)
+            ImGui::TextColored(UiTheme::Error,L("✕ Vorgänger #%u fehlt oder ist mehrdeutig",
+                                                "✕ predecessor #%u missing or ambiguous"),
+                               static_cast<unsigned>(missingPredecessor));
+        if (cycle)
+            ImGui::TextColored(UiTheme::Error,"%s",
+                L("✕ Zyklus in der predecessor-Kette erkannt","✕ cycle detected in predecessor chain"));
+    }
+
+    ImGui::TableSetColumnIndex(1);
+    ImGui::TextColored(UiTheme::AccentCyan,"%s",L("AKTUELLE QUEST","CURRENT QUEST"));
+    ImGui::Separator();
+    ImGui::PushStyleColor(ImGuiCol_ChildBg,IM_COL32(8,29,45,220));
+    ImGui::BeginChild("##questFlowCurrent",ImVec2(0.0f,0.0f),true);
+    ImGui::TextColored(UiTheme::AccentCyan,"#%u",static_cast<unsigned>(current.id));
+    ImGui::TextWrapped("%s",titleOf(current).c_str());
+    ImGui::Separator();
+
+    if (current.needLevel!=0)
+        ImGui::Text(L("Level: %u–%u","Level: %u–%u"),
+                    static_cast<unsigned>(current.minLevel),static_cast<unsigned>(current.maxLevel));
+    else
+        ImGui::TextDisabled("%s",L("Keine Level-Bedingung","No level requirement"));
+
+    if (current.needNpc!=0 && current.startingNpc!=0) {
+        const auto npc=ResolveMobNameForQuest(state,current.startingNpc);
+        ImGui::TextColored(npc.second?UiTheme::Success:UiTheme::Error,
+            L("Start-NPC: #%u · %s","Start NPC: #%u · %s"),
+            static_cast<unsigned>(current.startingNpc),npc.first.c_str());
+    } else {
+        ImGui::TextDisabled("%s",L("Kein fester Start-NPC","No fixed starting NPC"));
+    }
+
+    if (current.needItem!=0 && current.itemId!=0) {
+        const auto item=ResolveItemNameForQuest(state,current.itemId);
+        ImGui::TextColored(item.second?UiTheme::Success:UiTheme::Error,
+            L("Voraussetzungs-Item: #%u · %s","Required item: #%u · %s"),
+            static_cast<unsigned>(current.itemId),item.first.c_str());
+    }
+
+    int mobObjectives=0,itemObjectives=0,activeDrops=0;
+    for (const auto& m:current.mobs) if (m.active!=0) ++mobObjectives;
+    for (const auto& item:current.items) if (item.active!=0) ++itemObjectives;
+    for (const auto& drop:current.drops) if (drop.active!=0) ++activeDrops;
+    ImGui::SeparatorText(L("Ziele","Objectives"));
+    ImGui::Text(L("%d Monster · %d Items · %d Drops",
+                  "%d monsters · %d items · %d drops"),
+                mobObjectives,itemObjectives,activeDrops);
+
+    ImGui::SeparatorText(L("Flags","Flags"));
+    ImGui::Text("%s%s%s",
+        current.enableQuest!=0?L("Aktiv","Enabled"):L("Deaktiviert","Disabled"),
+        current.dailyQuest!=0?L(" · Täglich"," · Daily"):"",
+        current.multiQuest!=0?L(" · Multi"," · Multi"):"");
+
+    ImGui::SeparatorText(L("Scripts","Scripts"));
+    ImGui::TextDisabled("Start %s · Action %s · Finish %s",
+        current.start.text.empty()?"—":"✓",
+        current.action.text.empty()?"—":"✓",
+        current.finish.text.empty()?"—":"✓");
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
+
+    ImGui::TableSetColumnIndex(2);
+    ImGui::TextColored(UiTheme::TextSecondary,"%s",L("DIREKTE FOLGEQUESTS","DIRECT SUCCESSORS"));
+    ImGui::SameLine();
+    ImGui::TextDisabled("%zu",successors.size());
+    ImGui::Separator();
+    if (successors.empty()) {
+        ImGui::TextDisabled("%s",L("Keine Quest verweist direkt auf diese ID.",
+                                   "No quest directly references this ID."));
+    } else {
+        ImGui::BeginChild("##questFlowSuccessors",ImVec2(0.0f,0.0f),false);
+        for (const std::size_t idx:successors) {
+            if (duplicateIds.contains(quests[idx].id)) ImGui::PushStyleColor(ImGuiCol_Button,IM_COL32(112,70,24,210));
+            if (questButton("→",idx,duplicateIds.contains(quests[idx].id)?L("⚠ ID mehrfach","⚠ duplicate ID"):nullptr))
+                state.selectedQuestIdx=static_cast<int>(idx);
+            if (duplicateIds.contains(quests[idx].id)) ImGui::PopStyleColor();
+        }
+        ImGui::EndChild();
+    }
+
+    ImGui::EndTable();
+
+    ImGui::Separator();
+    ImGui::TextDisabled("%s",
+        L("Der Flow ist absichtlich read-only. Kanten stammen ausschließlich aus needPred/predecessor; "
+          "Skriptbefehle und unbekannte Raw-/Reward-Felder werden nicht als Graph-Semantik interpretiert.",
+          "The flow is intentionally read-only. Edges come only from needPred/predecessor; "
+          "script commands and unknown raw/reward fields are not interpreted as graph semantics."));
+    (void)avail;
+}
+
 void DrawQuestEditor(EditorState& state) {
     EnsureQuestDataLoaded(state);
     EnsureQuestDialogLoaded(state);
@@ -6869,6 +7061,23 @@ void DrawQuestEditor(EditorState& state) {
     }
     auto& q = quests[static_cast<std::size_t>(state.selectedQuestIdx)];
     const ImVec4 kOk(0.50f, 0.90f, 0.50f, 1.0f), kBad(1.0f, 0.40f, 0.40f, 1.0f), kDim(0.60f, 0.66f, 0.74f, 1.0f);
+
+    if (SceneQuickFilterButton("questFormView",L("Formular","Form"),!state.questShowFlow))
+        state.questShowFlow=false;
+    ImGui::SameLine();
+    if (SceneQuickFilterButton("questFlowView",L("Flow","Flow"),state.questShowFlow))
+        state.questShowFlow=true;
+    ImGui::SameLine();
+    ImGui::TextDisabled("%s",state.questShowFlow
+        ? L("Vorgänger/Folgequests aus QuestData","predecessor/successors from QuestData")
+        : L("Felder und Referenzen bearbeiten","edit fields and references"));
+    ImGui::Separator();
+
+    if (state.questShowFlow) {
+        DrawQuestFlowView(state,quests,static_cast<std::size_t>(state.selectedQuestIdx));
+        ImGui::EndChild();
+        return;
+    }
 
     // Kleine Bausteine fuer eine ordentliche Formular-Optik: feste Labelspalte, kompakte Felder,
     // aufgeloeste Namen in der dritten Spalte (Umbruch innerhalb der Spalte).
