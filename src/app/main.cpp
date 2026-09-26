@@ -15869,17 +15869,21 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
         }
         ImGui::TextDisabled(L("Shadernamen: %s","Shader names: %s"), shaderList.c_str());
     }
-    const std::uint32_t unsupportedRenderStateBlocks =
-        model.textureEffectBlocks + model.vertexColorPropertyBlocks;
+    const std::uint32_t unsupportedRenderStateBlocks = model.textureEffectBlocks;
     if (genericShaderFallbackParts > 0 || unsupportedRenderStateBlocks > 0) {
         ImGui::TextColored(
             ImVec4(1.0f,0.72f,0.30f,1.0f),
             "%s",L("Materialdateien können vollständig gefunden sein, obwohl Shader-/Effect-Semantik noch nur generisch dargestellt wird.",
                    "All material files can be resolved while shader/effect semantics are still rendered through a generic fallback."));
         ImGui::TextDisabled(
-            L("%zu Mesh-Part(s) mit generischem Shader-Fallback · TextureEffect %u · VertexColorProperty %u",
-              "%zu mesh part(s) using generic shader fallback · TextureEffect %u · VertexColorProperty %u"),
-            genericShaderFallbackParts, model.textureEffectBlocks,
+            L("%zu Mesh-Part(s) mit generischem Shader-Fallback · TextureEffect %u",
+              "%zu mesh part(s) using generic shader fallback · TextureEffect %u"),
+            genericShaderFallbackParts, model.textureEffectBlocks);
+    }
+    if (model.vertexColorPropertyBlocks > 0) {
+        ImGui::TextDisabled(
+            L("NiVertexColorProperty: %u Block/Blöcke · Ignore/Emission/Ambient+Diffuse werden pro Mesh gerendert",
+              "NiVertexColorProperty: %u block(s) · ignore/emission/ambient+diffuse rendered per mesh"),
             model.vertexColorPropertyBlocks);
     }
     if (model.zBufferPropertyBlocks > 0) {
@@ -15999,6 +16003,22 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                 part.depthTest ? L("an","on") : L("aus","off"),
                 part.depthWrite ? L("an","on") : L("aus","off"),
                 part.depthFunction);
+            if (part.hasVertexColorProperty || !part.vertexColors.empty()) {
+                const char* vertexMode =
+                    !part.hasVertexColorProperty ? L("Ambient+Diffuse (NIF-Standard)","Ambient+Diffuse (NIF default)") :
+                    part.vertexColorMode == 0 ? L("Ignorieren","Ignore") :
+                    part.vertexColorMode == 1 ? L("Emission","Emission") :
+                    part.vertexColorMode == 2
+                        ? (part.vertexLightingMode == 0
+                            ? L("Ambient+Diffuse / LightMode Emissive → ignoriert",
+                                "Ambient+Diffuse / emissive light mode → ignored")
+                            : L("Ambient+Diffuse","Ambient+Diffuse"))
+                        : L("Unbekannter Modus → Ambient+Diffuse-Fallback",
+                            "Unknown mode → Ambient+Diffuse fallback");
+                ImGui::TextDisabled(
+                    L("Vertexfarben: %zu · %s","Vertex colors: %zu · %s"),
+                    part.vertexColors.size(), vertexMode);
+            }
 
             bool anyTexture=false;
             for (std::size_t si=0; si<part.textureSlots.size(); ++si) {
