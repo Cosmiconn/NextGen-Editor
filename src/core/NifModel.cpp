@@ -4135,6 +4135,8 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             if (it == sourceTextures.end()) continue;
             auto& slot = part.textureSlots[slotIndex];
             slot.texture = it->second.filename;
+            slot.sourceUsesEmbeddedPixelData = it->second.useExternal == 0;
+            slot.sourcePixelDataRef = it->second.pixelDataRef;
             if (it->second.useExternal == 0 && it->second.pixelDataRef >= 0) {
                 auto pix = embeddedPixelTextures.find(static_cast<std::uint32_t>(it->second.pixelDataRef));
                 if (pix != embeddedPixelTextures.end()) slot.embeddedTexture = pix->second;
@@ -4183,6 +4185,8 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         part.diffuseTexture = it->second.filename;
         part.textureSlots[0].present = true;
         part.textureSlots[0].texture = it->second.filename;
+        part.textureSlots[0].sourceUsesEmbeddedPixelData = it->second.useExternal == 0;
+        part.textureSlots[0].sourcePixelDataRef = it->second.pixelDataRef;
         part.textureSlots[0].uvSet = part.baseUvSet;
         part.textureSlots[0].clampMode = part.textureClampMode;
         part.textureSlots[0].filterMode = part.textureFilterMode;
