@@ -1,7 +1,7 @@
 # NextGen Editor – verbindliche UI-Vision
 
 **Status:** verbindlich für den visuellen Ausbau von `ui-upgrade`  
-**Stand:** 25.09.2026
+**Stand:** 26.09.2026
 
 Diese Dateien sind die visuelle Source of Truth. Der Editor soll als **hochwertiger, dunkler AAA-World-/Level-Editor** wirken – nicht wie eine nur gestylte Desktop-Anwendung.
 
@@ -45,13 +45,13 @@ Die genaue Zuordnung steht in [references/README.md](references/README.md).
 
 ## Aktiver Stand
 
-- `NextGen_Icons_Final.zip` ist die verbindliche Artwork-Quelle des Icon-Systems: 68 geprüfte echte SVG-Vector-Master ohne eingebettete Rasterbilder.
-- Zu allen 68 Icons sind die freigegebenen Runtime-PNGs in 16 / 24 / 32 / 48 / 64 / 128 px unter `assets/ui/icons/` archiviert; die optionalen SVG-with-PNG-Fassungen bleiben getrennt klassifiziert.
-- `assets/ui/icons/icon-map.json` stellt stabile semantische IDs bereit; `src/app/UiIconAssets.hpp/.cpp` lädt die passende Rastergröße und fällt nur bei fehlender exakter Größe auf den nächstgelegenen freigegebenen Export zurück.
-- Die 14 ergänzten UI-Icons für 2D, 3D, KFM, AI, XP, Preise, Visibility, Lock/Unlock, Copy, Duplicate, Delete, Command Palette und Recent Projects sind an reale UI-Funktionen angebunden.
-- Generische DrawList-Icons sind nur noch dokumentierter Funktions-Fallback, wenn das Final-Paket für eine konkrete Semantik kein freigegebenes Icon enthält; vorhandene Paketicons dürfen nicht durch Legacy-Glyphen ersetzt werden.
+- `NextGen_Icons_Final.zip` ist die verbindliche Artwork-Quelle des Icon-Systems: 68 geprüfte echte SVG-Vector-Master ohne eingebettete Rasterbilder sowie die freigegebenen PNG-Exporte 16 / 24 / 32 / 48 / 64 / 128 px.
+- Der **aktuelle Branch archiviert bewusst nur den bereits migrierten Runtime-Subset** unter `assets/ui/icons/png/`; die vollständige Größenmatrix und die SVG-Master liegen noch nicht vollständig im Git-Checkout. `tools/ui/import_icon_pack.py` ist der reproduzierbare Importpfad, sobald das Final-ZIP lokal verfügbar ist.
+- `assets/ui/icons/icon-map.json` stellt stabile semantische IDs bereit; `src/app/UiIconAssets.hpp/.cpp` sucht die gewünschte Größe und fällt auf den nächstgelegenen **tatsächlich vorhandenen** freigegebenen Rasterexport zurück. Fehlt für eine ID im Checkout derzeit jedes Raster, bleibt der bestehende DrawList-Fallback sichtbar.
+- Die bereits eingecheckten Final-Paketicons sind an reale UI-Funktionen gebunden. Aktuelle QA migriert u. a. AI, Route/MobRoam, Spawn, Search/Filter und Transform-Aktionen auf ihre semantischen IDs, ohne unpassende Symbole umzudeuten.
+- DrawList-Icons bleiben zulässig, wenn entweder das Final-Paket keine dedizierte Semantik besitzt oder der freigegebene Rasterexport dieser bereits gemappten ID im aktuellen Checkout noch nicht importiert wurde.
 - `src/app/resources/nextgen.ico` enthält das NG-Markenicon in den nativen Windows-Größen; das Fenster setzt Ressource 101 zusätzlich für Titlebar, Alt-Tab und Taskleiste.
-- `docs/ui-vision/ICON_INVENTORY.md` dokumentiert Inventar, Mapping und Migrationsstatus des finalen 68-Icon-Pakets.
+- `docs/ui-vision/ICON_INVENTORY.md` dokumentiert Inventar, Mapping, Runtime-Subset und bewusste Fallbacks des finalen 68-Icon-Systems.
 
 ## Referenzhierarchie
 
