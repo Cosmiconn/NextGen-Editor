@@ -250,6 +250,11 @@ add_test(NAME nif_model COMMAND test_nif_model
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/wagon2.nif
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/ship_post.nif)
 
+add_executable(test_nif_named_shader_materials tests/test_nif_named_shader_materials.cpp)
+target_link_libraries(test_nif_named_shader_materials PRIVATE mapeditor_core)
+add_test(NAME nif_named_shader_materials COMMAND test_nif_named_shader_materials
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures)
+
 add_executable(test_nif_particles tests/test_nif_particles.cpp)
 target_link_libraries(test_nif_particles PRIVATE mapeditor_core)
 add_test(NAME nif_particles COMMAND test_nif_particles ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/particles)
