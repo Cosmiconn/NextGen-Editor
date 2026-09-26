@@ -6,8 +6,10 @@
 #include <iostream>
 #include <map>
 #include <set>
+#include <sstream>
 #include <string>
 #include <tuple>
+#include <vector>
 
 namespace fs = std::filesystem;
 namespace core = theseed::mapeditor::core;
@@ -78,8 +80,18 @@ const char* ApplyModeName(std::uint32_t mode) {
 } // namespace
 
 int main(int argc, char** argv) {
-    if (argc < 2) {
-        std::cerr << "Usage: nif_material_inventory <root> [root ...]\n";
+    bool strictRenderer = false;
+    std::vector<fs::path> roots;
+    for (int arg = 1; arg < argc; ++arg) {
+        const std::string value = argv[arg];
+        if (value == "--strict-renderer") {
+            strictRenderer = true;
+        } else {
+            roots.emplace_back(value);
+        }
+    }
+    if (roots.empty()) {
+        std::cerr << "Usage: nif_material_inventory [--strict-renderer] <root> [root ...]\n";
         return 2;
     }
 
@@ -93,6 +105,8 @@ int main(int argc, char** argv) {
     std::size_t inheritedProperties = 0;
     std::size_t particleSystems = 0;
     std::map<std::string, std::size_t> particleFiles;
+    std::size_t recoveredModels = 0;
+    std::size_t partialModels = 0;
 
     std::map<std::string, std::size_t> shaderParts;
     std::map<std::string, std::set<std::string>> shaderFiles;
@@ -133,12 +147,25 @@ int main(int argc, char** argv) {
     std::size_t stencilEnabledParts = 0;
     std::size_t unsupportedStencilParts = 0;
     std::map<std::tuple<std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t>, std::size_t> stencilStates;
+    std::size_t unsupportedClampBindings = 0;
+    std::size_t unsupportedFilterBindings = 0;
+    std::size_t unsupportedTextureTransforms = 0;
+    std::size_t unsupportedTransformAnimations = 0;
+    std::size_t unsupportedFlipAnimations = 0;
+    std::size_t unsupportedBlendParts = 0;
+    std::size_t unsupportedAlphaTestParts = 0;
+    std::size_t unsupportedDepthParts = 0;
+    std::size_t unsupportedFaceDrawParts = 0;
+    std::size_t unsupportedVertexColorParts = 0;
+    std::size_t billboardParts = 0;
+    std::map<std::uint16_t, std::size_t> billboardModes;
+    std::size_t lodParts = 0;
+    std::size_t skinnedParts = 0;
     std::size_t textureTransformTracks = 0;
     std::size_t textureFlipTracks = 0;
     std::vector<std::pair<std::string, std::string>> failures;
 
-    for (int arg = 1; arg < argc; ++arg) {
-        const fs::path root(argv[arg]);
+    for (const fs::path& root : roots) {
         if (!fs::is_directory(root)) {
             std::cerr << "Not a directory: " << root << '\n';
             return 2;
@@ -157,6 +184,14 @@ int main(int argc, char** argv) {
             }
 
             ++loaded;
+            if (model->recovered) {
+                ++recoveredModels;
+                rendererGapFiles.insert(entry.path().string());
+            }
+            if (model->partial) {
+                ++partialModels;
+                rendererGapFiles.insert(entry.path().string());
+            }
             decodedEmbedded += model->decodedEmbeddedTextures;
             undecodedEmbedded += model->undecodedEmbeddedTextures;
             unsupportedEffects += model->textureEffectUnsupportedBlocks;
@@ -181,7 +216,7 @@ int main(int argc, char** argv) {
                     rendererGapFiles.insert(entry.path().string());
                 }
                 ++applyModes[part.textureApplyMode];
-                if (part.textureApplyMode == 3u || part.textureApplyMode == 4u) {
+                if (part.textureApplyMode > 2u) {
                     ++unmaterializedApplyModeParts;
                     rendererGapFiles.insert(entry.path().string());
                     std::ostringstream detail;
@@ -223,6 +258,32 @@ int main(int argc, char** argv) {
                 alphaTestParts += part.alphaTest ? 1u : 0u;
                 depthTestDisabledParts += part.depthTest ? 0u : 1u;
                 depthWriteDisabledParts += part.depthWrite ? 0u : 1u;
+                if (part.hasVertexColorProperty && (part.vertexColorMode > 2u || part.vertexLightingMode > 1u)) {
+                    ++unsupportedVertexColorParts;
+                    rendererGapFiles.insert(entry.path().string());
+                }
+                if (part.faceDrawMode > 3u) {
+                    ++unsupportedFaceDrawParts;
+                    rendererGapFiles.insert(entry.path().string());
+                }
+                if (part.alphaBlend && (part.alphaSrcBlend > 10u || part.alphaDstBlend > 10u)) {
+                    ++unsupportedBlendParts;
+                    rendererGapFiles.insert(entry.path().string());
+                }
+                if (part.alphaTest && part.alphaTestFunc > 7u) {
+                    ++unsupportedAlphaTestParts;
+                    rendererGapFiles.insert(entry.path().string());
+                }
+                if (part.depthTest && part.depthFunction > 7u) {
+                    ++unsupportedDepthParts;
+                    rendererGapFiles.insert(entry.path().string());
+                }
+                if (part.billboard) {
+                    ++billboardParts;
+                    ++billboardModes[part.billboardMode];
+                }
+                lodParts += part.lodControlled ? 1u : 0u;
+                skinnedParts += part.skinned ? 1u : 0u;
                 if (part.hasStencilProperty) {
                     ++stencilPropertyParts;
                     stencilEnabledParts += part.stencilEnabled ? 1u : 0u;
@@ -237,6 +298,18 @@ int main(int argc, char** argv) {
                 }
                 textureTransformTracks += part.textureTransformAnimations.size();
                 textureFlipTracks += part.textureFlipAnimations.size();
+                for (const auto& anim : part.textureTransformAnimations) {
+                    if (anim.slot >= part.textureSlots.size() || anim.operation > 4u) {
+                        ++unsupportedTransformAnimations;
+                        rendererGapFiles.insert(entry.path().string());
+                    }
+                }
+                for (const auto& anim : part.textureFlipAnimations) {
+                    if (anim.slot >= part.textureSlots.size()) {
+                        ++unsupportedFlipAnimations;
+                        rendererGapFiles.insert(entry.path().string());
+                    }
+                }
 
                 const auto appendUvDiagnostic = [&](std::ostringstream& out, std::uint32_t uvSet) {
                     if (uvSet >= part.uvSetDiagnostics.size()) return;
@@ -270,8 +343,17 @@ int main(int argc, char** argv) {
                     }
                     ++classicClampModes[texture.clampMode];
                     ++classicFilterModes[texture.filterMode];
-                    if (texture.filterMode >= 6u) {
+                    if (texture.clampMode > 3u) {
+                        ++unsupportedClampBindings;
+                        rendererGapFiles.insert(entry.path().string());
+                    }
+                    if (texture.filterMode > 6u) {
+                        ++unsupportedFilterBindings;
                         unusualFilterFiles[texture.filterMode].insert(entry.path().string());
+                        rendererGapFiles.insert(entry.path().string());
+                    }
+                    if (texture.hasTransform && texture.transformType > core::kNifTextureTransformMaya) {
+                        ++unsupportedTextureTransforms;
                         rendererGapFiles.insert(entry.path().string());
                     }
                     if (texture.uvSet > 7u) {
@@ -334,6 +416,20 @@ int main(int argc, char** argv) {
                         ++uvRendererOverflowBindings;
                         rendererGapFiles.insert(entry.path().string());
                     }
+                    if (shaderSlot.texture.clampMode > 3u) {
+                        ++unsupportedClampBindings;
+                        rendererGapFiles.insert(entry.path().string());
+                    }
+                    if (shaderSlot.texture.filterMode > 6u) {
+                        ++unsupportedFilterBindings;
+                        unusualFilterFiles[shaderSlot.texture.filterMode].insert(entry.path().string());
+                        rendererGapFiles.insert(entry.path().string());
+                    }
+                    if (shaderSlot.texture.hasTransform &&
+                        shaderSlot.texture.transformType > core::kNifTextureTransformMaya) {
+                        ++unsupportedTextureTransforms;
+                        rendererGapFiles.insert(entry.path().string());
+                    }
                     if (shaderSlot.texture.present) {
                         const bool hasRequestedUvs =
                             shaderSlot.texture.uvSet < part.uvSets.size() &&
@@ -389,6 +485,15 @@ int main(int argc, char** argv) {
                     stat.files.insert(entry.path().string());
                     stat.clampModes.insert(effect.clampMode);
                     stat.filterModes.insert(effect.filterMode);
+                    if (effect.clampMode > 3u) {
+                        ++unsupportedClampBindings;
+                        rendererGapFiles.insert(entry.path().string());
+                    }
+                    if (effect.filterMode > 6u) {
+                        ++unsupportedFilterBindings;
+                        unusualFilterFiles[effect.filterMode].insert(entry.path().string());
+                        rendererGapFiles.insert(entry.path().string());
+                    }
                     if (effect.sourceUsesEmbeddedPixelData) {
                         ++stat.embedded;
                         if (!effect.embeddedTexture) ++stat.unresolvedEmbedded;
@@ -427,6 +532,8 @@ int main(int argc, char** argv) {
               << "\tinheritedProperties=" << inheritedProperties
               << "\tparticleSystems=" << particleSystems
               << "\tparticleFiles=" << particleFiles.size()
+              << "\trecovered=" << recoveredModels
+              << "\tpartial=" << partialModels
               << "\tuvOverflowParts=" << uvRendererOverflowParts
               << "\tuvOverflowBindings=" << uvRendererOverflowBindings
               << "\tmissingRequestedUvBindings=" << missingRequestedUvBindings
@@ -437,6 +544,16 @@ int main(int argc, char** argv) {
               << "\tunsupportedEffectBindings=" << unsupportedEffectBindings
               << "\tclippingEffects=" << clippingEffectBindings
               << "\tprojectedEffects=" << projectedEffectBindings
+              << "\tunsupportedClampBindings=" << unsupportedClampBindings
+              << "\tunsupportedFilterBindings=" << unsupportedFilterBindings
+              << "\tunsupportedTextureTransforms=" << unsupportedTextureTransforms
+              << "\tunsupportedTransformAnimations=" << unsupportedTransformAnimations
+              << "\tunsupportedFlipAnimations=" << unsupportedFlipAnimations
+              << "\tunsupportedBlendParts=" << unsupportedBlendParts
+              << "\tunsupportedAlphaTestParts=" << unsupportedAlphaTestParts
+              << "\tunsupportedDepthParts=" << unsupportedDepthParts
+              << "\tunsupportedFaceDrawParts=" << unsupportedFaceDrawParts
+              << "\tunsupportedVertexColorParts=" << unsupportedVertexColorParts
               << "\trendererGapFiles=" << rendererGapFiles.size() << '\n';
 
     for (const auto& [name, count] : shaderParts) {
@@ -466,7 +583,7 @@ int main(int argc, char** argv) {
                   << "\tmode=" << mode
                   << "\tname=" << ApplyModeName(mode)
                   << "\tparts=" << count;
-        if (mode == 3u || mode == 4u) std::cout << "\trenderer=modulate-fallback";
+        if (mode > 2u) std::cout << "\trenderer=modulate-fallback";
         std::cout << '\n';
     }
 
@@ -526,9 +643,9 @@ int main(int argc, char** argv) {
         std::cout << "CLAMPMODE\tmode=" << mode << "\tbindings=" << bindingCount << '\n';
     for (const auto& [mode, bindingCount] : classicFilterModes) {
         std::cout << "FILTERMODE\tmode=" << mode << "\tbindings=" << bindingCount;
-        if (mode >= 6u) std::cout << "\trenderer=trilinear-fallback";
+        if (mode > 6u) std::cout << "\trenderer=trilinear-fallback";
         std::cout << '\n';
-        if (mode >= 6u)
+        if (mode > 6u)
             for (const auto& path : unusualFilterFiles[mode])
                 std::cout << "FILTERMODEFILE\tmode=" << mode
                           << "\tpath=" << Clean(path) << '\n';
@@ -537,7 +654,7 @@ int main(int argc, char** argv) {
         std::cout << "APPLYMODE\tmode=" << mode
                   << "\tname=" << ApplyModeName(mode)
                   << "\tparts=" << partCount;
-        if (mode == 3u || mode == 4u) std::cout << "\trenderer=modulate-fallback";
+        if (mode > 2u) std::cout << "\trenderer=modulate-fallback";
         std::cout << '\n';
         if (mode != 2u) {
             for (const auto& path : applyModeFiles[mode])
@@ -555,7 +672,10 @@ int main(int argc, char** argv) {
     for (const auto& [mode, partCount] : vertexColorModes)
         std::cout << "VERTEXCOLOR\tmode=" << mode << "\tparts=" << partCount << '\n';
     for (const auto& [mode, partCount] : faceDrawModes)
-        std::cout << "FACEDRAW\tmode=" << mode << "\tparts=" << partCount << '\n';
+        std::cout << "FACEDRAW\tmode=" << mode << "\tparts=" << partCount
+                  << "\trenderer=" << (mode <= 3u ? "materialized" : "fallback") << '\n';
+    for (const auto& [mode, partCount] : billboardModes)
+        std::cout << "BILLBOARD\tmode=" << mode << "\tparts=" << partCount << '\n';
     for (const auto& [key, partCount] : stencilStates) {
         const auto [function, failAction, zFailAction, passAction] = key;
         std::cout << "STENCIL\tfunction=" << function
@@ -617,6 +737,9 @@ int main(int argc, char** argv) {
               << "\tstencilPropertyParts=" << stencilPropertyParts
               << "\tstencilEnabledParts=" << stencilEnabledParts
               << "\tunsupportedStencilParts=" << unsupportedStencilParts
+              << "\tbillboardParts=" << billboardParts
+              << "\tlodParts=" << lodParts
+              << "\tskinnedParts=" << skinnedParts
               << "\ttextureTransformTracks=" << textureTransformTracks
               << "\ttextureFlipTracks=" << textureFlipTracks << '\n';
 
@@ -634,6 +757,11 @@ int main(int argc, char** argv) {
     if (undecodedEmbedded != 0) {
         std::cerr << "Fixture material audit failed: " << undecodedEmbedded
                   << " embedded texture(s) were not decoded.\n";
+        return 1;
+    }
+    if (strictRenderer && !rendererGapFiles.empty()) {
+        std::cerr << "Strict renderer audit failed: " << rendererGapFiles.size()
+                  << " NIF file(s) still contain renderer-fidelity gaps.\n";
         return 1;
     }
     return 0;
