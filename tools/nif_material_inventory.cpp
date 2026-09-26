@@ -68,6 +68,8 @@ int main(int argc, char** argv) {
     std::map<std::string, std::size_t> shaderParts;
     std::map<std::string, std::set<std::string>> shaderFiles;
     std::map<std::pair<std::string, std::uint32_t>, ShaderSlotStats> shaderSlots;
+    std::map<std::pair<std::string, std::size_t>, SlotStats> shaderClassicSlots;
+    std::map<std::pair<std::string, std::uint32_t>, std::size_t> shaderApplyModes;
     std::array<SlotStats, 10> slots{};
     std::map<std::size_t, std::size_t> uvSetCounts;
     std::map<std::uint32_t, std::size_t> transformMethods;
@@ -117,6 +119,8 @@ int main(int argc, char** argv) {
                 ++uvSetCounts[part.uvSets.size()];
                 ++applyModes[part.textureApplyMode];
                 applyModeFiles[part.textureApplyMode].insert(entry.path().string());
+                if (shader != "<fixed-function>")
+                    ++shaderApplyModes[{shader, part.textureApplyMode}];
                 ++vertexColorModes[part.hasVertexColorProperty ? part.vertexColorMode : 0xffffffffu];
                 ++faceDrawModes[part.faceDrawMode];
                 alphaBlendParts += part.alphaBlend ? 1u : 0u;
@@ -136,6 +140,16 @@ int main(int argc, char** argv) {
                         if (!texture.embeddedTexture) ++stat.unresolvedEmbedded;
                     } else if (!texture.texture.empty()) {
                         ++stat.external;
+                    }
+                    if (shader != "<fixed-function>") {
+                        auto& shaderStat = shaderClassicSlots[{shader, slot}];
+                        ++shaderStat.parts;
+                        if (texture.sourceUsesEmbeddedPixelData) {
+                            ++shaderStat.embedded;
+                            if (!texture.embeddedTexture) ++shaderStat.unresolvedEmbedded;
+                        } else if (!texture.texture.empty()) {
+                            ++shaderStat.external;
+                        }
                     }
                     if (texture.hasTransform) ++transformMethods[texture.transformType];
                 }
@@ -187,6 +201,26 @@ int main(int argc, char** argv) {
         const auto& stat = slots[slot];
         if (!stat.parts) continue;
         std::cout << "SLOT\tindex=" << slot
+                  << "\tparts=" << stat.parts
+                  << "\tembedded=" << stat.embedded
+                  << "\texternal=" << stat.external
+                  << "\tunresolvedEmbedded=" << stat.unresolvedEmbedded << '\n';
+    }
+
+    for (const auto& [key, count] : shaderApplyModes) {
+        const auto& [shader, mode] = key;
+        std::cout << "SHADERAPPLY\tshader=" << Clean(shader)
+                  << "\tmode=" << mode
+                  << "\tname=" << ApplyModeName(mode)
+                  << "\tparts=" << count;
+        if (mode == 3u || mode == 4u) std::cout << "\trenderer=modulate-fallback";
+        std::cout << '\n';
+    }
+
+    for (const auto& [key, stat] : shaderClassicSlots) {
+        const auto& [shader, slot] = key;
+        std::cout << "SHADERCLASSICSLOT\tshader=" << Clean(shader)
+                  << "\tindex=" << slot
                   << "\tparts=" << stat.parts
                   << "\tembedded=" << stat.embedded
                   << "\texternal=" << stat.external
