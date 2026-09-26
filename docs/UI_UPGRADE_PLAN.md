@@ -296,7 +296,7 @@ Diese Roadmap ist ab jetzt die verbindliche Reihenfolge für den weiteren Ausbau
 - Toasts.
 - globale Suche / Command Palette.
 - konfigurierbare Shortcuts. **Umgesetzt** – persistiert, konfliktmarkiert und mit dynamischen Shortcut-Hinweisen in den relevanten Map-UI-Flächen.
-- konsistente Kontextmenüs.
+- konsistente Kontextmenüs. **Umgesetzt** – Objekt/NPC/Mob/Portal zeigen denselben konfigurierten Fokus-Shortcut; SHN/Objekt/Layer laufen über den gemeinsamen MenuItem-Wrapper, SHN Copy/Paste ist DE/EN-konsistent.
 - vollständiger 16–20px-In-App-Icon-Satz: Terrain, Brush, Layers, Walk, Cube, NPC, Mob, Portal, Eye, Lock, Duplicate, Delete, Transform, Grid/Snap, Quest, Item, Skill, Shop, Dialog, Lua, Route, KFM, Play/Pause, Project, Settings.
 
 ### Umsetzungsstand – Level-Editor Meilenstein 1
@@ -346,7 +346,7 @@ Dieser Abschnitt ist der verbindliche Ausbau-Fahrplan für den laufenden Branch 
 2. Grid-, Winkel- und Scale-Snapping, World/Local, „Auf Boden setzen“ und „Auswahl fokussieren“.
 3. Drag & Drop von NIF-Assets direkt in 2D/3D.
 4. Copy / Paste / Duplizieren.
-5. Eye / Lock und einheitliche Kontextmenüs im Szene-Outliner.
+5. Eye / Lock und einheitliche Kontextmenüs im Szene-Outliner. **Umgesetzt.**
 6. Rechteck- und Lasso-Mehrfachauswahl.
 7. Objektgruppen/Ordner + freie Editor-Labels als reine Editor-Organisation, ohne das Fiesta-Dateiformat zu verändern. **Umgesetzt.**
 
