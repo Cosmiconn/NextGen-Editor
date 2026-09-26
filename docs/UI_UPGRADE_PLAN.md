@@ -165,6 +165,7 @@ Pflichtsymbole:
 Bereits umgesetzt:
 - modernes Dark/Cyan-Theme;
 - primäre Navigation Karte / Spieldaten / Animationen / Projekt als aktive Icon+Text-Shell;
+- globale funktionale Menüleiste `Datei / Bearbeiten / Ansicht / Map / Objekte / Terrain / Layer / Werkzeuge / Fenster / Hilfe`; Einträge sind an reale bestehende Aktionen gebunden und kontextabhängig disabled;
 - Project Hub nach realem Funktionsumfang;
 - Quest/Skill direkt auf vorhandene Editoren verdrahtet;
 - Icon-Command-Bar für Map-Werkzeuge; App-Shell-Dateiaktionen und Project-Hub nutzen ebenfalls die finalen semantischen Paketicons;
