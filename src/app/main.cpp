@@ -12957,20 +12957,27 @@ void DrawEditor2DContent(EditorState& state) {
             const float ou = spanX > 0.0f ? obj.posX / spanX : 0.0f;
             const float ov = 1.0f - (spanZ > 0.0f ? obj.posZ / spanZ : 0.0f);
             const ImVec2 screenPos(cursorScreenPos.x + ou * imageSize.x, cursorScreenPos.y + ov * imageSize.y);
-            if (walkMode) {
-                // Dezenter Referenz-Punkt + dünner Ring als Fallback (falls keine Grundfläche
-                // berechenbar), PLUS die echte Grundfläche (rotiertes Rechteck aus den NIF-
-                // Vertex-Positionen) wo möglich - Nutzerwunsch, siehe CHANGELOG [0.44.24].
-                drawList->AddCircleFilled(screenPos, 3.0f, IM_COL32(230, 230, 235, 150));
-                drawList->AddCircle(screenPos, 7.0f, IM_COL32(230, 230, 235, 90), 16, 1.0f);
-                DrawObjectFootprint2D(state, obj, drawList, cursorScreenPos, imageSize, spanX, spanZ,
-                                       IM_COL32(230, 230, 235, 180), 1.5f);
-            } else {
-                const bool selected = std::find(state.selectedObjects.begin(), state.selectedObjects.end(), static_cast<int>(i)) != state.selectedObjects.end();
-                drawList->AddCircleFilled(screenPos, selected ? 5.0f : 3.5f,
-                                           selected ? IM_COL32(255, 255, 255, 255) : IM_COL32(70, 135, 210, 220));
-                DrawObjectFootprint2D(state, obj, drawList, cursorScreenPos, imageSize, spanX, spanZ,
-                                       selected ? IM_COL32(255, 255, 255, 200) : IM_COL32(70, 135, 210, 160), 1.5f);
+            const bool selected = std::find(state.selectedObjects.begin(), state.selectedObjects.end(),
+                                            static_cast<int>(i)) != state.selectedObjects.end();
+            const ImU32 edgeColor = walkMode
+                ? IM_COL32(230, 230, 235, 190)
+                : (selected ? IM_COL32(255,255,255,235) : IM_COL32(70,160,225,205));
+            const bool hasExactContact = DrawObjectFootprint2D(
+                state, obj, drawList, cursorScreenPos, imageSize, spanX, spanZ,
+                edgeColor, selected ? 2.4f : 1.5f);
+
+            // Echte Kontaktkontur vorhanden: unselektierte Objekte werden absichtlich NUR
+            // über die Geometrie gezeigt. Der alte Origin-Kreis machte die 2D-Ansicht zu einer
+            // Markerkarte statt zu einer orthografischen Editoransicht. Pivot/Marker bleibt
+            // für Auswahl bzw. als Fallback bei nicht ableitbarer NIF-Kontur erhalten.
+            if (!hasExactContact || selected) {
+                drawList->AddCircleFilled(
+                    screenPos, selected ? 4.5f : 3.0f,
+                    selected ? IM_COL32(255,255,255,255)
+                             : (walkMode ? IM_COL32(230,230,235,150)
+                                         : IM_COL32(70,135,210,220)));
+                if (walkMode && !hasExactContact)
+                    drawList->AddCircle(screenPos, 7.0f, IM_COL32(230,230,235,90), 16, 1.0f);
             }
         }
 
@@ -12984,11 +12991,12 @@ void DrawEditor2DContent(EditorState& state) {
                 const auto& obj = state.shmdCategoryRenderSet.At(i);
                 const int id = ShmdSelectionId(i);
                 const bool selected = std::find(state.selectedObjects.begin(), state.selectedObjects.end(), id) != state.selectedObjects.end();
-                DrawObjectFootprint2D(state, obj, drawList, cursorScreenPos, imageSize, spanX, spanZ,
-                                      selected ? IM_COL32(255, 255, 255, 220) : IM_COL32(70, 190, 210, 170),
-                                      selected ? 2.5f : 1.5f);
+                const bool hasExactContact = DrawObjectFootprint2D(
+                    state, obj, drawList, cursorScreenPos, imageSize, spanX, spanZ,
+                    selected ? IM_COL32(255,255,255,235) : IM_COL32(70,190,210,190),
+                    selected ? 2.5f : 1.5f);
                 const auto polygon = ObjectFootprintWorldPolygon(state, obj);
-                if (!polygon.empty()) {
+                if ((!hasExactContact || selected) && !polygon.empty()) {
                     float cx = 0.0f, cz = 0.0f;
                     for (const auto& p : polygon) { cx += p.first; cz += p.second; }
                     cx /= static_cast<float>(polygon.size());
