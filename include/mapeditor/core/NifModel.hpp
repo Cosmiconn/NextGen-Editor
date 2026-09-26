@@ -27,6 +27,7 @@
 #include <expected>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -103,6 +104,38 @@ struct NifFloatTrack {
     std::vector<NifFloatKey> keys;
 };
 
+// Verifizierte Transformdarstellung für NIF-Szene/Skinning im ursprünglichen
+// Gamebryo-Koordinatenrahmen. Sie wird zusätzlich zur bereits gerenderten Bind-Pose erhalten,
+// damit KF-Playback dieselben Bone-/Skin-Matrizen erneut auswerten kann.
+struct NifTransform {
+    std::array<float, 9> rotation{1.0f, 0.0f, 0.0f,
+                                  0.0f, 1.0f, 0.0f,
+                                  0.0f, 0.0f, 1.0f};
+    NifVec3 translation{};
+    float scale = 1.0f;
+};
+
+struct NifSkinInfluence {
+    std::uint16_t boneIndex = 0; // Index in NifSkinBinding::bones
+    float weight = 0.0f;
+};
+
+struct NifSkinBoneBinding {
+    std::int32_t nodeIndex = -1; // Index in NifModel::nodes
+    NifTransform bindTransform{}; // NiSkinData bone transform, bytegetreu gelesen
+};
+
+struct NifSkinBinding {
+    std::int32_t skeletonRootNodeIndex = -1;
+    bool partitionWeights = false;
+    NifTransform skinTransform{};        // NiSkinData::Skin Transform
+    NifTransform meshToModelTransform{}; // Geometrie-/Parent-Kette nach dem Skinning
+    std::vector<NifVec3> sourcePositions;
+    std::vector<NifVec3> sourceNormals;
+    std::vector<std::vector<NifSkinInfluence>> vertexInfluences;
+    std::vector<NifSkinBoneBinding> bones;
+};
+
 struct NifTextureTransformAnimation {
     std::uint32_t slot = 0;
     std::uint32_t operation = 0; // 0 U offset, 1 V offset, 2 rotation, 3 U scale, 4 V scale
@@ -162,6 +195,10 @@ struct NifMeshPart {
     bool skinned = false;
     std::uint16_t skinBoneCount = 0;
     std::uint8_t maxSkinInfluences = 0;
+    // Originale Skin-Quelle/Weights/Bind-Matrizen bleiben neben der fertig berechneten Bind-Pose
+    // erhalten. Der normale Map-Renderer nutzt weiterhin positions/normals; nur der
+    // KFM-Preview-Pfad wertet skinBinding zeitabhängig aus.
+    std::optional<NifSkinBinding> skinBinding;
 
     // Dynamische Scene-Graph-Semantik, die nicht dauerhaft in die Vertexdaten eingebrannt
     // werden darf. Die Geometrie selbst bleibt weiterhin in Modellkoordinaten.
