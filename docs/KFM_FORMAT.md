@@ -73,5 +73,22 @@ verwendet Pfad-Caches und eine Event-ID-Hashtabelle; sie läuft nur auf Anforder
 Filter werden bei Änderungen berechnet, beide Tabellen zeichnen nur sichtbare
 Zeilen. Es gibt keine Datei-/Verzeichnissuche pro Frame.
 
-Der Katalog ist ein Inspektor mit Kopie-Export. Feldbearbeitung, KF-Sequenzauswahl
-im Renderer und vollständiges Skelettanimations-Playback sind weitere Arbeit.
+Der Katalog besitzt inzwischen eine echte KF-Playback-Stufe:
+
+- ausgewählte, aufgelöste KF-Datei laden;
+- Play/Pause, Loop, Geschwindigkeitsfaktor und Scrub;
+- echte `NiTextKeyExtraData`-Marker auf einer klick-/dragbaren Timeline;
+- Live-Sampling der verifizierten Pose-/Linear-/Constant-/XYZ-Transformtracks;
+- Trackliste mit aktuell gesampelter Translation/Scale und klarer Kennzeichnung nicht
+  unterstützter Interpolationen;
+- **Skeleton-Viewport**: die explizite KFM-NIF-Referenz wird über denselben sicheren
+  Referenzresolver geladen. Die im NIF gelesene Parent-/Local-Bind-Hierarchie wird mit den
+  nach Knotennamen gematchten KF-Local-Transforms zusammengesetzt und als bewegtes Skelett
+  gerendert. Drag dreht die Ansicht, Mausrad zoomt, Doppelklick setzt die Kamera zurück.
+
+Wichtig: Das ist bereits echtes Skelett-Playback, aber **noch keine animierte Mesh-Deformation**.
+Komprimierte Fiesta-B-Splines, TBC/Quadratic-Interpolation und animierte Skin-Matrizen werden
+weiterhin nicht geraten. Nicht samplebare Tracks bleiben im Skeleton-Viewport in Bind-Pose und
+werden sichtbar als offen markiert. Schreibende Transition-/KFM-Bearbeitung darf nur auf den
+bereits verlustfrei belegten Codec-Feldern aufbauen; unbekannte Laufzeitsemantik bleibt
+uninterpretiert.
