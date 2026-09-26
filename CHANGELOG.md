@@ -1,3 +1,10 @@
+## NIF rendering follow-up — inherited NiProperty resolution
+- Preserve each parsed NiAVObject/NiNode property list in the internal scene graph instead of keeping only the geometry node's direct property refs.
+- Build the effective geometry property chain child-first: properties authored directly on NiTriShape/NiTriStrips win, then nearest parent NiNode properties, then higher ancestors.
+- Resolve material state authoritatively after geometry rebuilds through that effective chain; existing Texturing, Alpha, ZBuffer, Stencil/FaceDrawMode and Specular resolvers now receive inherited refs as well.
+- Expose the number of inherited property bindings in NifModel and the read-only NIF Inspector so problematic assets can be diagnosed without guessing.
+- NiTextureEffect and NiVertexColorProperty remain diagnostic-only and are not claimed as implemented by this change.
+
 ## NIF rendering follow-up — embedded texture source fidelity
 - Treat `NiSourceTexture::Use External = 0` as a first-class material/flipbook source even when its file-name field is empty; preserve the PixelData block reference into runtime material slots.
 - Sanitize every authored UV set, not only the legacy base-UV alias. Invalid secondary sets are cleared so the existing deterministic UV0 fallback can render valid embedded Detail/Glow/Bump/Decal layers instead of sampling with corrupt coordinates.
