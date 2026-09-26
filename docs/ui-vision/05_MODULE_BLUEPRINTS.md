@@ -40,7 +40,7 @@ General / Requirements / Objectives / Rewards / Dialogs / Scripts. Referenzen al
 Serie links, Stufe/Detail rechts. Animation/VFX nutzen datenbelegte Such-Picker über alle gleichartigen ActiveSkillView-Felder; rechts im Picker steht eine Referenz-Vorschau mit Häufigkeit, konkreten Skills und Quellspalten sowie direkter Navigation. Das ist bewusst noch kein KF/NIF-Playback und keine Behauptung physischer Asset-Gültigkeit.
 
 ## KFM
-Assetliste + Preview-Viewport + Transport + Timeline + Trackliste. Danach Skeleton/Mesh Playback.
+Assetliste + Transport + echte Text-Key-Timeline + Trackliste. Der Preview-Viewport zeigt die reale KFM-NIF-Hierarchie als animiertes Skelett und wendet nur verifiziert samplebare KF-Local-Transforms an; Drag/Zoom/Reset gehören zum Viewport. Nicht verifizierte B-Splines/TBC bleiben in Bind-Pose. Nächste Stufe ist animierte Skin-/Mesh-Deformation, nicht ein erfundener Fallback.
 
 ## AI / Interface / Drops
 Gleiche Shell, Komponenten und Zustandslogik; keine optischen Mikrowelten.
