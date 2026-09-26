@@ -13,6 +13,20 @@ The final package extends the original 54-icon set with 14 UI icons:
 2D, 3D, KFM, AI, XP, Preise, Visibility Eye, Lock, Unlock, Copy,
 Duplicate, Delete, Command Palette and Recent Projects.
 
+## Current checkout state
+
+The source package is complete, but the Git checkout currently contains only the
+runtime subset already needed by the migrated UI. This is intentional while the
+branch remains under visual QA.
+
+- `UiIconAssets` accepts the full approved size set `16/24/32/48/64/128`.
+- At runtime it loads the closest **committed** approved PNG for a semantic ID.
+- If no PNG for that semantic ID is committed yet, the caller keeps its existing
+  functional DrawList fallback.
+- Do not remap a missing runtime asset to a different semantic icon merely to
+  avoid the fallback.
+- Running the importer below with the approved Final ZIP materializes the full
+  SVG masters, PNG size matrix, raster masters and manifest reproducibly.
 Import:
 
 ```bash
