@@ -2104,20 +2104,16 @@ void SkipNiPixelData(ByteReader& r, bool isOlderVersion) {
     r.Skip(dataSize);
 }
 
-// WICHTIGER, GRÖSSERER FUND (siehe docs/MAP_FORMAT.md, Abschnitt "UV-Koordinaten..."):
-// Die aus NiTriStripsData/NiTriShapeData extrahierten UV-Koordinaten sind in praktisch JEDER
-// bisher geprüften echten Datei unbrauchbar (extrem große/kleine, inkonsistente Float-Werte),
-// UNABHÄNGIG von Textur, Geometrie oder numUvSets - selbst am bislang am gründlichsten
-// verifizierten Referenzobjekt (santuary.nif). Die Byte-LÄNGE des UV-Abschnitts ist dabei
-// zweifelsfrei korrekt (mehrfach bestätigt: alle Felder danach - inkl. Dreieckszahl, Streifen-
-// länge und der bekannte 8-Byte-Trailer - treffen exakt bis zum Dateiende; auch alle Vertex-
-// und Normalen-Daten VOR den UVs sind einwandfrei, alle 86 Normalen von santuary.nif sind
-// exakte Einheitsvektoren). Die Ursache bleibt ungeklärt (evtl. Datenqualitätsproblem in den
-// Originaldateien - z.B. ungenutzter/nie befüllter UV-Kanal - oder ein noch nicht gefundenes
-// Detail der echten Kodierung). Bis das geklärt ist: lieber KEINE Textur anzeigen als eine
-// mit Sicherheit falsch gemappte - die Prüfung hier verwirft unplausible UV-Sets komplett
-// (der Aufrufer fällt dann automatisch auf die Materialfarbe zurück, siehe NifMeshPart::uvs
-// Kommentar). Betrifft NICHT die Vertex-Positionen/Normalen/Dreiecke - nur die UV-Koordinaten.
+// UV-Sicherheitsnetz:
+// Der frühere Befund "praktisch alle UVs unbrauchbar" war eine Folge des damals falsch
+// positionierten 2-Byte-Felds vor den UV-Daten. Nach der Korrektur (Feld liegt hinter den
+// UV-Sets) liefern die verifizierten Referenzdateien plausible authored UVs.
+// Sanitize bleibt trotzdem als harte Schutzschicht gegen Recovery-/Sondervarianten erhalten.
+// Wichtig seit Multi-Texture: NICHT nur der alte Base-Alias, sondern jedes einzelne UV-Set
+// muss geprüft werden, weil Base/Dark/Detail/Gloss/Glow/Bump/Decals unterschiedliche Sets
+// referenzieren können. Ein verworfenes sekundäres Set erlaubt dem Renderer den bestehenden
+// deterministischen UV0-Fallback, statt mit NaN/extremen Koordinaten eine korrekte (auch
+// eingebettete) Textur scheinbar verschwinden zu lassen.
 void SanitizeUvs(std::vector<NifVec2>& uvs) {
     for (const auto& uv : uvs) {
         const bool implausible =
