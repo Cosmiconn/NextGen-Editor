@@ -188,7 +188,7 @@ anderes Paketicon dargestellt.
 - [x] UI-QA 26.09.: AI-Aktionen verwenden `module.ai`, Spawn-Einträge `nav.spawns`, Portal-Positionierung `transform.move`, Route/MobRoam `gameplay.path`; die Route-ID fällt bis zum Rasterimport funktional auf DrawList zurück.
 - [x] UI-QA 26.09.: gemeinsame Search-Chrome verwendet `panel.search` in Asset Browser, Szene-Outliner, AI Workspace, NIF Inspector, Interface, SHN, Quest, Skill, Drop Table, Pickern, Handbuch und Command Palette; NIF-/Interface-Filter verwenden `panel.filter`. Die einzige bewusst rohe Suchzeile bleibt der kompakte SHN-Spaltenfilter pro Tabellenkopf, damit nicht in jeder Spalte ein zusätzliches Icon steht.
 - [x] kleinere klar zuordenbare Spezial-/Unterpanel-Header nachgezogen: Map-Launcher, Quest-/Skill-Listen und Properties sowie Active Tool verwenden den gemeinsamen Header; AI-Bibliothek/Editor und NIF-Material behalten ihre Inline-Aktionen und tragen dort Paketicons.
-- [ ] verbleibende reine Abschnittslabels weiter prüfen; bestehende Inline-Header mit bereits korrektem Paketicon müssen nicht künstlich auf den großen Panel-Header umgebaut werden.
+- [x] verbleibende klar semantische Abschnittslabels geprüft: Quest Flow nutzt `module.quest`, die Custom-NPC/Mob-Vorschau dynamisch `module.custom_npc`/`module.custom_mob`. Bereits korrekt iconisierte Inline-Header sowie Entity-Namen, Tabellenzähler und Spezialpicker bleiben bewusst kompakt statt künstlich auf den großen Panel-Header umgebaut zu werden.
 - [ ] DrawList-Fallbacks weiter auf die oben dokumentierten Semantik- oder Runtime-Import-Lücken reduzieren; keine Paketsemantik umdeuten.
 
 ## Runtime-QA-Hinweis
