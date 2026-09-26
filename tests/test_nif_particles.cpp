@@ -181,6 +181,10 @@ int main(int argc, char** argv) {
             for (const auto& system : gate->particleSystems) {
                 check(system.dataRef >= 0, "particle system keeps data block reference");
                 check(!system.modifierRefs.empty(), "particle system keeps modifier wiring");
+                check(system.modifierTypes.size() == system.modifierRefs.size(),
+                      "particle modifier references resolve to explicit block types");
+                for (const auto& modifierType : system.modifierTypes)
+                    check(modifierType != "<invalid>", "particle modifier type reference is valid");
             }
         }
     }

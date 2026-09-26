@@ -105,6 +105,8 @@ int main(int argc, char** argv) {
     std::size_t inheritedProperties = 0;
     std::size_t particleSystems = 0;
     std::map<std::string, std::size_t> particleFiles;
+    std::map<std::string, std::size_t> particleModifierTypes;
+    std::size_t invalidParticleModifierRefs = 0;
     std::size_t recoveredModels = 0;
     std::size_t partialModels = 0;
 
@@ -202,6 +204,12 @@ int main(int argc, char** argv) {
                 // Parsing a particle system is not visual parity: until simulation/draw exists,
                 // any such file is a renderer-fidelity gap.
                 rendererGapFiles.insert(entry.path().string());
+                for (const auto& system : model->particleSystems) {
+                    for (const auto& modifierType : system.modifierTypes) {
+                        ++particleModifierTypes[modifierType];
+                        if (modifierType == "<invalid>") ++invalidParticleModifierRefs;
+                    }
+                }
             }
 
             for (std::size_t partIndex = 0; partIndex < model->parts.size(); ++partIndex) {
@@ -532,6 +540,7 @@ int main(int argc, char** argv) {
               << "\tinheritedProperties=" << inheritedProperties
               << "\tparticleSystems=" << particleSystems
               << "\tparticleFiles=" << particleFiles.size()
+              << "\tinvalidParticleModifierRefs=" << invalidParticleModifierRefs
               << "\trecovered=" << recoveredModels
               << "\tpartial=" << partialModels
               << "\tuvOverflowParts=" << uvRendererOverflowParts
@@ -665,6 +674,9 @@ int main(int argc, char** argv) {
     }
     for (const auto& detail : applyModeDetails)
         std::cout << detail << '\n';
+    for (const auto& [type, count] : particleModifierTypes)
+        std::cout << "PARTICLEMODIFIER\ttype=" << Clean(type)
+                  << "\tbindings=" << count << '\n';
     for (const auto& [path, count] : particleFiles)
         std::cout << "PARTICLEFILE\tsystems=" << count
                   << "\trenderer=unmaterialized"

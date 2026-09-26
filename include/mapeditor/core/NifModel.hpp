@@ -233,6 +233,9 @@ struct NifParticleSystemInfo {
     std::int32_t dataRef = -1;
     std::vector<std::int32_t> propertyRefs;
     std::vector<std::int32_t> modifierRefs;
+    // Parallel zu modifierRefs; direkt aus der Header-Blocktyp-Tabelle aufgelöst. Dadurch kann
+    // der Renderer exakt die im Corpus vorkommenden Modifier implementieren statt Typen zu raten.
+    std::vector<std::string> modifierTypes;
     NifVec3 translation{};
     std::array<float, 9> rotation{1.0f, 0.0f, 0.0f,
                                   0.0f, 1.0f, 0.0f,

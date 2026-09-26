@@ -3072,6 +3072,16 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             publicSystem.dataRef = psys.dataRef;
             publicSystem.propertyRefs = psys.base.properties;
             publicSystem.modifierRefs = psys.modifiers;
+            publicSystem.modifierTypes.reserve(psys.modifiers.size());
+            for (const auto modifierRef : psys.modifiers) {
+                if (modifierRef < 0 || static_cast<std::size_t>(modifierRef) >= hdr.blockTypeIndex.size()) {
+                    publicSystem.modifierTypes.emplace_back("<invalid>");
+                    continue;
+                }
+                const auto typeIndex = hdr.blockTypeIndex[static_cast<std::size_t>(modifierRef)];
+                if (typeIndex >= hdr.blockTypes.size()) publicSystem.modifierTypes.emplace_back("<invalid>");
+                else publicSystem.modifierTypes.push_back(hdr.blockTypes[typeIndex]);
+            }
             publicSystem.translation = psys.base.translation;
             publicSystem.rotation = psys.base.rotation;
             publicSystem.scale = psys.base.scale;
