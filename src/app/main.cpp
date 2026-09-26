@@ -8673,7 +8673,8 @@ void DrawAiWorkspace(EditorState& state) {
             const bool lua=idx<state.aiWorkspaceKinds.size()&&state.aiWorkspaceKinds[idx]==0;
             DrawInlineIcon("type",lua?DrawIconCode:DrawIconRoute,
                            lua?IM_COL32(95,195,255,245):IM_COL32(195,135,255,245),
-                           lua?"Lua AIScript":"PineScript",ImVec2(18,18));
+                           lua?"Lua AIScript":"PineScript",ImVec2(18,18),
+                           lua?"module.ai":nullptr);
             ImGui::SameLine(0,4);
             const bool selected=state.aiWorkspaceSelected==static_cast<int>(idx) ||
                                 (!state.aiScriptEditorPath.empty() &&
