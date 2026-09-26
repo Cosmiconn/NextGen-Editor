@@ -15725,6 +15725,12 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                                   "Embedded · PixelData #%d · %u × %u"),
                                 slot.sourcePixelDataRef,
                                 slot.embeddedTexture->width, slot.embeddedTexture->height);
+                    if (!slot.texture.empty()) {
+                        ImGui::TextDisabled(
+                            L("NIF-Quellname: %s · Metadatum, nicht extern geladen",
+                              "NIF source name: %s · metadata, not externally loaded"),
+                            slot.texture.c_str());
+                    }
                 } else if (slot.sourceUsesEmbeddedPixelData) {
                     ImGui::TextColored(
                         ImVec4(1.0f,0.48f,0.34f,1.0f),
