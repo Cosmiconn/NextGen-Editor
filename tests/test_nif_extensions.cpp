@@ -9,6 +9,7 @@ void check(bool value, const char* message) { if (!value) { std::cerr << message
 struct Bytes {
     std::vector<std::uint8_t> data;
     void u8(std::uint8_t n) { data.push_back(n); }
+    void u16(std::uint16_t n) { for(int b=0;b<2;++b) u8(static_cast<std::uint8_t>(n>>(b*8))); }
     void u32(std::uint32_t n) { for(int b=0;b<4;++b) u8(static_cast<std::uint8_t>(n>>(b*8))); }
     void f32(float n) { u32(std::bit_cast<std::uint32_t>(n)); }
     void string(const std::string& s) { u32(static_cast<std::uint32_t>(s.size())); data.insert(data.end(),s.begin(),s.end()); }
@@ -23,9 +24,25 @@ void boundary(Bytes bytes, void (*parse)(ByteReader&)) {
         check(!shortReader.Ok(),"truncated extension rejected");
     }
 }
+void parseZBufferBoundary(ByteReader& r) { (void)ParseNiZBufferProperty(r); }
 }
 int main(int argc, char** argv) {
     if(argc!=2) return 2;
+    Bytes zbuffer;
+    zbuffer.string("");      // NiObjectNET name
+    zbuffer.u32(0);          // no extra-data refs
+    zbuffer.u32(0xFFFFFFFF); // no controller
+    zbuffer.u16(1);          // z-test on, z-buffer read-only
+    zbuffer.u32(3);          // ZCOMP_LESS_EQUAL
+    boundary(zbuffer,parseZBufferBoundary);
+    {
+        ByteReader zr(zbuffer.data);
+        const auto z=ParseNiZBufferProperty(zr);
+        check(zr.Ok(),"NiZBufferProperty parses");
+        check(z.test && !z.write,"NiZBufferProperty flags preserve test/read-only semantics");
+        check(z.function==3,"NiZBufferProperty preserves comparison function");
+    }
+
     Bytes accum; accum.u8(1); accum.u8(2); accum.f32(0);
     for(int i=0;i<58;++i) accum.f32(static_cast<float>(i)+0.25f);
     boundary(accum,ParseFiestaAccumulationState);
