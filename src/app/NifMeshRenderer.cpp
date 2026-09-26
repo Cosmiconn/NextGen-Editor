@@ -16,6 +16,7 @@
 #include <cctype>
 #include <limits>
 #include <unordered_map>
+#include <unordered_set>
 
 #ifdef _WIN32
 #define NOMINMAX
