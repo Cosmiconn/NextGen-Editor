@@ -2780,6 +2780,8 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
     for (std::uint32_t blockIdx = 0; blockIdx < hdr.numBlocks; ++blockIdx) {
         if (blockIdx >= hdr.blockTypeIndex.size()) break;
         const std::string& type = hdr.blockTypes[hdr.blockTypeIndex[blockIdx]];
+        if (type.rfind("NiPSys", 0) == 0 && type.find("Ctlr") != std::string::npos)
+            model.particleControllerTypes.push_back(type);
         if (nameResync && blockIdx > 0 && BlockStartsWithName(type) && !PlausibleNamedStart(r, 0)) {
             // Namens-Resynchronisation (nur als eigene Stufe NACH einem gescheiterten Standardlauf):
             // steht die Position nicht auf einem plausiblen Blockanfang, den naechsten plausiblen

@@ -106,6 +106,7 @@ int main(int argc, char** argv) {
     std::size_t particleSystems = 0;
     std::map<std::string, std::size_t> particleFiles;
     std::map<std::string, std::size_t> particleModifierTypes;
+    std::map<std::string, std::size_t> particleControllerTypes;
     std::size_t invalidParticleModifierRefs = 0;
     std::size_t particleCapacity = 0;
     std::size_t activeParticles = 0;
@@ -209,6 +210,8 @@ int main(int argc, char** argv) {
             undecodedEmbedded += model->undecodedEmbeddedTextures;
             unsupportedEffects += model->textureEffectUnsupportedBlocks;
             inheritedProperties += model->inheritedPropertyBindings;
+            for (const auto& controllerType : model->particleControllerTypes)
+                ++particleControllerTypes[controllerType];
             if (model->particleSystemBlocks > 0u) {
                 particleSystems += model->particleSystemBlocks;
                 particleFiles[entry.path().string()] += model->particleSystemBlocks;
@@ -781,6 +784,9 @@ int main(int argc, char** argv) {
         std::cout << detail << '\n';
     for (const auto& [type, count] : particleModifierTypes)
         std::cout << "PARTICLEMODIFIER\ttype=" << Clean(type)
+                  << "\tbindings=" << count << '\n';
+    for (const auto& [type, count] : particleControllerTypes)
+        std::cout << "PARTICLECTLR\ttype=" << Clean(type)
                   << "\tbindings=" << count << '\n';
     for (const auto& detail : particleSystemDetails)
         std::cout << detail << '\n';

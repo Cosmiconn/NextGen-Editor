@@ -484,6 +484,9 @@ struct NifModel {
     std::string rootName;
     std::vector<NifMeshPart> parts;
     std::vector<NifParticleSystemInfo> particleSystems;
+    // Exact controller block types encountered in this NIF. Kept independently from
+    // modifier wiring so the ResMap renderer can prove controller coverage corpus-wide.
+    std::vector<std::string> particleControllerTypes;
     std::vector<NifNodeInfo> nodes; // NiNode-Hierarchie inkl. lokaler Bind-Transforms; Namen können bei reinen Hierarchie-Knoten leer sein.
 };
 
