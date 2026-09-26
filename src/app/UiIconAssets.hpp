@@ -5,6 +5,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace theseed::mapeditor::app {
 
@@ -24,6 +25,7 @@ public:
     void Shutdown();
 
     [[nodiscard]] std::uint32_t Texture(std::string_view semanticId, int requestedSize);
+    [[nodiscard]] static bool IsKnownSemantic(std::string_view semanticId);
     [[nodiscard]] bool HasAssetRoot() const { return !assetRoot_.empty(); }
     [[nodiscard]] const std::filesystem::path& AssetRoot() const { return assetRoot_; }
 
@@ -34,6 +36,7 @@ private:
 
     std::filesystem::path assetRoot_;
     std::unordered_map<std::string, std::uint32_t> textures_;
+    std::unordered_set<std::string> warnedUnknownSemantics_;
 };
 
 } // namespace theseed::mapeditor::app
