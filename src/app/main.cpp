@@ -1102,6 +1102,15 @@ const std::vector<ShortcutKeyOption>& ShortcutKeyOptions() {
 }
 
 const char* ShortcutKeyName(ImGuiKey key) {
+    // Sondertasten werden lokalisiert, damit dynamische Shortcut-Hinweise nicht in
+    // englischer UI weiterhin deutsche Key-Namen wie "Ende"/"Entf" anzeigen.
+    switch (key) {
+        case ImGuiKey_End: return L("Ende","End");
+        case ImGuiKey_Insert: return L("Einfg","Insert");
+        case ImGuiKey_Delete: return L("Entf","Del");
+        case ImGuiKey_Space: return L("Leertaste","Space");
+        default: break;
+    }
     for (const auto& option : ShortcutKeyOptions())
         if (option.key == key) return option.name;
     return "-";
@@ -1109,7 +1118,7 @@ const char* ShortcutKeyName(ImGuiKey key) {
 
 std::string ShortcutLabel(const EditorState::ShortcutBinding& binding) {
     std::string out;
-    if (binding.ctrl) out += "Strg+";
+    if (binding.ctrl) out += L("Strg+","Ctrl+");
     if (binding.shift) out += "Shift+";
     if (binding.alt) out += "Alt+";
     out += ShortcutKeyName(binding.key);
@@ -11430,7 +11439,7 @@ void DrawSettingsWindow(EditorState& state) {
             if (ImGui::BeginCombo("##key", ShortcutKeyName(binding.key))) {
                 for (const auto& option : ShortcutKeyOptions()) {
                     const bool selected = binding.key == option.key;
-                    if (ImGui::Selectable(option.name,selected)) {
+                    if (ImGui::Selectable(ShortcutKeyName(option.key),selected)) {
                         binding.key = option.key;
                         changed = true;
                     }
@@ -11604,7 +11613,9 @@ void DrawCommandPalette(EditorState& state) {
     ImGui::SameLine(0.0f,6.0f);
     ImGui::TextColored(ImVec4(0.30f,0.78f,1.0f,1.0f), "%s", L("BEFEHLSPALETTE","COMMAND PALETTE"));
     ImGui::SameLine();
-    ImGui::TextDisabled("%s", L("Strg+P · Esc schließen","Ctrl+P · Esc to close"));
+    const std::string paletteCloseHint =
+        ShortcutLabel(state.shortcutPalette) + L(" · Esc schließen"," · Esc to close");
+    ImGui::TextDisabled("%s", paletteCloseHint.c_str());
     ImGui::Separator();
 
     if (ImGui::IsWindowAppearing()) {
@@ -11957,9 +11968,15 @@ void DrawToolsContent(EditorState& state) {
                     state.objectScaleSnap=std::max(0.001f,state.objectScaleSnap);
                 }
             }
-            if (UI::Button(L("Auswahl fokussieren (F)","Focus selection (F)"))) FocusSelectedObjects(state);
+            const std::string focusButtonLabel =
+                std::string(L("Auswahl fokussieren (","Focus selection (")) +
+                ShortcutLabel(state.shortcutFocus) + ")";
+            const std::string groundButtonLabel =
+                std::string(L("Auf Terrain (","Place on terrain (")) +
+                ShortcutLabel(state.shortcutGround) + ")";
+            if (UI::Button(focusButtonLabel.c_str())) FocusSelectedObjects(state);
             ImGui::SameLine();
-            if (UI::Button(L("Auf Terrain (Ende)","Place on terrain (End)"))) GroundSelectedObjects(state);
+            if (UI::Button(groundButtonLabel.c_str())) GroundSelectedObjects(state);
             ImGui::Separator();
             const bool shmdScene = IsShmdSelection(state.selectedObject);
             if (shmdScene) {
@@ -13912,23 +13929,26 @@ void DrawObjectGizmoToolbar(EditorState& state, const ImVec2& imageScreenPos) {
     ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(11, 27, 41, 235));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(18, 67, 104, 245));
 
-    auto opButton = [&](const char* label, int op, const EditorState::ShortcutBinding& shortcut) {
+    // Die drei Transform-Modi haben finale Paketicons. Im Viewport deshalb dieselben
+    // semantischen Assets wie in Command-Bar/Inspector verwenden statt lokale Textbuttons.
+    auto opButton = [&](const char* id, const char* label, IconDrawFn fallbackIcon,
+                        const char* semanticIcon, int op,
+                        const EditorState::ShortcutBinding& shortcut) {
         const bool active = state.objectGizmoOperation == op;
-        if (active) ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(12, 100, 165, 245));
-        if (UI::SmallButton(label)) {
+        const std::string hint = std::string(label) + " · " + ShortcutLabel(shortcut);
+        if (DrawTinyIconButton(id, fallbackIcon, active, hint.c_str(),
+                               ImVec2(26.0f,26.0f), semanticIcon)) {
             state.objectGizmoOperation = op;
             state.objectGizmoMatrixValid = false;
         }
-        if (active) ImGui::PopStyleColor();
-        if (ImGui::IsItemHovered()) {
-            const std::string hint = std::string(label) + " · " + ShortcutLabel(shortcut);
-            ImGui::SetTooltip("%s",hint.c_str());
-        }
         ImGui::SameLine();
     };
-    opButton("Move",0,state.shortcutGizmoMove);
-    opButton("Rotate",1,state.shortcutGizmoRotate);
-    opButton("Scale",2,state.shortcutGizmoScale);
+    opButton("viewportMove", L("Verschieben","Move"), DrawIconMove,
+             "transform.move", 0, state.shortcutGizmoMove);
+    opButton("viewportRotate", L("Rotieren","Rotate"), DrawIconRotate,
+             "transform.rotate", 1, state.shortcutGizmoRotate);
+    opButton("viewportScale", L("Skalieren","Scale"), DrawIconScale,
+             "transform.scale", 2, state.shortcutGizmoScale);
 
     if (UI::SmallButton(state.objectGizmoLocal ? "Local" : "World")) {
         state.objectGizmoLocal = !state.objectGizmoLocal;
@@ -13937,9 +13957,17 @@ void DrawObjectGizmoToolbar(EditorState& state, const ImVec2& imageScreenPos) {
     ImGui::SameLine();
     UI::Checkbox("Snap##gizmoOverlay", &state.objectGizmoSnap);
     ImGui::SameLine();
-    if (UI::SmallButton("Fokus")) FocusSelectedObjects(state);
+    const std::string focusHint =
+        std::string(L("Auswahl fokussieren","Focus selection")) + " · " +
+        ShortcutLabel(state.shortcutFocus);
+    if (UI::SmallButton(L("Fokus","Focus"))) FocusSelectedObjects(state);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", focusHint.c_str());
     ImGui::SameLine();
-    if (UI::SmallButton("Boden")) GroundSelectedObjects(state);
+    const std::string groundHint =
+        std::string(L("Auf Terrain setzen","Drop to terrain")) + " · " +
+        ShortcutLabel(state.shortcutGround);
+    if (UI::SmallButton(L("Boden","Ground"))) GroundSelectedObjects(state);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", groundHint.c_str());
 
     ImGui::PopStyleColor(2);
     ImGui::SetCursorScreenPos(restore);
@@ -14824,19 +14852,33 @@ void DrawSceneOutlinerPanel(EditorState& state) {
     ImGui::TextDisabled(L("%zu gewählt","%zu selected"), state.selectedObjects.size());
 
     if (!state.selectedObjects.empty()) {
-        if (DrawTinyIconButton("outlinerCopy",DrawIconDuplicate,false,L("Kopieren (Strg+C)","Copy (Ctrl+C)"),ImVec2(22,22),"edit.copy"))
+        const std::string copyTip = L("Kopieren (Strg+C)","Copy (Ctrl+C)");
+        const std::string duplicateTip =
+            std::string(L("Duplizieren (","Duplicate (")) +
+            ShortcutLabel(state.shortcutDuplicate) + ")";
+        const std::string focusTip =
+            std::string(L("Auswahl fokussieren (","Focus selection (")) +
+            ShortcutLabel(state.shortcutFocus) + ")";
+        const std::string deleteTip =
+            std::string(L("Auswahl löschen (","Delete selection (")) +
+            ShortcutLabel(state.shortcutDelete) + ")";
+        if (DrawTinyIconButton("outlinerCopy",DrawIconDuplicate,false,copyTip.c_str(),ImVec2(22,22),"edit.copy"))
             CopySelectedObjects(state);
         ImGui::SameLine();
-        if (DrawTinyIconButton("outlinerDuplicate",DrawIconDuplicate,false,L("Duplizieren (Strg+D)","Duplicate (Ctrl+D)"),ImVec2(22,22),"edit.duplicate"))
+        if (DrawTinyIconButton("outlinerDuplicate",DrawIconDuplicate,false,duplicateTip.c_str(),ImVec2(22,22),"edit.duplicate"))
             DuplicateSelectedObjects(state);
         ImGui::SameLine();
-        if (DrawTinyIconButton("outlinerFocus",DrawIconCube,false,L("Auswahl fokussieren (F)","Focus selection (F)")))
+        if (DrawTinyIconButton("outlinerFocus",DrawIconCube,false,focusTip.c_str()))
             FocusSelectedObjects(state);
         ImGui::SameLine();
-        if (DrawTinyIconButton("outlinerDelete",DrawIconDelete,false,L("Auswahl löschen (Entf)","Delete selection (Del)"),ImVec2(22,22),"edit.delete"))
+        if (DrawTinyIconButton("outlinerDelete",DrawIconDelete,false,deleteTip.c_str(),ImVec2(22,22),"edit.delete"))
             DeleteSelectedObjects(state);
         ImGui::SameLine();
-        ImGui::TextDisabled("%s",L("Strg+C/V · F · Ende=Boden","Ctrl+C/V · F · End=Ground"));
+        const std::string shortcutSummary =
+            std::string(L("Strg+C/V · Fokus ","Ctrl+C/V · Focus ")) +
+            ShortcutLabel(state.shortcutFocus) + L(" · Boden "," · Ground ") +
+            ShortcutLabel(state.shortcutGround);
+        ImGui::TextDisabled("%s",shortcutSummary.c_str());
     }
 
     SyncObjectEditorMetadata(state);
@@ -15008,12 +15050,15 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                         }
 
                         ImGui::Separator();
-                        if(ImGui::MenuItem(L("Fokussieren","Focus"),"F")) FocusSelectedObjects(state);
-                        if(ImGui::MenuItem(L("Auf Terrain setzen","Place on terrain"),L("Ende","End"),false,
+                        const std::string focusShortcut=ShortcutLabel(state.shortcutFocus);
+                        const std::string groundShortcut=ShortcutLabel(state.shortcutGround);
+                        const std::string duplicateShortcut=ShortcutLabel(state.shortcutDuplicate);
+                        if(ImGui::MenuItem(L("Fokussieren","Focus"),focusShortcut.c_str())) FocusSelectedObjects(state);
+                        if(ImGui::MenuItem(L("Auf Terrain setzen","Place on terrain"),groundShortcut.c_str(),false,
                                            id<0||!IsObjectEditorLocked(state,id)))
                             GroundSelectedObjects(state);
                         if(ImGui::MenuItem(L("Kopieren","Copy"),L("Strg+C","Ctrl+C"))) CopySelectedObjects(state);
-                        if(ImGui::MenuItem(L("Duplizieren","Duplicate"),L("Strg+D","Ctrl+D"))) DuplicateSelectedObjects(state);
+                        if(ImGui::MenuItem(L("Duplizieren","Duplicate"),duplicateShortcut.c_str())) DuplicateSelectedObjects(state);
                         {
                             const bool menuHidden=IsObjectEditorHidden(state,id);
                             const bool menuLocked=IsObjectEditorLocked(state,id);
@@ -15037,7 +15082,8 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                             }
                         }
                         ImGui::Separator();
-                        if(ImGui::MenuItem(L("Löschen","Delete"),L("Entf","Del"),false,
+                        const std::string deleteShortcut=ShortcutLabel(state.shortcutDelete);
+                        if(ImGui::MenuItem(L("Löschen","Delete"),deleteShortcut.c_str(),false,
                                            id<0||!IsObjectEditorLocked(state,id)))
                             DeleteSelectedObjects(state);
                         ImGui::EndPopup();
@@ -16962,8 +17008,7 @@ void DrawMapEditorWorkspace(EditorState& state) {
 
     ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
     ImGui::Begin("Navigator##mapNavigator");
-    ImGui::TextColored(UiTheme::AccentCyan, "%s",L("KARTE","MAP"));
-    ImGui::Separator();
+    DrawPanelHeader("navigatorHeader", L("KARTE","MAP"), DrawIconGlobe, "nav.world");
     ImGui::Text("%s", state.legacySaveStem[0] ? state.legacySaveStem : L("(keine Karte)","(no map)"));
     if (state.legacySaveDir[0]) ImGui::TextDisabled("%s", state.legacySaveDir);
     ImGui::Dummy(ImVec2(0,4));
