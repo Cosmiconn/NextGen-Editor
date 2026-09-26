@@ -263,6 +263,9 @@ struct NifModel {
     std::uint32_t textureEffectBlocks = 0;
     std::uint32_t vertexColorPropertyBlocks = 0;
     std::uint32_t zBufferPropertyBlocks = 0;
+    // Anzahl effektiver NiProperty-Refs, die nicht direkt am Mesh hängen, sondern über
+    // die NiNode-Parentkette geerbt und deshalb zusätzlich in den Renderstate übernommen werden.
+    std::uint32_t inheritedPropertyBindings = 0;
     std::string rootName;
     std::vector<NifMeshPart> parts;
     std::vector<NifNodeInfo> nodes; // NiNode-Hierarchie inkl. lokaler Bind-Transforms; Namen können bei reinen Hierarchie-Knoten leer sein.
