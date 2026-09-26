@@ -4013,14 +4013,16 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
         ImGui::SameLine();
         ImGui::TextColored(UiTheme::Warning, "●");
         if (ImGui::IsItemHovered()) {
-            std::string dirtyText = "Ungespeichert";
-            if (state.mapDirty) dirtyText += "\n• Karte geändert";
-            if (dirtyShn > 0) dirtyText += "\n• " + std::to_string(dirtyShn) + " SHN-Datei(en) geändert";
-            if (state.questDirty) dirtyText += "\n• QuestData.shn geändert";
-            if (state.townPortalDirty) dirtyText += "\n• TownPortal.shn geändert";
-            if (state.recallCoordDirty) dirtyText += "\n• RecallCoord.txt geändert";
-            if (state.aiScriptDirty) dirtyText += "\n• AI-Skript geändert";
-            if (state.dropTableDirty) dirtyText += "\n• ItemDropTable geändert";
+            std::string dirtyText = L("Ungespeichert","Unsaved changes");
+            if (state.mapDirty) dirtyText += L("\n• Karte geändert","\n• Map modified");
+            if (dirtyShn > 0)
+                dirtyText += "\n• " + std::to_string(dirtyShn) +
+                             L(" SHN-Datei(en) geändert"," SHN file(s) modified");
+            if (state.questDirty) dirtyText += L("\n• QuestData.shn geändert","\n• QuestData.shn modified");
+            if (state.townPortalDirty) dirtyText += L("\n• TownPortal.shn geändert","\n• TownPortal.shn modified");
+            if (state.recallCoordDirty) dirtyText += L("\n• RecallCoord.txt geändert","\n• RecallCoord.txt modified");
+            if (state.aiScriptDirty) dirtyText += L("\n• AI-Skript geändert","\n• AI script modified");
+            if (state.dropTableDirty) dirtyText += L("\n• ItemDropTable geändert","\n• ItemDropTable modified");
             ImGui::SetTooltip("%s", dirtyText.c_str());
         }
     }
