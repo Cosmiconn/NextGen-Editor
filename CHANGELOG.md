@@ -2,6 +2,7 @@
 - Add `tools/ui/check_icon_consistency.py` and run it in Linux CI before the core build. It verifies the frozen 68 semantic IDs against `UiIconAssets.cpp`, approved size levels and every checked-in runtime PNG while explicitly allowing the intentional partial runtime subset.
 - Current audit result: 55 committed runtime PNGs cover 51/68 semantic IDs; the remaining IDs stay on functional DrawList fallbacks until the approved final icon package can be materialized/imported.
 - Align Map Launcher, Quest/Skill subpanels and Active Tool with the shared panel-header chrome; keep compact AI/NIF inline actions but attach their approved semantic package icons.
+- Extend the shared `panel.search` chrome across SHN, Quest, Skill, Drop Table, pickers, Manual and Command Palette while preserving popup/palette keyboard autofocus on the real input field; per-column SHN table filters intentionally stay icon-free.
 - Prevent clicks and drags on the 3D transform toolbar and zoom overlay from leaking into object picking, orbit/pan or keyboard camera handling underneath the viewport image.
 
 ## v0.44.35 / v14 — KFM-Codec und Animationskatalog
