@@ -37,11 +37,29 @@ int main(int argc, char** argv) {
     for(int i=0;i<4;++i) toon.f32(static_cast<float>(i));
     toon.u32(0x00ca4008); toon.f32(800); toon.u8(1); toon.u8(1); toon.f32(40); toon.f32(800);
     boundary(toon,ParseFiestaToonExtraData);
+    std::size_t skinnedPartsSeen = 0;
     for(const auto* name : {"EglackMad.nif","Helga.nif","M_MajesticLion.nif","KingdomC00.nif",
         "Female_Hat_Antler00.nif","Male_Hat_Antler00.nif","LegelFairy.nif","LegelFeatherDemon.nif","BirthdayConf.nif"}) {
         const auto model=LoadNifMesh(std::filesystem::path(argv[1])/name,false);
         check(model && !model->parts.empty() && !model->recovered && !model->partial,name);
         if(!model) std::cerr << model.error() << '\n';
+        if(model) {
+            for (const auto& part : model->parts) {
+                if (!part.skinned) continue;
+                ++skinnedPartsSeen;
+                check(part.skinBinding.has_value(),"skinned part preserves playback binding");
+                if (!part.skinBinding) continue;
+                const auto& skin=*part.skinBinding;
+                check(skin.sourcePositions.size()==part.positions.size(),
+                      "skin source vertex count matches rendered part");
+                check(skin.vertexInfluences.size()==skin.sourcePositions.size(),
+                      "skin influence array matches source vertices");
+                check(!skin.bones.empty(),"skinned part exports bone bindings");
+                check(std::any_of(skin.bones.begin(),skin.bones.end(),[](const auto& bone) {
+                    return bone.nodeIndex>=0;
+                }),"skin bone references resolve into exported NIF hierarchy");
+            }
+        }
         if(model && (std::string(name).starts_with("Legel") || std::string(name)=="BirthdayConf.nif")) {
             check(model->decodedEmbeddedTextures > 0 && model->undecodedEmbeddedTextures == 0,
                 "all real embedded NIF textures decoded, including particle-only textures");
@@ -50,6 +68,8 @@ int main(int argc, char** argv) {
             }),"real 16-bit NIF texture decoded and linked");
         }
     }
+    check(skinnedPartsSeen>0,"real NIF extension corpus contains preserved skinned parts");
+
     for (const auto* name : {"Arc-f_Bip01_Emotion_ChargdDance69.kf", "BallCrush_Base_Stand.kf"}) {
         const auto model = LoadNifMesh(std::filesystem::path(argv[1]) / name, false);
         check(model && !model->recovered && !model->partial, name);
