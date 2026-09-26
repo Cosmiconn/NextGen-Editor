@@ -1740,19 +1740,31 @@ NiTriStripsBlock ParseNiTriStripsHeader(ByteReader& r) {
 // Ref(i32). Byte-exakt verifiziert an Leviathan_altar_water_effect01.nif: has_shader=0,
 // world_space=1, 9 Modifier-Refs (allesamt plausible Blockindizes 25-34) - die berechnete
 // Länge landet exakt auf dem folgenden NiPSysEmitterCtlr (target=6 zeigt exakt hierher zurück).
-NiTriStripsBlock SkipNiParticleSystem(ByteReader& r) {
-    NiTriStripsBlock block;
+struct NiParticleSystemBlock {
+    AVObjectBase base;
+    std::int32_t dataRef = -1;
+    std::int32_t skinInstanceRef = -1;
+    bool hasShader = false;
+    std::string shaderName;
+    std::int32_t shaderExtraDataRef = -1;
+    bool worldSpace = false;
+    std::vector<std::int32_t> modifiers;
+};
+
+NiParticleSystemBlock ParseNiParticleSystem(ByteReader& r) {
+    NiParticleSystemBlock block;
     block.base = ParseAVObjectBase(r);
     block.dataRef = r.I32();
-    r.I32(); // skin_instance ref
-    const std::uint8_t hasShader = r.U8();
-    if (hasShader) {
-        r.SizedString(); // MaterialDataShader.name
-        r.I32();          // MaterialDataShader.extra_data_ref
+    block.skinInstanceRef = r.I32();
+    block.hasShader = r.U8() != 0;
+    if (block.hasShader) {
+        block.shaderName = r.SizedString();
+        block.shaderExtraDataRef = r.I32();
     }
-    r.U8(); // world_space
+    block.worldSpace = r.U8() != 0;
     const std::uint32_t numModifiers = r.CountU32(256u);
-    r.Skip(static_cast<std::size_t>(numModifiers) * 4u);
+    block.modifiers.reserve(numModifiers);
+    for (std::uint32_t i = 0; i < numModifiers; ++i) block.modifiers.push_back(r.I32());
     return block;
 }
 
@@ -3039,10 +3051,31 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             SkipNiPosData(r);
         } else if (type == "NiParticleSystem" || type == "NiMeshParticleSystem") {
             ++model.particleSystemBlocks;
-            // NiMeshParticleSystem hat laut Referenz denselben NiParticleSystem-Kopf (nur die
-            // referenzierte Daten-Klasse unterscheidet sich, NiMeshPSysData statt NiPSysData -
-            // für unsere Zwecke, da wir keine Partikel rendern, ist nur die Kopf-Länge relevant).
-            NiTriStripsBlock psys = SkipNiParticleSystem(r);
+            // NiMeshParticleSystem has the same scene-object header as NiParticleSystem; the
+            // referenced data class determines whether particles are quads or mesh instances.
+            NiParticleSystemBlock psys = ParseNiParticleSystem(r);
+            if (blockIdx < scene.size()) {
+                SceneNode& sn = scene[blockIdx];
+                sn.present = true;
+                sn.translation = psys.base.translation;
+                sn.rotation = psys.base.rotation;
+                sn.scale = psys.base.scale;
+                sn.properties = psys.base.properties;
+                sn.name = psys.base.net.name;
+            }
+            NifParticleSystemInfo publicSystem;
+            publicSystem.name = psys.base.net.name;
+            publicSystem.meshParticles = type == "NiMeshParticleSystem";
+            publicSystem.worldSpace = psys.worldSpace;
+            publicSystem.hasShader = psys.hasShader;
+            publicSystem.shaderName = psys.shaderName;
+            publicSystem.dataRef = psys.dataRef;
+            publicSystem.propertyRefs = psys.base.properties;
+            publicSystem.modifierRefs = psys.modifiers;
+            publicSystem.translation = psys.base.translation;
+            publicSystem.rotation = psys.base.rotation;
+            publicSystem.scale = psys.base.scale;
+            model.particleSystems.push_back(std::move(publicSystem));
             // KORRIGIERT: currentMeshHasTexturing wurde bisher NUR bei NiTriStrips/NiTriShape
             // aktualisiert - bei einem NiParticleSystem blieb der Wert vom zuletzt gesehenen,
             // völlig unabhängigen Mesh stehen. Die folgende NiMaterialProperty des

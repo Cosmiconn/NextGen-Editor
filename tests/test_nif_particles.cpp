@@ -170,6 +170,20 @@ int main(int argc, char** argv) {
         check(model && !model->parts.empty() && !model->recovered && !model->partial, name);
         if (!model) std::cerr << model.error() << '\n';
     }
+    {
+        const auto gate = LoadNifMesh(fixtures / "MapLinkGate2.nif", false);
+        check(gate.has_value(), "MapLinkGate2 particle metadata loads");
+        if (gate) {
+            check(gate->particleSystemBlocks == gate->particleSystems.size(),
+                  "particle block count matches preserved particle system descriptors");
+            check(!gate->particleSystems.empty(),
+                  "MapLinkGate2 exposes authored particle systems instead of silently skipping them");
+            for (const auto& system : gate->particleSystems) {
+                check(system.dataRef >= 0, "particle system keeps data block reference");
+                check(!system.modifierRefs.empty(), "particle system keeps modifier wiring");
+            }
+        }
+    }
     // Strict standard loading must reject both missing and trailing footer bytes.
     std::ifstream input(fixtures / "machine.nif", std::ios::binary);
     std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(input)), {});

@@ -222,6 +222,24 @@ struct NifTextureEffectBinding {
     std::array<float, 4> clippingPlane{};
 };
 
+// Authored NiParticleSystem/NiMeshParticleSystem scene wiring. Keeping this separate from
+// NifMeshPart is intentional: particle systems are dynamic scene objects, not triangle meshes.
+struct NifParticleSystemInfo {
+    std::string name;
+    bool meshParticles = false;
+    bool worldSpace = false;
+    bool hasShader = false;
+    std::string shaderName;
+    std::int32_t dataRef = -1;
+    std::vector<std::int32_t> propertyRefs;
+    std::vector<std::int32_t> modifierRefs;
+    NifVec3 translation{};
+    std::array<float, 9> rotation{1.0f, 0.0f, 0.0f,
+                                  0.0f, 1.0f, 0.0f,
+                                  0.0f, 0.0f, 1.0f};
+    float scale = 1.0f;
+};
+
 struct NifMeshPart {
     std::string name;
     std::string shaderName;            // z.B. VCAlphaTextureBlender
@@ -360,6 +378,7 @@ struct NifModel {
     std::uint32_t inheritedPropertyBindings = 0;
     std::string rootName;
     std::vector<NifMeshPart> parts;
+    std::vector<NifParticleSystemInfo> particleSystems;
     std::vector<NifNodeInfo> nodes; // NiNode-Hierarchie inkl. lokaler Bind-Transforms; Namen können bei reinen Hierarchie-Knoten leer sein.
 };
 
