@@ -182,6 +182,12 @@ struct NifMeshPart {
     std::string diffuseTexture; // Alias fuer textureSlots[0].texture
     std::shared_ptr<const NifEmbeddedTexture> embeddedDiffuseTexture; // Alias fuer Slot 0
     bool specularEnabled = true; // NiSpecularProperty fehlt => NifSkope nutzt Material-Specular
+    // NiVertexColorProperty. Ohne explizite Property entspricht der klassische NIF-Pfad
+    // bei vorhandenen Vertexfarben SRC_AMB_DIF + EMI_AMB_DIF; der Renderer entscheidet den
+    // Default anhand davon, ob für diesen Part tatsächlich Vertexfarben vorhanden sind.
+    bool hasVertexColorProperty = false;
+    std::uint32_t vertexColorMode = 2;    // 0 SRC_IGNORE, 1 SRC_EMISSIVE, 2 SRC_AMB_DIF
+    std::uint32_t vertexLightingMode = 1; // 0 EMISSIVE, 1 EMI_AMB_DIF
     // NiAlphaProperty render state. Flags follow the Gamebryo/NIF bit layout.
     bool alphaBlend = false;
     bool alphaTest = false;
