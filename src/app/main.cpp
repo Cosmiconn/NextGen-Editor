@@ -11288,56 +11288,56 @@ void DrawCommandPalette(EditorState& state) {
         commands.push_back({std::move(label), std::move(hint), std::move(action)});
     };
 
-    add("Projekt: Übersicht", "", [&] { state.screen = AppScreen::ProjectHub; });
-    add("Karte: Kartenübersicht öffnen", "", [&] {
+    add(L("Projekt: Übersicht","Project: Overview"), "", [&] { state.screen = AppScreen::ProjectHub; });
+    add(L("Karte: Kartenübersicht öffnen","Map: Open map browser"), "", [&] {
         state.mapLauncherView = EditorState::MapLauncherView::Browse;
         state.screen = AppScreen::MapEditorLauncher;
     });
-    add("Karte: Neue Karte", "", [&] {
+    add(L("Karte: Neue Karte","Map: New map"), "", [&] {
         state.mapLauncherView = EditorState::MapLauncherView::NewMap;
         state.screen = AppScreen::MapEditorLauncher;
     });
-    add("Workspace: Standard", "", [&] { RequestMapWorkspacePreset(state,0); state.screen = AppScreen::MapEditorWorkspace; });
-    add("Workspace: 3D-Fokus", "", [&] { RequestMapWorkspacePreset(state,1); state.screen = AppScreen::MapEditorWorkspace; });
-    add("Workspace: Terrain / 2D", "", [&] { RequestMapWorkspacePreset(state,2); state.screen = AppScreen::MapEditorWorkspace; });
-    add("Workspace: Daten / Szene", "", [&] { RequestMapWorkspacePreset(state,3); state.screen = AppScreen::MapEditorWorkspace; });
-    add("Spieldaten: Single SHN", "", [&] { state.shnSubTab = 0; state.screen = AppScreen::ShnEditor; });
-    add("Spieldaten: Multi SHN", "", [&] { state.shnSubTab = 1; state.screen = AppScreen::ShnEditor; });
-    add("Spieldaten: Quest Editor", "", [&] { state.shnSubTab = 4; state.screen = AppScreen::ShnEditor; });
-    add("Spieldaten: Portal Editor", "", [&] { state.shnSubTab = 5; state.screen = AppScreen::ShnEditor; });
-    add("Spieldaten: Custom NPC / Mob", "", [&] { state.shnSubTab = 6; state.screen = AppScreen::ShnEditor; });
-    add("Spieldaten: Skill Editor", "", [&] { state.shnSubTab = 7; state.screen = AppScreen::ShnEditor; });
-    add("Spieldaten: AI Workspace", "", [&] { state.shnSubTab = 8; state.screen = AppScreen::ShnEditor; });
-    add("Spieldaten: Interface Browser", "", [&] { state.shnSubTab = 9; state.screen = AppScreen::ShnEditor; });
-    add("Spieldaten: Drop Table Browser", "", [&] { state.shnSubTab = 10; state.screen = AppScreen::ShnEditor; });
+    add(L("Workspace: Standard","Workspace: Standard"), "", [&] { RequestMapWorkspacePreset(state,0); state.screen = AppScreen::MapEditorWorkspace; });
+    add(L("Workspace: 3D-Fokus","Workspace: 3D focus"), "", [&] { RequestMapWorkspacePreset(state,1); state.screen = AppScreen::MapEditorWorkspace; });
+    add(L("Workspace: Terrain / 2D","Workspace: Terrain / 2D"), "", [&] { RequestMapWorkspacePreset(state,2); state.screen = AppScreen::MapEditorWorkspace; });
+    add(L("Workspace: Daten / Szene","Workspace: Data / scene"), "", [&] { RequestMapWorkspacePreset(state,3); state.screen = AppScreen::MapEditorWorkspace; });
+    add(L("Spieldaten: Single SHN","Game data: Single SHN"), "", [&] { state.shnSubTab = 0; state.screen = AppScreen::ShnEditor; });
+    add(L("Spieldaten: Multi SHN","Game data: Multi SHN"), "", [&] { state.shnSubTab = 1; state.screen = AppScreen::ShnEditor; });
+    add(L("Spieldaten: Quest Editor","Game data: Quest editor"), "", [&] { state.shnSubTab = 4; state.screen = AppScreen::ShnEditor; });
+    add(L("Spieldaten: Portal Editor","Game data: Portal editor"), "", [&] { state.shnSubTab = 5; state.screen = AppScreen::ShnEditor; });
+    add(L("Spieldaten: Custom NPC / Mob","Game data: Custom NPC / Mob"), "", [&] { state.shnSubTab = 6; state.screen = AppScreen::ShnEditor; });
+    add(L("Spieldaten: Skill Editor","Game data: Skill editor"), "", [&] { state.shnSubTab = 7; state.screen = AppScreen::ShnEditor; });
+    add(L("Spieldaten: AI Workspace","Game data: AI workspace"), "", [&] { state.shnSubTab = 8; state.screen = AppScreen::ShnEditor; });
+    add(L("Spieldaten: Interface Browser","Game data: Interface browser"), "", [&] { state.shnSubTab = 9; state.screen = AppScreen::ShnEditor; });
+    add(L("Spieldaten: Drop Table Browser","Game data: Drop table browser"), "", [&] { state.shnSubTab = 10; state.screen = AppScreen::ShnEditor; });
     if (state.aiScriptDirty && !state.aiScriptEditorPath.empty())
-        add("AI: Aktuelles Skript speichern", ShortcutLabel(state.shortcutSave), [&] { SaveAiScript(state); });
+        add(L("AI: Aktuelles Skript speichern","AI: Save current script"), ShortcutLabel(state.shortcutSave), [&] { SaveAiScript(state); });
     if (state.dropTableDirty)
-        add("Drops: ItemDropTable speichern", ShortcutLabel(state.shortcutSave), [&] { SaveDropTable(state); });
-    add("Animationen: KFM", "", [&] { state.screen = AppScreen::KfmBrowser; });
-    add("Hilfe: Handbuch", "F1", [&] { state.manualOpen = true; });
-    add("Einstellungen: Shortcuts & Workspace", "", [&] { state.settingsOpen = true; });
+        add(L("Drops: ItemDropTable speichern","Drops: Save ItemDropTable"), ShortcutLabel(state.shortcutSave), [&] { SaveDropTable(state); });
+    add(L("Animationen: KFM","Animations: KFM"), "", [&] { state.screen = AppScreen::KfmBrowser; });
+    add(L("Hilfe: Handbuch","Help: Manual"), "F1", [&] { state.manualOpen = true; });
+    add(L("Einstellungen: Shortcuts & Workspace","Settings: Shortcuts & workspace"), "", [&] { state.settingsOpen = true; });
 
     if (state.hasLegacyIniMeta || state.legacySaveStem[0] != '\0') {
-        add("Karte: Terrain-Werkzeug", "", [&] {
+        add(L("Karte: Terrain-Werkzeug","Map: Terrain tool"), "", [&] {
             state.editMode = EditMode::Heightmap; state.screen = AppScreen::MapEditorWorkspace;
         });
-        add("Karte: Textur-Werkzeug", "", [&] {
+        add(L("Karte: Textur-Werkzeug","Map: Texture tool"), "", [&] {
             state.editMode = EditMode::TexturePaint; state.screen = AppScreen::MapEditorWorkspace;
         });
-        add("Karte: Block & Walk", "", [&] {
+        add(L("Karte: Block & Walk","Map: Block & Walk"), "", [&] {
             state.editMode = EditMode::BlockWalk; state.screen = AppScreen::MapEditorWorkspace;
         });
-        add("Karte: Objekte", "", [&] {
+        add(L("Karte: Objekte","Map: Objects"), "", [&] {
             state.editMode = EditMode::ObjectPlacement; state.objectPlaceMode = 0;
             state.screen = AppScreen::MapEditorWorkspace;
         });
-        add("Karte: NPCs", "", [&] { state.editMode = EditMode::Npcs; state.screen = AppScreen::MapEditorWorkspace; });
-        add("Karte: Mobs", "", [&] { state.editMode = EditMode::Mobs; state.screen = AppScreen::MapEditorWorkspace; });
-        add("Karte: Portale", "", [&] { state.editMode = EditMode::Portals; state.screen = AppScreen::MapEditorWorkspace; });
+        add(L("Karte: NPCs","Map: NPCs"), "", [&] { state.editMode = EditMode::Npcs; state.screen = AppScreen::MapEditorWorkspace; });
+        add(L("Karte: Mobs","Map: Mobs"), "", [&] { state.editMode = EditMode::Mobs; state.screen = AppScreen::MapEditorWorkspace; });
+        add(L("Karte: Portale","Map: Portals"), "", [&] { state.editMode = EditMode::Portals; state.screen = AppScreen::MapEditorWorkspace; });
 
         if (state.legacySaveDir[0] != '\0' && state.legacySaveStem[0] != '\0') {
-            add("Karte: Speichern", ShortcutLabel(state.shortcutSave), [&] {
+            add(L("Karte: Speichern","Map: Save"), ShortcutLabel(state.shortcutSave), [&] {
                 auto project = BuildProjectFromState(state);
                 auto result = core::legacy::SaveLegacyMap(project, state.legacySaveDir, state.legacySaveStem);
                 if (result) {
@@ -11354,22 +11354,22 @@ void DrawCommandPalette(EditorState& state) {
     }
 
     if (!state.selectedObjects.empty()) {
-        add("Szene: Auswahl fokussieren", ShortcutLabel(state.shortcutFocus), [&] { FocusCurrentSceneSelection(state); });
-        add("Objekte: Auf Terrain setzen", ShortcutLabel(state.shortcutGround), [&] { GroundSelectedObjects(state); });
-        add("Objekte: Duplizieren", ShortcutLabel(state.shortcutDuplicate), [&] { DuplicateSelectedObjects(state); });
-        add("Objekte: Kopieren", "Strg+C", [&] { CopySelectedObjects(state); });
-        add("Objekte: Löschen", ShortcutLabel(state.shortcutDelete), [&] { DeleteSelectedObjects(state); });
+        add(L("Szene: Auswahl fokussieren","Scene: Focus selection"), ShortcutLabel(state.shortcutFocus), [&] { FocusCurrentSceneSelection(state); });
+        add(L("Objekte: Auf Terrain setzen","Objects: Drop to terrain"), ShortcutLabel(state.shortcutGround), [&] { GroundSelectedObjects(state); });
+        add(L("Objekte: Duplizieren","Objects: Duplicate"), ShortcutLabel(state.shortcutDuplicate), [&] { DuplicateSelectedObjects(state); });
+        add(L("Objekte: Kopieren","Objects: Copy"), L("Strg+C","Ctrl+C"), [&] { CopySelectedObjects(state); });
+        add(L("Objekte: Löschen","Objects: Delete"), ShortcutLabel(state.shortcutDelete), [&] { DeleteSelectedObjects(state); });
     }
 
     if (DirtyShnDocumentCount(state) > 0) {
-        add("Spieldaten: Alle geänderten SHN speichern", "", [&] {
+        add(L("Spieldaten: Alle geänderten SHN speichern","Game data: Save all changed SHN"), "", [&] {
             const auto [saved,failed] = SaveAllDirtyShnDocuments(state);
             state.statusMessage = "SHN gespeichert: " + std::to_string(saved) +
                 (failed ? ", Fehler: " + std::to_string(failed) : std::string{});
         });
     }
     if (state.questDirty && state.questDataLoaded && !state.shnServerRoot.empty()) {
-        add("Quest: QuestData speichern", ShortcutLabel(state.shortcutSave), [&] {
+        add(L("Quest: QuestData speichern","Quest: Save QuestData"), ShortcutLabel(state.shortcutSave), [&] {
             const auto path = std::filesystem::path(state.shnServerRoot) / "QuestData.shn";
             const auto result = core::legacy::SaveQuestData(state.questDataFile,path);
             if (result) {
@@ -11392,9 +11392,12 @@ void DrawCommandPalette(EditorState& state) {
     if (!ImGui::BeginPopupModal("##commandPalette", nullptr,
             ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings)) return;
 
-    ImGui::TextColored(ImVec4(0.30f,0.78f,1.0f,1.0f), "BEFEHLSPALETTE");
+    DrawInlineIcon("commandPaletteHeader", nullptr, IM_COL32(100,205,255,245), nullptr,
+                   ImVec2(20.0f,20.0f), "system.command_palette");
+    ImGui::SameLine(0.0f,6.0f);
+    ImGui::TextColored(ImVec4(0.30f,0.78f,1.0f,1.0f), "%s", L("BEFEHLSPALETTE","COMMAND PALETTE"));
     ImGui::SameLine();
-    ImGui::TextDisabled("Strg+P · Esc schließen");
+    ImGui::TextDisabled("%s", L("Strg+P · Esc schließen","Ctrl+P · Esc to close"));
     ImGui::Separator();
 
     if (ImGui::IsWindowAppearing()) {
@@ -11402,7 +11405,8 @@ void DrawCommandPalette(EditorState& state) {
         ImGui::SetKeyboardFocusHere();
     }
     ImGui::SetNextItemWidth(-1.0f);
-    if (ImGui::InputTextWithHint("##commandQuery", "Befehl oder Werkzeug suchen...",
+    if (ImGui::InputTextWithHint("##commandQuery",
+                                 L("Befehl oder Werkzeug suchen...","Search command or tool..."),
                                  state.commandPaletteQuery, sizeof(state.commandPaletteQuery)))
         state.commandPaletteSelection = 0;
 
@@ -11448,7 +11452,7 @@ void DrawCommandPalette(EditorState& state) {
         }
         if (selected) ImGui::SetItemDefaultFocus();
     }
-    if (matches.empty()) ImGui::TextDisabled("Keine passenden Befehle.");
+    if (matches.empty()) ImGui::TextDisabled("%s", L("Keine passenden Befehle.","No matching commands."));
     ImGui::EndChild();
     ImGui::EndPopup();
 }
