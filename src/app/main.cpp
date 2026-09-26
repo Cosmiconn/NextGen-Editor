@@ -15673,8 +15673,15 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
     std::size_t flipbookFrameCount = 0;
     std::size_t missingFlipbookFrameCount = 0;
     std::size_t unresolvedEmbeddedFlipbookFrameCount = 0;
+    std::size_t genericShaderFallbackParts = 0;
     std::set<std::string> missingTextureRefs;
+    std::set<std::string> shaderNames;
     for (const auto& part : model.parts) {
+        if (!part.shaderName.empty()) {
+            shaderNames.insert(part.shaderName);
+            if (part.shaderName != "VCAlphaTextureBlender")
+                ++genericShaderFallbackParts;
+        }
         triangleCount += part.triangleIndices.size() / 3;
         for (const auto& slot : part.textureSlots) {
             if (!slot.present) continue;
@@ -15775,6 +15782,27 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
         L("%zu Nodes · Embedded PixelData dekodiert/nicht dekodiert: %u/%u",
           "%zu nodes · embedded PixelData decoded/undecoded: %u/%u"),
         model.nodes.size(), model.decodedEmbeddedTextures, model.undecodedEmbeddedTextures);
+    if (!shaderNames.empty()) {
+        std::string shaderList;
+        for (const auto& shader : shaderNames) {
+            if (!shaderList.empty()) shaderList += ", ";
+            shaderList += shader;
+        }
+        ImGui::TextDisabled(L("Shadernamen: %s","Shader names: %s"), shaderList.c_str());
+    }
+    const std::uint32_t structuralRenderStateBlocks =
+        model.textureEffectBlocks + model.vertexColorPropertyBlocks + model.zBufferPropertyBlocks;
+    if (genericShaderFallbackParts > 0 || structuralRenderStateBlocks > 0) {
+        ImGui::TextColored(
+            ImVec4(1.0f,0.72f,0.30f,1.0f),
+            "%s",L("Materialdateien können vollständig gefunden sein, obwohl Shader-/Renderstate-Semantik noch nur generisch dargestellt wird.",
+                   "All material files can be resolved while shader/render-state semantics are still rendered through a generic fallback."));
+        ImGui::TextDisabled(
+            L("%zu Mesh-Part(s) mit generischem Shader-Fallback · TextureEffect %u · VertexColorProperty %u · ZBufferProperty %u",
+              "%zu mesh part(s) using generic shader fallback · TextureEffect %u · VertexColorProperty %u · ZBufferProperty %u"),
+            genericShaderFallbackParts, model.textureEffectBlocks,
+            model.vertexColorPropertyBlocks, model.zBufferPropertyBlocks);
+    }
     if (model.recovered || model.partial) {
         ImGui::TextDisabled("%s%s",
                             model.recovered ? L("Kompatibilitäts-Recovery aktiv","Compatibility recovery active") : "",
@@ -15802,6 +15830,7 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
 
         bool partHasMissingTexture = false;
         std::string partSearch = LowerAscii(partName);
+        if (!part.shaderName.empty()) partSearch += " " + LowerAscii(part.shaderName);
         for (const auto& slot : part.textureSlots) {
             if (!slot.present) continue;
             if (!slot.texture.empty()) partSearch += " " + LowerAscii(slot.texture);
@@ -15857,6 +15886,22 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                                 part.uvSets.size(), part.textureApplyMode,
                                 part.alphaBlend ? "AlphaBlend " : "",
                                 part.alphaTest ? "AlphaTest" : "");
+            const bool dedicatedShaderPath = part.shaderName == "VCAlphaTextureBlender";
+            const bool genericNamedShader = !part.shaderName.empty() && !dedicatedShaderPath;
+            ImGui::TextDisabled(
+                L("Shader: %s · Renderer-Pfad: %s","Shader: %s · renderer path: %s"),
+                part.shaderName.empty() ? L("(NIF Fixed Function)","(NIF fixed function)") : part.shaderName.c_str(),
+                dedicatedShaderPath
+                    ? "VCAlphaTextureBlender"
+                    : (genericNamedShader
+                        ? L("generischer NIF-Material-Fallback","generic NIF material fallback")
+                        : L("klassischer NIF-Materialpfad","classic NIF material path")));
+            if (genericNamedShader) {
+                ImGui::TextColored(
+                    ImVec4(1.0f,0.72f,0.30f,1.0f), "%s",
+                    L("Shader-spezifische Semantik ist für diesen Namen noch nicht separat modelliert.",
+                      "Shader-specific semantics for this name are not modeled separately yet."));
+            }
 
             bool anyTexture=false;
             for (std::size_t si=0; si<part.textureSlots.size(); ++si) {
