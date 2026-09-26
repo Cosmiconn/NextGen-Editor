@@ -387,9 +387,21 @@ NiNodeBlock ParseNiRoom(ByteReader& r) {
     return node;
 }
 
-void SkipNiZBufferProperty(ByteReader& r) {
+struct NifZBufferState {
+    bool test = true;
+    bool write = true;
+    std::uint32_t function = 3; // ZCOMP_LESS_EQUAL
+};
+
+NifZBufferState ParseNiZBufferProperty(ByteReader& r) {
     ParseObjectNetBase(r);
-    r.Skip(6);
+    const std::uint16_t flags = r.U16();
+    const std::uint32_t function = r.U32();
+    return NifZBufferState{
+        (flags & 0x0001u) != 0,
+        (flags & 0x0002u) != 0,
+        function
+    };
 }
 
 void SkipNiVertexColorProperty(ByteReader& r) {
@@ -2631,6 +2643,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
     std::vector<GeomNode> geomNodes;
     std::unordered_map<std::uint32_t, NifMaterial> materialByBlock;
     std::unordered_map<std::uint32_t, NifAlphaState> alphaByBlock;
+    std::unordered_map<std::uint32_t, NifZBufferState> zBufferByBlock;
     std::unordered_map<std::uint32_t, NifStencilState> stencilByBlock;
     std::unordered_map<std::uint32_t, bool> specularByBlock;
     std::unordered_map<std::uint32_t, NifTextureState> texStateByBlock;
@@ -3051,7 +3064,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             SkipNiPointLight(r);
         } else if (type == "NiZBufferProperty") {
             ++model.zBufferPropertyBlocks;
-            SkipNiZBufferProperty(r);
+            zBufferByBlock[blockIdx] = ParseNiZBufferProperty(r);
             // Siehe SkipExtraBytesIfFollowedByTriData - hier bewusst weiterhin mit
             // Versions-Gate belassen (siehe Abschnitt 38: ein unbedingter Test verursachte
             // eine Regression), auch wenn sich das bei NiAlphaProperty als unnötig
@@ -3454,6 +3467,31 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             model.parts[p].alphaSrcBlend = ait->second.srcBlend;
             model.parts[p].alphaDstBlend = ait->second.dstBlend;
             model.parts[p].alphaTestFunc = ait->second.testFunc;
+        }
+    }
+
+    // Resolve NiZBufferProperty through the geometry property references. This is not
+    // cosmetic state: sky/water/effect meshes frequently rely on read-only depth or a
+    // disabled Z test. Applying it per mesh prevents otherwise correctly resolved textures
+    // from disappearing behind depth writes that the original NIF explicitly disabled.
+    {
+        std::unordered_map<std::int32_t, NifZBufferState> zBufferByData;
+        for (const auto& g : geomNodes) {
+            for (const auto ref : g.properties) {
+                if (ref < 0) continue;
+                const auto it = zBufferByBlock.find(static_cast<std::uint32_t>(ref));
+                if (it != zBufferByBlock.end()) {
+                    zBufferByData[g.dataRef] = it->second;
+                    break;
+                }
+            }
+        }
+        for (std::size_t p = 0; p < model.parts.size() && p < partDataBlock.size(); ++p) {
+            const auto it = zBufferByData.find(partDataBlock[p]);
+            if (it == zBufferByData.end()) continue;
+            model.parts[p].depthTest = it->second.test;
+            model.parts[p].depthWrite = it->second.write;
+            model.parts[p].depthFunction = it->second.function;
         }
     }
 
