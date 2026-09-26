@@ -3,6 +3,7 @@
 - Current audit result: 55 committed runtime PNGs cover 51/68 semantic IDs; the remaining IDs stay on functional DrawList fallbacks until the approved final icon package can be materialized/imported.
 - Align Map Launcher, Quest/Skill subpanels and Active Tool with the shared panel-header chrome; keep compact AI/NIF inline actions but attach their approved semantic package icons.
 - Extend the shared `panel.search` chrome across SHN, Quest, Skill, Drop Table, pickers, Manual and Command Palette while preserving popup/palette keyboard autofocus on the real input field; per-column SHN table filters intentionally stay icon-free.
+- Normalize editor context menus: SHN/Object/Layer route through the common menu wrapper, SHN actions are DE/EN-localized, and NPC/Mob/Portal focus actions display the current configurable Focus shortcut like the object outliner already does.
 - Prevent clicks and drags on the 3D transform toolbar and zoom overlay from leaking into object picking, orbit/pan or keyboard camera handling underneath the viewport image.
 
 ## v0.44.35 / v14 — KFM-Codec und Animationskatalog
