@@ -333,6 +333,7 @@ void SkipNiPortal(ByteReader& r) {
 struct NiNodeBlock {
     AVObjectBase base;
     std::vector<std::int32_t> children;
+    std::vector<std::int32_t> effects;
 };
 
 NiNodeBlock ParseNiNode(ByteReader& r) {
@@ -344,8 +345,9 @@ NiNodeBlock ParseNiNode(ByteReader& r) {
         node.children.push_back(r.I32());
     }
     const std::uint32_t numEffects = r.CountU32(1000u);
+    node.effects.reserve(numEffects);
     for (std::uint32_t i = 0; i < numEffects; ++i) {
-        r.I32();
+        node.effects.push_back(r.I32());
     }
     return node;
 }
@@ -1126,26 +1128,57 @@ void SkipNiPSysMeshUpdateModifier(ByteReader& r) {
 
 // NiDynamicEffect-Basis (gemeinsam für NiTextureEffect und NiLight/NiDirectionalLight):
 // AVObjectBase + switch_state(u8) + num_affected_nodes(u32) + je Knoten ein Ref(i32).
-void SkipNiDynamicEffectBase(ByteReader& r) {
-    ParseAVObjectBase(r);
-    if (r.LegacyLayout() || r.Version() >= 0x0A01006Au) r.U8(); // switch_state
+struct NifDynamicEffectState {
+    AVObjectBase base;
+    bool switchState = true;
+    std::vector<std::int32_t> affectedNodes;
+};
+
+NifDynamicEffectState ParseNiDynamicEffectBase(ByteReader& r) {
+    NifDynamicEffectState out;
+    out.base = ParseAVObjectBase(r);
+    if (r.LegacyLayout() || r.Version() >= 0x0A01006Au) out.switchState = r.U8() != 0;
     const std::uint32_t numAffected = r.CountU32(256u);
-    r.Skip(static_cast<std::size_t>(numAffected) * 4u);
+    out.affectedNodes.reserve(numAffected);
+    for (std::uint32_t i = 0; i < numAffected; ++i) out.affectedNodes.push_back(r.I32());
+    return out;
+}
+
+void SkipNiDynamicEffectBase(ByteReader& r) {
+    (void)ParseNiDynamicEffectBase(r);
 }
 
 // NiTextureEffect: NiDynamicEffect + model_projection_matrix(Matrix33=9 Floats) +
 // model_projection_translation(Vector3) + texture_filtering(u32) + texture_clamping(u32) +
 // texture_type(u32) + coordinate_generation_type(u32) + source_texture_ref(i32) +
 // enable_plane(u8) + plane(NiPlane: normal(Vector3)+constant(f32) = 16 Byte).
-void SkipNiTextureEffect(ByteReader& r) {
-    SkipNiDynamicEffectBase(r);
-    r.Skip(36); // model_projection_matrix (Matrix33)
-    r.Skip(12); // model_projection_translation (Vector3)
-    r.U32(); r.U32(); r.U32(); r.U32(); // filtering, clamping, texture_type, coord_gen_type
-    r.I32(); // source_texture_ref
-    r.U8();  // enable_plane
-    r.Skip(16); // plane (Vector3 + f32)
+struct NifTextureEffectState {
+    NifDynamicEffectState dynamic;
+    std::array<float, 9> projectionRotation{};
+    NifVec3 projectionPosition{};
+    std::uint32_t filterMode = 0;
+    std::uint32_t clampMode = 0;
+    std::uint32_t textureType = 0;
+    std::uint32_t coordGenType = 0;
+    std::int32_t sourceTextureRef = -1;
+    bool enablePlane = false;
+    std::array<float, 4> clipPlane{};
+};
+
+NifTextureEffectState ParseNiTextureEffect(ByteReader& r) {
+    NifTextureEffectState out;
+    out.dynamic = ParseNiDynamicEffectBase(r);
+    for (float& v : out.projectionRotation) v = r.F32();
+    out.projectionPosition = {r.F32(), r.F32(), r.F32()};
+    out.filterMode = r.U32();
+    out.clampMode = r.U32();
+    out.textureType = r.U32();
+    out.coordGenType = r.U32();
+    out.sourceTextureRef = r.I32();
+    out.enablePlane = r.U8() != 0;
+    for (float& v : out.clipPlane) v = r.F32();
     if (!r.LegacyLayout() && r.Version() <= 0x0A020000u) { r.I16(); r.I16(); } // PS2 L/K
+    return out;
 }
 
 // NiLight-Basis (gemeinsam für alle Licht-Typen): NiDynamicEffect + dimmer(f32) +
@@ -2622,6 +2655,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         float scale = 1.0f;
         std::vector<std::int32_t> children;
         std::vector<std::int32_t> properties;
+        std::vector<std::int32_t> effects;
         std::string name;
         bool billboard = false;
         std::uint16_t billboardMode = 0;
@@ -2662,6 +2696,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
     std::unordered_map<std::uint32_t, NifVertexColorState> vertexColorByBlock;
     std::unordered_map<std::uint32_t, bool> specularByBlock;
     std::unordered_map<std::uint32_t, NifTextureState> texStateByBlock;
+    std::unordered_map<std::uint32_t, NifTextureEffectState> textureEffectByBlock;
     std::unordered_map<std::uint32_t, SkinInstanceBlock> skinInstanceByBlock;
     std::unordered_map<std::uint32_t, SkinDataBlock> skinDataByBlock;
     std::unordered_map<std::uint32_t, SkinPartitionBlock> skinPartitionByBlock;
@@ -2679,6 +2714,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         sn.scale = n.base.scale;
         sn.children = n.children;
         sn.properties = n.base.properties;
+        sn.effects = n.effects;
         sn.name = n.base.net.name;
     };
 
@@ -3071,7 +3107,15 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             skinPartitionByBlock[blockIdx] = ParseNiSkinPartition(r);
         } else if (type == "NiTextureEffect") {
             ++model.textureEffectBlocks;
-            SkipNiTextureEffect(r);
+            auto effect = ParseNiTextureEffect(r);
+            if (effect.dynamic.switchState &&
+                effect.textureType == 2u && effect.coordGenType == 2u &&
+                effect.sourceTextureRef >= 0) {
+                ++model.textureEffectEnvironmentSphereBlocks;
+            } else {
+                ++model.textureEffectUnsupportedBlocks;
+            }
+            textureEffectByBlock[blockIdx] = std::move(effect);
         } else if (type == "NiDirectionalLight" || type == "NiAmbientLight") {
             // NiAmbientLight ist laut Referenz (PyFFI) ebenfalls reine NiLight-Basis ohne
             // eigene Zusatzfelder, exakt wie NiDirectionalLight.
@@ -3413,6 +3457,20 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
     // NIF-Dateien - nur eben ohne sichtbare Geometrie. Bisher wurde das fälschlich als Fehler
     // behandelt. model.parts bleibt einfach leer; NifMeshRenderer iteriert bereits sicher
     // über eine leere parts-Liste (kein Sonderfall nötig).
+
+    // NiTextureEffect is not a NiProperty. It is referenced by NiNode::effects and applies
+    // to that node's direct subgraph in the verified classic runtime behavior. Preserve the
+    // real node-to-effect bindings here; rendering remains a separate, explicitly gated step.
+    {
+        for (const auto& node : scene) {
+            if (!node.present) continue;
+            for (const auto ref : node.effects) {
+                if (ref < 0) continue;
+                if (textureEffectByBlock.contains(static_cast<std::uint32_t>(ref)))
+                    ++model.textureEffectNodeBindings;
+            }
+        }
+    }
 
     // NiAVObject-Properties sind im NIF-Szenengraph vererbbar. Bisher wurden nur die
     // direkten Property-Refs von NiTriShape/NiTriStrips ausgewertet; dadurch gingen z.B.
