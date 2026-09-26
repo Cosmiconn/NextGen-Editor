@@ -191,6 +191,8 @@ int main(int argc, char** argv) {
                            << "\tmode=" << part.textureApplyMode
                            << "\tname=" << ApplyModeName(part.textureApplyMode)
                            << "\tshader=" << Clean(shader)
+                           << "\tvertices=" << part.positions.size()
+                           << "\ttriangles=" << (part.triangleIndices.size() / 3u)
                            << "\tuvSets=" << part.uvSets.size()
                            << "\talphaBlend=" << (part.alphaBlend ? 1 : 0)
                            << "\talphaTest=" << (part.alphaTest ? 1 : 0)
@@ -198,9 +200,16 @@ int main(int argc, char** argv) {
                            << "\tslots=";
                     bool firstSlot = true;
                     for (std::size_t slot = 0; slot < part.textureSlots.size(); ++slot) {
-                        if (!part.textureSlots[slot].present) continue;
+                        const auto& tex = part.textureSlots[slot];
+                        if (!tex.present) continue;
                         if (!firstSlot) detail << ',';
-                        detail << slot;
+                        detail << slot
+                               << "{src=" << Clean(tex.texture)
+                               << ";uv=" << tex.uvSet
+                               << ";clamp=" << tex.clampMode
+                               << ";filter=" << tex.filterMode
+                               << ";embedded=" << (tex.embeddedTexture ? 1 : 0)
+                               << '}';
                         firstSlot = false;
                     }
                     applyModeDetails.push_back(detail.str());
