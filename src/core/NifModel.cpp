@@ -959,6 +959,12 @@ ParsedParticleData ParseNiPSysData(ByteReader& r, std::uint32_t version, bool is
     return out;
 }
 
+// Compatibility wrapper retained for the focused byte-layout tests. The production parser
+// now consumes the same bytes through ParseNiPSysData and preserves their authored state.
+void SkipNiPSysData(ByteReader& r, std::uint32_t version, bool isMeshVariant = false) {
+    (void)ParseNiPSysData(r, version, isMeshVariant);
+}
+
 // Older NiParticlesData blocks can appear without the NiPSysData ParticleDesc tail. They are
 // not sufficient for simulation yet, so keep their byte-exact skip path separate.
 std::uint32_t SkipNiGeometryDataHeader(ByteReader& r, std::uint32_t version) {
