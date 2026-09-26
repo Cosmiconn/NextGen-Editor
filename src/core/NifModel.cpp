@@ -4293,17 +4293,88 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             out.scale = in.scale;
             return out;
         };
-        for (auto& system : model.particleSystems) {
-            SkinTransform effective{};
-            int node = static_cast<int>(system.blockIndex);
+        auto worldTransformForBlock = [&](int block, SkinTransform& out) {
+            out = SkinTransform{};
+            int node = block;
             int guard = 0;
+            bool saw = false;
             for (; node >= 0 && guard < 128; ++guard) {
-                if (static_cast<std::size_t>(node) >= scene.size()) break;
+                if (static_cast<std::size_t>(node) >= scene.size()) return false;
                 const auto& sn = scene[static_cast<std::size_t>(node)];
-                if (sn.present) effective = multiplyTransform(sceneTransform(sn), effective);
+                if (sn.present) {
+                    out = multiplyTransform(sceneTransform(sn), out);
+                    saw = true;
+                }
                 node = parentOf[static_cast<std::size_t>(node)];
             }
-            system.sceneTransform = publicTransform(effective);
+            return saw;
+        };
+        auto invertTransform = [](const SkinTransform& in) {
+            SkinTransform out;
+            const float scale = std::abs(in.scale) > 1.0e-8f ? in.scale : 1.0f;
+            out.scale = 1.0f / scale;
+            // Gamebryo NiTransform uses orthonormal rotation, so inverse rotation is transpose.
+            out.rotation = {
+                in.rotation[0], in.rotation[3], in.rotation[6],
+                in.rotation[1], in.rotation[4], in.rotation[7],
+                in.rotation[2], in.rotation[5], in.rotation[8],
+            };
+            const float tx = in.translation.x, ty = in.translation.y, tz = in.translation.z;
+            out.translation.x = -out.scale * (out.rotation[0] * tx + out.rotation[1] * ty + out.rotation[2] * tz);
+            out.translation.y = -out.scale * (out.rotation[3] * tx + out.rotation[4] * ty + out.rotation[5] * tz);
+            out.translation.z = -out.scale * (out.rotation[6] * tx + out.rotation[7] * ty + out.rotation[8] * tz);
+            return out;
+        };
+
+        for (auto& system : model.particleSystems) {
+            SkinTransform systemWorld{};
+            if (!worldTransformForBlock(static_cast<int>(system.blockIndex), systemWorld)) continue;
+            system.sceneTransform = publicTransform(systemWorld);
+            const SkinTransform inverseSystem = invertTransform(systemWorld);
+
+            for (const auto modifierRef : system.modifierRefs) {
+                if (modifierRef < 0) continue;
+                const auto modifierIt =
+                    particleModifierByBlock.find(static_cast<std::uint32_t>(modifierRef));
+                if (modifierIt == particleModifierByBlock.end()) continue;
+                auto& modifier = modifierIt->second;
+                if (!modifier.emitter) continue;
+
+                if (modifier.emitterObjectRef >= 0) {
+                    SkinTransform emitterWorld{};
+                    if (worldTransformForBlock(modifier.emitterObjectRef, emitterWorld)) {
+                        modifier.emitterToParticleSystem =
+                            publicTransform(multiplyTransform(inverseSystem, emitterWorld));
+                        modifier.hasEmitterToParticleSystemTransform = true;
+                    }
+                }
+
+                modifier.emitterMeshes.clear();
+                modifier.emitterMeshes.reserve(modifier.emitterMeshRefs.size());
+                for (const auto meshRef : modifier.emitterMeshRefs) {
+                    if (meshRef < 0) continue;
+                    const auto geom = std::find_if(geomNodes.begin(), geomNodes.end(),
+                        [&](const GeomNode& candidate) {
+                            return candidate.block == static_cast<std::uint32_t>(meshRef);
+                        });
+                    if (geom == geomNodes.end() || geom->dataRef < 0) continue;
+                    const auto raw = rawByData.find(geom->dataRef);
+                    if (raw == rawByData.end() || raw->second.positions.empty()) continue;
+
+                    SkinTransform meshWorld{};
+                    if (!worldTransformForBlock(meshRef, meshWorld)) continue;
+
+                    NifParticleEmitterMesh resolved;
+                    resolved.blockRef = meshRef;
+                    resolved.skinned = geom->skinInstanceRef >= 0;
+                    resolved.emitterToParticleSystem =
+                        publicTransform(multiplyTransform(inverseSystem, meshWorld));
+                    resolved.positions = raw->second.positions;
+                    resolved.normals = raw->second.normals;
+                    resolved.triangleIndices = raw->second.triangleIndices;
+                    modifier.emitterMeshes.push_back(std::move(resolved));
+                }
+            }
         }
 
         auto relativeBoneTransform = [&](int boneBlock, int skeletonRoot, SkinTransform& out) {

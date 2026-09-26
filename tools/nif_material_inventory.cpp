@@ -115,6 +115,9 @@ int main(int argc, char** argv) {
     std::size_t managerControlledParticleBlendTracks = 0;
     std::size_t weightedParticleBlendTracks = 0;
     std::size_t colorModifiersWithoutTrack = 0;
+    std::size_t volumeEmittersWithoutTransform = 0;
+    std::size_t meshEmittersWithoutGeometry = 0;
+    std::size_t skinnedMeshEmitterBindings = 0;
     std::map<std::uint32_t, std::size_t> particleColorInterpolations;
     std::size_t invalidParticleModifierRefs = 0;
     std::size_t particleCapacity = 0;
@@ -234,13 +237,35 @@ int main(int argc, char** argv) {
                         if (modifierType == "<invalid>") ++invalidParticleModifierRefs;
                     }
                     for (const auto& modifier : system.modifiers) {
-                        if (modifier.type != "NiPSysColorModifier") continue;
-                        if (modifier.colorDataRef >= 0 && !modifier.hasColorTrack) {
-                            ++colorModifiersWithoutTrack;
-                            rendererGapFiles.insert(entry.path().string());
+                        if (modifier.type == "NiPSysColorModifier") {
+                            if (modifier.colorDataRef >= 0 && !modifier.hasColorTrack) {
+                                ++colorModifiersWithoutTrack;
+                                rendererGapFiles.insert(entry.path().string());
+                            }
+                            if (modifier.hasColorTrack)
+                                ++particleColorInterpolations[modifier.colorTrack.interpolation];
                         }
-                        if (modifier.hasColorTrack)
-                            ++particleColorInterpolations[modifier.colorTrack.interpolation];
+                        if (modifier.type == "NiPSysBoxEmitter" ||
+                            modifier.type == "NiPSysCylinderEmitter" ||
+                            modifier.type == "NiPSysSphereEmitter") {
+                            if (modifier.emitterObjectRef >= 0 &&
+                                !modifier.hasEmitterToParticleSystemTransform) {
+                                ++volumeEmittersWithoutTransform;
+                                rendererGapFiles.insert(entry.path().string());
+                            }
+                        }
+                        if (modifier.type == "NiPSysMeshEmitter") {
+                            if (!modifier.emitterMeshRefs.empty() && modifier.emitterMeshes.empty()) {
+                                ++meshEmittersWithoutGeometry;
+                                rendererGapFiles.insert(entry.path().string());
+                            }
+                            for (const auto& mesh : modifier.emitterMeshes) {
+                                if (mesh.skinned) {
+                                    ++skinnedMeshEmitterBindings;
+                                    rendererGapFiles.insert(entry.path().string());
+                                }
+                            }
+                        }
                     }
                     resolvedParticleControllers += system.controllers.size();
                     for (const auto& controller : system.controllers) {
@@ -722,6 +747,9 @@ int main(int argc, char** argv) {
               << "\tmanagerControlledParticleBlendTracks=" << managerControlledParticleBlendTracks
               << "\tweightedParticleBlendTracks=" << weightedParticleBlendTracks
               << "\tcolorModifiersWithoutTrack=" << colorModifiersWithoutTrack
+              << "\tvolumeEmittersWithoutTransform=" << volumeEmittersWithoutTransform
+              << "\tmeshEmittersWithoutGeometry=" << meshEmittersWithoutGeometry
+              << "\tskinnedMeshEmitterBindings=" << skinnedMeshEmitterBindings
               << "\tparticleTextureBindings=" << particleTextureBindings
               << "\tparticleShaderDescriptors=" << particleShaderDescriptors
               << "\tparticleUnresolvedEmbedded=" << particleUnresolvedEmbedded

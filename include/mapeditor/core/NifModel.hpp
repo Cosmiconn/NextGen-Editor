@@ -337,6 +337,15 @@ struct NifParticleControllerInfo {
     std::optional<NifBlendInterpolatorInfo> visibilityBlend;
 };
 
+struct NifParticleEmitterMesh {
+    std::int32_t blockRef = -1;
+    bool skinned = false;
+    NifTransform emitterToParticleSystem{};
+    std::vector<NifVec3> positions;
+    std::vector<NifVec3> normals;
+    std::vector<std::uint32_t> triangleIndices;
+};
+
 struct NifParticleModifierInfo {
     std::string type;
     std::string name;
@@ -353,8 +362,11 @@ struct NifParticleModifierInfo {
     float initialRadius = 1.0f, radiusVariation = 0.0f;
     float lifeSpan = 0.0f, lifeSpanVariation = 0.0f;
     std::int32_t emitterObjectRef = -1;
+    bool hasEmitterToParticleSystemTransform = false;
+    NifTransform emitterToParticleSystem{};
     float emitterWidth = 0.0f, emitterHeight = 0.0f, emitterDepth = 0.0f, emitterRadius = 0.0f;
     std::vector<std::int32_t> emitterMeshRefs;
+    std::vector<NifParticleEmitterMesh> emitterMeshes;
     std::uint32_t initialVelocityType = 0, emissionType = 0;
     NifVec3 emissionAxis{};
 
