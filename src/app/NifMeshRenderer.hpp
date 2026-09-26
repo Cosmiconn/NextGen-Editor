@@ -165,8 +165,20 @@ private:
         float lodFar = 0.0f;
         std::array<float, 3> lodCenter{0.0f, 0.0f, 0.0f};
     };
+    struct ParticleSystem {
+        SubMesh material;
+        std::vector<core::NifParticleState> particles;
+        std::uint16_t activeCount = 0;
+        bool meshParticles = false;
+        bool worldSpace = false;
+        bool hasColors = false;
+        bool hasRadii = false;
+        bool hasSizes = false;
+        core::NifTransform sceneTransform{};
+    };
     struct LoadedModel {
         std::vector<SubMesh> subMeshes;
+        std::vector<ParticleSystem> particleSystems;
     };
 
     void ReleaseModel(LoadedModel& model);
@@ -179,7 +191,7 @@ private:
     std::unordered_map<std::string, std::uint32_t> textureCache_; // Schlüssel: aufgelöster Textur-Pfad
     std::vector<const LoadedModel*> perObjectModel_;             // parallel zu set, nullptr = kein Mesh
     struct UniformLocations {
-        int locViewProj = -1, locView = -1, locModel = -1, locLightDir = -1, locCameraPos = -1, locAmbientColor = -1, locDiffuseColor = -1, locSpecularColor = -1, locEmissiveColor = -1, locGlossiness = -1, locSpecularEnabled = -1, locApplyMode = -1, locVcAlphaTextureBlender = -1, locVertexColorMode = -1, locBumpLumaScale = -1, locBumpLumaOffset = -1, locBumpMatrix = -1, locAlphaTest = -1, locAlphaCutoff = -1, locAlphaTestFunc = -1, locMaterialAlpha = -1, locEnvironmentSphereCount = -1;
+        int locViewProj = -1, locView = -1, locModel = -1, locLightDir = -1, locCameraPos = -1, locAmbientColor = -1, locDiffuseColor = -1, locSpecularColor = -1, locEmissiveColor = -1, locGlossiness = -1, locSpecularEnabled = -1, locApplyMode = -1, locVcAlphaTextureBlender = -1, locVertexColorMode = -1, locBumpLumaScale = -1, locBumpLumaOffset = -1, locBumpMatrix = -1, locAlphaTest = -1, locAlphaCutoff = -1, locAlphaTestFunc = -1, locMaterialAlpha = -1, locEnvironmentSphereCount = -1, locParticleMode = -1, locParticleColor = -1;
         std::array<int, 10> locHasTex{}, locUvSet{}, locHasTransform{}, locTranslation{}, locScale{}, locRotation{}, locTransformType{}, locCenter{}, locSampler{};
         std::array<int, kMaxEnvironmentSphereEffects> locEnvironmentSampler{};
     } uniforms_;
@@ -187,9 +199,12 @@ private:
         const SubMesh* sub = nullptr;
         Mat4 model = Mat4::Identity();
         float depth = 0.0f;
+        bool particle = false;
+        std::array<float, 4> particleColor{1.0f, 1.0f, 1.0f, 1.0f};
     };
     std::vector<DrawItem> opaqueItems_, blendedItems_;
     std::uint32_t shaderProgram_ = 0;
+    std::uint32_t particleVao_ = 0, particleVbo_ = 0, particleEbo_ = 0;
 };
 
 } // namespace theseed::mapeditor::app

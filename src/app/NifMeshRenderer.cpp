@@ -98,6 +98,8 @@ uniform bool uSpecularEnabled;
 uniform int uApplyMode;
 uniform bool uVcAlphaTextureBlender;
 uniform int uVertexColorMode;
+uniform bool uParticleMode;
+uniform vec4 uParticleColor;
 uniform bool uHasTex[10];
 uniform int uUvSet[10];
 uniform bool uHasTexTransform[10];
@@ -234,6 +236,7 @@ vec3 environmentSphereColor(vec2 uv) {
 
 void main() {
     vec4 base = uHasTex[0] ? texture(uTex0, slotUv(0)) : vec4(1.0);
+    vec4 vertexColor = uParticleMode ? uParticleColor : vColor;
 
     // Classic NiVertexColorProperty follows OpenGL color-material semantics.
     // SRC_AMB_DIF replaces authored ambient+diffuse with the per-vertex color;
@@ -244,10 +247,10 @@ void main() {
     vec3 materialEmission = uEmissiveColor;
     if (!uVcAlphaTextureBlender) {
         if (uVertexColorMode == 2) {
-            materialAmbient = vColor.rgb;
-            materialDiffuse = vColor.rgb;
+            materialAmbient = vertexColor.rgb;
+            materialDiffuse = vertexColor.rgb;
         } else if (uVertexColorMode == 1) {
-            materialEmission = vColor.rgb;
+            materialEmission = vertexColor.rgb;
         }
     }
 
@@ -257,9 +260,9 @@ void main() {
         // Texture1/Texture2 are blended by vertex alpha, then multiplied by Detail*2.
         vec3 texture1 = texture(uTex0, slotUv(0)).rgb;
         vec3 texture2 = texture(uTex1, slotUv(1)).rgb;
-        vec3 blended = mix(texture2, texture1, clamp(vColor.a, 0.0, 1.0));
+        vec3 blended = mix(texture2, texture1, clamp(vertexColor.a, 0.0, 1.0));
         vec3 detail = texture(uTex2, slotUv(2)).rgb * 2.0;
-        surface = uDiffuseColor * vColor.rgb * blended * detail;
+        surface = uDiffuseColor * vertexColor.rgb * blended * detail;
     } else {
         if (uHasTex[0]) {
             if (uApplyMode == 0) surface = base.rgb;                         // APPLY_REPLACE
@@ -279,6 +282,7 @@ void main() {
 
     float alpha = uMaterialAlpha;
     if (!uVcAlphaTextureBlender && uHasTex[0] && uApplyMode != 1) alpha *= base.a;
+    if (uParticleMode) alpha *= vertexColor.a;
     if (uAlphaTest) {
         bool passAlpha = true;
         if (uAlphaTestFunc == 0) passAlpha = false;
@@ -566,6 +570,8 @@ void NifMeshRenderer::Init() {
     uniforms_.locAlphaTestFunc = glGetUniformLocation(shaderProgram_, "uAlphaTestFunc");
     uniforms_.locMaterialAlpha = glGetUniformLocation(shaderProgram_, "uMaterialAlpha");
     uniforms_.locEnvironmentSphereCount = glGetUniformLocation(shaderProgram_, "uEnvironmentSphereCount");
+    uniforms_.locParticleMode = glGetUniformLocation(shaderProgram_, "uParticleMode");
+    uniforms_.locParticleColor = glGetUniformLocation(shaderProgram_, "uParticleColor");
 
     for (int slot = 0; slot < 10; ++slot) {
         char name[64];
@@ -585,6 +591,49 @@ void NifMeshRenderer::Init() {
         uniforms_.locEnvironmentSampler[effect] = glGetUniformLocation(shaderProgram_, name);
     }
 
+    // NifSkope's classic particle renderer draws a camera-space +/-size quad with the same
+    // UVs for every texture stage. Keep one immutable unit quad and vary only the model/color.
+    constexpr std::size_t kGpuUvSets = 8;
+    constexpr std::size_t kStrideFloats = 6 + kGpuUvSets * 2 + 4;
+    std::vector<float> particleVertices;
+    particleVertices.reserve(4 * kStrideFloats);
+    const auto appendParticleVertex = [&](float x, float y, float u, float v) {
+        particleVertices.insert(particleVertices.end(), {x, y, 0.0f, 0.0f, 0.0f, -1.0f});
+        for (std::size_t set = 0; set < kGpuUvSets; ++set)
+            particleVertices.insert(particleVertices.end(), {u, v});
+        particleVertices.insert(particleVertices.end(), {1.0f, 1.0f, 1.0f, 1.0f});
+    };
+    appendParticleVertex(+1.0f, +1.0f, 1.0f, 1.0f);
+    appendParticleVertex(-1.0f, +1.0f, 0.0f, 1.0f);
+    appendParticleVertex(+1.0f, -1.0f, 1.0f, 0.0f);
+    appendParticleVertex(-1.0f, -1.0f, 0.0f, 0.0f);
+    constexpr std::array<std::uint32_t, 6> particleIndices{0, 1, 2, 2, 1, 3};
+
+    glGenVertexArrays(1, &particleVao_);
+    glBindVertexArray(particleVao_);
+    glGenBuffers(1, &particleVbo_);
+    glBindBuffer(GL_ARRAY_BUFFER, particleVbo_);
+    glBufferData(GL_ARRAY_BUFFER, static_cast<long>(particleVertices.size() * sizeof(float)),
+                 particleVertices.data(), GL_STATIC_DRAW);
+    constexpr GLsizei strideBytes = static_cast<GLsizei>(kStrideFloats * sizeof(float));
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, strideBytes, reinterpret_cast<void*>(0));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, strideBytes, reinterpret_cast<void*>(3 * sizeof(float)));
+    for (std::size_t set = 0; set < kGpuUvSets; ++set) {
+        const GLuint location = static_cast<GLuint>(2 + set);
+        glEnableVertexAttribArray(location);
+        glVertexAttribPointer(location, 2, GL_FLOAT, GL_FALSE, strideBytes,
+                              reinterpret_cast<void*>((6 + set * 2) * sizeof(float)));
+    }
+    glEnableVertexAttribArray(10);
+    glVertexAttribPointer(10, 4, GL_FLOAT, GL_FALSE, strideBytes,
+                          reinterpret_cast<void*>((6 + kGpuUvSets * 2) * sizeof(float)));
+    glGenBuffers(1, &particleEbo_);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, particleEbo_);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, static_cast<long>(particleIndices.size() * sizeof(std::uint32_t)),
+                 particleIndices.data(), GL_STATIC_DRAW);
+    glBindVertexArray(0);
 }
 
 void NifMeshRenderer::ReleaseModel(LoadedModel& model) {
@@ -610,6 +659,10 @@ void NifMeshRenderer::Shutdown() {
     perObjectModel_.clear();
     opaqueItems_.clear();
     blendedItems_.clear();
+    if (particleEbo_) glDeleteBuffers(1, &particleEbo_);
+    if (particleVbo_) glDeleteBuffers(1, &particleVbo_);
+    if (particleVao_) glDeleteVertexArrays(1, &particleVao_);
+    particleEbo_ = particleVbo_ = particleVao_ = 0;
     if (shaderProgram_) glDeleteProgram(shaderProgram_);
     shaderProgram_ = 0;
 }
@@ -727,6 +780,43 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
             }
             LoadedModel model;
             if (nifResult) {
+                const auto findParticleTexturePath = [&](const std::string& textureName)
+                    -> std::optional<std::filesystem::path> {
+                    if (textureName.empty()) return std::nullopt;
+                    const auto native = core::legacy::LegacyPathToNative(textureName);
+                    if (!modelDir.empty()) {
+                        if (auto local = core::legacy::ResolveCaseInsensitivePath(modelDir, native)) return local;
+                        const auto stripped = core::legacy::StripResmapPrefix(native);
+                        if (stripped != native) {
+                            if (auto local = core::legacy::ResolveCaseInsensitivePath(modelDir, stripped)) return local;
+                        }
+                    }
+                    if (auto texPath = core::legacy::ResolveLegacyAssetPath(mapDir, textureName)) return texPath;
+                    if (!clientAssetRoot.empty()) {
+                        if (auto rooted = core::legacy::ResolveCaseInsensitivePath(clientAssetRoot, native)) return rooted;
+                    }
+                    std::string want = textureName;
+                    if (const auto slash = want.find_last_of("\\/"); slash != std::string::npos)
+                        want = want.substr(slash + 1);
+                    const std::string wantLower = TextureLookupKey(want);
+                    if (!modelDir.empty()) {
+                        std::error_code fec;
+                        for (const auto& entry : std::filesystem::directory_iterator(modelDir, fec)) {
+                            if (fec) break;
+                            if (TextureLookupKey(entry.path().filename().string()) == wantLower) return entry.path();
+                        }
+                    }
+                    if (!clientAssetRoot.empty() && !want.empty())
+                        return clientTextureIndex.FindUnique(clientAssetRoot, want);
+                    return std::nullopt;
+                };
+                const auto resolveParticleTexturePath = [&](const std::string& textureName) {
+                    const auto cacheKey = std::string("particle:") + modelDir.string() + "\n" + textureName;
+                    auto [entry, inserted] = resolvedTextures.try_emplace(cacheKey);
+                    if (inserted) entry->second = findParticleTexturePath(textureName);
+                    return entry->second;
+                };
+
                 model.subMeshes.reserve(nifResult->parts.size());
                 for (const auto& part : nifResult->parts) {
                     if (part.positions.empty() || part.triangleIndices.empty()) continue;
@@ -1080,6 +1170,123 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                     glBindVertexArray(0);
                     model.subMeshes.push_back(sub);
                 }
+
+                model.particleSystems.reserve(nifResult->particleSystems.size());
+                for (std::size_t systemIndex = 0; systemIndex < nifResult->particleSystems.size(); ++systemIndex) {
+                    const auto& srcSystem = nifResult->particleSystems[systemIndex];
+                    if (!srcSystem.hasParticleData || srcSystem.particleData.particles.empty()) continue;
+
+                    ParticleSystem dstSystem;
+                    dstSystem.particles = srcSystem.particleData.particles;
+                    dstSystem.activeCount = std::min<std::uint16_t>(
+                        srcSystem.particleData.activeCount,
+                        static_cast<std::uint16_t>(std::min<std::size_t>(dstSystem.particles.size(), 65535u)));
+                    dstSystem.meshParticles = srcSystem.meshParticles;
+                    dstSystem.worldSpace = srcSystem.worldSpace;
+                    dstSystem.hasColors = srcSystem.particleData.hasColors;
+                    dstSystem.hasRadii = srcSystem.particleData.hasRadii;
+                    dstSystem.hasSizes = srcSystem.particleData.hasSizes;
+                    dstSystem.sceneTransform = srcSystem.sceneTransform;
+
+                    auto& sub = dstSystem.material;
+                    sub.vao = particleVao_;
+                    sub.indexCount = 6;
+                    sub.ambientColor = {srcSystem.material.ambient[0], srcSystem.material.ambient[1], srcSystem.material.ambient[2]};
+                    sub.diffuseColor = {srcSystem.material.diffuse[0], srcSystem.material.diffuse[1], srcSystem.material.diffuse[2]};
+                    sub.specularColor = {srcSystem.material.specular[0], srcSystem.material.specular[1], srcSystem.material.specular[2]};
+                    sub.emissiveColor = {srcSystem.material.emissive[0], srcSystem.material.emissive[1], srcSystem.material.emissive[2]};
+                    sub.glossiness = std::clamp(srcSystem.material.glossiness, 0.0f, 128.0f);
+                    sub.specularEnabled = srcSystem.specularEnabled;
+                    sub.textureApplyMode = srcSystem.textureApplyMode;
+                    sub.vcAlphaTextureBlender = srcSystem.shaderName == "VCAlphaTextureBlender";
+                    if (dstSystem.hasColors) {
+                        if (!srcSystem.hasVertexColorProperty) sub.vertexColorMode = 2;
+                        else if (srcSystem.vertexColorMode == 0u) sub.vertexColorMode = 0;
+                        else if (srcSystem.vertexColorMode == 1u) sub.vertexColorMode = 1;
+                        else if (srcSystem.vertexColorMode == 2u)
+                            sub.vertexColorMode = srcSystem.vertexLightingMode == 0u ? 0u : 2u;
+                        else sub.vertexColorMode = 2;
+                    }
+                    sub.bumpMapLumaScale = srcSystem.bumpMapLumaScale;
+                    sub.bumpMapLumaOffset = srcSystem.bumpMapLumaOffset;
+                    sub.bumpMapMatrix = {srcSystem.bumpMapMatrix[0], srcSystem.bumpMapMatrix[2],
+                                         srcSystem.bumpMapMatrix[1], srcSystem.bumpMapMatrix[3]};
+                    sub.materialAlpha = std::clamp(srcSystem.material.alpha, 0.0f, 1.0f);
+                    sub.alphaBlend = srcSystem.alphaBlend || sub.materialAlpha < 0.999f;
+                    sub.alphaTest = srcSystem.alphaTest;
+                    sub.alphaCutoff = static_cast<float>(srcSystem.alphaThreshold) / 255.0f;
+                    sub.alphaSrcBlend = srcSystem.alphaSrcBlend;
+                    sub.alphaDstBlend = srcSystem.alphaDstBlend;
+                    sub.alphaTestFunc = srcSystem.alphaTestFunc;
+                    sub.depthTest = srcSystem.depthTest;
+                    sub.depthWrite = srcSystem.depthWrite;
+                    sub.depthFunction = srcSystem.depthFunction;
+                    sub.stencilEnabled = srcSystem.stencilEnabled;
+                    sub.stencilFunction = srcSystem.stencilFunction;
+                    sub.stencilReference = srcSystem.stencilReference;
+                    sub.stencilMask = srcSystem.stencilMask;
+                    sub.stencilFailAction = srcSystem.stencilFailAction;
+                    sub.stencilZFailAction = srcSystem.stencilZFailAction;
+                    sub.stencilPassAction = srcSystem.stencilPassAction;
+                    sub.faceDrawMode = srcSystem.faceDrawMode;
+                    sub.textureTransformAnimations = srcSystem.textureTransformAnimations;
+
+                    for (std::size_t slotIndex = 0; slotIndex < srcSystem.textureSlots.size(); ++slotIndex) {
+                        const auto& src = srcSystem.textureSlots[slotIndex];
+                        auto& dst = sub.textures[slotIndex];
+                        dst.uvSet = std::min<std::uint32_t>(src.uvSet, 7u);
+                        dst.clampMode = src.clampMode;
+                        dst.filterMode = src.filterMode;
+                        dst.hasTransform = src.hasTransform;
+                        dst.translation = {src.translation.u, src.translation.v};
+                        dst.scale = {src.scale.u, src.scale.v};
+                        dst.rotation = src.rotation;
+                        dst.transformType = src.transformType;
+                        dst.center = {src.center.u, src.center.v};
+                        if (!src.present) continue;
+                        if (src.sourceUsesEmbeddedPixelData) {
+                            if (src.embeddedTexture) {
+                                const std::string cacheKey = key + "#particle:" + std::to_string(systemIndex) +
+                                                             ":slot:" + std::to_string(slotIndex) + ":pixel:" +
+                                                             std::to_string(src.sourcePixelDataRef);
+                                dst.texture = GetOrLoadEmbeddedTexture(*src.embeddedTexture, cacheKey);
+                            }
+                        } else if (!src.texture.empty()) {
+                            if (auto texPath = resolveParticleTexturePath(src.texture))
+                                dst.texture = GetOrLoadTexture(*texPath);
+                            else
+                                std::fprintf(stderr, "[NifMeshRenderer] Particle-Textur-Slot %zu nicht gefunden: %s\n",
+                                             slotIndex, src.texture.c_str());
+                        }
+                    }
+
+                    for (std::size_t ai = 0; ai < srcSystem.textureFlipAnimations.size(); ++ai) {
+                        const auto& srcAnim = srcSystem.textureFlipAnimations[ai];
+                        SubMesh::FlipAnimation dstAnim;
+                        dstAnim.slot = srcAnim.slot;
+                        dstAnim.track = srcAnim.track;
+                        dstAnim.frameTextures.reserve(srcAnim.frames.size());
+                        for (std::size_t fi = 0; fi < srcAnim.frames.size(); ++fi) {
+                            const auto& frame = srcAnim.frames[fi];
+                            std::uint32_t textureId = 0;
+                            if (frame.sourceUsesEmbeddedPixelData) {
+                                if (frame.embeddedTexture) {
+                                    const std::string cacheKey = key + "#particleFlip:" + std::to_string(systemIndex) +
+                                                                 ":" + std::to_string(ai) + ":" + std::to_string(fi) +
+                                                                 ":pixel:" + std::to_string(frame.sourcePixelDataRef);
+                                    textureId = GetOrLoadEmbeddedTexture(*frame.embeddedTexture, cacheKey);
+                                }
+                            } else if (!frame.texture.empty()) {
+                                if (auto texPath = resolveParticleTexturePath(frame.texture))
+                                    textureId = GetOrLoadTexture(*texPath);
+                            }
+                            if (textureId != 0) dstAnim.frameTextures.push_back(textureId);
+                        }
+                        if (!dstAnim.frameTextures.empty()) sub.textureFlipAnimations.push_back(std::move(dstAnim));
+                    }
+
+                    model.particleSystems.push_back(std::move(dstSystem));
+                }
             }
             if (!nifResult) {
                 std::fprintf(stderr, "[NifMeshRenderer] NIF-Laden fehlgeschlagen: %s: %s\n",
@@ -1088,7 +1295,7 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
             it = modelCache_.emplace(key, std::move(model)).first;
         }
 
-        if (!it->second.subMeshes.empty()) {
+        if (!it->second.subMeshes.empty() || !it->second.particleSystems.empty()) {
             perObjectModel_[i] = &it->second;
         }
     }
@@ -1201,6 +1408,26 @@ Mat4 Mat3ToMat4(const std::array<float, 9>& r) {
     m.m[8] = r[6]; m.m[9] = r[7]; m.m[10] = r[8];
     return m;
 }
+
+Mat4 NifTransformToEditorMat4(const core::NifTransform& t) {
+    // NIF rotations/translations are stored in legacy (x,y,z); editor space is (x,z,y).
+    // Re = P*R*P where P swaps legacy Y/Z, then convert row-major Re to GL column-major.
+    const auto& r = t.rotation;
+    const std::array<float, 9> e{
+        r[0], r[2], r[1],
+        r[6], r[8], r[7],
+        r[3], r[5], r[4],
+    };
+    Mat4 m = Mat4::Identity();
+    m.m[0] = e[0] * t.scale; m.m[1] = e[3] * t.scale; m.m[2] = e[6] * t.scale;
+    m.m[4] = e[1] * t.scale; m.m[5] = e[4] * t.scale; m.m[6] = e[7] * t.scale;
+    m.m[8] = e[2] * t.scale; m.m[9] = e[5] * t.scale; m.m[10] = e[8] * t.scale;
+    m.m[12] = t.translation.x;
+    m.m[13] = t.translation.z;
+    m.m[14] = t.translation.y;
+    return m;
+}
+
 
 std::array<float, 3> TransformPoint(const Mat4& m, const std::array<float, 3>& p) {
     return {
@@ -1467,6 +1694,8 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     const auto& locMaterialAlpha = uniforms_.locMaterialAlpha;
     const auto& locEnvironmentSphereCount = uniforms_.locEnvironmentSphereCount;
     const auto& locEnvironmentSampler = uniforms_.locEnvironmentSampler;
+    const auto& locParticleMode = uniforms_.locParticleMode;
+    const auto& locParticleColor = uniforms_.locParticleColor;
     const auto& locHasTex = uniforms_.locHasTex;
     const auto& locUvSet = uniforms_.locUvSet;
     const auto& locHasTransform = uniforms_.locHasTransform;
@@ -1492,7 +1721,12 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     blendedItems.clear();
 
     std::size_t estimatedItems = 0;
-    for (const auto* model : perObjectModel_) if (model != nullptr) estimatedItems += model->subMeshes.size();
+    for (const auto* model : perObjectModel_) {
+        if (model == nullptr) continue;
+        estimatedItems += model->subMeshes.size();
+        for (const auto& system : model->particleSystems)
+            if (!system.meshParticles) estimatedItems += system.activeCount;
+    }
     opaqueItems.reserve(estimatedItems);
     blendedItems.reserve(estimatedItems / 4 + 1);
 
@@ -1541,6 +1775,37 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
                                 view.m[10] * worldCenter[2] + view.m[14];
             DrawItem item{&sub, effectiveModel, -viewZ};
             (sub.alphaBlend ? blendedItems : opaqueItems).push_back(item);
+        }
+
+        for (const auto& system : model->particleSystems) {
+            // NiMeshParticleSystem instances require authored mesh generation/selection and are
+            // deliberately not reinterpreted as sprites.
+            if (system.meshParticles || system.activeCount == 0) continue;
+            const Mat4 particleSpace = modelMat * NifTransformToEditorMat4(system.sceneTransform);
+            const float worldScale = std::sqrt(particleSpace.m[0] * particleSpace.m[0] +
+                                               particleSpace.m[1] * particleSpace.m[1] +
+                                               particleSpace.m[2] * particleSpace.m[2]);
+            const std::size_t active = std::min<std::size_t>(system.activeCount, system.particles.size());
+            for (std::size_t p = 0; p < active; ++p) {
+                const auto& particle = system.particles[p];
+                const auto center = TransformPoint(particleSpace,
+                    {particle.position.x, particle.position.y, particle.position.z});
+                float radius = system.hasRadii ? particle.radius : 1.0f;
+                float size = system.hasSizes ? particle.size : 1.0f;
+                const float halfSize = std::abs(radius * size * worldScale);
+                if (!std::isfinite(center[0]) || !std::isfinite(center[1]) || !std::isfinite(center[2]) ||
+                    !std::isfinite(halfSize) || halfSize <= 1.0e-6f) continue;
+
+                const Mat4 face = BillboardFacingRotation(center, camera, 0u);
+                const Mat4 particleModel = TranslationMatrix(center[0], center[1], center[2]) *
+                                           face * UniformScaleMatrix(halfSize);
+                const auto centerView = TransformPoint(view, center);
+                DrawItem item{&system.material, particleModel, -centerView[2]};
+                item.particle = true;
+                if (system.hasColors)
+                    item.particleColor = {particle.color.r, particle.color.g, particle.color.b, particle.color.a};
+                (system.material.alphaBlend ? blendedItems : opaqueItems).push_back(item);
+            }
         }
     }
 
@@ -1651,6 +1916,9 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     const auto drawItem = [&](const DrawItem& item, bool blendedPass) {
         const SubMesh& sub = *item.sub;
         glUniformMatrix4fv(locModel, 1, GL_FALSE, item.model.m);
+        glUniform1i(locParticleMode, item.particle ? 1 : 0);
+        glUniform4f(locParticleColor, item.particleColor[0], item.particleColor[1],
+                    item.particleColor[2], item.particleColor[3]);
         applyFaceDrawMode(sub.faceDrawMode);
         if (sub.depthTest) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
         glDepthMask(sub.depthWrite ? GL_TRUE : GL_FALSE);
