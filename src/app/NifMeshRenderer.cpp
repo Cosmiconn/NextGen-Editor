@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <cctype>
 #include <limits>
+#include <unordered_map>
 
 #ifdef _WIN32
 #define NOMINMAX
@@ -328,6 +329,86 @@ std::expected<core::DdsImage, std::string> LoadWicImage(const std::filesystem::p
 }
 #endif
 
+
+std::string TextureLookupKey(std::string value) {
+    std::string out;
+    out.reserve(value.size());
+    for (unsigned char ch : value) {
+        if (std::isspace(ch)) continue;
+        out.push_back(static_cast<char>(std::tolower(ch)));
+    }
+    return out;
+}
+
+bool IsTextureExtension(const std::filesystem::path& path) {
+    std::string ext = path.extension().string();
+    for (char& ch : ext) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    return ext == ".dds" || ext == ".tga" || ext == ".bmp" ||
+           ext == ".png" || ext == ".jpg" || ext == ".jpeg";
+}
+
+// mapDir normally is <Client>/resmap/field/<Map>. NPC previews deliberately pass a fake
+// two-level path below <Client>. Keep both layouts supported and never assume a global drive.
+std::filesystem::path DeriveClientAssetRoot(const std::filesystem::path& mapDir) {
+    if (mapDir.empty()) return {};
+    const auto assetRoot = mapDir.parent_path().parent_path();
+    if (assetRoot.empty()) return {};
+    if (core::legacy::EqualsCaseInsensitive(assetRoot.filename().string(), "resmap"))
+        return assetRoot.parent_path();
+    return assetRoot;
+}
+
+struct ClientTextureIndex {
+    bool built = false;
+    std::unordered_map<std::string, std::filesystem::path> unique;
+    std::unordered_set<std::string> ambiguous;
+
+    void Build(const std::filesystem::path& clientRoot) {
+        if (built) return;
+        built = true;
+        if (clientRoot.empty()) return;
+
+        // Search only known Fiesta asset trees. This is deliberately narrower than a recursive
+        // search of the whole client, so a stray backup/export file cannot silently become a
+        // material texture.
+        static constexpr const char* kRoots[] = {
+            "resmap", "resitem", "reseffect", "reschar", "resmenu", "ressystem"
+        };
+        for (const char* rootName : kRoots) {
+            auto resolvedRoot = core::legacy::ResolveCaseInsensitivePath(clientRoot, rootName);
+            if (!resolvedRoot) continue;
+            std::error_code ec;
+            std::filesystem::recursive_directory_iterator it(
+                *resolvedRoot, std::filesystem::directory_options::skip_permission_denied, ec);
+            const std::filesystem::recursive_directory_iterator end;
+            for (; it != end; it.increment(ec)) {
+                if (ec) { ec.clear(); continue; }
+                if (!it->is_regular_file(ec) || ec || !IsTextureExtension(it->path())) {
+                    ec.clear();
+                    continue;
+                }
+                const std::string key = TextureLookupKey(it->path().filename().string());
+                if (key.empty() || ambiguous.contains(key)) continue;
+                const auto [found, inserted] = unique.emplace(key, it->path());
+                if (!inserted && found->second != it->path()) {
+                    unique.erase(found);
+                    ambiguous.insert(key);
+                }
+            }
+        }
+    }
+
+    std::optional<std::filesystem::path> FindUnique(const std::filesystem::path& clientRoot,
+                                                    const std::string& filename) {
+        Build(clientRoot);
+        const std::string key = TextureLookupKey(filename);
+        if (key.empty() || ambiguous.contains(key)) return std::nullopt;
+        const auto it = unique.find(key);
+        return it == unique.end() ? std::nullopt
+                                  : std::optional<std::filesystem::path>(it->second);
+    }
+};
+
 std::vector<core::NifVec3> ComputeFallbackNormals(const core::NifMeshPart& part) {
     std::vector<core::NifVec3> normals(part.positions.size(), core::NifVec3{0.0f, 0.0f, 0.0f});
     for (std::size_t i = 0; i + 2 < part.triangleIndices.size(); i += 3) {
@@ -514,6 +595,8 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
     perObjectModel_.assign(set.Count(), nullptr);
     std::unordered_map<std::string, std::optional<std::filesystem::path>> resolvedModels;
     std::unordered_map<std::string, std::optional<std::filesystem::path>> resolvedTextures;
+    const std::filesystem::path clientAssetRoot = DeriveClientAssetRoot(mapDir);
+    ClientTextureIndex clientTextureIndex;
 
     for (std::size_t i = 0; i < set.Count(); ++i) {
         const auto& obj = set.At(i);
@@ -656,16 +739,13 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
 
                     // Alle klassischen Textur-Slots laden. Jeder Slot behaelt sein eigenes UV-Set,
                     // Clamp/Filter und seine optionale NIF-Texturtransformation.
-                    auto lowerOf = [](std::string t) {
-                        for (char& ch : t) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-                        return t;
-                    };
                     auto findTexturePath = [&](const std::string& textureName) -> std::optional<std::filesystem::path> {
-                        // NIF texture references are not consistently rooted at the map directory.
-                        // Many assets use a path relative to the NIF itself, so try that first
-                        // (case-insensitive, component by component) before the shared resmap search.
+                        if (textureName.empty()) return std::nullopt;
+                        const auto native = core::legacy::LegacyPathToNative(textureName);
+
+                        // 1) NIF-relative reference. This is the most specific interpretation and
+                        // therefore always wins when it exists.
                         if (!modelDir.empty()) {
-                            const auto native = core::legacy::LegacyPathToNative(textureName);
                             if (auto local = core::legacy::ResolveCaseInsensitivePath(modelDir, native)) return local;
                             const auto stripped = core::legacy::StripResmapPrefix(native);
                             if (stripped != native) {
@@ -673,17 +753,41 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                             }
                         }
 
-                        auto texPath = core::legacy::ResolveLegacyAssetPath(mapDir, textureName);
-                        if (texPath || modelDir.empty()) return texPath;
+                        // 2) Existing map/resmap resolver (map-local, shared resmap roots,
+                        // case/whitespace tolerant and ambiguity-safe).
+                        if (auto texPath = core::legacy::ResolveLegacyAssetPath(mapDir, textureName))
+                            return texPath;
 
-                        // Last local fallback: basename beside the NIF. This also handles exporter
-                        // paths whose directory prefix no longer exists in the installed client.
+                        // 3) Explicit client-rooted paths such as resitem\..., reseffect\...,
+                        // reschar\... or resmenu\.... Earlier code stopped at <Client>/resmap and
+                        // therefore could not resolve a valid texture merely because the NIF lived
+                        // in resmap while its material referenced a sibling Fiesta asset tree.
+                        if (!clientAssetRoot.empty()) {
+                            if (auto rooted = core::legacy::ResolveCaseInsensitivePath(clientAssetRoot, native))
+                                return rooted;
+                        }
+
+                        // 4) Basename beside the NIF. Preserve the old whitespace/case tolerance.
                         std::string want = textureName;
-                        if (const auto slash = want.find_last_of("\\/"); slash != std::string::npos) want = want.substr(slash + 1);
-                        const std::string wantLower = lowerOf(want);
-                        std::error_code fec;
-                        for (const auto& entry : std::filesystem::directory_iterator(modelDir, fec)) {
-                            if (lowerOf(entry.path().filename().string()) == wantLower) return entry.path();
+                        if (const auto slash = want.find_last_of("\\/"); slash != std::string::npos)
+                            want = want.substr(slash + 1);
+                        const std::string wantLower = TextureLookupKey(want);
+                        if (!modelDir.empty()) {
+                            std::error_code fec;
+                            for (const auto& entry : std::filesystem::directory_iterator(modelDir, fec)) {
+                                if (fec) break;
+                                if (TextureLookupKey(entry.path().filename().string()) == wantLower)
+                                    return entry.path();
+                            }
+                        }
+
+                        // 5) Only for a bare/stale reference: search the known Fiesta client asset
+                        // trees by basename, but accept it ONLY if the result is unique across all
+                        // of them. Ambiguous names remain unresolved instead of showing a plausible
+                        // but wrong texture.
+                        if (!clientAssetRoot.empty() && !want.empty()) {
+                            if (auto unique = clientTextureIndex.FindUnique(clientAssetRoot, want))
+                                return unique;
                         }
                         return std::nullopt;
                     };
