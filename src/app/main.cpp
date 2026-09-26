@@ -6013,9 +6013,10 @@ void DrawShnEditor(EditorState& state) {
 void DrawProjectHub(EditorState& state) {
     DrawTopNav(state, L("Übersicht","Overview"));
 
-    ImGui::TextColored(ImVec4(0.74f, 0.86f, 0.96f, 1.0f), "Workspaces");
+    ImGui::TextColored(ImVec4(0.74f, 0.86f, 0.96f, 1.0f), "%s", L("ARBEITSBEREICHE","WORKSPACES"));
     ImGui::SameLine();
-    ImGui::TextDisabled("Vorhandene Editoren und klar getrennte Erweiterungspunkte");
+    ImGui::TextDisabled("%s",L("Vorhandene Editoren und klar getrennte Erweiterungspunkte",
+                                "Available editors and clearly separated extension points"));
 
     const ImVec2 avail = ImGui::GetContentRegionAvail();
     const float gap = 10.0f;
@@ -6033,23 +6034,33 @@ void DrawProjectHub(EditorState& state) {
         bool enabled;
     };
     const CardDef cards[] = {
-        {"hub.map", "Karte",
-         {"Heightmap & Texturen", "Walk & Block", "Objekte + Sky/Water/GroundObject", "NPCs, Mobs & Portale"},
+        {"hub.map", L("Karte","Map"),
+         {L("Heightmap & Texturen","Heightmap & textures"), L("Walk & Block","Walk & block"),
+          L("Objekte + Sky/Water/GroundObject","Objects + Sky/Water/GroundObject"),
+          L("NPCs, Mobs & Portale","NPCs, mobs & portals")},
          DrawIconTerrain, "nav.world", HubAction::Map, true},
-        {"hub.data", "Spieldaten",
+        {"hub.data", L("Spieldaten","Game Data"),
          {"Single & Multi SHN", "XP Rate / Buy & Sell", "Custom NPC/Mob + AI", "Drop Tables + Client/Server"},
          DrawIconTable, "module.shn.single", HubAction::Data, true},
-        {"hub.quest", "Quest Editor",
-         {"QuestData + QuestDialog", "Ziele & Drops", "Start/Action/Finish Skripte", "Text-ID Auflösung"},
+        {"hub.quest", L("Quest Editor","Quest Editor"),
+         {"QuestData + QuestDialog", L("Ziele & Drops","Objectives & drops"),
+          L("Start/Action/Finish Skripte","Start/Action/Finish scripts"),
+          L("Text-ID Auflösung","Text-ID resolution")},
          DrawIconBook, "module.quest", HubAction::Quest, true},
-        {"hub.skill", "Skill Editor",
-         {"Skills bearbeiten/klonen", "Skill-Stufen", "Animation/Effekt-Auswahl", "Serien skalieren"},
+        {"hub.skill", L("Skill Editor","Skill Editor"),
+         {L("Skills bearbeiten/klonen","Edit/clone skills"), L("Skill-Stufen","Skill tiers"),
+          L("Animation/Effekt-Auswahl","Animation/effect selection"), L("Serien skalieren","Scale series")},
          DrawIconBolt, "module.skill", HubAction::Skill, true},
-        {"hub.kfm", "Animationen / KFM",
-         {"KFM-Katalog", "Übergänge", "Dateiverweise prüfen", "verlustfreie Kopie exportieren"},
+        {"hub.kfm", L("Animationen / KFM","Animations / KFM"),
+         {L("KFM-Katalog","KFM catalog"), L("Übergänge","Transitions"),
+          L("Dateiverweise prüfen","Validate file references"),
+          L("verlustfreie Kopie exportieren","Export lossless copy")},
          DrawIconClapper, "module.kfm", HubAction::Kfm, true},
-        {"hub.interface", "Interface Browser",
-         {"resmenu-Assets durchsuchen", "Bildformate vorschauen", "UI-NIF / Material analysieren", "Projekt-Overrides sicher verwalten"},
+        {"hub.interface", L("Interface Browser","Interface Browser"),
+         {L("resmenu-Assets durchsuchen","Browse resmenu assets"),
+          L("Bildformate vorschauen","Preview image formats"),
+          L("UI-NIF / Material analysieren","Analyze UI NIF / material"),
+          L("Projekt-Overrides sicher verwalten","Manage project overrides safely")},
          DrawIconMonitorEye, "module.interface", HubAction::Interface, true},
     };
 
@@ -6082,7 +6093,7 @@ void DrawProjectHub(EditorState& state) {
     ImGui::TextColored(UiTheme::AccentCyan, "%s", L("ZULETZT VERWENDETE PROJEKTE","RECENT PROJECTS"));
     ImGui::Separator();
     if (state.recentProjects.empty()) {
-        ImGui::TextDisabled("Noch keine Projekte geöffnet.");
+        ImGui::TextDisabled("%s",L("Noch keine Projekte geöffnet.","No projects opened yet."));
     } else {
         const float recentW = std::max(220.0f, (ImGui::GetContentRegionAvail().x - 16.0f) / 3.0f);
         for (std::size_t i = 0; i < state.recentProjects.size(); ++i) {
@@ -6096,7 +6107,8 @@ void DrawProjectHub(EditorState& state) {
                 LoadProjectFolderIntoState(state, path);
             ImGui::EndDisabled();
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-                ImGui::SetTooltip("%s%s", path.c_str(), exists ? "" : "\n(nicht mehr gefunden)");
+                ImGui::SetTooltip("%s%s", path.c_str(),
+                                  exists ? "" : L("\n(nicht mehr gefunden)","\n(no longer found)"));
             ImGui::PopID();
             if (i % 3 != 2 && i + 1 < state.recentProjects.size()) ImGui::SameLine();
         }
@@ -6125,13 +6137,13 @@ void DrawNewProjectConfig(EditorState& state) {
     const float cardW = std::min(820.0f, std::max(560.0f, ImGui::GetContentRegionAvail().x * 0.68f));
     ImGui::BeginChild("##projectConfigCard", ImVec2(cardW, 0), true);
 
-    ImGui::TextDisabled("PROJEKTNAME");
+    ImGui::TextDisabled("%s",L("PROJEKTNAME","PROJECT NAME"));
     ImGui::SetNextItemWidth(-1.0f);
     UI::InputText("##projname", state.project.name, sizeof(state.project.name));
-    ImGui::TextDisabled("Interner Name des NextGen-Editor-Projekts.");
+    ImGui::TextDisabled("%s",L("Interner Name des NextGen-Editor-Projekts.","Internal name of the NextGen Editor project."));
 
     ImGui::Dummy(ImVec2(0,6));
-    ImGui::TextDisabled("PROJEKTORDNER");
+    ImGui::TextDisabled("%s",L("PROJEKTORDNER","PROJECT FOLDER"));
     ImGui::SetNextItemWidth(-44.0f);
     UI::InputText("##projfolder", state.project.projectFolder, sizeof(state.project.projectFolder));
 #ifdef _WIN32
@@ -6141,7 +6153,8 @@ void DrawNewProjectConfig(EditorState& state) {
             std::snprintf(state.project.projectFolder, sizeof(state.project.projectFolder), "%s", picked->c_str());
     }
 #endif
-    ImGui::TextDisabled("Hier liegen Projektkonfiguration und später die bearbeiteten Ausgabedateien.");
+    ImGui::TextDisabled("%s",L("Hier liegen Projektkonfiguration und später die bearbeiteten Ausgabedateien.",
+                                    "Project configuration and edited output files are stored here."));
 
     ImGui::Dummy(ImVec2(0,6));
     ImGui::TextDisabled("CLIENT");
@@ -6154,7 +6167,8 @@ void DrawNewProjectConfig(EditorState& state) {
             std::snprintf(state.project.clientFolder, sizeof(state.project.clientFolder), "%s", picked->c_str());
     }
 #endif
-    ImGui::TextDisabled("Quelle für resmap, ressystem, reschar, resitem und Client-SHN.");
+    ImGui::TextDisabled("%s",L("Quelle für resmap, ressystem, reschar, resitem und Client-SHN.",
+                                    "Source for resmap, ressystem, reschar, resitem and client SHN."));
 
     ImGui::Dummy(ImVec2(0,6));
     ImGui::TextDisabled("SERVER");
@@ -6167,7 +6181,8 @@ void DrawNewProjectConfig(EditorState& state) {
             std::snprintf(state.project.serverFolder, sizeof(state.project.serverFolder), "%s", picked->c_str());
     }
 #endif
-    ImGui::TextDisabled("Quelle für 9Data/Shine, World, MobRegen, Quest- und Serverdaten.");
+    ImGui::TextDisabled("%s",L("Quelle für 9Data/Shine, World, MobRegen, Quest- und Serverdaten.",
+                                    "Source for 9Data/Shine, World, MobRegen, quest and server data."));
 
     ImGui::Separator();
     const float actionW = (ImGui::GetContentRegionAvail().x - 8.0f) * 0.5f;
@@ -6239,9 +6254,11 @@ void DrawMapEditorLauncher(EditorState& state) {
             state.lastResmapResolvedPath = resolution.root
                 ? (resolution.candidateCount > 1
                        ? (resolution.root->string() + "  (" + std::to_string(resolution.candidateCount) +
-                          " resmap-Ordner gefunden; dieser enthält die meisten Karten)")
+                          L(" resmap-Ordner gefunden; dieser enthält die meisten Karten)",
+                            " resmap folders found; this one contains the most maps)"))
                        : resolution.root->string())
-                : ("Kein resmap-Ordner unter " + clientFolderStr + " gefunden");
+                : (std::string(L("Kein resmap-Ordner unter ","No resmap folder found under ")) +
+                   clientFolderStr + L(" gefunden",""));
             state.lastScannedMapRoot = clientFolderStr;
             state.selectedMapIndex = -1;
             if (resolution.root) StartNifThumbnailPrecache(state, *resolution.root);
@@ -6263,7 +6280,7 @@ void DrawMapEditorLauncher(EditorState& state) {
             "NIF-Vorschaubilder werden einmalig vorbereitet. Danach öffnet sich der Asset Browser ohne Erstlade-Ruckler.",
             "NIF thumbnails are prepared once. Afterwards the Asset Browser opens without the initial loading hitch."));
         ImGui::ProgressBar(frac, ImVec2(-1.0f, 0.0f));
-        ImGui::TextDisabled("%zu / %zu Modelle", state.nifPrecacheCursor, totalQ);
+        ImGui::TextDisabled(L("%zu / %zu Modelle","%zu / %zu models"), state.nifPrecacheCursor, totalQ);
         ImGui::EndChild();
         return;
     }
@@ -6275,12 +6292,12 @@ void DrawMapEditorLauncher(EditorState& state) {
         DrawPanelHeader("newMapHeader", L("NEUE KARTE","NEW MAP"), DrawIconTerrain, "file.new",
                         L("Grunddaten festlegen","Configure base data"));
 
-        ImGui::TextDisabled("KARTENNAME");
+        ImGui::TextDisabled("%s",L("KARTENNAME","MAP NAME"));
         ImGui::SetNextItemWidth(-1.0f);
         UI::InputText("##newmapname", state.newMapName, sizeof(state.newMapName));
 
         ImGui::Dummy(ImVec2(0,4));
-        ImGui::TextDisabled("HÖHENRASTER");
+        ImGui::TextDisabled("%s",L("HÖHENRASTER","HEIGHT GRID"));
         ImGui::SetNextItemWidth((ImGui::GetContentRegionAvail().x - 8.0f) * 0.5f);
         UI::InputInt("Breite##newmapx", &state.newMapWidth);
         ImGui::SameLine();
@@ -6290,14 +6307,15 @@ void DrawMapEditorLauncher(EditorState& state) {
         state.newMapHeight = std::clamp(state.newMapHeight, 2, 4096);
 
         ImGui::Dummy(ImVec2(0,4));
-        ImGui::TextDisabled("BASIS-LAYER");
+        ImGui::TextDisabled("%s",L("BASIS-LAYER","BASE LAYER"));
         ImGui::SetNextItemWidth(-1.0f);
         UI::InputText("##newmaplayer", state.newMapTextureLayer, sizeof(state.newMapTextureLayer));
-        ImGui::TextDisabled("Der Textur-Stack startet mit einem Basis-Layer; weitere Layer werden später im Layer-Dock angelegt.");
+        ImGui::TextDisabled("%s",L("Der Textur-Stack startet mit einem Basis-Layer; weitere Layer werden später im Layer-Dock angelegt.",
+                                   "The texture stack starts with a base layer; add more layers later in the Layer dock."));
 
         ImGui::Separator();
         ImGui::BeginDisabled(state.newMapName[0] == '\0');
-        if (UI::Button("Karte erstellen", ImVec2(-1.0f, 40.0f))) {
+        if (UI::Button(L("Karte erstellen","Create map"), ImVec2(-1.0f, 40.0f))) {
             const int w = std::max(2, state.newMapWidth);
             const int h = std::max(2, state.newMapHeight);
             state.heightmap = core::Heightmap(static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h), 50.0f, 50.0f);
@@ -6312,7 +6330,8 @@ void DrawMapEditorLauncher(EditorState& state) {
             if (state.project.projectFolder[0] != '\0')
                 std::snprintf(state.legacySaveDir, sizeof(state.legacySaveDir), "%s", state.project.projectFolder);
             state.mapDirty = true;
-            state.statusMessage = "Neue Karte '" + std::string(state.newMapName) + "' angelegt (" +
+            state.statusMessage = std::string(L("Neue Karte '","New map '")) + state.newMapName +
+                                  L("' angelegt (","' created (") +
                                   std::to_string(w) + "x" + std::to_string(h) + ").";
             state.screen = AppScreen::MapEditorWorkspace;
         }
@@ -6329,7 +6348,7 @@ void DrawMapEditorLauncher(EditorState& state) {
 
         if (state.project.clientFolder[0] == '\0') {
             ImGui::TextWrapped("%s", T("mapeditor.noclientfolder"));
-            if (UI::Button("Projekt konfigurieren", ImVec2(-1,0)))
+            if (UI::Button(L("Projekt konfigurieren","Configure project"), ImVec2(-1,0)))
                 state.screen = AppScreen::NewProjectConfig;
         } else {
             if (!state.recentMaps.empty()) {
@@ -6351,23 +6370,26 @@ void DrawMapEditorLauncher(EditorState& state) {
                     }
                     ImGui::EndDisabled();
                     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-                        ImGui::SetTooltip("%s%s", recent.c_str(), exists ? "" : "\n(nicht mehr gefunden)");
+                        ImGui::SetTooltip("%s%s", recent.c_str(),
+                                          exists ? "" : L("\n(nicht mehr gefunden)","\n(no longer found)"));
                     ImGui::PopID();
                     if (i + 1 < showCount) ImGui::SameLine();
                 }
                 ImGui::Separator();
             }
 
-            ImGui::TextDisabled("SUCHWURZEL");
-            ImGui::TextWrapped("%s", resolvedRoot.empty() ? "(noch nicht gescannt)" : resolvedRoot.c_str());
-            if (UI::SmallButton("Neu durchsuchen")) state.lastScannedMapRoot.clear();
+            ImGui::TextDisabled("%s",L("SUCHWURZEL","SEARCH ROOT"));
+            ImGui::TextWrapped("%s", resolvedRoot.empty() ? L("(noch nicht gescannt)","(not scanned yet)") : resolvedRoot.c_str());
+            if (UI::SmallButton(L("Neu durchsuchen","Rescan"))) state.lastScannedMapRoot.clear();
 
             ImGui::Separator();
             ImGui::BeginChild("##mapList", ImVec2(0.0f, std::max(230.0f, ImGui::GetContentRegionAvail().y - 84.0f)), true);
             if (state.discoveredMaps.empty()) {
                 ImGui::TextDisabled("%s", resmapFound
-                    ? "Keine .ini-Kartendateien im gefundenen resmap-Ordner."
-                    : "resmap nicht gefunden – Client-Pfad im Projekt prüfen.");
+                    ? L("Keine .ini-Kartendateien im gefundenen resmap-Ordner.",
+                        "No .ini map files in the discovered resmap folder.")
+                    : L("resmap nicht gefunden – Client-Pfad im Projekt prüfen.",
+                        "resmap not found – check the client path in the project."));
             }
             for (int i = 0; i < static_cast<int>(state.discoveredMaps.size()); ++i) {
                 const bool selected = state.selectedMapIndex == i;
@@ -6381,7 +6403,7 @@ void DrawMapEditorLauncher(EditorState& state) {
             ImGui::EndChild();
 
             ImGui::BeginDisabled(state.selectedMapIndex < 0);
-            if (UI::Button("Ausgewählte Karte öffnen", ImVec2(-1.0f, 40.0f))) {
+            if (UI::Button(L("Ausgewählte Karte öffnen","Open selected map"), ImVec2(-1.0f, 40.0f))) {
                 if (OpenLegacyMapIntoState(state, state.legacyMapIniPath, true))
                     state.screen = AppScreen::MapEditorWorkspace;
             }
