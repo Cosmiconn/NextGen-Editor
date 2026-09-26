@@ -140,6 +140,29 @@ int main(int argc, char** argv) {
             check(model->parts.size() == 13 && vertices == 2978 && triangles == 1760 && textures == 12,
                   "machine: 13 parts / 2978 vertices / 1760 triangles / 12 textures");
         }
+        if (std::string(name) == "DarkVally_Frog.nif") {
+            check(model->textureEffectBlocks > 0, "real fixture contains NiTextureEffect");
+            check(model->textureEffectEnvironmentSphereBlocks > 0,
+                  "real fixture contains verified environment/sphere effect");
+            const auto effectPart = std::find_if(model->parts.begin(), model->parts.end(), [](const auto& part) {
+                return std::any_of(part.textureEffects.begin(), part.textureEffects.end(), [](const auto& effect) {
+                    return effect.enabled && effect.textureType == 2u && effect.coordGenType == 2u &&
+                           effect.sourceTextureRef >= 0;
+                });
+            });
+            check(effectPart != model->parts.end(),
+                  "NiTextureEffect node binding reaches affected real mesh part");
+            if (effectPart != model->parts.end()) {
+                const auto effect = std::find_if(effectPart->textureEffects.begin(), effectPart->textureEffects.end(),
+                    [](const auto& candidate) {
+                        return candidate.enabled && candidate.textureType == 2u &&
+                               candidate.coordGenType == 2u;
+                    });
+                check(effect != effectPart->textureEffects.end() &&
+                      (!effect->texture.empty() || effect->embeddedTexture || effect->sourceUsesEmbeddedPixelData),
+                      "NiTextureEffect source is preserved/resolved");
+            }
+        }
         std::cout << name << ": " << model->parts.size() << " parts, " << vertices << " vertices, " << triangles << " triangles\n";
     }
     for (const char* name : {"RouTempDn01_ground.nif", "treeThin.nif", "DarkVally_Frog.nif", "MapLinkGate2.nif"}) {
