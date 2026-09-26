@@ -12653,6 +12653,44 @@ static std::vector<core::NifGroundContactSegment> ObjectGroundContactWorldSegmen
     return world;
 }
 
+float DistanceToObjectGroundContactXZ(EditorState& state, const core::PlacedObject& obj,
+                                      float worldX, float worldZ) {
+    const auto& fp = GetOrComputeFootprint(state, obj.modelPath);
+    if (!fp.valid || fp.contactSegments.empty())
+        return std::hypot(obj.posX - worldX, obj.posZ - worldZ);
+
+    const float angle = 2.0f * std::atan2(obj.rotY, obj.rotW);
+    const float c = std::cos(angle), s = std::sin(angle);
+    auto transform = [&](float lx, float lz) {
+        const float sx = lx * obj.scale;
+        const float sz = lz * obj.scale;
+        return std::pair<float,float>{
+            obj.posX + (sx * c + sz * s),
+            obj.posZ + (-sx * s + sz * c)
+        };
+    };
+    auto segmentDistance = [&](const std::pair<float,float>& a,
+                               const std::pair<float,float>& b) {
+        const float vx = b.first - a.first;
+        const float vz = b.second - a.second;
+        const float wx = worldX - a.first;
+        const float wz = worldZ - a.second;
+        const float len2 = vx * vx + vz * vz;
+        const float t = len2 > 1.0e-8f
+            ? std::clamp((wx * vx + wz * vz) / len2, 0.0f, 1.0f)
+            : 0.0f;
+        const float dx = worldX - (a.first + vx * t);
+        const float dz = worldZ - (a.second + vz * t);
+        return std::sqrt(dx * dx + dz * dz);
+    };
+
+    float best = std::numeric_limits<float>::infinity();
+    for (const auto& edge : fp.contactSegments)
+        best = std::min(best, segmentDistance(transform(edge.x0, edge.z0),
+                                              transform(edge.x1, edge.z1)));
+    return best;
+}
+
 bool DrawObjectFootprint2D(EditorState& state, const core::PlacedObject& obj, ImDrawList* drawList,
                            const ImVec2& cursorScreenPos, const ImVec2& imageSize,
                            float spanX, float spanZ, ImU32 color, float thickness) {
@@ -13301,35 +13339,48 @@ void DrawEditor2DContent(EditorState& state) {
                     // Auswahl wird ausschließlich auf dem initialen Klick geändert. Danach darf
                     // der gehaltene Klick nur noch die bereits ausgewählten Objekte verschieben.
                     // So bleibt Ctrl-Mehrfachauswahl stabil und Dragging überschreibt sie nicht.
-                    // Nächstes Objekt innerhalb einer kleinen Toleranz suchen und auswählen.
-                    const float tolerance = spanX * 0.04f / std::max(zoom, 0.25f);
+                    // Orthografisches Picking folgt derselben Geometrie, die der Nutzer
+                    // sieht: Kontaktkonturen statt eines großen Radius um den Objektursprung.
+                    // Acht Bildschirmpixel bleiben bei jedem Zoom ungefähr gleich gut anklickbar.
+                    const float worldPerPixelX = imageSize.x > 0.0f ? spanX / imageSize.x : 0.0f;
+                    const float worldPerPixelZ = imageSize.y > 0.0f ? spanZ / imageSize.y : 0.0f;
+                    const float tolerance = std::max(1.0f, 8.0f * std::max(worldPerPixelX, worldPerPixelZ));
                     float bestDist = tolerance;
-                    int bestIdx = -1;
-                    for (std::size_t i = 0; i < state.placementSet.Count(); ++i) {
-                        if (IsObjectEditorLocked(state, static_cast<int>(i))) continue;
-                        const auto& obj = state.placementSet.At(i);
-                        const float dx = obj.posX - worldX;
-                        const float dz = obj.posZ - worldZ;
-                        const float dist = std::sqrt(dx * dx + dz * dz);
-                        if (dist < bestDist) {
-                            bestDist = dist;
-                            bestIdx = static_cast<int>(i);
+                    int bestIdx = kNoObjectSelection;
+                    if (state.showObjects2D) {
+                        RefreshObjectVisibility(state);
+                        for (std::size_t i = 0; i < state.placementSet.Count(); ++i) {
+                            if (IsObjectHidden(state, i) ||
+                                IsObjectEditorLocked(state, static_cast<int>(i))) continue;
+                            const float dist = DistanceToObjectGroundContactXZ(
+                                state, state.placementSet.At(i), worldX, worldZ);
+                            if (dist < bestDist) {
+                                bestDist = dist;
+                                bestIdx = static_cast<int>(i);
+                            }
                         }
-                    }
-                    RefreshShmdCategoryVisibility(state);
-                    for (std::size_t i = 0; i < state.shmdCategoryRenderSet.Count(); ++i) {
-                        if (i < state.shmdCategoryHidden.size() && state.shmdCategoryHidden[i]) continue;
-                        const auto polygon = ObjectFootprintWorldPolygon(state, state.shmdCategoryRenderSet.At(i));
-                        if (polygon.empty()) continue;
-                        float cx = 0.0f, cz = 0.0f;
-                        for (const auto& p : polygon) { cx += p.first; cz += p.second; }
-                        cx /= static_cast<float>(polygon.size());
-                        cz /= static_cast<float>(polygon.size());
-                        const float dx = cx - worldX, dz = cz - worldZ;
-                        const float dist = std::sqrt(dx * dx + dz * dz);
-                        if (dist < bestDist) {
-                            bestDist = dist;
-                            bestIdx = ShmdSelectionId(i);
+
+                        RefreshShmdCategoryVisibility(state);
+                        for (std::size_t i = 0; i < state.shmdCategoryRenderSet.Count(); ++i) {
+                            const int id = ShmdSelectionId(i);
+                            if ((i < state.shmdCategoryHidden.size() && state.shmdCategoryHidden[i]) ||
+                                IsObjectEditorLocked(state, id)) continue;
+                            const auto& obj = state.shmdCategoryRenderSet.At(i);
+                            float dist = DistanceToObjectGroundContactXZ(state, obj, worldX, worldZ);
+                            if (!std::isfinite(dist)) {
+                                const auto polygon = ObjectFootprintWorldPolygon(state, obj);
+                                if (!polygon.empty()) {
+                                    float cx = 0.0f, cz = 0.0f;
+                                    for (const auto& p : polygon) { cx += p.first; cz += p.second; }
+                                    cx /= static_cast<float>(polygon.size());
+                                    cz /= static_cast<float>(polygon.size());
+                                    dist = std::hypot(cx - worldX, cz - worldZ);
+                                }
+                            }
+                            if (dist < bestDist) {
+                                bestDist = dist;
+                                bestIdx = id;
+                            }
                         }
                     }
                     if (bestIdx != kNoObjectSelection) {
