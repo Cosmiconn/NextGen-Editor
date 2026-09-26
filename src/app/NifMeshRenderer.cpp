@@ -657,6 +657,7 @@ void NifMeshRenderer::Shutdown() {
     }
     textureCache_.clear();
     perObjectModel_.clear();
+    perObjectParticleRuntime_.clear();
     opaqueItems_.clear();
     blendedItems_.clear();
     if (particleEbo_) glDeleteBuffers(1, &particleEbo_);
@@ -740,6 +741,7 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
     // Textur-Cache bewusst NICHT geleert - Texturen sind unabhängig vom Modell-Cache gültig
     // und werden oft von Modellen auf verschiedenen Karten wiederverwendet (z.B. "grass.dds").
     perObjectModel_.assign(set.Count(), nullptr);
+    perObjectParticleRuntime_.assign(set.Count(), {});
     std::unordered_map<std::string, std::optional<std::filesystem::path>> resolvedModels;
     std::unordered_map<std::string, std::optional<std::filesystem::path>> resolvedTextures;
     const std::filesystem::path clientAssetRoot = DeriveClientAssetRoot(mapDir);
@@ -1186,6 +1188,9 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                     dstSystem.hasColors = srcSystem.particleData.hasColors;
                     dstSystem.hasRadii = srcSystem.particleData.hasRadii;
                     dstSystem.hasSizes = srcSystem.particleData.hasSizes;
+                    dstSystem.capacity = srcSystem.particleData.capacity;
+                    dstSystem.modifiers = srcSystem.modifiers;
+                    dstSystem.controllers = srcSystem.controllers;
                     dstSystem.sceneTransform = srcSystem.sceneTransform;
 
                     auto& sub = dstSystem.material;
@@ -1297,6 +1302,14 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
 
         if (!it->second.subMeshes.empty() || !it->second.particleSystems.empty()) {
             perObjectModel_[i] = &it->second;
+            auto& runtimeSystems = perObjectParticleRuntime_[i];
+            runtimeSystems.resize(it->second.particleSystems.size());
+            for (std::size_t systemIndex = 0; systemIndex < it->second.particleSystems.size(); ++systemIndex) {
+                const auto& source = it->second.particleSystems[systemIndex];
+                auto& runtime = runtimeSystems[systemIndex];
+                runtime.particles = source.particles;
+                runtime.activeCount = source.activeCount;
+            }
         }
     }
 }
@@ -1721,11 +1734,19 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     blendedItems.clear();
 
     std::size_t estimatedItems = 0;
-    for (const auto* model : perObjectModel_) {
+    for (std::size_t objectIndex = 0; objectIndex < perObjectModel_.size(); ++objectIndex) {
+        const auto* model = perObjectModel_[objectIndex];
         if (model == nullptr) continue;
         estimatedItems += model->subMeshes.size();
-        for (const auto& system : model->particleSystems)
-            if (!system.meshParticles) estimatedItems += system.activeCount;
+        if (objectIndex < perObjectParticleRuntime_.size()) {
+            const auto& runtimeSystems = perObjectParticleRuntime_[objectIndex];
+            for (std::size_t systemIndex = 0;
+                 systemIndex < model->particleSystems.size() && systemIndex < runtimeSystems.size();
+                 ++systemIndex) {
+                if (!model->particleSystems[systemIndex].meshParticles)
+                    estimatedItems += runtimeSystems[systemIndex].activeCount;
+            }
+        }
     }
     opaqueItems.reserve(estimatedItems);
     blendedItems.reserve(estimatedItems / 4 + 1);
@@ -1733,6 +1754,28 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     for (std::size_t i = 0; i < perObjectModel_.size() && i < set.Count(); ++i) {
         const LoadedModel* model = perObjectModel_[i];
         if (model == nullptr) continue;
+
+        auto* runtimeSystems = i < perObjectParticleRuntime_.size()
+            ? &perObjectParticleRuntime_[i] : nullptr;
+        if (runtimeSystems != nullptr) {
+            for (std::size_t systemIndex = 0;
+                 systemIndex < model->particleSystems.size() && systemIndex < runtimeSystems->size();
+                 ++systemIndex) {
+                auto& runtime = (*runtimeSystems)[systemIndex];
+                const auto& system = model->particleSystems[systemIndex];
+                if (!runtime.initialized) {
+                    runtime.lastSimulationTime = animationTime;
+                    runtime.initialized = true;
+                } else {
+                    const float deltaTime = animationTime - runtime.lastSimulationTime;
+                    if (deltaTime > 0.0f)
+                        core::AdvanceNifParticleState(
+                            runtime.particles, runtime.activeCount, system.modifiers, deltaTime);
+                    runtime.lastSimulationTime = animationTime;
+                }
+            }
+        }
+
         if (hidden != nullptr && i < hidden->size() && (*hidden)[i] != 0) continue;
 
         const auto& obj = set.At(i);
@@ -1777,34 +1820,42 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
             (sub.alphaBlend ? blendedItems : opaqueItems).push_back(item);
         }
 
-        for (const auto& system : model->particleSystems) {
-            // NiMeshParticleSystem instances require authored mesh generation/selection and are
-            // deliberately not reinterpreted as sprites.
-            if (system.meshParticles || system.activeCount == 0) continue;
-            const Mat4 particleSpace = modelMat * NifTransformToEditorMat4(system.sceneTransform);
-            const float worldScale = std::sqrt(particleSpace.m[0] * particleSpace.m[0] +
-                                               particleSpace.m[1] * particleSpace.m[1] +
-                                               particleSpace.m[2] * particleSpace.m[2]);
-            const std::size_t active = std::min<std::size_t>(system.activeCount, system.particles.size());
-            for (std::size_t p = 0; p < active; ++p) {
-                const auto& particle = system.particles[p];
-                const auto center = TransformPoint(particleSpace,
-                    {particle.position.x, particle.position.y, particle.position.z});
-                float radius = system.hasRadii ? particle.radius : 1.0f;
-                float size = system.hasSizes ? particle.size : 1.0f;
-                const float halfSize = std::abs(radius * size * worldScale);
-                if (!std::isfinite(center[0]) || !std::isfinite(center[1]) || !std::isfinite(center[2]) ||
-                    !std::isfinite(halfSize) || halfSize <= 1.0e-6f) continue;
+        if (runtimeSystems != nullptr) {
+            for (std::size_t systemIndex = 0;
+                 systemIndex < model->particleSystems.size() && systemIndex < runtimeSystems->size();
+                 ++systemIndex) {
+                const auto& system = model->particleSystems[systemIndex];
+                const auto& runtime = (*runtimeSystems)[systemIndex];
+                // NiMeshParticleSystem instances require authored mesh generation/selection and are
+                // deliberately not reinterpreted as sprites.
+                if (system.meshParticles || runtime.activeCount == 0) continue;
+                const Mat4 particleSpace = modelMat * NifTransformToEditorMat4(system.sceneTransform);
+                const float worldScale = std::sqrt(particleSpace.m[0] * particleSpace.m[0] +
+                                                   particleSpace.m[1] * particleSpace.m[1] +
+                                                   particleSpace.m[2] * particleSpace.m[2]);
+                const std::size_t active =
+                    std::min<std::size_t>(runtime.activeCount, runtime.particles.size());
+                for (std::size_t p = 0; p < active; ++p) {
+                    const auto& particle = runtime.particles[p];
+                    const auto center = TransformPoint(particleSpace,
+                        {particle.position.x, particle.position.y, particle.position.z});
+                    const float radius = system.hasRadii ? particle.radius : 1.0f;
+                    const float size = system.hasSizes ? particle.size : 1.0f;
+                    const float halfSize = std::abs(radius * size * worldScale);
+                    if (!std::isfinite(center[0]) || !std::isfinite(center[1]) || !std::isfinite(center[2]) ||
+                        !std::isfinite(halfSize) || halfSize <= 1.0e-6f) continue;
 
-                const Mat4 face = BillboardFacingRotation(center, camera, 0u);
-                const Mat4 particleModel = TranslationMatrix(center[0], center[1], center[2]) *
-                                           face * UniformScaleMatrix(halfSize);
-                const auto centerView = TransformPoint(view, center);
-                DrawItem item{&system.material, particleModel, -centerView[2]};
-                item.particle = true;
-                if (system.hasColors)
-                    item.particleColor = {particle.color.r, particle.color.g, particle.color.b, particle.color.a};
-                (system.material.alphaBlend ? blendedItems : opaqueItems).push_back(item);
+                    const Mat4 face = BillboardFacingRotation(center, camera, 0u);
+                    const Mat4 particleModel = TranslationMatrix(center[0], center[1], center[2]) *
+                                               face * UniformScaleMatrix(halfSize);
+                    const auto centerView = TransformPoint(view, center);
+                    DrawItem item{&system.material, particleModel, -centerView[2]};
+                    item.particle = true;
+                    if (system.hasColors)
+                        item.particleColor = {
+                            particle.color.r, particle.color.g, particle.color.b, particle.color.a};
+                    (system.material.alphaBlend ? blendedItems : opaqueItems).push_back(item);
+                }
             }
         }
     }
