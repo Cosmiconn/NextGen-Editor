@@ -3946,34 +3946,76 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         }
     }
 
-    // Benannte Knoten mit Weltposition/-rotation (Anbringpunkte, siehe NifNodeInfo).
+    // NIF-Node-Hierarchie für Attachments UND KFM/KF-Skeleton-Preview. Frühere Versionen
+    // exportierten nur benannte Nodes mit Kindern und verloren dadurch Parent-/Bind-Information.
+    // Jetzt werden alle echten NiNode-artigen Scene-Einträge erhalten (Name ODER Kinder);
+    // Geometrieeinträge bleiben draußen, da recordNode() deren Name/Kinder nicht setzt.
     {
         std::vector<int> parentOf2(scene.size(), -1);
         for (std::size_t i = 0; i < scene.size(); ++i)
-            for (const auto c : scene[i].children)
-                if (c >= 0 && static_cast<std::size_t>(c) < scene.size() && parentOf2[static_cast<std::size_t>(c)] < 0) parentOf2[static_cast<std::size_t>(c)] = static_cast<int>(i);
+            for (const auto child : scene[i].children)
+                if (child >= 0 && static_cast<std::size_t>(child) < scene.size() &&
+                    parentOf2[static_cast<std::size_t>(child)] < 0)
+                    parentOf2[static_cast<std::size_t>(child)] = static_cast<int>(i);
+
+        std::vector<int> sceneToModel(scene.size(), -1);
         for (std::size_t i = 0; i < scene.size(); ++i) {
-            if (!scene[i].present || scene[i].name.empty() || scene[i].children.empty()) continue;
-            // Weltposition = lokaler Ursprung durch die Kette Knoten -> Wurzel
+            if (!scene[i].present || (scene[i].name.empty() && scene[i].children.empty())) continue;
+
+            // Weltposition = lokaler Ursprung durch die Kette Knoten -> Wurzel.
             float px = 0.0f, py = 0.0f, pz = 0.0f;
             std::array<float, 9> Rw = {1, 0, 0, 0, 1, 0, 0, 0, 1};
             int guard = 0;
-            for (int b = static_cast<int>(i); b >= 0 && guard < 64; b = parentOf2[static_cast<std::size_t>(b)], ++guard) {
+            for (int b = static_cast<int>(i); b >= 0 && guard < 64;
+                 b = parentOf2[static_cast<std::size_t>(b)], ++guard) {
                 const SceneNode& sn = scene[static_cast<std::size_t>(b)];
                 if (!sn.present) continue;
                 const auto& R = sn.rotation;
-                const float nx = R[0] * px + R[1] * py + R[2] * pz, ny = R[3] * px + R[4] * py + R[5] * pz, nz = R[6] * px + R[7] * py + R[8] * pz;
-                px = nx * sn.scale + sn.translation.x; py = ny * sn.scale + sn.translation.y; pz = nz * sn.scale + sn.translation.z;
-                // Rw = R * Rw
+                const float nx = R[0] * px + R[1] * py + R[2] * pz;
+                const float ny = R[3] * px + R[4] * py + R[5] * pz;
+                const float nz = R[6] * px + R[7] * py + R[8] * pz;
+                px = nx * sn.scale + sn.translation.x;
+                py = ny * sn.scale + sn.translation.y;
+                pz = nz * sn.scale + sn.translation.z;
+
                 std::array<float, 9> M{};
-                for (int r2 = 0; r2 < 3; ++r2) for (int c2 = 0; c2 < 3; ++c2) M[static_cast<std::size_t>(r2 * 3 + c2)] = R[static_cast<std::size_t>(r2 * 3)] * Rw[static_cast<std::size_t>(c2)] + R[static_cast<std::size_t>(r2 * 3 + 1)] * Rw[static_cast<std::size_t>(3 + c2)] + R[static_cast<std::size_t>(r2 * 3 + 2)] * Rw[static_cast<std::size_t>(6 + c2)];
+                for (int r2 = 0; r2 < 3; ++r2)
+                    for (int c2 = 0; c2 < 3; ++c2)
+                        M[static_cast<std::size_t>(r2 * 3 + c2)] =
+                            R[static_cast<std::size_t>(r2 * 3)] * Rw[static_cast<std::size_t>(c2)] +
+                            R[static_cast<std::size_t>(r2 * 3 + 1)] * Rw[static_cast<std::size_t>(3 + c2)] +
+                            R[static_cast<std::size_t>(r2 * 3 + 2)] * Rw[static_cast<std::size_t>(6 + c2)];
                 Rw = M;
             }
+
             NifNodeInfo info;
             info.name = scene[i].name;
-            info.position = {px, pz, py}; // Legacy (x,y,z) -> Editor-Rahmen (x, z, y)
+            info.localTranslation = scene[i].translation;
+            info.localRotation = scene[i].rotation;
+            info.localScale = scene[i].scale;
+            info.position = {px, pz, py}; // Legacy (x,y,z) -> Editor-Rahmen (x,z,y)
             info.rotation = Rw;
+            sceneToModel[i] = static_cast<int>(model.nodes.size());
             model.nodes.push_back(std::move(info));
+        }
+
+        // Parent-Index erst nach dem Aufbau setzen. Falls zwischen zwei erfassten Nodes ein
+        // nicht erfasster Scene-Eintrag liegt, bis zum nächsten erfassten Vorfahren hochlaufen.
+        for (std::size_t sceneIndex = 0; sceneIndex < scene.size(); ++sceneIndex) {
+            const int modelIndex = sceneToModel[sceneIndex];
+            if (modelIndex < 0) continue;
+            int parent = parentOf2[sceneIndex];
+            int guard = 0;
+            while (parent >= 0 && guard++ < 64) {
+                if (static_cast<std::size_t>(parent) < sceneToModel.size() &&
+                    sceneToModel[static_cast<std::size_t>(parent)] >= 0) {
+                    model.nodes[static_cast<std::size_t>(modelIndex)].parentIndex =
+                        sceneToModel[static_cast<std::size_t>(parent)];
+                    break;
+                }
+                parent = static_cast<std::size_t>(parent) < parentOf2.size()
+                    ? parentOf2[static_cast<std::size_t>(parent)] : -1;
+            }
         }
     }
 
