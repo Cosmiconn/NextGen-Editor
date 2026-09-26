@@ -1,6 +1,7 @@
 #include "mapeditor/core/NifModel.hpp"
 
 #include <array>
+#include <cmath>
 #include <filesystem>
 #include <iostream>
 #include <map>
@@ -29,6 +30,32 @@ struct ShaderSlotStats {
     std::set<std::uint32_t> uvSets;
     std::set<std::uint32_t> transformMethods;
 };
+
+struct EffectStats {
+    std::size_t bindings = 0;
+    std::size_t embedded = 0;
+    std::size_t external = 0;
+    std::size_t unresolvedEmbedded = 0;
+    std::size_t clippingPlane = 0;
+    std::size_t nonIdentityProjection = 0;
+    std::set<std::string> files;
+    std::set<std::uint32_t> clampModes;
+    std::set<std::uint32_t> filterModes;
+};
+
+bool ProjectionIsIdentity(const core::NifTextureEffectBinding& effect) {
+    static constexpr std::array<float, 9> kIdentity{
+        1.0f,0.0f,0.0f,
+        0.0f,1.0f,0.0f,
+        0.0f,0.0f,1.0f
+    };
+    constexpr float kEpsilon = 1.0e-5f;
+    for (std::size_t i = 0; i < kIdentity.size(); ++i)
+        if (std::abs(effect.projectionRotation[i] - kIdentity[i]) > kEpsilon) return false;
+    return std::abs(effect.projectionPosition.x) <= kEpsilon &&
+           std::abs(effect.projectionPosition.y) <= kEpsilon &&
+           std::abs(effect.projectionPosition.z) <= kEpsilon;
+}
 
 std::string Clean(std::string value) {
     for (char& ch : value) {
@@ -73,11 +100,22 @@ int main(int argc, char** argv) {
     std::array<SlotStats, 10> slots{};
     std::map<std::size_t, std::size_t> uvSetCounts;
     std::map<std::uint32_t, std::size_t> transformMethods;
+    std::map<std::uint32_t, std::size_t> classicClampModes;
+    std::map<std::uint32_t, std::size_t> classicFilterModes;
+    std::map<std::uint32_t, std::set<std::string>> unusualFilterFiles;
     std::map<std::uint32_t, std::size_t> applyModes;
     std::map<std::uint32_t, std::set<std::string>> applyModeFiles;
     std::map<std::uint32_t, std::size_t> vertexColorModes;
     std::map<std::uint32_t, std::size_t> faceDrawModes;
-    std::map<std::tuple<std::uint32_t, std::uint32_t, bool>, std::size_t> effects;
+    std::map<std::tuple<std::uint32_t, std::uint32_t, bool>, EffectStats> effects;
+    std::size_t uvRendererOverflowParts = 0;
+    std::size_t uvRendererOverflowBindings = 0;
+    std::size_t unmaterializedShaderDescriptors = 0;
+    std::size_t unmaterializedApplyModeParts = 0;
+    std::size_t unsupportedEffectBindings = 0;
+    std::size_t clippingEffectBindings = 0;
+    std::size_t projectedEffectBindings = 0;
+    std::set<std::string> rendererGapFiles;
     std::size_t alphaBlendParts = 0;
     std::size_t alphaTestParts = 0;
     std::size_t depthTestDisabledParts = 0;
@@ -117,7 +155,15 @@ int main(int argc, char** argv) {
                 ++shaderParts[shader];
                 shaderFiles[shader].insert(entry.path().string());
                 ++uvSetCounts[part.uvSets.size()];
+                if (part.uvSets.size() > 8u) {
+                    ++uvRendererOverflowParts;
+                    rendererGapFiles.insert(entry.path().string());
+                }
                 ++applyModes[part.textureApplyMode];
+                if (part.textureApplyMode == 3u || part.textureApplyMode == 4u) {
+                    ++unmaterializedApplyModeParts;
+                    rendererGapFiles.insert(entry.path().string());
+                }
                 applyModeFiles[part.textureApplyMode].insert(entry.path().string());
                 if (shader != "<fixed-function>")
                     ++shaderApplyModes[{shader, part.textureApplyMode}];
@@ -141,6 +187,16 @@ int main(int argc, char** argv) {
                     } else if (!texture.texture.empty()) {
                         ++stat.external;
                     }
+                    ++classicClampModes[texture.clampMode];
+                    ++classicFilterModes[texture.filterMode];
+                    if (texture.filterMode >= 6u) {
+                        unusualFilterFiles[texture.filterMode].insert(entry.path().string());
+                        rendererGapFiles.insert(entry.path().string());
+                    }
+                    if (texture.uvSet > 7u) {
+                        ++uvRendererOverflowBindings;
+                        rendererGapFiles.insert(entry.path().string());
+                    }
                     if (shader != "<fixed-function>") {
                         auto& shaderStat = shaderClassicSlots[{shader, slot}];
                         ++shaderStat.parts;
@@ -156,6 +212,14 @@ int main(int argc, char** argv) {
 
                 for (const auto& shaderSlot : part.shaderTextureSlots) {
                     auto& stat = shaderSlots[{shader, shaderSlot.mapId}];
+                    if (shader != "VCAlphaTextureBlender" || shaderSlot.mapId > 2u) {
+                        ++unmaterializedShaderDescriptors;
+                        rendererGapFiles.insert(entry.path().string());
+                    }
+                    if (shaderSlot.texture.uvSet > 7u) {
+                        ++uvRendererOverflowBindings;
+                        rendererGapFiles.insert(entry.path().string());
+                    }
                     ++stat.descriptors;
                     stat.files.insert(entry.path().string());
                     const auto& texture = shaderSlot.texture;
@@ -171,7 +235,34 @@ int main(int argc, char** argv) {
                 }
 
                 for (const auto& effect : part.textureEffects) {
-                    ++effects[{effect.textureType, effect.coordGenType, effect.enabled}];
+                    auto& stat = effects[{effect.textureType, effect.coordGenType, effect.enabled}];
+                    ++stat.bindings;
+                    stat.files.insert(entry.path().string());
+                    stat.clampModes.insert(effect.clampMode);
+                    stat.filterModes.insert(effect.filterMode);
+                    if (effect.sourceUsesEmbeddedPixelData) {
+                        ++stat.embedded;
+                        if (!effect.embeddedTexture) ++stat.unresolvedEmbedded;
+                    } else if (!effect.texture.empty()) {
+                        ++stat.external;
+                    }
+                    if (effect.clippingPlaneEnabled) {
+                        ++stat.clippingPlane;
+                        ++clippingEffectBindings;
+                        rendererGapFiles.insert(entry.path().string());
+                    }
+                    if (!ProjectionIsIdentity(effect)) {
+                        ++stat.nonIdentityProjection;
+                        ++projectedEffectBindings;
+                        rendererGapFiles.insert(entry.path().string());
+                    }
+                    const bool rendererSupported =
+                        effect.enabled && effect.textureType == 2u && effect.coordGenType == 2u &&
+                        !effect.clippingPlaneEnabled && ProjectionIsIdentity(effect);
+                    if (effect.enabled && !rendererSupported) {
+                        ++unsupportedEffectBindings;
+                        rendererGapFiles.insert(entry.path().string());
+                    }
                 }
             }
         }
@@ -184,7 +275,15 @@ int main(int argc, char** argv) {
               << "\tdecodedEmbedded=" << decodedEmbedded
               << "\tundecodedEmbedded=" << undecodedEmbedded
               << "\tunsupportedEffects=" << unsupportedEffects
-              << "\tinheritedProperties=" << inheritedProperties << '\n';
+              << "\tinheritedProperties=" << inheritedProperties
+              << "\tuvOverflowParts=" << uvRendererOverflowParts
+              << "\tuvOverflowBindings=" << uvRendererOverflowBindings
+              << "\tunmaterializedShaderDescriptors=" << unmaterializedShaderDescriptors
+              << "\tunmaterializedApplyModes=" << unmaterializedApplyModeParts
+              << "\tunsupportedEffectBindings=" << unsupportedEffectBindings
+              << "\tclippingEffects=" << clippingEffectBindings
+              << "\tprojectedEffects=" << projectedEffectBindings
+              << "\trendererGapFiles=" << rendererGapFiles.size() << '\n';
 
     for (const auto& [name, count] : shaderParts) {
         std::cout << "SHADER\tparts=" << count
@@ -261,6 +360,17 @@ int main(int argc, char** argv) {
         std::cout << "UVSETS\tcount=" << count << "\tparts=" << partCount << '\n';
     for (const auto& [method, partCount] : transformMethods)
         std::cout << "TEXTRANSFORM\tmethod=" << method << "\tparts=" << partCount << '\n';
+    for (const auto& [mode, bindingCount] : classicClampModes)
+        std::cout << "CLAMPMODE\tmode=" << mode << "\tbindings=" << bindingCount << '\n';
+    for (const auto& [mode, bindingCount] : classicFilterModes) {
+        std::cout << "FILTERMODE\tmode=" << mode << "\tbindings=" << bindingCount;
+        if (mode >= 6u) std::cout << "\trenderer=trilinear-fallback";
+        std::cout << '\n';
+        if (mode >= 6u)
+            for (const auto& path : unusualFilterFiles[mode])
+                std::cout << "FILTERMODEFILE\tmode=" << mode
+                          << "\tpath=" << Clean(path) << '\n';
+    }
     for (const auto& [mode, partCount] : applyModes) {
         std::cout << "APPLYMODE\tmode=" << mode
                   << "\tname=" << ApplyModeName(mode)
@@ -279,13 +389,46 @@ int main(int argc, char** argv) {
     for (const auto& [mode, partCount] : faceDrawModes)
         std::cout << "FACEDRAW\tmode=" << mode << "\tparts=" << partCount << '\n';
 
-    for (const auto& [key, count] : effects) {
+    for (const auto& [key, stat] : effects) {
         const auto [textureType, coordGenType, enabled] = key;
+        const bool rendererSupported = enabled && textureType == 2u && coordGenType == 2u &&
+                                       stat.clippingPlane == 0u && stat.nonIdentityProjection == 0u;
         std::cout << "EFFECT\ttextureType=" << textureType
                   << "\tcoordGenType=" << coordGenType
                   << "\tenabled=" << (enabled ? 1 : 0)
-                  << "\tbindings=" << count << '\n';
+                  << "\tbindings=" << stat.bindings
+                  << "\tembedded=" << stat.embedded
+                  << "\texternal=" << stat.external
+                  << "\tunresolvedEmbedded=" << stat.unresolvedEmbedded
+                  << "\tclipping=" << stat.clippingPlane
+                  << "\tnonIdentityProjection=" << stat.nonIdentityProjection
+                  << "\trenderer=" << (rendererSupported ? "environment-sphere" : "diagnostic")
+                  << "\tclampModes=";
+        bool first = true;
+        for (const auto mode : stat.clampModes) {
+            if (!first) std::cout << ',';
+            std::cout << mode;
+            first = false;
+        }
+        std::cout << "\tfilterModes=";
+        first = true;
+        for (const auto mode : stat.filterModes) {
+            if (!first) std::cout << ',';
+            std::cout << mode;
+            first = false;
+        }
+        std::cout << '\n';
+        if (!rendererSupported || stat.unresolvedEmbedded != 0u) {
+            for (const auto& path : stat.files)
+                std::cout << "EFFECTFILE\ttextureType=" << textureType
+                          << "\tcoordGenType=" << coordGenType
+                          << "\tenabled=" << (enabled ? 1 : 0)
+                          << "\tpath=" << Clean(path) << '\n';
+        }
     }
+
+    for (const auto& path : rendererGapFiles)
+        std::cout << "RENDERGAPFILE\tpath=" << Clean(path) << '\n';
 
     std::cout << "STATE\talphaBlendParts=" << alphaBlendParts
               << "\talphaTestParts=" << alphaTestParts
