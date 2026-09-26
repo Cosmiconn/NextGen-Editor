@@ -2181,8 +2181,20 @@ NifUvSetDiagnostic SanitizeUvs(std::vector<NifVec2>& uvs) {
         const auto& uv = uvs[i];
         const bool finite = std::isfinite(uv.u) && std::isfinite(uv.v);
         if (finite) {
+            if (!diagnostic.hasFinite) {
+                diagnostic.hasFinite = true;
+                diagnostic.minFiniteU = diagnostic.maxFiniteU = uv.u;
+                diagnostic.minFiniteV = diagnostic.maxFiniteV = uv.v;
+            } else {
+                diagnostic.minFiniteU = std::min(diagnostic.minFiniteU, uv.u);
+                diagnostic.maxFiniteU = std::max(diagnostic.maxFiniteU, uv.u);
+                diagnostic.minFiniteV = std::min(diagnostic.minFiniteV, uv.v);
+                diagnostic.maxFiniteV = std::max(diagnostic.maxFiniteV, uv.v);
+            }
             diagnostic.maxFiniteAbs =
                 std::max({diagnostic.maxFiniteAbs, std::abs(uv.u), std::abs(uv.v)});
+            if (std::abs(uv.u) > 1000.0f || std::abs(uv.v) > 1000.0f)
+                ++diagnostic.extremeCount;
         }
         const bool implausible = !finite || std::abs(uv.u) > 1000.0f || std::abs(uv.v) > 1000.0f;
         if (implausible && !diagnostic.discarded) {
