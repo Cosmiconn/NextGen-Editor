@@ -5,6 +5,9 @@
 #include <cctype>
 #include <cstdio>
 #include <cmath>
+#include <limits>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace theseed::mapeditor::app {
 namespace {
@@ -17,6 +20,7 @@ bool KfmPanel::Open(const std::filesystem::path& path) {
     if(!loaded) { message_=loaded.error();return false; }
     source_=path;file_=std::move(*loaded);references_.reset();selected_=0;transitionCount_=0;dirty_=false;
     previewKf_.reset(); previewKfPath_.clear(); previewAnimationIndex_=static_cast<std::size_t>(-1);
+    previewNif_.reset(); previewNifPath_.clear(); previewNifMessage_.clear();
     previewTime_=0.0f; previewPlaying_=false; previewMessage_.clear();
     for(const auto& a:file_->animations)transitionCount_+=a.transitions.size();
     std::snprintf(path_,sizeof(path_),"%s",utf8(path).c_str());
@@ -44,6 +48,7 @@ void KfmPanel::LoadSelectedKfPreview() {
     previewKfPath_.clear();
     previewAnimationIndex_ = static_cast<std::size_t>(-1);
     previewMessage_.clear();
+    previewNifMessage_.clear();
 
     if (!file_ || selected_ >= file_->animations.size()) {
         previewMessage_ = L("Keine Animation ausgewählt.", "No animation selected.");
@@ -68,6 +73,260 @@ void KfmPanel::LoadSelectedKfPreview() {
     previewAnimationIndex_ = selected_;
     previewTime_ = previewKf_->sequence.startTime;
     previewMessage_ = L("KF geladen.", "KF loaded.");
+
+    // KFM liefert die NIF-Referenz explizit. Für den Skeleton-Viewport wird exakt diese
+    // aufgelöste Datei geladen; es gibt keine rekursive Basename-Suche und keinen geratenen
+    // Charakter-/Skeleton-Pfad.
+    if (references_->nif) {
+        if (!previewNif_ || previewNifPath_ != *references_->nif) {
+            auto nif = core::LoadNifMesh(*references_->nif);
+            if (nif) {
+                previewNif_ = std::move(*nif);
+                previewNifPath_ = *references_->nif;
+                previewNifMessage_ = L("KFM-NIF geladen.", "KFM NIF loaded.");
+            } else {
+                previewNif_.reset();
+                previewNifPath_.clear();
+                previewNifMessage_ = nif.error();
+            }
+        }
+    } else {
+        previewNif_.reset();
+        previewNifPath_.clear();
+        previewNifMessage_ = L("KFM-NIF konnte nicht aufgelöst werden.",
+                               "KFM NIF could not be resolved.");
+    }
+}
+
+
+void KfmPanel::DrawSkeletonPreview() {
+    if (!previewKf_) return;
+
+    ImGui::SeparatorText(L("Skeleton-Viewport", "Skeleton viewport"));
+    if (!previewNif_ || previewNif_->nodes.empty()) {
+        ImGui::TextColored(ImVec4(1.0f,0.62f,0.30f,1.0f), "%s",
+                           previewNifMessage_.empty()
+                               ? L("Keine NIF-Hierarchie für die Vorschau verfügbar.",
+                                   "No NIF hierarchy is available for preview.")
+                               : previewNifMessage_.c_str());
+        return;
+    }
+
+    struct Transform {
+        core::NifVec3 t{};
+        std::array<float,9> r{1,0,0,0,1,0,0,0,1};
+        float s = 1.0f;
+    };
+
+    const auto quatMatrix=[](core::KfQuat q) {
+        const float len=std::sqrt(q.w*q.w+q.x*q.x+q.y*q.y+q.z*q.z);
+        if (len > 1.0e-8f) { q.w/=len; q.x/=len; q.y/=len; q.z/=len; }
+        const float xx=q.x*q.x, yy=q.y*q.y, zz=q.z*q.z;
+        const float xy=q.x*q.y, xz=q.x*q.z, yz=q.y*q.z;
+        const float wx=q.w*q.x, wy=q.w*q.y, wz=q.w*q.z;
+        return std::array<float,9>{
+            1.0f-2.0f*(yy+zz), 2.0f*(xy-wz),       2.0f*(xz+wy),
+            2.0f*(xy+wz),       1.0f-2.0f*(xx+zz), 2.0f*(yz-wx),
+            2.0f*(xz-wy),       2.0f*(yz+wx),       1.0f-2.0f*(xx+yy)
+        };
+    };
+    const auto rotate=[](const std::array<float,9>& r,const core::NifVec3& v) {
+        return core::NifVec3{
+            r[0]*v.x+r[1]*v.y+r[2]*v.z,
+            r[3]*v.x+r[4]*v.y+r[5]*v.z,
+            r[6]*v.x+r[7]*v.y+r[8]*v.z
+        };
+    };
+    const auto multiplyRotation=[](const std::array<float,9>& a,const std::array<float,9>& b) {
+        std::array<float,9> out{};
+        for (int row=0;row<3;++row)
+            for (int col=0;col<3;++col)
+                out[static_cast<std::size_t>(row*3+col)] =
+                    a[static_cast<std::size_t>(row*3+0)]*b[static_cast<std::size_t>(0*3+col)] +
+                    a[static_cast<std::size_t>(row*3+1)]*b[static_cast<std::size_t>(1*3+col)] +
+                    a[static_cast<std::size_t>(row*3+2)]*b[static_cast<std::size_t>(2*3+col)];
+        return out;
+    };
+
+    const auto& nodes=previewNif_->nodes;
+    const auto& kf=*previewKf_;
+    std::unordered_map<std::string,const core::KfControlledTrack*> trackByNode;
+    std::unordered_set<std::string> duplicateTrackNames;
+    for (const auto& track:kf.sequence.transformTracks) {
+        if (track.nodeName.empty()) continue;
+        const auto [it,inserted]=trackByNode.emplace(track.nodeName,&track);
+        if (!inserted) duplicateTrackNames.insert(track.nodeName);
+    }
+
+    std::vector<Transform> local(nodes.size());
+    std::vector<char> animated(nodes.size(),0);
+    std::vector<char> unsupported(nodes.size(),0);
+    std::size_t matched=0, unsupportedCount=0;
+    for (std::size_t i=0;i<nodes.size();++i) {
+        local[i].t=nodes[i].localTranslation;
+        local[i].r=nodes[i].localRotation;
+        local[i].s=nodes[i].localScale;
+        if (nodes[i].name.empty()) continue;
+        const auto it=trackByNode.find(nodes[i].name);
+        if (it==trackByNode.end()) continue;
+        auto sampled=core::SampleKfTransformTrack(kf,*it->second,previewTime_);
+        if (!sampled) {
+            unsupported[i]=1;
+            ++unsupportedCount;
+            continue;
+        }
+        local[i].t={sampled->translation.x,sampled->translation.y,sampled->translation.z};
+        local[i].r=quatMatrix(sampled->rotation);
+        local[i].s=sampled->scale;
+        animated[i]=1;
+        ++matched;
+    }
+
+    std::vector<Transform> world(nodes.size());
+    std::vector<std::uint8_t> visit(nodes.size(),0);
+    std::function<void(std::size_t)> buildWorld=[&](std::size_t index) {
+        if (visit[index]==2) return;
+        if (visit[index]==1) { // defensive cycle break: keep local transform.
+            world[index]=local[index];
+            visit[index]=2;
+            return;
+        }
+        visit[index]=1;
+        const int parent=nodes[index].parentIndex;
+        if (parent>=0 && static_cast<std::size_t>(parent)<nodes.size()) {
+            buildWorld(static_cast<std::size_t>(parent));
+            const Transform& p=world[static_cast<std::size_t>(parent)];
+            const core::NifVec3 scaledLocal{
+                local[index].t.x*p.s,local[index].t.y*p.s,local[index].t.z*p.s};
+            const core::NifVec3 rotatedLocal=rotate(p.r,scaledLocal);
+            world[index].t={p.t.x+rotatedLocal.x,p.t.y+rotatedLocal.y,p.t.z+rotatedLocal.z};
+            world[index].r=multiplyRotation(p.r,local[index].r);
+            world[index].s=p.s*local[index].s;
+        } else {
+            world[index]=local[index];
+        }
+        visit[index]=2;
+    };
+    for (std::size_t i=0;i<nodes.size();++i) buildWorld(i);
+
+    // Legacy/Gamebryo (x,y,z) -> Editor frame (x,z,y), matching NifModel::position.
+    std::vector<ImVec2> projected(nodes.size());
+    std::vector<core::NifVec3> editorPoints(nodes.size());
+    for (std::size_t i=0;i<nodes.size();++i)
+        editorPoints[i]={world[i].t.x,world[i].t.z,world[i].t.y};
+
+    ImGui::TextDisabled(L("%zu NIF-Nodes · %zu Tracks gematcht · %zu aktuell nicht samplebar",
+                          "%zu NIF nodes · %zu tracks matched · %zu currently not sampleable"),
+                        nodes.size(),matched,unsupportedCount);
+    if (!duplicateTrackNames.empty()) {
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(1.0f,0.68f,0.25f,1.0f),
+                           L("· %zu doppelte Track-Namen","· %zu duplicate track names"),
+                           duplicateTrackNames.size());
+    }
+
+    const ImVec2 avail=ImGui::GetContentRegionAvail();
+    const ImVec2 canvasSize(std::max(260.0f,avail.x),
+                            std::clamp(avail.y*0.48f,220.0f,360.0f));
+    const ImVec2 canvasMin=ImGui::GetCursorScreenPos();
+    ImGui::InvisibleButton("##kfmSkeletonViewport",canvasSize,
+                           ImGuiButtonFlags_MouseButtonLeft);
+    const ImVec2 canvasMax(canvasMin.x+canvasSize.x,canvasMin.y+canvasSize.y);
+    ImDrawList* dl=ImGui::GetWindowDrawList();
+    dl->AddRectFilled(canvasMin,canvasMax,IM_COL32(7,16,25,255),5.0f);
+    dl->AddRect(canvasMin,canvasMax,IM_COL32(31,82,116,220),5.0f);
+
+    const bool hovered=ImGui::IsItemHovered();
+    if (hovered && ImGui::IsMouseDragging(ImGuiMouseButton_Left,0.0f)) {
+        const ImVec2 delta=ImGui::GetIO().MouseDelta;
+        previewSkeletonYaw_ += delta.x*0.008f;
+        previewSkeletonPitch_=std::clamp(previewSkeletonPitch_+delta.y*0.008f,-1.45f,1.45f);
+    }
+    if (hovered && std::abs(ImGui::GetIO().MouseWheel)>0.0f)
+        previewSkeletonZoom_=std::clamp(previewSkeletonZoom_*
+            std::pow(1.12f,ImGui::GetIO().MouseWheel),0.25f,5.0f);
+    if (hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+        previewSkeletonYaw_=0.35f;
+        previewSkeletonPitch_=-0.20f;
+        previewSkeletonZoom_=1.0f;
+    }
+
+    const float cy=std::cos(previewSkeletonYaw_), sy=std::sin(previewSkeletonYaw_);
+    const float cp=std::cos(previewSkeletonPitch_), sp=std::sin(previewSkeletonPitch_);
+    std::vector<ImVec2> rotated2(nodes.size());
+    float minX=std::numeric_limits<float>::max(),maxX=std::numeric_limits<float>::lowest();
+    float minY=std::numeric_limits<float>::max(),maxY=std::numeric_limits<float>::lowest();
+    for (std::size_t i=0;i<nodes.size();++i) {
+        const auto& p=editorPoints[i];
+        const float x1=cy*p.x-sy*p.z;
+        const float z1=sy*p.x+cy*p.z;
+        const float y2=cp*p.y-sp*z1;
+        rotated2[i]={x1,y2};
+        minX=std::min(minX,x1);maxX=std::max(maxX,x1);
+        minY=std::min(minY,y2);maxY=std::max(maxY,y2);
+    }
+    const float spanX=std::max(maxX-minX,1.0f),spanY=std::max(maxY-minY,1.0f);
+    const float fit=std::min((canvasSize.x-34.0f)/spanX,(canvasSize.y-34.0f)/spanY)*previewSkeletonZoom_;
+    const float cx=(minX+maxX)*0.5f,cy2=(minY+maxY)*0.5f;
+    const ImVec2 center(canvasMin.x+canvasSize.x*0.5f,canvasMin.y+canvasSize.y*0.5f);
+    for (std::size_t i=0;i<nodes.size();++i)
+        projected[i]={center.x+(rotated2[i].x-cx)*fit,
+                      center.y-(rotated2[i].y-cy2)*fit};
+
+    // Parent-child lines are the actual NIF hierarchy; cyan marks sampled KF nodes,
+    // amber marks a matching track whose interpolation is intentionally unsupported.
+    for (std::size_t i=0;i<nodes.size();++i) {
+        const int parent=nodes[i].parentIndex;
+        if (parent<0 || static_cast<std::size_t>(parent)>=nodes.size()) continue;
+        const ImU32 line=unsupported[i] ? IM_COL32(240,166,68,235)
+                          : animated[i] ? IM_COL32(32,221,242,235)
+                                        : IM_COL32(105,132,151,150);
+        dl->AddLine(projected[static_cast<std::size_t>(parent)],projected[i],
+                    line,animated[i]||unsupported[i]?2.0f:1.0f);
+    }
+    for (std::size_t i=0;i<nodes.size();++i) {
+        const ImU32 dot=unsupported[i] ? IM_COL32(255,180,75,255)
+                       : animated[i] ? IM_COL32(128,238,255,255)
+                                     : IM_COL32(135,157,173,205);
+        dl->AddCircleFilled(projected[i],animated[i]||unsupported[i]?2.7f:1.7f,dot);
+    }
+
+    dl->AddText(ImVec2(canvasMin.x+10.0f,canvasMin.y+8.0f),IM_COL32(169,197,217,225),
+                L("Drag: drehen · Wheel: Zoom · Doppelklick: Reset",
+                  "Drag: rotate · Wheel: zoom · Double-click: reset"));
+    if (!previewNifPath_.empty()) {
+        const std::string label=previewNifPath_.filename().string();
+        dl->AddText(ImVec2(canvasMin.x+10.0f,canvasMax.y-22.0f),
+                    IM_COL32(108,139,161,220),label.c_str());
+    }
+
+    if (hovered) {
+        // nearest node hover, useful for verifying KF ↔ NIF name matching without cluttering
+        // the viewport with permanent labels.
+        const ImVec2 mouse=ImGui::GetMousePos();
+        float best=64.0f;
+        std::size_t bestIndex=nodes.size();
+        for (std::size_t i=0;i<nodes.size();++i) {
+            const float dx=mouse.x-projected[i].x,dy=mouse.y-projected[i].y;
+            const float d2=dx*dx+dy*dy;
+            if (d2<best) { best=d2; bestIndex=i; }
+        }
+        if (bestIndex<nodes.size() && !nodes[bestIndex].name.empty()) {
+            ImGui::SetTooltip("%s%s",nodes[bestIndex].name.c_str(),
+                unsupported[bestIndex]
+                    ? L("\nKF-Track vorhanden, aber Interpolation noch nicht verifiziert.",
+                        "\nKF track exists, but interpolation is not yet verified.")
+                    : animated[bestIndex]
+                        ? L("\nKF-Track aktiv gesampelt.","\nKF track actively sampled.")
+                        : "");
+        }
+    }
+
+    ImGui::TextDisabled("%s",
+        L("Viewport = echte NIF-Hierarchie + verifizierte KF-Local-Transforms. "
+          "Komprimierte B-Splines/TBC bleiben bewusst in Bind-Pose statt geraten zu werden.",
+          "Viewport = real NIF hierarchy + verified KF local transforms. "
+          "Compressed B-splines/TBC deliberately remain in bind pose instead of being guessed."));
 }
 
 void KfmPanel::Draw(const std::function<std::optional<std::string>()>& browse) {
@@ -420,7 +679,8 @@ void KfmPanel::Draw(const std::function<std::optional<std::string>()>& browse) {
         const float duration = std::max(0.0f, stop - start);
 
         if (previewPlaying_ && duration > 0.0f) {
-            previewTime_ += ImGui::GetIO().DeltaTime * previewSpeed_;
+            previewTime_ += ImGui::GetIO().DeltaTime * previewSpeed_ *
+                            std::max(0.0f, kf.sequence.frequency);
             if (previewTime_ > stop) {
                 if (previewLoop_) {
                     const float span = std::max(duration, 1.0e-6f);
@@ -507,11 +767,13 @@ void KfmPanel::Draw(const std::function<std::optional<std::string>()>& browse) {
             ImGui::EndTable();
         }
 
+        DrawSkeletonPreview();
+
         ImGui::TextDisabled("%s",
-            L("Diese Timeline sampelt echte KF-Transforms. Skelett-/Mesh-Playback folgt erst, "
-              "wenn komprimierte Fiesta-B-Splines und Bone-Hierarchie verifiziert sind.",
-              "This timeline samples real KF transforms. Skeleton/mesh playback follows only "
-              "after compressed Fiesta B-splines and bone hierarchy are verified."));
+            L("Timeline und Skeleton-Viewport sampeln echte KF-Transforms. Mesh-Deformation "
+              "bleibt separat gesperrt, bis animierte Skin-Weights/Bone-Matrizen Ende-zu-Ende verifiziert sind.",
+              "Timeline and skeleton viewport sample real KF transforms. Mesh deformation remains "
+              "separately locked until animated skin weights/bone matrices are verified end-to-end."));
     }
     if (!previewMessage_.empty()) {
         ImGui::TextWrapped("%s", previewMessage_.c_str());
