@@ -4616,7 +4616,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         const NifTextureState* textureState = nullptr;
         std::uint32_t texturePropertyBlock = 0;
         bool haveMaterial = false, haveAlpha = false, haveDepth = false;
-        bool haveStencil = false, haveSpecular = false;
+        bool haveStencil = false, haveSpecular = false, haveVertexColor = false;
         for (const auto ref : system.propertyRefs) {
             if (ref < 0) continue;
             const auto key = static_cast<std::uint32_t>(ref);
@@ -4629,6 +4629,15 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 if (it != texStateByBlock.end()) {
                     textureState = &it->second;
                     texturePropertyBlock = key;
+                }
+            }
+            if (!haveVertexColor) {
+                const auto it = vertexColorByBlock.find(key);
+                if (it != vertexColorByBlock.end()) {
+                    system.hasVertexColorProperty = true;
+                    system.vertexColorMode = it->second.vertexMode;
+                    system.vertexLightingMode = it->second.lightingMode;
+                    haveVertexColor = true;
                 }
             }
             if (!haveAlpha) {
@@ -4663,6 +4672,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                     system.stencilFailAction = it->second.failAction;
                     system.stencilZFailAction = it->second.zFailAction;
                     system.stencilPassAction = it->second.passAction;
+                    system.faceDrawMode = it->second.drawMode;
                     haveStencil = true;
                 }
             }

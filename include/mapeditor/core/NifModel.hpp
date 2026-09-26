@@ -371,6 +371,9 @@ struct NifParticleSystemInfo {
     std::vector<NifTextureTransformAnimation> textureTransformAnimations;
     std::vector<NifTextureFlipAnimation> textureFlipAnimations;
     bool specularEnabled = true;
+    bool hasVertexColorProperty = false;
+    std::uint32_t vertexColorMode = 2;
+    std::uint32_t vertexLightingMode = 1;
     bool alphaBlend = false, alphaTest = false;
     std::uint8_t alphaThreshold = 0, alphaSrcBlend = 6, alphaDstBlend = 7, alphaTestFunc = 4;
     bool depthTest = true, depthWrite = true;
@@ -378,6 +381,7 @@ struct NifParticleSystemInfo {
     bool hasStencilProperty = false, stencilEnabled = false;
     std::uint32_t stencilFunction = 7, stencilReference = 0, stencilMask = 0xFFFFFFFFu;
     std::uint32_t stencilFailAction = 0, stencilZFailAction = 0, stencilPassAction = 0;
+    std::uint32_t faceDrawMode = 3;
 
     NifVec3 translation{};
     std::array<float, 9> rotation{1.0f, 0.0f, 0.0f,

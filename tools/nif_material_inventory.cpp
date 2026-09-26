@@ -231,7 +231,7 @@ int main(int argc, char** argv) {
                     resolvedParticleControllers += system.controllers.size();
                     for (const auto& controller : system.controllers) {
                         if (controller.type == "NiPSysEmitterCtlr") {
-                            if (!controller.hasFloatTrack) {
+                            if (controller.interpolatorRef >= 0 && !controller.hasFloatTrack) {
                                 ++emitterControllersWithoutRate;
                                 rendererGapFiles.insert(entry.path().string());
                             }
@@ -309,6 +309,13 @@ int main(int argc, char** argv) {
                         (system.stencilFunction > 7u || system.stencilFailAction > 5u ||
                          system.stencilZFailAction > 5u || system.stencilPassAction > 5u)) {
                         ++unsupportedStencilParts; rendererGapFiles.insert(entry.path().string());
+                    }
+                    if (system.hasVertexColorProperty &&
+                        (system.vertexColorMode > 2u || system.vertexLightingMode > 1u)) {
+                        ++unsupportedVertexColorParts; rendererGapFiles.insert(entry.path().string());
+                    }
+                    if (system.faceDrawMode > 3u) {
+                        ++unsupportedFaceDrawParts; rendererGapFiles.insert(entry.path().string());
                     }
                     std::ostringstream detail;
                     detail << "PARTICLESYSTEM"
