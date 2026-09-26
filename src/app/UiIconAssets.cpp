@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdlib>
+#include <cstdio>
 #include <system_error>
 #include <utility>
 
@@ -170,7 +171,15 @@ void UiIconAssets::Shutdown() {
         if (texture != 0) glDeleteTextures(1, &texture);
     }
     textures_.clear();
+    warnedUnknownSemantics_.clear();
     assetRoot_.clear();
+}
+
+bool UiIconAssets::IsKnownSemantic(std::string_view semanticId) {
+    return std::any_of(kIconPaths.begin(), kIconPaths.end(),
+                       [semanticId](const IconPathEntry& entry) {
+                           return entry.semantic == semanticId;
+                       });
 }
 
 std::filesystem::path UiIconAssets::RelativePath(std::string_view semanticId, int size) {
@@ -184,6 +193,15 @@ std::filesystem::path UiIconAssets::RelativePath(std::string_view semanticId, in
 }
 
 std::uint32_t UiIconAssets::Texture(std::string_view semanticId, int requestedSize) {
+    if (!IsKnownSemantic(semanticId)) {
+        const std::string semantic(semanticId);
+        if (warnedUnknownSemantics_.insert(semantic).second) {
+            std::fprintf(stderr,
+                         "[UiIconAssets] Unbekannte semantische Icon-ID: %s\n",
+                         semantic.c_str());
+        }
+        return 0;
+    }
     if (assetRoot_.empty()) return 0;
 
     const int preferredSize = NormalizeSize(requestedSize);
