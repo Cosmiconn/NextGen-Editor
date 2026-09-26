@@ -3,10 +3,11 @@
 ## Phase 0 – Vision Lock
 - [x] UI-Vision im Repo
 - [x] strukturelle SVG-Mockups geplant/versioniert
-- [x] SVG-Icon-Pack geplant/versioniert
-- [ ] freigegebene Raster-Referenzen zusätzlich archivieren
-- [ ] finales 54-Icon-Paket inventarisieren und semantisch mappen
-- [ ] Windows-ICO aus dem freigegebenen NG-Master neu erzeugen
+- [x] finales 68-Icon-Paket technisch geprüft, inventarisiert und semantisch gemappt
+- [x] 68 echte SVG-Master und 6 freigegebene Small-Size-Rasterstufen im Final-Paket verifiziert
+- [x] Windows-ICO/Resource 101 mit dem NG-Branding in die App integriert
+- [ ] vollständige 68-SVG-/68×6-Runtime-Matrix in den Git-Checkout importieren; bis dahin bleibt nur der bereits benötigte Runtime-Subset eingecheckt
+- [x] reproduzierbarer Importpfad über `tools/ui/import_icon_pack.py` dokumentiert
 
 ## Phase 1 – Design Tokens
 Zentrale Theme-Tokens, Radius, Padding, Button-/Headerhöhen, States.
@@ -35,6 +36,8 @@ KFM Preview → Transport → Timeline → Trackliste → Skeleton/Mesh Playback
 
 ## Phase 6 – Polish
 Icon-Pass aus dem freigegebenen Paket, Tooltips, Spacing, Tastaturfokus, HiDPI, 100/125/150/200 %, 1366×768 / 1920×1080 / 2560×1440.
+
+Der Icon-Pass wird durch `tools/ui/check_icon_consistency.py` abgesichert. CI verifiziert damit, dass `icon-map.json`, `UiIconAssets.cpp` und der tatsächlich eingecheckte Runtime-PNG-Subset semantisch übereinstimmen; ein noch unvollständiger Asset-Checkout bleibt ausdrücklich erlaubt.
 
 ## Harte Kriterien
 1. 3D ist im Default-Layout größter Einzelbereich.
