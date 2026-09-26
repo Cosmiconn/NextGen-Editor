@@ -267,7 +267,7 @@ Diese Roadmap ist ab jetzt die verbindliche Reihenfolge für den weiteren Ausbau
 
 ### Priorität 3 – Spieldaten
 - **Single/Multi SHN:** Sortierung, eingefrorene Header/Spalten, Spaltenfilter, Dirty-Markierung, Inline-Editing, Validierung, Copy/Paste, Undo/Redo und Client/Server-Diff.
-- **Quest:** Allgemein / Voraussetzungen / Ziele / Belohnungen / Dialoge / Scripts; klickbare Mob/Item/NPC-Referenzen; später optional Quest-Flow.
+- **Quest:** Allgemein / Voraussetzungen / Ziele / Belohnungen / Dialoge / Scripts; klickbare Mob/Item/NPC-Referenzen. Optionaler Quest-Flow ist jetzt read-only umgesetzt: predecessor-Kette, aktuelle Quest und direkte Folgequests stammen ausschließlich aus den verifizierten `needPred/predecessor`-Feldern; Zyklen, fehlende und doppelte IDs werden sichtbar markiert.
 - **Skill:** Allgemein / Kosten-Cooldown / Schaden / Voraussetzungen / Zustände / Animation-VFX / Serverwerte; Skill-Reihen gruppiert. Animation/VFX-Picker aggregieren jetzt reale Werte über alle gleichartigen View-Felder, bieten Suche sowie eine Referenz-Vorschau mit den Skills/Spalten, die den Wert tatsächlich verwenden. Physische KF/NIF/VFX-Asset-Existenz wird dabei bewusst noch nicht behauptet.
 - **Custom NPC/Mob:** echter 5-Schritt-Assistent mit permanenter Vorschau.
 
@@ -373,9 +373,10 @@ Dieser Abschnitt ist der verbindliche Ausbau-Fahrplan für den laufenden Branch 
 - anschließend Spaltenfilter, Referenz-/Fehlermarkierung und Client-/Server-Vergleich.
 
 ### Quest
-- Allgemein / Voraussetzungen / Ziele / Belohnungen / Dialoge / Scripts;
-- klickbare Referenzen auf Mob / Item / NPC;
-- später optional Quest-Flow/Graph.
+- Allgemein / Voraussetzungen / Ziele / Belohnungen / Dialoge / Scripts; **umgesetzt**
+- klickbare Referenzen auf Mob / Item / NPC; **umgesetzt**
+- read-only Quest-Flow/Graph für verifizierte `needPred/predecessor`-Kanten mit Vorgänger-Kette, direkter Folgequest-Navigation, Zyklus-/Missing-/Duplicate-ID-Hinweisen; **umgesetzt**
+- Script-`GOTO`/`ACCEPT` und unbekannte Reward-/Raw-Felder werden bewusst nicht als Graph-Semantik interpretiert.
 
 ### Skill
 - Allgemein / Kosten-Cooldown / Schaden / Voraussetzungen / Zustände / Animation-VFX / Serverwerte;
@@ -409,4 +410,4 @@ Dieser Abschnitt ist der verbindliche Ausbau-Fahrplan für den laufenden Branch 
 
 ### Priorität
 Die unmittelbare Reihenfolge ist:
-**Icon-/UI-Vision festziehen → App-Shell/Map-UI-Retrofit → Minimap-Metadaten + Editor-Preview (erreicht; Exportformat weiter gesperrt) → Walk/Block-Footprints (Preview/Apply erreicht) → SHN-Referenzen (verifizierte Kernfamilien erreicht) → Skill Animation/VFX (datenbelegte Picker/Referenz-Vorschau erreicht) → KFM-Playback (Timeline + echtes Skeleton-Preview erreicht; Mesh-Deformation/B-Splines offen) → Quest-Flow optional → globale QA/Politur.**
+**Icon-/UI-Vision festziehen → App-Shell/Map-UI-Retrofit → Minimap-Metadaten + Editor-Preview (erreicht; Exportformat weiter gesperrt) → Walk/Block-Footprints (Preview/Apply erreicht) → SHN-Referenzen (verifizierte Kernfamilien erreicht) → Skill Animation/VFX (datenbelegte Picker/Referenz-Vorschau erreicht) → KFM-Playback (Timeline + echtes Skeleton-Preview erreicht; Mesh-Deformation/B-Splines offen) → Quest-Flow (verifizierte predecessor-Sicht erreicht) → globale QA/Politur.**
