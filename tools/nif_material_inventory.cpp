@@ -110,6 +110,11 @@ int main(int argc, char** argv) {
     std::map<std::tuple<std::uint32_t, std::uint32_t, bool>, EffectStats> effects;
     std::size_t uvRendererOverflowParts = 0;
     std::size_t uvRendererOverflowBindings = 0;
+    std::size_t missingRequestedUvBindings = 0;
+    std::size_t uv0FallbackBindings = 0;
+    std::size_t noUsableUvBindings = 0;
+    std::map<std::string, std::size_t> uvFallbackFiles;
+    std::map<std::string, std::size_t> noUvFiles;
     std::size_t unmaterializedShaderDescriptors = 0;
     std::size_t unmaterializedApplyModeParts = 0;
     std::size_t unsupportedEffectBindings = 0;
@@ -197,6 +202,22 @@ int main(int argc, char** argv) {
                         ++uvRendererOverflowBindings;
                         rendererGapFiles.insert(entry.path().string());
                     }
+                    const bool hasRequestedUvs =
+                        texture.uvSet < part.uvSets.size() &&
+                        part.uvSets[texture.uvSet].size() == part.positions.size();
+                    if (!hasRequestedUvs) {
+                        ++missingRequestedUvBindings;
+                        const bool hasBaseFallbackUvs =
+                            part.uvs.size() == part.positions.size();
+                        if (hasBaseFallbackUvs) {
+                            ++uv0FallbackBindings;
+                            ++uvFallbackFiles[entry.path().string()];
+                        } else {
+                            ++noUsableUvBindings;
+                            ++noUvFiles[entry.path().string()];
+                        }
+                        rendererGapFiles.insert(entry.path().string());
+                    }
                     if (shader != "<fixed-function>") {
                         auto& shaderStat = shaderClassicSlots[{shader, slot}];
                         ++shaderStat.parts;
@@ -219,6 +240,24 @@ int main(int argc, char** argv) {
                     if (shaderSlot.texture.uvSet > 7u) {
                         ++uvRendererOverflowBindings;
                         rendererGapFiles.insert(entry.path().string());
+                    }
+                    if (shaderSlot.texture.present) {
+                        const bool hasRequestedUvs =
+                            shaderSlot.texture.uvSet < part.uvSets.size() &&
+                            part.uvSets[shaderSlot.texture.uvSet].size() == part.positions.size();
+                        if (!hasRequestedUvs) {
+                            ++missingRequestedUvBindings;
+                            const bool hasBaseFallbackUvs =
+                                part.uvs.size() == part.positions.size();
+                            if (hasBaseFallbackUvs) {
+                                ++uv0FallbackBindings;
+                                ++uvFallbackFiles[entry.path().string()];
+                            } else {
+                                ++noUsableUvBindings;
+                                ++noUvFiles[entry.path().string()];
+                            }
+                            rendererGapFiles.insert(entry.path().string());
+                        }
                     }
                     ++stat.descriptors;
                     stat.files.insert(entry.path().string());
@@ -278,6 +317,9 @@ int main(int argc, char** argv) {
               << "\tinheritedProperties=" << inheritedProperties
               << "\tuvOverflowParts=" << uvRendererOverflowParts
               << "\tuvOverflowBindings=" << uvRendererOverflowBindings
+              << "\tmissingRequestedUvBindings=" << missingRequestedUvBindings
+              << "\tuv0FallbackBindings=" << uv0FallbackBindings
+              << "\tnoUsableUvBindings=" << noUsableUvBindings
               << "\tunmaterializedShaderDescriptors=" << unmaterializedShaderDescriptors
               << "\tunmaterializedApplyModes=" << unmaterializedApplyModeParts
               << "\tunsupportedEffectBindings=" << unsupportedEffectBindings
@@ -358,6 +400,12 @@ int main(int argc, char** argv) {
 
     for (const auto& [count, partCount] : uvSetCounts)
         std::cout << "UVSETS\tcount=" << count << "\tparts=" << partCount << '\n';
+    for (const auto& [path, count] : uvFallbackFiles)
+        std::cout << "UVFALLBACKFILE\tbindings=" << count
+                  << "\tpath=" << Clean(path) << '\n';
+    for (const auto& [path, count] : noUvFiles)
+        std::cout << "NOUVFILE\tbindings=" << count
+                  << "\tpath=" << Clean(path) << '\n';
     for (const auto& [method, partCount] : transformMethods)
         std::cout << "TEXTRANSFORM\tmethod=" << method << "\tparts=" << partCount << '\n';
     for (const auto& [mode, bindingCount] : classicClampModes)
