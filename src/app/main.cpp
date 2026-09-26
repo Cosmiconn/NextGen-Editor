@@ -15519,6 +15519,7 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
     std::size_t textureCount = 0;
     std::size_t externalTextureCount = 0;
     std::size_t embeddedTextureCount = 0;
+    std::size_t unresolvedEmbeddedTextureCount = 0;
     std::size_t missingTextureCount = 0;
     std::size_t animatedTextureCount = 0;
     std::size_t flipbookFrameCount = 0;
@@ -15529,8 +15530,9 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
         for (const auto& slot : part.textureSlots) {
             if (!slot.present) continue;
             ++textureCount;
-            if (slot.embeddedTexture) {
-                ++embeddedTextureCount;
+            if (slot.sourceUsesEmbeddedPixelData) {
+                if (slot.embeddedTexture) ++embeddedTextureCount;
+                else ++unresolvedEmbeddedTextureCount;
             } else if (!slot.texture.empty()) {
                 ++externalTextureCount;
                 if (!ResolveNifInspectorTexturePathCached(state, root, slot.texture)) {
@@ -15557,8 +15559,10 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
     ImGui::Text("Root: %s", model.rootName.empty() ? L("(unbenannt)","(unnamed)") : model.rootName.c_str());
     ImGui::TextDisabled("%zu Mesh-Teile · %zu Dreiecke · %zu Textur-Slots",
                         model.parts.size(), triangleCount, textureCount);
-    ImGui::TextDisabled(L("%zu extern · %zu eingebettet · %zu Textur-Animationen","%zu external · %zu embedded · %zu texture animations"),
-                        externalTextureCount, embeddedTextureCount, animatedTextureCount);
+    ImGui::TextDisabled(L("%zu extern · %zu eingebettet · %zu Embedded-Fehler · %zu Textur-Animationen",
+                          "%zu external · %zu embedded · %zu embedded failures · %zu texture animations"),
+                        externalTextureCount, embeddedTextureCount, unresolvedEmbeddedTextureCount,
+                        animatedTextureCount);
     if (flipbookFrameCount > 0)
         ImGui::TextDisabled(L("%zu Flipbook-Frames · %zu nicht auflösbar","%zu flipbook frames · %zu unresolved"),
                             flipbookFrameCount, missingFlipbookFrameCount);
@@ -15580,8 +15584,17 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
     } else if (externalTextureCount > 0 || flipbookFrameCount > 0) {
         ImGui::TextColored(ImVec4(0.42f,0.86f,0.62f,1.0f), "%s",L("Alle externen Textur-Referenzen gefunden","All external texture references found"));
     }
-    ImGui::TextDisabled(L("%zu Nodes · %u dekodierte eingebettete Texturen","%zu nodes · %u decoded embedded textures"),
-                        model.nodes.size(), model.decodedEmbeddedTextures);
+    if (unresolvedEmbeddedTextureCount > 0 || model.undecodedEmbeddedTextures > 0) {
+        ImGui::TextColored(
+            ImVec4(1.0f,0.48f,0.34f,1.0f),
+            L("%zu Materialslot(s) mit nicht dekodierter eingebetteter PixelData",
+              "%zu material slot(s) with undecoded embedded PixelData"),
+            unresolvedEmbeddedTextureCount);
+    }
+    ImGui::TextDisabled(
+        L("%zu Nodes · Embedded PixelData dekodiert/nicht dekodiert: %u/%u",
+          "%zu nodes · embedded PixelData decoded/undecoded: %u/%u"),
+        model.nodes.size(), model.decodedEmbeddedTextures, model.undecodedEmbeddedTextures);
     if (model.recovered || model.partial) {
         ImGui::TextDisabled("%s%s",
                             model.recovered ? L("Kompatibilitäts-Recovery aktiv","Compatibility recovery active") : "",
@@ -15612,9 +15625,13 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
         for (const auto& slot : part.textureSlots) {
             if (!slot.present) continue;
             if (!slot.texture.empty()) partSearch += " " + LowerAscii(slot.texture);
-            if (!slot.embeddedTexture && !slot.texture.empty() &&
-                !ResolveNifInspectorTexturePathCached(state, root, slot.texture))
+            if (slot.sourceUsesEmbeddedPixelData) partSearch += " embedded pixeldata";
+            if (slot.sourceUsesEmbeddedPixelData && !slot.embeddedTexture) {
                 partHasMissingTexture = true;
+            } else if (!slot.embeddedTexture && !slot.texture.empty() &&
+                       !ResolveNifInspectorTexturePathCached(state, root, slot.texture)) {
+                partHasMissingTexture = true;
+            }
         }
         for (const auto& animation : part.textureFlipAnimations) {
             for (const auto& frame : animation.frames) {
@@ -15665,6 +15682,9 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                     }
                     preview = GetOrLoadEmbeddedNifInspectorThumbnail(
                         state, *slot.embeddedTexture, pi, si);
+                } else if (slot.sourceUsesEmbeddedPixelData) {
+                    // Fehlgeschlagene eingebettete PixelData ist selbst ein "Missing"-Fall und
+                    // muss im entsprechenden Inspector-Filter sichtbar bleiben.
                 } else if (!slot.texture.empty()) {
                     resolvedTexture = ResolveNifInspectorTexturePathCached(
                         state, root, slot.texture);
@@ -15690,8 +15710,16 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                 }
                 ImGui::BeginGroup();
                 if (slot.embeddedTexture) {
-                    ImGui::Text(L("Eingebettet · %u × %u","Embedded · %u × %u"),
+                    ImGui::Text(L("Eingebettet · PixelData #%d · %u × %u",
+                                  "Embedded · PixelData #%d · %u × %u"),
+                                slot.sourcePixelDataRef,
                                 slot.embeddedTexture->width, slot.embeddedTexture->height);
+                } else if (slot.sourceUsesEmbeddedPixelData) {
+                    ImGui::TextColored(
+                        ImVec4(1.0f,0.48f,0.34f,1.0f),
+                        L("Eingebettete PixelData #%d konnte nicht dekodiert werden",
+                          "Embedded PixelData #%d could not be decoded"),
+                        slot.sourcePixelDataRef);
                 } else {
                     ImGui::TextWrapped("%s", slot.texture.empty() ? L("(keine externe Datei)","(no external file)") : slot.texture.c_str());
                     if (!slot.texture.empty()) {
