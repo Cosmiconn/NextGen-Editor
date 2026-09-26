@@ -149,6 +149,8 @@ struct NifTextureTransformAnimation {
 
 struct NifTextureFlipFrame {
     std::string texture;
+    bool sourceUsesEmbeddedPixelData = false;
+    std::int32_t sourcePixelDataRef = -1;
     std::shared_ptr<const NifEmbeddedTexture> embeddedTexture;
 };
 
