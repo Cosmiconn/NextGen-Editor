@@ -5382,9 +5382,8 @@ void DrawShnSourceList(EditorState& state, EditorState::ShnSource source, const 
 }
 
 void DrawShnMultiProfiles(EditorState& state) {
-    ImGui::TextColored(UiTheme::AccentCyan, "MULTI SHN");
-    ImGui::SameLine();
-    ImGui::TextDisabled("Client / Server vergleichen");
+    DrawPanelHeader("multiShnHeader", "MULTI SHN", DrawIconLayers,
+                    "module.shn.multi", L("Client / Server vergleichen","Compare client / server"));
     ImGui::TextWrapped("Die Aufgabe filtert passende Tabellen. Dateien mit gleichem Namen werden "
                        "paarweise gegenübergestellt; Schema- und Zellabweichungen sind nur Hinweise "
                        "und werden nicht automatisch überschrieben.");
@@ -5795,11 +5794,12 @@ void DrawShnEditor(EditorState& state) {
             if (!state.shnServerRoot.empty()) ScanShnFolder(state, state.shnServerRoot, EditorState::ShnSource::Server);
         }
     }
-    DrawTopNav(state, "Spieldaten");
+    DrawTopNav(state, L("Spieldaten","Game data"));
     ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
     ImGui::BeginChild("##shnEditor", ImVec2(0,0), false);
-    ImGui::TextColored(UiTheme::AccentCyan, "Spieldaten");
-    ImGui::SameLine(); ImGui::TextDisabled("SHN · Quest · Portale · Custom NPC/Mob · Skills · AI · Interface · Drops");
+    DrawPanelHeader("gameDataWorkspaceHeader", L("SPIELDATEN","GAME DATA"), DrawIconTable,
+                    "module.shn.single",
+                    "SHN · Quest · Portale/Portals · Custom NPC/Mob · Skills · AI · Interface · Drops");
     const std::size_t dataDirtyShn = DirtyShnDocumentCount(state);
     if (dataDirtyShn > 0 || state.questDirty || state.townPortalDirty || state.recallCoordDirty) {
         ImGui::SameLine();
@@ -5968,7 +5968,7 @@ void DrawShnEditor(EditorState& state) {
 }
 
 void DrawProjectHub(EditorState& state) {
-    DrawTopNav(state, "Übersicht");
+    DrawTopNav(state, L("Übersicht","Overview"));
 
     ImGui::TextColored(ImVec4(0.74f, 0.86f, 0.96f, 1.0f), "Workspaces");
     ImGui::SameLine();
@@ -6071,12 +6071,13 @@ void DrawProjectHub(EditorState& state) {
 // echten UI-Elemente - daher gibt es hier bewusst keine "Sticky Note"-Komponente mehr.)
 
 void DrawNewProjectConfig(EditorState& state) {
-    DrawTopNav(state, "Projekt");
+    DrawTopNav(state, L("Projekt","Project"));
 
-    ImGui::TextColored(UiTheme::AccentCyan, "PROJEKT KONFIGURIEREN");
-    ImGui::SameLine();
-    ImGui::TextDisabled("Client, Server und Arbeitsordner einmal zentral festlegen");
-    ImGui::Dummy(ImVec2(0,8));
+    DrawPanelHeader("projectConfigHeader", L("PROJEKT KONFIGURIEREN","CONFIGURE PROJECT"),
+                    DrawIconPencilPaper, "panel.project",
+                    L("Client, Server und Arbeitsordner einmal zentral festlegen",
+                      "Configure client, server and workspace folders in one place"));
+    ImGui::Dummy(ImVec2(0,4));
 
     const float cardW = std::min(820.0f, std::max(560.0f, ImGui::GetContentRegionAvail().x * 0.68f));
     ImGui::BeginChild("##projectConfigCard", ImVec2(cardW, 0), true);
@@ -7122,10 +7123,11 @@ void DrawQuestEditor(EditorState& state) {
                             L(". Text-/Reward-Referenzen wurden bewusst aus der Vorlage übernommen.",
                               ". Text/reward references were intentionally copied from the template.");
     };
-    ImGui::TextColored(UiTheme::AccentCyan, "%s", L("QUEST EDITOR", "QUEST EDITOR"));
-    ImGui::SameLine();
-    ImGui::TextDisabled(L("%zu Quests%s", "%zu quests%s"), quests.size(),
-                        state.questDialogLoaded ? "" : L(" · QuestDialog fehlt", " · QuestDialog missing"));
+    const std::string questHeaderMeta = std::to_string(quests.size()) +
+        L(" Quests"," quests") +
+        (state.questDialogLoaded ? std::string{} : std::string(L(" · QuestDialog fehlt"," · QuestDialog missing")));
+    DrawPanelHeader("questEditorHeader", "QUEST EDITOR", DrawIconBook,
+                    "module.quest", questHeaderMeta.c_str());
     if (state.questDirty) {
         ImGui::SameLine();
         ImGui::TextColored(ImVec4(1.0f,0.68f,0.25f,1.0f), "%s", L("● geändert","● modified"));
@@ -7666,9 +7668,8 @@ void DrawPortalEditor(EditorState& state) {
     EnsureTownPortalLoaded(state);
     EnsureRecallCoordLoaded(state);
 
-    ImGui::TextColored(UiTheme::AccentCyan, "PORTAL-DATEN");
-    ImGui::SameLine();
-    ImGui::TextDisabled("Client- und Server-Ziele");
+    DrawPanelHeader("portalDataHeader", L("PORTAL-DATEN","PORTAL DATA"), DrawIconPortal,
+                    nullptr, L("Client- und Server-Ziele","Client and server destinations"));
     ImGui::SeparatorText("TownPortal · Skill/Menü");
     if (!state.townPortalLoaded) {
         ImGui::TextWrapped("TownPortal.shn konnte nicht geladen werden (Client-ressystem-Ordner nötig).");
@@ -8606,10 +8607,10 @@ void DrawAiScriptEditorPopup(EditorState& state) {
 void DrawAiWorkspace(EditorState& state) {
     ScanAiWorkspace(state);
 
-    ImGui::TextColored(UiTheme::AccentCyan,"%s",L("AI WORKSPACE","AI WORKSPACE"));
-    ImGui::SameLine();
-    ImGui::TextDisabled(L("%zu Skripte · Lua + PineScript","%zu scripts · Lua + PineScript"),
-                        state.aiWorkspaceFiles.size());
+    const std::string aiHeaderMeta = std::to_string(state.aiWorkspaceFiles.size()) +
+                                     L(" Skripte · Lua + PineScript"," scripts · Lua + PineScript");
+    DrawPanelHeader("aiWorkspaceHeader", "AI WORKSPACE", DrawIconCode,
+                    "module.ai", aiHeaderMeta.c_str());
     ImGui::TextWrapped("%s",L(
         "Direkter Text-Editor für die bereits verifizierten Fiesta-KI-Pfade. Keine Syntaxinterpretation: Änderungen werden byte-nah als Text gespeichert.",
         "Direct text editor for the already verified Fiesta AI paths. No syntax interpretation: changes are saved as plain text."));
@@ -9878,10 +9879,11 @@ void DrawCreatureWizardPreview(EditorState& state) {
 void DrawCustomCreatureEditor(EditorState& state) {
     auto& w = state.wiz;
     EnsureItemLookup(state);
-    ImGui::TextColored(UiTheme::AccentCyan, "CUSTOM NPC / MOB");
-    ImGui::SameLine();
-    ImGui::TextDisabled("%s", L("Vorlage klonen · Werte anpassen · Aussehen wählen · optional platzieren", "Clone template · adjust values · choose appearance · optionally place"));
-    ImGui::Separator();
+    DrawPanelHeader("customCreatureHeader", "CUSTOM NPC / MOB",
+                    w.isNpc ? DrawIconPerson : DrawIconSpawn,
+                    w.isNpc ? "module.custom_npc" : "module.custom_mob",
+                    L("Vorlage klonen · Werte anpassen · Aussehen wählen · optional platzieren",
+                      "Clone template · adjust values · choose appearance · optionally place"));
     if (DrawIconButton("customNpc", "NPC", DrawIconPerson, w.isNpc, ImVec2(94,58), true, "module.custom_npc"))
         w.isNpc = true;
     ImGui::SameLine();
@@ -10788,9 +10790,8 @@ void DrawSkillEditor(EditorState& state) {
     const bool de = app::CurrentLanguage() == app::Language::German;
     const ImVec4 dim(0.60f, 0.66f, 0.74f, 1.0f);
     const SkillDocs d = ResolveSkillDocs(state);
-    ImGui::TextColored(UiTheme::AccentCyan, "%s", L("SKILL EDITOR", "SKILL EDITOR"));
-    ImGui::SameLine();
-    ImGui::TextDisabled("%s", L("Client + Server synchron bearbeiten", "Edit client + server in sync"));
+    DrawPanelHeader("skillEditorHeader", "SKILL EDITOR", DrawIconBolt,
+                    "module.skill", L("Client + Server synchron bearbeiten","Edit client + server in sync"));
     const std::size_t dirtySkillDocs = DirtyShnDocumentCount(state);
     if (dirtySkillDocs > 0) {
         ImGui::SameLine();
@@ -15762,9 +15763,9 @@ bool EditDropTableValue(const char* id, std::string& value, float width = 0.0f) 
 
 void DrawDropTableEditor(EditorState& state) {
     EnsureDropTableLoaded(state);
-    ImGui::TextColored(UiTheme::AccentCyan, "DROP TABLE / ITEMGROUP");
-    ImGui::SameLine();
-    ImGui::TextDisabled(state.dropTableDirty ? L("geändert *","modified *") : L("290-Spalten-Schema","290-column schema"));
+    DrawPanelHeader("dropTableHeader", "DROP TABLE / ITEMGROUP", DrawIconSpawn,
+                    "module.droptable",
+                    state.dropTableDirty ? L("geändert *","modified *") : L("290-Spalten-Schema","290-column schema"));
     ImGui::SameLine();
     ImGui::BeginDisabled(!state.dropTableLoaded || !state.dropTableDirty);
     if (UI::SmallButton(L("Speichern##dropTable","Save##dropTable"))) SaveDropTable(state);
@@ -16409,10 +16410,10 @@ void DrawInterfaceWorkspace(EditorState& state) {
             state.interfaceRoot = found->string();
     }
 
-    ImGui::TextColored(UiTheme::AccentCyan, "INTERFACE / RESMENU");
-    ImGui::SameLine();
-    ImGui::TextDisabled("%s",L("Originale nur lesen · Projekt-Overrides aktiv",
-                               "sources read-only · project overrides enabled"));
+    DrawPanelHeader("interfaceWorkspaceHeader", "INTERFACE / RESMENU", DrawIconMonitorEye,
+                    "module.interface",
+                    L("Originale nur lesen · Projekt-Overrides aktiv",
+                      "sources read-only · project overrides enabled"));
 
     if (state.interfaceRoot.empty()) {
         ImGui::Separator();
@@ -16869,7 +16870,7 @@ void DrawWorkspaceAssetBrowser(EditorState& state) {
 // Der eigentliche Arbeitsbereich (siehe Mockup, zweites/rechtes Bild): Tab-Leiste oben,
 // darunter drei Spalten - "Datei"+"Tools/etc" links, "2D View" Mitte, "3D View" rechts.
 void DrawMapEditorWorkspace(EditorState& state) {
-    DrawTopNav(state, "Karte");
+    DrawTopNav(state, L("Karte","Map"));
     DrawWorkspaceTabBar(state);
     ImGui::Separator();
 
@@ -17216,7 +17217,7 @@ int main() {
             case AppScreen::MapEditorWorkspace: DrawMapEditorWorkspace(state); break;
             case AppScreen::ShnEditor: DrawShnEditor(state); break;
             case AppScreen::KfmBrowser:
-                DrawTopNav(state, "Animationen");
+                DrawTopNav(state, L("Animationen","Animations"));
                 ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
                 ImGui::BeginChild("##kfmWorkspace", ImVec2(0,0), false);
                 DrawPanelHeader("kfmWorkspaceHeader", "Animationen / KFM",
