@@ -1795,6 +1795,7 @@ struct RawTriStripsData {
     std::vector<NifColor4> vertexColors;
     std::vector<NifVec2> uvs;
     std::vector<std::vector<NifVec2>> uvSets;
+    std::vector<NifUvSetDiagnostic> uvSetDiagnostics;
     std::vector<std::vector<std::uint16_t>> strips;
 };
 
@@ -2172,20 +2173,35 @@ void SkipNiPixelData(ByteReader& r, bool isOlderVersion) {
 // referenzieren können. Ein verworfenes sekundäres Set erlaubt dem Renderer den bestehenden
 // deterministischen UV0-Fallback, statt mit NaN/extremen Koordinaten eine korrekte (auch
 // eingebettete) Textur scheinbar verschwinden zu lassen.
-void SanitizeUvs(std::vector<NifVec2>& uvs) {
-    for (const auto& uv : uvs) {
-        const bool implausible =
-            !std::isfinite(uv.u) || !std::isfinite(uv.v) ||
-            std::abs(uv.u) > 1000.0f || std::abs(uv.v) > 1000.0f;
-        if (implausible) {
-            uvs.clear();
-            return;
+NifUvSetDiagnostic SanitizeUvs(std::vector<NifVec2>& uvs) {
+    NifUvSetDiagnostic diagnostic;
+    diagnostic.originalCount = static_cast<std::uint32_t>(
+        std::min<std::size_t>(uvs.size(), std::numeric_limits<std::uint32_t>::max()));
+    for (std::size_t i = 0; i < uvs.size(); ++i) {
+        const auto& uv = uvs[i];
+        const bool finite = std::isfinite(uv.u) && std::isfinite(uv.v);
+        if (finite) {
+            diagnostic.maxFiniteAbs =
+                std::max({diagnostic.maxFiniteAbs, std::abs(uv.u), std::abs(uv.v)});
+        }
+        const bool implausible = !finite || std::abs(uv.u) > 1000.0f || std::abs(uv.v) > 1000.0f;
+        if (implausible && !diagnostic.discarded) {
+            diagnostic.discarded = true;
+            diagnostic.firstBadIndex = static_cast<std::uint32_t>(
+                std::min<std::size_t>(i, std::numeric_limits<std::uint32_t>::max()));
+            diagnostic.firstBadValue = uv;
+            diagnostic.nonFinite = !finite;
         }
     }
+    if (diagnostic.discarded) uvs.clear();
+    return diagnostic;
 }
 
-void SanitizeUvSets(std::vector<std::vector<NifVec2>>& uvSets, std::vector<NifVec2>& baseUvs) {
-    for (auto& uvSet : uvSets) SanitizeUvs(uvSet);
+void SanitizeUvSets(std::vector<std::vector<NifVec2>>& uvSets, std::vector<NifVec2>& baseUvs,
+                    std::vector<NifUvSetDiagnostic>& diagnostics) {
+    diagnostics.clear();
+    diagnostics.reserve(uvSets.size());
+    for (auto& uvSet : uvSets) diagnostics.push_back(SanitizeUvs(uvSet));
     baseUvs = uvSets.empty() ? std::vector<NifVec2>{} : uvSets.front();
 }
 
@@ -2345,7 +2361,7 @@ RawTriStripsData ParseNiTriStripsData(ByteReader& r, bool hasTrailer, bool isOld
             r.Skip(8);
         }
     }
-    SanitizeUvSets(d.uvSets, d.uvs);
+    SanitizeUvSets(d.uvSets, d.uvs, d.uvSetDiagnostics);
     return d;
 }
 
@@ -2375,6 +2391,7 @@ struct RawTriShapeData {
     std::vector<NifColor4> vertexColors;
     std::vector<NifVec2> uvs;
     std::vector<std::vector<NifVec2>> uvSets;
+    std::vector<NifUvSetDiagnostic> uvSetDiagnostics;
     std::vector<std::uint16_t> triangleIndices; // flach, 3 pro Dreieck, direkt in `vertices` indiziert
 };
 
@@ -2503,7 +2520,7 @@ RawTriShapeData ParseNiTriShapeData(ByteReader& r, bool hasTrailer, bool isOlder
             r.Skip(8);
         }
     }
-    SanitizeUvSets(d.uvSets, d.uvs);
+    SanitizeUvSets(d.uvSets, d.uvs, d.uvSetDiagnostics);
     return d;
 }
 
@@ -2678,6 +2695,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         std::vector<NifColor4> vertexColors;
         std::vector<NifVec2> uvs;
         std::vector<std::vector<NifVec2>> uvSets;
+        std::vector<NifUvSetDiagnostic> uvSetDiagnostics;
         std::vector<std::uint32_t> triangleIndices;
     };
     struct GeomNode {
@@ -3366,6 +3384,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 rg.vertexColors = raw.vertexColors;
                 rg.uvs = raw.uvs;
                 rg.uvSets = raw.uvSets;
+                rg.uvSetDiagnostics = raw.uvSetDiagnostics;
                 for (const auto& strip : raw.strips) ExpandTriangleStrip(strip, rg.triangleIndices);
                 rawByData[static_cast<std::int32_t>(blockIdx)] = std::move(rg);
             }
@@ -3377,6 +3396,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             part.vertexColors = std::move(raw.vertexColors);
             part.uvs = std::move(raw.uvs);
             part.uvSets = std::move(raw.uvSets);
+            part.uvSetDiagnostics = std::move(raw.uvSetDiagnostics);
             for (const auto& strip : raw.strips) {
                 ExpandTriangleStrip(strip, part.triangleIndices);
             }
@@ -3401,6 +3421,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 rg.vertexColors = raw.vertexColors;
                 rg.uvs = raw.uvs;
                 rg.uvSets = raw.uvSets;
+                rg.uvSetDiagnostics = raw.uvSetDiagnostics;
                 rg.triangleIndices.assign(raw.triangleIndices.begin(), raw.triangleIndices.end());
                 rawByData[static_cast<std::int32_t>(blockIdx)] = std::move(rg);
             }
@@ -3412,6 +3433,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             part.vertexColors = std::move(raw.vertexColors);
             part.uvs = std::move(raw.uvs);
             part.uvSets = std::move(raw.uvSets);
+            part.uvSetDiagnostics = std::move(raw.uvSetDiagnostics);
             part.triangleIndices.reserve(raw.triangleIndices.size());
             for (const auto idx : raw.triangleIndices) {
                 part.triangleIndices.push_back(idx); // bereits flache Dreiecksliste, keine Streifen-Expansion nötig
@@ -3526,6 +3548,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 part.vertexColors = it->second.vertexColors;
                 part.uvs = it->second.uvs;
                 part.uvSets = it->second.uvSets;
+                part.uvSetDiagnostics = it->second.uvSetDiagnostics;
                 part.shaderName = g.shaderName;
                 part.triangleIndices = it->second.triangleIndices;
                 for (const auto ref : g.properties) {
