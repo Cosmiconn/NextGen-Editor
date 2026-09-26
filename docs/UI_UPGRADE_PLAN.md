@@ -87,7 +87,7 @@
 
 ## 4. Icon-System
 
-Finale Editor-Icons stammen aus `NextGen_Icons_Final.zip`: 68 verifizierte SVG-Master plus vorbereitete PNG-Runtime-Größen. ImGui-Primitives bleiben ausschließlich als dokumentierter Fallback für die wenigen Funktionen ohne Paketicon; das finale UI darf Paketassets und generische Ersatzicons nicht vermischen.
+Finale Editor-Icons stammen aus `NextGen_Icons_Final.zip`: 68 verifizierte SVG-Master plus vorbereitete PNG-Runtime-Größen. Der aktuelle Branch enthält davon bewusst nur den bereits migrierten Runtime-Subset; `UiIconAssets` fällt auf den nächstgelegenen eingecheckten freigegebenen Export zurück. ImGui-Primitives bleiben ausschließlich als dokumentierter Fallback für echte Semantik-Lücken oder noch nicht importierte Runtime-Raster; vorhandene Paketsemantik wird nicht auf ein anderes Symbol umgedeutet.
 
 Pflichtsymbole:
 - App/EXE: **NG-Monogramm**.
@@ -200,6 +200,9 @@ Zusätzlich in der laufenden zweiten Ausbaustufe umgesetzt:
 - konfigurierbare Shortcuts für Command Palette, Map-Speichern, Gizmo Move/Rotate/Scale, Fokus, Auf-Terrain, Duplizieren und Löschen werden im NextGen-Benutzerordner persistiert; sichtbare Shortcut-Hinweise in Command Palette, Inspector, Szene-Outliner und Objekt-Kontextmenüs leiten sich aus der aktuellen Belegung ab statt feste Default-Tasten vorzutäuschen.
 - Dock-/Workspace-Layout wird dauerhaft im NextGen-Benutzerordner gespeichert und beim nächsten Start wiederhergestellt; ein expliziter Reset stellt das Standardlayout wieder her.
 - QA/Politur: der 3D-Gizmo-Overlay nutzt für Move/Rotate/Scale dieselben finalen semantischen Paketicons wie Command-Bar und Inspector; der Navigator folgt jetzt ebenfalls dem gemeinsamen Panel-Header-System.
+- QA/Politur: AI-Aktionen sind auf `module.ai`, MobRegen-Einträge auf `nav.spawns`, Portal-Positionierung auf `transform.move` und Route/MobRoam auf `gameplay.path` verdrahtet; fehlende Route-Raster im Checkout bleiben korrekt funktionaler DrawList-Fallback.
+- QA/Politur: Asset Browser, Szene-Outliner, AI Workspace, NIF Inspector und Interface verwenden eine gemeinsame Search-Chrome mit `panel.search`; NIF-/Interface-Filter verwenden `panel.filter`.
+- Icon-Checkout-Audit: das Final-ZIP selbst ist vollständig, Git enthält aktuell aber nur einen Runtime-Subset. Vollimport von SVG-Mastern + 68×6 Runtime-Rastern bleibt reproduzierbar über `tools/ui/import_icon_pack.py` offen.
 
 Noch offen für spätere Ausbaustufen:
 - NPC-/Mob-/Portal-Outliner sind inzwischen spezialisiert: semantische Rollen-/Gruppenicons, Auswahl-Details, direkte Kontextaktionen, Gate-Zielnavigation und Schnellfilter (NPC-Rolle, Mob-Belegung, Portal-Typ); zusätzlich strukturieren einklappbare semantische Gruppen mit Trefferzählern die Listen nach `Role + RoleArg0`, Mob-Belegung und Portal-Typ;
