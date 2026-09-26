@@ -87,7 +87,7 @@
 
 ## 4. Icon-System
 
-Icons werden als vektorähnliche ImGui-Primitives gezeichnet, damit keine externe Icon-Font-Abhängigkeit nötig ist.
+Finale Editor-Icons stammen aus `NextGen_Icons_Final.zip`: 68 verifizierte SVG-Master plus vorbereitete PNG-Runtime-Größen. ImGui-Primitives bleiben ausschließlich als dokumentierter Fallback für die wenigen Funktionen ohne Paketicon; das finale UI darf Paketassets und generische Ersatzicons nicht vermischen.
 
 Pflichtsymbole:
 - App/EXE: **NG-Monogramm**.
