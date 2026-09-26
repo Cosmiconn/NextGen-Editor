@@ -47,7 +47,7 @@
 - Verlustfreier Kopie-Export.
 - KF-Transport/Timeline mit Text-Key-Markern und Track-Sampling.
 - echter Skeleton-Viewport aus expliziter KFM-NIF-Hierarchie + verifizierten KF-Local-Transforms.
-- animierte Mesh-Deformation und nicht verifizierte B-Spline/TBC-Semantik bleiben offen.
+- echte CPU-Skinned-Mesh-Deformation aus bewahrten NiSkin-Weights/Bind-Matrizen ist im KFM-Preview umgesetzt; material-/texturiertes Character-Rendering sowie nicht verifizierte B-Spline/TBC-Semantik bleiben offen.
 
 ### Projekt / Hilfe
 - Projekt mit Client-/Serverpfad.
@@ -274,7 +274,8 @@ Diese Roadmap ist ab jetzt die verbindliche Reihenfolge für den weiteren Ausbau
 ### Priorität 4 – Animationen
 - echtes KFM-/KF-Playback; **Timeline/Transport umgesetzt**
 - Preview-Viewport; **Skeleton-Viewport aus echter NIF-Hierarchie + verifizierten KF-Tracks umgesetzt**
-- animierte Mesh-Deformation/Skinned-Mesh-Playback; **offen**
+- animierte Mesh-Deformation/Skinned-Mesh-Playback; **umgesetzt als echte CPU-Deformation der NIF-Dreiecke mit bewahrten NiSkin-Weights/Bind-Matrizen, synchron zur Timeline**
+- material-/texturiertes Character-Preview auf Basis derselben Pose; **offen / Politur**
 - komprimierte Fiesta-B-Spline-/TBC-/Quadratic-Sampler nur nach Verifikation; **offen**
 - KFM-/Transition-Bearbeitung nur dort, wo der Codec nachweislich verlustfrei und die Runtime-Semantik belegt ist.
 
@@ -395,9 +396,10 @@ Dieser Abschnitt ist der verbindliche Ausbau-Fahrplan für den laufenden Branch 
 ### KFM / Animation
 - echtes KF-Playback mit Text-Key-Timeline; **umgesetzt**
 - interaktiver Skeleton-Viewport über die echte KFM-NIF-Hierarchie; **umgesetzt für verifizierte, samplebare Transformtracks**
-- Skinned-Mesh-Deformation; **offen**
+- Skinned-Mesh-Deformation; **umgesetzt** – Source-Vertices, Skin-Weights, Bone-Refs und Bind-Transforms werden im NIF-Modell bewahrt und pro Timeline-Zeit neu ausgewertet
+- NIF-Mesh im Preview als performantes Wireframe; **umgesetzt**, material-/texturierter Preview bleibt Politur
 - B-Spline/TBC/Quadratic nur nach Datenverifikation; **offen**
-- erst danach weitergehende schreibende Transition-/KFM-Feldbearbeitung, wenn zusätzlich zur Codec-Erhaltung auch die Runtime-Semantik ausreichend verifiziert ist.
+- weitergehende schreibende Transition-/KFM-Feldbearbeitung nur, wenn zusätzlich zur Codec-Erhaltung auch die Runtime-Semantik ausreichend verifiziert ist.
 
 ### Globales UX
 - gespeicherte Workspace-Layouts;
@@ -410,4 +412,4 @@ Dieser Abschnitt ist der verbindliche Ausbau-Fahrplan für den laufenden Branch 
 
 ### Priorität
 Die unmittelbare Reihenfolge ist:
-**Icon-/UI-Vision festziehen → App-Shell/Map-UI-Retrofit → Minimap-Metadaten + Editor-Preview (erreicht; Exportformat weiter gesperrt) → Walk/Block-Footprints (Preview/Apply erreicht) → SHN-Referenzen (verifizierte Kernfamilien erreicht) → Skill Animation/VFX (datenbelegte Picker/Referenz-Vorschau erreicht) → KFM-Playback (Timeline + echtes Skeleton-Preview erreicht; Mesh-Deformation/B-Splines offen) → Quest-Flow (verifizierte predecessor-Sicht erreicht) → globale QA/Politur.**
+**Icon-/UI-Vision festziehen → App-Shell/Map-UI-Retrofit → Minimap-Metadaten + Editor-Preview (erreicht; Exportformat weiter gesperrt) → Walk/Block-Footprints (Preview/Apply erreicht) → SHN-Referenzen (verifizierte Kernfamilien erreicht) → Skill Animation/VFX (datenbelegte Picker/Referenz-Vorschau erreicht) → KFM-Playback (Timeline + Skeleton + echte CPU-Skinned-Mesh-Deformation erreicht; B-Splines/materialisiertes Preview offen) → Quest-Flow (verifizierte predecessor-Sicht erreicht) → globale QA/Politur.**
