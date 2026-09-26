@@ -15753,8 +15753,13 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
     std::size_t missingFlipbookFrameCount = 0;
     std::size_t unresolvedEmbeddedFlipbookFrameCount = 0;
     std::size_t genericShaderFallbackParts = 0;
+    std::size_t genericShaderDescriptorCount = 0;
+    std::size_t missingGenericShaderTextureCount = 0;
+    std::size_t unresolvedEmbeddedGenericShaderTextureCount = 0;
+    std::size_t unresolvedGenericShaderSourceCount = 0;
     std::set<std::string> missingTextureRefs;
     std::set<std::string> shaderNames;
+    std::set<std::pair<std::string,std::uint32_t>> genericShaderMaps;
     for (const auto& part : model.parts) {
         if (!part.shaderName.empty()) {
             shaderNames.insert(part.shaderName);
@@ -15788,6 +15793,29 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                 }
             }
         }
+
+        // ShaderTexDesc ausserhalb des verifizierten VCAlphaTextureBlender-Pfads bleibt
+        // bewusst Diagnose: Quellen werden exakt aufgeloest, aber mapId bekommt noch keine
+        // spekulative Renderer-Semantik.
+        if (!part.shaderName.empty() && part.shaderName != "VCAlphaTextureBlender") {
+            for (const auto& shaderSlot : part.shaderTextureSlots) {
+                ++genericShaderDescriptorCount;
+                genericShaderMaps.emplace(part.shaderName, shaderSlot.mapId);
+                const auto& texture = shaderSlot.texture;
+                if (texture.sourceUsesEmbeddedPixelData) {
+                    if (!texture.embeddedTexture)
+                        ++unresolvedEmbeddedGenericShaderTextureCount;
+                } else if (!texture.texture.empty()) {
+                    if (!ResolveNifInspectorTexturePathCached(state, root, texture.texture)) {
+                        ++missingGenericShaderTextureCount;
+                        missingTextureRefs.insert(texture.texture);
+                    }
+                } else {
+                    ++unresolvedGenericShaderSourceCount;
+                }
+            }
+        }
+
         animatedTextureCount += part.textureTransformAnimations.size();
         animatedTextureCount += part.textureFlipAnimations.size();
         for (const auto& animation : part.textureFlipAnimations) {
@@ -15811,7 +15839,8 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
     ImGui::TextDisabled("%zu Mesh-Teile · %zu Dreiecke · %zu Textur-Slots",
                         model.parts.size(), triangleCount, textureCount);
     const std::size_t totalEmbeddedFailures =
-        unresolvedEmbeddedTextureCount + unresolvedEmbeddedFlipbookFrameCount;
+        unresolvedEmbeddedTextureCount + unresolvedEmbeddedFlipbookFrameCount +
+        unresolvedEmbeddedGenericShaderTextureCount;
     ImGui::TextDisabled(L("%zu extern · %zu eingebettet · %zu Embedded-Fehler · %zu Textur-Animationen",
                           "%zu external · %zu embedded · %zu embedded failures · %zu texture animations"),
                         externalTextureCount, embeddedTextureCount, totalEmbeddedFailures,
@@ -15832,7 +15861,8 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
     if (flipbookFrameCount > 0)
         ImGui::TextDisabled(L("%zu Flipbook-Frames · %zu nicht auflösbar","%zu flipbook frames · %zu unresolved"),
                             flipbookFrameCount, missingFlipbookFrameCount);
-    const std::size_t totalMissingTextureRefs = missingTextureCount + missingFlipbookFrameCount;
+    const std::size_t totalMissingTextureRefs =
+        missingTextureCount + missingFlipbookFrameCount + missingGenericShaderTextureCount;
     if (totalMissingTextureRefs > 0) {
         ImGui::TextColored(ImVec4(1.0f,0.48f,0.34f,1.0f), L("%zu Textur-Referenz(en) nicht gefunden","%zu texture reference(s) not found"),
                            totalMissingTextureRefs);
@@ -15875,9 +15905,31 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
             "%s",L("Materialdateien können vollständig gefunden sein, obwohl unbekannte Shader-/Effect-Semantik noch generisch bleibt. Verifiziertes Env/Sphere-TextureEffect wird gerendert.",
                    "All material files can be resolved while unknown shader/effect semantics remain generic. Verified env/sphere TextureEffect is rendered."));
         ImGui::TextDisabled(
-            L("%zu Mesh-Part(s) mit generischem Shader-Fallback · TextureEffect %u",
-              "%zu mesh part(s) using generic shader fallback · TextureEffect %u"),
-            genericShaderFallbackParts, model.textureEffectBlocks);
+            L("%zu Mesh-Part(s) mit generischem Shader-Fallback · %zu ShaderTexDesc · TextureEffect %u",
+              "%zu mesh part(s) using generic shader fallback · %zu ShaderTexDesc · TextureEffect %u"),
+            genericShaderFallbackParts, genericShaderDescriptorCount, model.textureEffectBlocks);
+        if (!genericShaderMaps.empty()) {
+            std::string shaderMapList;
+            for (const auto& [shader, mapId] : genericShaderMaps) {
+                if (!shaderMapList.empty()) shaderMapList += ", ";
+                shaderMapList += shader + "#" + std::to_string(mapId);
+            }
+            ImGui::TextWrapped(
+                L("Shader-Maps ohne verifizierte Rendersemantik: %s",
+                  "Shader maps without verified render semantics: %s"),
+                shaderMapList.c_str());
+        }
+        if (unresolvedGenericShaderSourceCount > 0 ||
+            missingGenericShaderTextureCount > 0 ||
+            unresolvedEmbeddedGenericShaderTextureCount > 0) {
+            ImGui::TextColored(
+                ImVec4(1.0f,0.48f,0.34f,1.0f),
+                L("ShaderTexDesc-Quellen: %zu ohne auflösbare SourceTexture · %zu externe Datei(en) fehlen · %zu Embedded PixelData nicht dekodiert",
+                  "ShaderTexDesc sources: %zu without a resolvable SourceTexture · %zu external file(s) missing · %zu embedded PixelData undecoded"),
+                unresolvedGenericShaderSourceCount,
+                missingGenericShaderTextureCount,
+                unresolvedEmbeddedGenericShaderTextureCount);
+        }
         if (model.textureEffectBlocks > 0) {
             ImGui::TextDisabled(
                 L("TextureEffect klassifiziert: Env/Sphere %u · andere/aus %u · Node-Bindings %u · Env/Sphere-Rendering aktiv",
