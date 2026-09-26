@@ -74,6 +74,41 @@ int main(int argc, char** argv) {
               "Interne Triangulationskanten werden aus der 2D-Kontur entfernt");
     }
 
+    {
+        std::printf("\n== NIF TexDesc TransformMethod ==\n");
+        NifTextureSlot slot;
+        slot.hasTransform = true;
+        slot.translation = {0.1f, -0.2f};
+        slot.scale = {2.0f, 3.0f};
+        slot.rotation = 1.57079632679f; // 90 degrees
+        slot.center = {0.5f, 0.5f};
+        const NifVec2 input{0.2f, 0.3f};
+        const auto nearUv = [](const NifVec2& value, float u, float v) {
+            return std::abs(value.u - u) < 1.0e-5f &&
+                   std::abs(value.v - v) < 1.0e-5f;
+        };
+
+        slot.transformType = kNifTextureTransformMayaDeprecated;
+        Check(nearUv(ApplyNifTextureTransform(slot, input), 0.3f, 0.5f),
+              "TM_Maya Deprecated folgt Center * Rotation * Back * Translate * Scale");
+
+        slot.transformType = kNifTextureTransformMax;
+        Check(nearUv(ApplyNifTextureTransform(slot, input), 1.3f, -0.1f),
+              "TM_Max skaliert nach Rotation um das Texturzentrum");
+
+        slot.transformType = kNifTextureTransformMaya;
+        Check(nearUv(ApplyNifTextureTransform(slot, input), 0.7f, 0.5f),
+              "TM_Maya berücksichtigt den zusätzlichen FromMaya-V-Flip");
+
+        slot.transformType = 99;
+        Check(nearUv(ApplyNifTextureTransform(slot, input), 0.3f, 0.5f),
+              "Unbekannte TransformMethod fällt deterministisch auf Format-Default 0 zurück");
+
+        slot.hasTransform = false;
+        Check(nearUv(ApplyNifTextureTransform(slot, input), input.u, input.v),
+              "TexDesc ohne Transform lässt UV-Koordinaten unverändert");
+    }
+
     if (argc < 2) {
         std::printf("(Test \u00fcbersprungen - Aufruf mit: %s <einfache.nif> [<texturierte.nif>])\n", argv[0]);
         return 0;
@@ -129,6 +164,8 @@ int main(int argc, char** argv) {
         std::printf("\n== UV-Sets und eingebettete Materialtexturen ==\n");
         bool uvSetsSane = true;
         bool embeddedSlotsValid = true;
+        bool textureTransformMethodsValid = true;
+        std::size_t textureTransformCount = 0;
         std::size_t embeddedSlotCount = 0;
         bool embeddedSlotKeepsSourceName = false;
         for (const auto& part : simple->parts) {
@@ -141,6 +178,11 @@ int main(int argc, char** argv) {
                 }
             }
             for (const auto& slot : part.textureSlots) {
+                if (slot.hasTransform) {
+                    ++textureTransformCount;
+                    if (slot.transformType > kNifTextureTransformMaya)
+                        textureTransformMethodsValid = false;
+                }
                 if (!slot.embeddedTexture) continue;
                 ++embeddedSlotCount;
                 if (slot.sourceUsesEmbeddedPixelData && !slot.texture.empty())
@@ -153,6 +195,9 @@ int main(int argc, char** argv) {
             }
         }
         Check(uvSetsSane, "Alle erhaltenen UV-Sets sind endlich/plausibel oder wurden verworfen");
+        Check(textureTransformMethodsValid,
+              "Alle realen TexDesc-Transforms verwenden eine gültige TransformMethod 0..2");
+        std::printf("     Texture-Transforms in Referenzdatei: %zu\n", textureTransformCount);
         Check(embeddedSlotsValid, "Alle eingebetteten Materialslot-Texturen sind vollständig dekodiert");
         Check(embeddedSlotCount > 0,
               "Referenzdatei bindet mindestens eine eingebettete PixelData an einen Materialslot");
