@@ -18,6 +18,7 @@
 - Unify SHN, NPC, Mob, Portal, Object and Layer context-menu headers with semantic package icons/fallbacks and separate destructive actions from ordinary edits.
 - Add Layer Rename to the context menu, select the right-clicked layer, and replace the unreliable window-appearance focus check with an explicit one-shot rename-input focus request.
 - Align toast behavior with the component spec: bottom-right placement, newest toast anchored at the bottom, upward stacking, maximum three visible messages, and localized error heading.
+- Move the raw Single/Multi SHN left workspace to the shared panel-header component with `module.shn.single` / `module.shn.multi` semantic icons.
 
 ## v0.44.35 / v14 — KFM-Codec und Animationskatalog
 - C++23-Reader/Writer für Fiesta-KFM 1.2.4b und 2.0.0.0b, einschließlich Textschlüsselpaaren und Zwischenanimationen; durch Dateigröße und Speicherbudget begrenzt.
