@@ -3422,7 +3422,10 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 const auto parentIndex = static_cast<std::size_t>(parent);
                 if (parentIndex >= scene.size()) break;
                 for (const auto ref : scene[parentIndex].properties) {
-                    if (ref >= 0 && seen.insert(ref).second) g.properties.push_back(ref);
+                    if (ref >= 0 && seen.insert(ref).second) {
+                        g.properties.push_back(ref);
+                        ++model.inheritedPropertyBindings;
+                    }
                 }
                 parent = parentOf[parentIndex];
             }
