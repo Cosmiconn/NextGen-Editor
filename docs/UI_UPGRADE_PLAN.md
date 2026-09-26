@@ -196,8 +196,10 @@ Zusätzlich in der laufenden zweiten Ausbaustufe umgesetzt:
 - Single-SHN modernisiert: sortierbare/fixierte Tabelle, Spaltenfilter, Dirty-/Fehler-Markierungen, Inline-Editing, Copy/Paste, Undo/Redo und Client/Server-Diff.
 - Multi-SHN zu einer Client/Server-Vergleichsansicht mit Schema-/Zeilen-/Zell-Diffs ausgebaut.
 - KFM-Playback ausgebaut: ausgewählte KF-Dateien können geladen und mit Play/Pause, Loop, Geschwindigkeit und Scrub abgespielt werden; die Timeline zeigt echte KF-Text-Key-Marker. Der NIF-/Skeleton-Viewport verwendet die explizite KFM-NIF-Hierarchie, verifizierte KF-Local-Transforms und die bewahrten NiSkin-Weights/Bind-Matrizen. Samplebare Tracks deformieren die echten NIF-Dreiecke CPU-seitig synchron zur Timeline; das Mesh wird performant als Wireframe hinter dem Skeleton angezeigt. Nicht samplebare B-Spline/TBC-/Quadratic-Tracks und mehrdeutige Namen bleiben bewusst in Bind-Pose.
-- Globales UX nachgezogen: persistente Recent Projects/Recent Maps, getrennter Unsaved-Status für Karte und SHN, Toast-Meldungen, Strg+P-Command-Palette und Strg+S für Map-Speichern.
+- Globales UX nachgezogen: persistente Recent Projects/Recent Maps, getrennter Unsaved-Status für Karte und SHN, Toast-Meldungen, Command-Palette und Map-Speichern per Shortcut.
+- konfigurierbare Shortcuts für Command Palette, Map-Speichern, Gizmo Move/Rotate/Scale, Fokus, Auf-Terrain, Duplizieren und Löschen werden im NextGen-Benutzerordner persistiert; sichtbare Shortcut-Hinweise in Command Palette, Inspector, Szene-Outliner und Objekt-Kontextmenüs leiten sich aus der aktuellen Belegung ab statt feste Default-Tasten vorzutäuschen.
 - Dock-/Workspace-Layout wird dauerhaft im NextGen-Benutzerordner gespeichert und beim nächsten Start wiederhergestellt; ein expliziter Reset stellt das Standardlayout wieder her.
+- QA/Politur: der 3D-Gizmo-Overlay nutzt für Move/Rotate/Scale dieselben finalen semantischen Paketicons wie Command-Bar und Inspector; der Navigator folgt jetzt ebenfalls dem gemeinsamen Panel-Header-System.
 
 Noch offen für spätere Ausbaustufen:
 - NPC-/Mob-/Portal-Outliner sind inzwischen spezialisiert: semantische Rollen-/Gruppenicons, Auswahl-Details, direkte Kontextaktionen, Gate-Zielnavigation und Schnellfilter (NPC-Rolle, Mob-Belegung, Portal-Typ); zusätzlich strukturieren einklappbare semantische Gruppen mit Trefferzählern die Listen nach `Role + RoleArg0`, Mob-Belegung und Portal-Typ;
@@ -287,7 +289,7 @@ Diese Roadmap ist ab jetzt die verbindliche Reihenfolge für den weiteren Ausbau
 - Recent Projects / Recent Maps.
 - Toasts.
 - globale Suche / Command Palette.
-- konfigurierbare Shortcuts.
+- konfigurierbare Shortcuts. **Umgesetzt** – persistiert, konfliktmarkiert und mit dynamischen Shortcut-Hinweisen in den relevanten Map-UI-Flächen.
 - konsistente Kontextmenüs.
 - vollständiger 16–20px-In-App-Icon-Satz: Terrain, Brush, Layers, Walk, Cube, NPC, Mob, Portal, Eye, Lock, Duplicate, Delete, Transform, Grid/Snap, Quest, Item, Skill, Shop, Dialog, Lua, Route, KFM, Play/Pause, Project, Settings.
 
