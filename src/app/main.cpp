@@ -5064,16 +5064,16 @@ void DrawShnGrid(EditorState& state) {
                             }
                             ImGui::TextDisabled("%s · Zeile %zu", file.columns[ci].name.c_str(), ri);
                             ImGui::Separator();
-                            if (ImGui::MenuItem("Inline bearbeiten", "F2")) {
+                            if (UI::MenuItem(L("Inline bearbeiten","Inline edit"), "F2")) {
                                 StartShnInlineEdit(state, static_cast<int>(ri), static_cast<int>(ci));
                             }
-                            if (ImGui::MenuItem("Erweitert bearbeiten...")) {
+                            if (UI::MenuItem(L("Erweitert bearbeiten...","Advanced edit..."))) {
                                 state.shnEditBuffer = core::legacy::ShnValueToString(row.values[ci]);
                                 state.shnEditPopupOpen = true;
                             }
                             ImGui::Separator();
-                            if (ImGui::MenuItem("Kopieren", "Strg+C")) CopySelectedShnCell(state);
-                            if (ImGui::MenuItem("Einfügen", "Strg+V")) PasteSelectedShnCell(state);
+                            if (UI::MenuItem(L("Kopieren","Copy"), L("Strg+C","Ctrl+C"))) CopySelectedShnCell(state);
+                            if (UI::MenuItem(L("Einfügen","Paste"), L("Strg+V","Ctrl+V"))) PasteSelectedShnCell(state);
                             ImGui::EndPopup();
                         }
 
@@ -14535,7 +14535,9 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                         state.selectedNpcRecordIdx = static_cast<int>(entry.idx);
                         ImGui::TextDisabled("%s",entry.semantic.tooltip.c_str());
                         ImGui::Separator();
-                        if (UI::MenuItem(L("Im 3D-Viewport fokussieren","Focus in 3D viewport"))) FocusCurrentSceneSelection(state);
+                        const std::string npcFocusShortcut=ShortcutLabel(state.shortcutFocus);
+                        if (UI::MenuItem(L("Im 3D-Viewport fokussieren","Focus in 3D viewport"),
+                                         npcFocusShortcut.c_str())) FocusCurrentSceneSelection(state);
                         if (UI::MenuItem(L("Dialog bearbeiten","Edit dialog"))) OpenNpcDialogEditor(state,rec.values[0]);
                         if (UI::MenuItem(L("Lua / AI bearbeiten","Edit Lua / AI"))) OpenAiScriptEditor(state,rec.values[0]);
                         if (UI::MenuItem(L("Route bearbeiten","Edit route"))) OpenPatrolRouteEditor(state,rec.values[0]);
@@ -14704,7 +14706,9 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                         ImGui::TextDisabled("%s",entry.semantic.tooltip.c_str());
                         ImGui::TextDisabled(L("%d Arten · %d Mobs","%d species · %d mobs"),entry.speciesCount,entry.totalMobs);
                         ImGui::Separator();
-                        if (UI::MenuItem(L("Im 3D-Viewport fokussieren","Focus in 3D viewport"))) FocusCurrentSceneSelection(state);
+                        const std::string mobFocusShortcut=ShortcutLabel(state.shortcutFocus);
+                        if (UI::MenuItem(L("Im 3D-Viewport fokussieren","Focus in 3D viewport"),
+                                         mobFocusShortcut.c_str())) FocusCurrentSceneSelection(state);
                         if (spawns && ImGui::BeginMenu(L("Monster in dieser Zone","Monsters in this zone"))) {
                             bool any=false;
                             for (const auto& spawn : spawns->records) {
@@ -14854,7 +14858,9 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                     if (ImGui::BeginPopupContextItem("##portalSceneContext")) {
                         state.selectedPortalKind = m.kind;
                         state.selectedPortalIdx = static_cast<int>(m.idx);
-                        if (UI::MenuItem(L("Im 3D-Viewport fokussieren","Focus in 3D viewport"))) FocusCurrentSceneSelection(state);
+                        const std::string portalFocusShortcut=ShortcutLabel(state.shortcutFocus);
+                        if (UI::MenuItem(L("Im 3D-Viewport fokussieren","Focus in 3D viewport"),
+                                         portalFocusShortcut.c_str())) FocusCurrentSceneSelection(state);
                         if (m.kind == kPortalKindGateLink) {
                             if (UI::MenuItem(L("Zielkarte öffnen","Open target map"))) NavigateToPortalTarget(state,m);
                         } else if (UI::MenuItem(L("Position per 2D-Klick setzen","Set position by 2D click"))) {
@@ -15107,16 +15113,16 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                         const std::string focusShortcut=ShortcutLabel(state.shortcutFocus);
                         const std::string groundShortcut=ShortcutLabel(state.shortcutGround);
                         const std::string duplicateShortcut=ShortcutLabel(state.shortcutDuplicate);
-                        if(ImGui::MenuItem(L("Fokussieren","Focus"),focusShortcut.c_str())) FocusSelectedObjects(state);
-                        if(ImGui::MenuItem(L("Auf Terrain setzen","Place on terrain"),groundShortcut.c_str(),false,
+                        if(UI::MenuItem(L("Fokussieren","Focus"),focusShortcut.c_str())) FocusSelectedObjects(state);
+                        if(UI::MenuItem(L("Auf Terrain setzen","Place on terrain"),groundShortcut.c_str(),false,
                                            id<0||!IsObjectEditorLocked(state,id)))
                             GroundSelectedObjects(state);
-                        if(ImGui::MenuItem(L("Kopieren","Copy"),L("Strg+C","Ctrl+C"))) CopySelectedObjects(state);
-                        if(ImGui::MenuItem(L("Duplizieren","Duplicate"),duplicateShortcut.c_str())) DuplicateSelectedObjects(state);
+                        if(UI::MenuItem(L("Kopieren","Copy"),L("Strg+C","Ctrl+C"))) CopySelectedObjects(state);
+                        if(UI::MenuItem(L("Duplizieren","Duplicate"),duplicateShortcut.c_str())) DuplicateSelectedObjects(state);
                         {
                             const bool menuHidden=IsObjectEditorHidden(state,id);
                             const bool menuLocked=IsObjectEditorLocked(state,id);
-                            if(ImGui::MenuItem(menuHidden?L("Einblenden","Show"):L("Ausblenden","Hide"))) {
+                            if(UI::MenuItem(menuHidden?L("Einblenden","Show"):L("Ausblenden","Hide"))) {
                                 if(id>=0) {
                                     state.objectEditorHidden[static_cast<std::size_t>(id)]=menuHidden?0:1;
                                     state.objectVisKey.clear();
@@ -15126,7 +15132,7 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                                     else if(!key.empty()) state.shmdEditorHiddenKeys.insert(key);
                                 }
                             }
-                            if(ImGui::MenuItem(menuLocked?L("Entsperren","Unlock"):L("Sperren","Lock"))) {
+                            if(UI::MenuItem(menuLocked?L("Entsperren","Unlock"):L("Sperren","Lock"))) {
                                 if(id>=0) state.objectEditorLocked[static_cast<std::size_t>(id)]=menuLocked?0:1;
                                 else {
                                     const std::string key=ShmdEditorObjectKey(state,id);
@@ -15137,7 +15143,7 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                         }
                         ImGui::Separator();
                         const std::string deleteShortcut=ShortcutLabel(state.shortcutDelete);
-                        if(ImGui::MenuItem(L("Löschen","Delete"),deleteShortcut.c_str(),false,
+                        if(UI::MenuItem(L("Löschen","Delete"),deleteShortcut.c_str(),false,
                                            id<0||!IsObjectEditorLocked(state,id)))
                             DeleteSelectedObjects(state);
                         ImGui::EndPopup();
@@ -15236,7 +15242,7 @@ void DrawLayerManagerPanel(EditorState& state) {
         }
 
         if (ImGui::BeginPopupContextItem("##layerContext")) {
-            if (ImGui::MenuItem(L("Duplizieren","Duplicate"))) {
+            if (UI::MenuItem(L("Duplizieren","Duplicate"))) {
                 const auto copy=layer;
                 const std::size_t ni=state.textureStack.AddLayer(copy.name+" Kopie",copy.diffuseFileName,copy.uvScaleDiffuse);
                 state.textureStack.Layer(ni)=copy;
@@ -15248,7 +15254,7 @@ void DrawLayerManagerPanel(EditorState& state) {
                 state.layerPreviewDirty=true;
                 state.mapDirty=true;
             }
-            if (ImGui::MenuItem(L("Entfernen","Remove"),nullptr,false,state.textureStack.LayerCount()>1)) {
+            if (UI::MenuItem(L("Entfernen","Remove"),nullptr,false,state.textureStack.LayerCount()>1)) {
                 state.textureStack.RemoveLayer(i);
                 state.selectedLayer=state.textureStack.LayerCount()==0?-1:
                     std::min(state.selectedLayer,static_cast<int>(state.textureStack.LayerCount())-1);
