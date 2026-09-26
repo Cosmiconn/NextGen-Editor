@@ -115,6 +115,16 @@ uniform sampler2D uTex6;
 uniform sampler2D uTex7;
 uniform sampler2D uTex8;
 uniform sampler2D uTex9;
+// NiTextureEffect is separate from NiTexturingProperty. The verified Fiesta path is
+// TEX_ENVIRONMENT_MAP + CG_SPHERE_MAP. GL 3.3 guarantees 16 fragment texture units,
+// so six effect samplers fit beside the ten classic slots.
+uniform int uEnvironmentSphereCount;
+uniform sampler2D uEnvironmentTex0;
+uniform sampler2D uEnvironmentTex1;
+uniform sampler2D uEnvironmentTex2;
+uniform sampler2D uEnvironmentTex3;
+uniform sampler2D uEnvironmentTex4;
+uniform sampler2D uEnvironmentTex5;
 uniform float uBumpLumaScale;
 uniform float uBumpLumaOffset;
 uniform mat2 uBumpMatrix;
@@ -193,6 +203,27 @@ vec3 bumpNormal(vec3 baseNormal) {
     return normalize(baseNormal - tangent * grad.x - bitangent * grad.y);
 }
 
+vec2 environmentSphereUv(vec3 normal, vec3 viewDir) {
+    // Classic OpenGL sphere-map generation: reflect the eye ray around the final
+    // (including bump) surface normal and project the reflection vector to [0,1]^2.
+    vec3 r = normalize(reflect(-viewDir, normal));
+    float m2 = r.x * r.x + r.y * r.y + (r.z + 1.0) * (r.z + 1.0);
+    if (m2 <= 1e-12) return vec2(0.5);
+    float m = 2.0 * sqrt(m2);
+    return r.xy / m + vec2(0.5);
+}
+
+vec3 environmentSphereColor(vec2 uv) {
+    vec3 sum = vec3(0.0);
+    if (uEnvironmentSphereCount > 0) sum += texture(uEnvironmentTex0, uv).rgb;
+    if (uEnvironmentSphereCount > 1) sum += texture(uEnvironmentTex1, uv).rgb;
+    if (uEnvironmentSphereCount > 2) sum += texture(uEnvironmentTex2, uv).rgb;
+    if (uEnvironmentSphereCount > 3) sum += texture(uEnvironmentTex3, uv).rgb;
+    if (uEnvironmentSphereCount > 4) sum += texture(uEnvironmentTex4, uv).rgb;
+    if (uEnvironmentSphereCount > 5) sum += texture(uEnvironmentTex5, uv).rgb;
+    return sum;
+}
+
 void main() {
     vec4 base = uHasTex[0] ? texture(uTex0, slotUv(0)) : vec4(1.0);
 
@@ -267,7 +298,12 @@ void main() {
     vec3 diffuse = surface * (0.22 + 0.78 * ndl);
     vec3 specular = uSpecularColor * specPower * glossMask;
     vec3 emissive = materialEmission + glow;
-    FragColor = vec4(ambient + diffuse + specular + emissive, alpha);
+    // NIF TextureType::TEX_ENVIRONMENT_MAP is additive to the ordinary textured,
+    // lit/decal result. It does not replace or multiply the base material.
+    vec3 environment = uEnvironmentSphereCount > 0
+        ? environmentSphereColor(environmentSphereUv(n, v))
+        : vec3(0.0);
+    FragColor = vec4(ambient + diffuse + specular + emissive + environment, alpha);
 }
 )";
 
@@ -520,6 +556,7 @@ void NifMeshRenderer::Init() {
     uniforms_.locAlphaCutoff = glGetUniformLocation(shaderProgram_, "uAlphaCutoff");
     uniforms_.locAlphaTestFunc = glGetUniformLocation(shaderProgram_, "uAlphaTestFunc");
     uniforms_.locMaterialAlpha = glGetUniformLocation(shaderProgram_, "uMaterialAlpha");
+    uniforms_.locEnvironmentSphereCount = glGetUniformLocation(shaderProgram_, "uEnvironmentSphereCount");
 
     for (int slot = 0; slot < 10; ++slot) {
         char name[64];
@@ -533,7 +570,11 @@ void NifMeshRenderer::Init() {
         std::snprintf(name, sizeof(name), "uTexCenter[%d]", slot); uniforms_.locCenter[slot] = glGetUniformLocation(shaderProgram_, name);
         std::snprintf(name, sizeof(name), "uTex%d", slot); uniforms_.locSampler[slot] = glGetUniformLocation(shaderProgram_, name);
     }
-
+    for (std::size_t effect = 0; effect < kMaxEnvironmentSphereEffects; ++effect) {
+        char name[64];
+        std::snprintf(name, sizeof(name), "uEnvironmentTex%zu", effect);
+        uniforms_.locEnvironmentSampler[effect] = glGetUniformLocation(shaderProgram_, name);
+    }
 
 }
 
@@ -912,6 +953,52 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                             std::fprintf(stderr, "[NifMeshRenderer] Objekt-Textur-Slot %zu nicht gefunden: %s\n",
                                          slotIndex, src.texture.c_str());
                         }
+                    }
+
+                    // Verified NiTextureEffect path: ENVIRONMENT_MAP + SPHERE_MAP. Other
+                    // texture/coord-generation combinations remain preserved in NifModel and
+                    // diagnostic-only until their exact Fiesta runtime semantics are proven.
+                    for (std::size_t effectIndex = 0; effectIndex < part.textureEffects.size(); ++effectIndex) {
+                        const auto& effect = part.textureEffects[effectIndex];
+                        if (!effect.enabled || effect.textureType != 2u || effect.coordGenType != 2u) continue;
+                        if (effect.clippingPlaneEnabled) {
+                            std::fprintf(stderr,
+                                "[NifMeshRenderer] Env/Sphere TextureEffect mit Clipping-Plane bleibt deaktiviert: %s\n",
+                                obj.modelPath.c_str());
+                            continue;
+                        }
+                        std::uint32_t textureId = 0;
+                        if (effect.sourceUsesEmbeddedPixelData) {
+                            if (effect.embeddedTexture) {
+                                const std::string cacheKey = key + "#textureEffect:" +
+                                    std::to_string(effectIndex) + ":pixel:" +
+                                    std::to_string(effect.sourcePixelDataRef);
+                                textureId = GetOrLoadEmbeddedTexture(*effect.embeddedTexture, cacheKey);
+                            } else {
+                                std::fprintf(stderr,
+                                    "[NifMeshRenderer] TextureEffect ohne dekodierte eingebettete PixelData #%d: %s\n",
+                                    effect.sourcePixelDataRef, obj.modelPath.c_str());
+                            }
+                        } else if (!effect.texture.empty()) {
+                            if (auto texPath = resolveTexturePath(effect.texture)) {
+                                textureId = GetOrLoadTexture(*texPath);
+                            } else {
+                                std::fprintf(stderr,
+                                    "[NifMeshRenderer] TextureEffect-Textur nicht gefunden: %s (%s)\n",
+                                    effect.texture.c_str(), obj.modelPath.c_str());
+                            }
+                        }
+                        if (textureId == 0) continue;
+                        if (sub.environmentSphereEffectCount >= kMaxEnvironmentSphereEffects) {
+                            std::fprintf(stderr,
+                                "[NifMeshRenderer] Mehr als %zu Env/Sphere-Effects an einem Mesh-Part; Rest bleibt diagnostisch: %s\n",
+                                kMaxEnvironmentSphereEffects, obj.modelPath.c_str());
+                            break;
+                        }
+                        auto& dstEffect = sub.environmentSphereEffects[sub.environmentSphereEffectCount++];
+                        dstEffect.texture = textureId;
+                        dstEffect.clampMode = effect.clampMode;
+                        dstEffect.filterMode = effect.filterMode;
                     }
 
                     // Zeitabhaengige NiTextureTransformController-Spuren koennen direkt auf
@@ -1294,7 +1381,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     GLboolean prevDepthMask = GL_TRUE;
     glGetBooleanv(GL_DEPTH_WRITEMASK, &prevDepthMask);
     GLint prevProgram = 0, prevVao = 0, prevActiveTexture = 0;
-    std::array<GLint, 10> prevTextures{};
+    std::array<GLint, 10 + kMaxEnvironmentSphereEffects> prevTextures{};
     GLint prevCullFace = GL_BACK, prevFrontFace = GL_CCW, prevDepthFunc = GL_LESS;
     GLint prevBlendSrcRgb = GL_ONE, prevBlendDstRgb = GL_ZERO;
     GLint prevBlendSrcAlpha = GL_ONE, prevBlendDstAlpha = GL_ZERO;
@@ -1340,6 +1427,8 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     const auto& locAlphaCutoff = uniforms_.locAlphaCutoff;
     const auto& locAlphaTestFunc = uniforms_.locAlphaTestFunc;
     const auto& locMaterialAlpha = uniforms_.locMaterialAlpha;
+    const auto& locEnvironmentSphereCount = uniforms_.locEnvironmentSphereCount;
+    const auto& locEnvironmentSampler = uniforms_.locEnvironmentSampler;
     const auto& locHasTex = uniforms_.locHasTex;
     const auto& locUvSet = uniforms_.locUvSet;
     const auto& locHasTransform = uniforms_.locHasTransform;
@@ -1350,6 +1439,8 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     const auto& locCenter = uniforms_.locCenter;
     const auto& locSampler = uniforms_.locSampler;
     for (int slot = 0; slot < 10; ++slot) glUniform1i(locSampler[slot], slot);
+    for (std::size_t effect = 0; effect < kMaxEnvironmentSphereEffects; ++effect)
+        glUniform1i(locEnvironmentSampler[effect], 10 + static_cast<int>(effect));
 
     glUniformMatrix4fv(locViewProj, 1, GL_FALSE, viewProj.m);
     glUniform3f(locLightDir, -0.4f, -1.0f, -0.3f);
@@ -1469,7 +1560,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
         }
     };
 
-    const auto applyTextureSampling = [](const TextureBinding& tex) {
+    const auto applyTextureSampling = [](const auto& tex) {
         if (tex.texture == 0) return;
         const GLint wrapS = (tex.clampMode == 0u || tex.clampMode == 1u) ? GL_CLAMP_TO_EDGE : GL_REPEAT;
         const GLint wrapT = (tex.clampMode == 0u || tex.clampMode == 2u) ? GL_CLAMP_TO_EDGE : GL_REPEAT;
@@ -1556,6 +1647,17 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
             glActiveTexture(static_cast<GLenum>(GL_TEXTURE0 + slot));
             glBindTexture(GL_TEXTURE_2D, present ? tex.texture : 0);
             if (present) applyTextureSampling(tex);
+        }
+
+        const auto environmentCount =
+            std::min(sub.environmentSphereEffectCount, kMaxEnvironmentSphereEffects);
+        glUniform1i(locEnvironmentSphereCount, static_cast<int>(environmentCount));
+        for (std::size_t effect = 0; effect < kMaxEnvironmentSphereEffects; ++effect) {
+            const auto& env = sub.environmentSphereEffects[effect];
+            const bool present = effect < environmentCount && env.texture != 0;
+            glActiveTexture(static_cast<GLenum>(GL_TEXTURE0 + 10 + effect));
+            glBindTexture(GL_TEXTURE_2D, present ? env.texture : 0);
+            if (present) applyTextureSampling(env);
         }
         glBindVertexArray(sub.vao);
         glDrawElements(GL_TRIANGLES, static_cast<int>(sub.indexCount), GL_UNSIGNED_INT, nullptr);
