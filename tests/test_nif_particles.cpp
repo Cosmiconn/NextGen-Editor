@@ -178,6 +178,8 @@ int main(int argc, char** argv) {
                   "particle block count matches preserved particle system descriptors");
             check(!gate->particleSystems.empty(),
                   "MapLinkGate2 exposes authored particle systems instead of silently skipping them");
+            std::size_t systemsWithData = 0;
+            std::size_t authoredParticles = 0;
             for (const auto& system : gate->particleSystems) {
                 check(system.dataRef >= 0, "particle system keeps data block reference");
                 check(!system.modifierRefs.empty(), "particle system keeps modifier wiring");
@@ -185,7 +187,19 @@ int main(int argc, char** argv) {
                       "particle modifier references resolve to explicit block types");
                 for (const auto& modifierType : system.modifierTypes)
                     check(modifierType != "<invalid>", "particle modifier type reference is valid");
+                if (system.hasParticleData) {
+                    ++systemsWithData;
+                    check(system.particleData.activeCount <= system.particleData.capacity,
+                          "particle active count never exceeds authored capacity");
+                    check(system.particleData.particles.size() == system.particleData.capacity,
+                          "particle state array preserves every authored slot");
+                    authoredParticles += system.particleData.particles.size();
+                }
             }
+            check(systemsWithData == gate->particleSystems.size(),
+                  "every MapLinkGate2 particle system resolves its NiPSysData block");
+            check(authoredParticles > 0u,
+                  "MapLinkGate2 preserves authored particle positions/state for renderer bootstrap");
         }
     }
     // Strict standard loading must reject both missing and trailing footer bytes.

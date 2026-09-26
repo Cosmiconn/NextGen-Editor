@@ -222,6 +222,35 @@ struct NifTextureEffectBinding {
     std::array<float, 4> clippingPlane{};
 };
 
+struct NifParticleState {
+    NifVec3 position{};
+    NifColor4 color{};
+    float radius = 1.0f;
+    float size = 1.0f;
+    std::array<float, 4> rotationQuaternion{0.0f, 0.0f, 0.0f, 1.0f};
+    float rotationAngle = 0.0f;
+    NifVec3 rotationAxis{0.0f, 1.0f, 0.0f};
+    NifVec3 velocity{};
+    float age = 0.0f;
+    float lifeSpan = 0.0f;
+    float lastUpdate = 0.0f;
+    std::uint16_t spawnGeneration = 0;
+    std::uint16_t code = 0;
+};
+
+struct NifParticleDataInfo {
+    std::uint32_t capacity = 0;
+    std::uint16_t activeCount = 0;
+    bool hasPositions = false;
+    bool hasColors = false;
+    bool hasRadii = false;
+    bool hasSizes = false;
+    bool hasRotations = false;
+    bool hasRotationAngles = false;
+    bool hasRotationAxes = false;
+    std::vector<NifParticleState> particles;
+};
+
 // Authored NiParticleSystem/NiMeshParticleSystem scene wiring. Keeping this separate from
 // NifMeshPart is intentional: particle systems are dynamic scene objects, not triangle meshes.
 struct NifParticleSystemInfo {
@@ -236,6 +265,8 @@ struct NifParticleSystemInfo {
     // Parallel zu modifierRefs; direkt aus der Header-Blocktyp-Tabelle aufgelöst. Dadurch kann
     // der Renderer exakt die im Corpus vorkommenden Modifier implementieren statt Typen zu raten.
     std::vector<std::string> modifierTypes;
+    bool hasParticleData = false;
+    NifParticleDataInfo particleData;
     NifVec3 translation{};
     std::array<float, 9> rotation{1.0f, 0.0f, 0.0f,
                                   0.0f, 1.0f, 0.0f,

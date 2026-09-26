@@ -859,59 +859,91 @@ void SkipKeyGroupBytes(ByteReader& r) {
 // verifizierten Code nicht anzufassen - inhaltlich identisch (gleiche Feldreihenfolge, gleicher
 // UV-Fix aus v0.20.0), da für Partikel-Meshes keine Rendering-Daten extrahiert werden (nur
 // Länge muss stimmen).
-std::uint32_t SkipNiGeometryDataHeader(ByteReader& r, std::uint32_t version) {
-    // NiGeometryData::unknownInt precedes numVertices since 10.2.0.0.
-    // The supported versions are restricted in ParseHeader (no Bethesda layouts).
-    if (version >= 0x0A020000u) r.U32();
+struct ParsedParticleData {
+    NifParticleDataInfo info;
+};
+
+ParsedParticleData ParseNiPSysData(ByteReader& r, std::uint32_t version, bool isMeshVariant = false) {
+    ParsedParticleData out;
+    auto& info = out.info;
+
+    // NiGeometryData header. Particle positions/colors are authored render data, so retain
+    // them instead of merely advancing the reader. Coordinates use the same legacy Z-up ->
+    // editor Y-up remap as NiTriShape/NiTriStrips.
+    if (version >= 0x0A020000u) r.U32(); // group ID / unknownInt
     const std::uint32_t numVerts = r.CountU16(65535u);
+    info.capacity = numVerts;
+    info.particles.resize(numVerts);
     r.U8(); r.U8(); // keep_flags, compress_flags
-    const std::uint8_t hasVerts = r.U8();
-    if (hasVerts) r.Skip(static_cast<std::size_t>(numVerts) * 12u);
+    info.hasPositions = r.U8() != 0;
+    if (info.hasPositions) {
+        for (std::uint32_t i = 0; i < numVerts; ++i) {
+            const float x = r.F32(), y = r.F32(), z = r.F32();
+            info.particles[i].position = {x, z, y};
+        }
+    }
     const std::uint16_t dataFlags = r.CountU16(0xFFFFu);
     const std::uint32_t numUvSets = dataFlags & 0x3Fu;
-    const bool hasTangentSpace = (dataFlags & 0xF000u) != 0; // KORRIGIERT [0.44.35]: alle 4 oberen Bit von tspace_flag (0xF0), nicht nur Bit 4 (0x10) - siehe SkipNiGeometryDataHeader
-    const std::uint8_t hasNormals = r.U8();
+    const bool hasTangentSpace = (dataFlags & 0xF000u) != 0;
+    const bool hasNormals = r.U8() != 0;
     if (hasNormals) {
         r.Skip(static_cast<std::size_t>(numVerts) * 12u);
-        if (hasTangentSpace) r.Skip(static_cast<std::size_t>(numVerts) * 12u * 2u);
+        if (hasTangentSpace) r.Skip(static_cast<std::size_t>(numVerts) * 24u);
     }
-    r.Skip(16); // Bounding-Sphere
-    const std::uint8_t hasColors = r.U8();
-    if (hasColors) r.Skip(static_cast<std::size_t>(numVerts) * 16u);
-    for (std::uint32_t set = 0; set < numUvSets; ++set) {
+    r.Skip(16); // bounding sphere
+    info.hasColors = r.U8() != 0;
+    if (info.hasColors) {
+        for (std::uint32_t i = 0; i < numVerts; ++i) {
+            info.particles[i].color = {r.F32(), r.F32(), r.F32(), r.F32()};
+        }
+    }
+    for (std::uint32_t set = 0; set < numUvSets; ++set)
         r.Skip(static_cast<std::size_t>(numVerts) * 8u);
-    }
     r.U16(); // consistency_flags
     if (version >= 0x14000004u) r.I32(); // additional_data ref
-    return numVerts;
-}
 
-// NiParticlesData : NiGeometryData + has_radii+Radii + num_active(u16) + has_sizes+Sizes +
-// has_rotations+Rotations(Quaternion je 16 Byte) + has_rotation_angles+Angles +
-// has_rotation_axes+Achsen(Vector3 je 12 Byte).
-std::uint32_t SkipNiParticlesData(ByteReader& r, std::uint32_t version) {
-    const std::uint32_t numVerts = SkipNiGeometryDataHeader(r, version);
-    if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 4u); // has_radii
-    r.U16(); // num_active
-    if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 4u); // has_sizes
-    if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 16u); // has_rotations (Quaternion)
-    if (version >= 0x14000004u) {
-        if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 4u); // rotation_angles
-        if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 12u); // rotation_axes
+    info.hasRadii = r.U8() != 0;
+    if (info.hasRadii)
+        for (auto& particle : info.particles) particle.radius = r.F32();
+    info.activeCount = r.U16();
+    if (info.activeCount > info.capacity) r.Invalidate();
+
+    info.hasSizes = r.U8() != 0;
+    if (info.hasSizes)
+        for (auto& particle : info.particles) particle.size = r.F32();
+
+    info.hasRotations = r.U8() != 0;
+    if (info.hasRotations) {
+        for (auto& particle : info.particles) {
+            particle.rotationQuaternion = {r.F32(), r.F32(), r.F32(), r.F32()};
+        }
     }
-    // NiRotatingParticlesData adds fields only through 4.2.2.0, outside our versions.
-    return numVerts;
-}
+    if (version >= 0x14000004u) {
+        info.hasRotationAngles = r.U8() != 0;
+        if (info.hasRotationAngles)
+            for (auto& particle : info.particles) particle.rotationAngle = r.F32();
+        info.hasRotationAxes = r.U8() != 0;
+        if (info.hasRotationAxes) {
+            for (auto& particle : info.particles) {
+                const float x = r.F32(), y = r.F32(), z = r.F32();
+                particle.rotationAxis = {x, z, y};
+            }
+        }
+    }
 
-// NiPSysData : NiParticlesData + je Vertex ein NiParticleInfo (Velocity-Vector3(12) +
-// age/life_span/last_update(je f32=4) + spawn_generation/code(je u16=2) = 28 Byte) +
-// has_unknown_floats+Floats + 2 abschließende u16-Felder.
-// NiMeshPSysData has a counted uint array, not a fixed trailer (Niflib).
-void SkipNiPSysData(ByteReader& r, std::uint32_t version, bool isMeshVariant = false) {
-    const std::uint32_t numVerts = SkipNiParticlesData(r, version);
-    // ParticleDesc: Vector3 + [3 legacy floats] + 3 floats + uint.
-    const std::size_t particleBytes = version <= 0x0A040001u ? 40u : 28u;
-    r.Skip(static_cast<std::size_t>(numVerts) * particleBytes);
+    // NiPSysData ParticleDesc. 20.0.0.4 uses the compact 28-byte form:
+    // velocity + age/lifeSpan/lastUpdate + spawnGeneration/code. Older supported versions
+    // carry three additional legacy floats between velocity and age.
+    for (auto& particle : info.particles) {
+        const float vx = r.F32(), vy = r.F32(), vz = r.F32();
+        particle.velocity = {vx, vz, vy};
+        if (version <= 0x0A040001u) { r.F32(); r.F32(); r.F32(); }
+        particle.age = r.F32();
+        particle.lifeSpan = r.F32();
+        particle.lastUpdate = r.F32();
+        particle.spawnGeneration = r.U16();
+        particle.code = r.U16();
+    }
     if (version >= 0x14000004u && r.U8())
         r.Skip(static_cast<std::size_t>(numVerts) * 4u); // unknown_floats3
     r.U16(); r.U16(); // unknown_short_1, unknown_short_2
@@ -919,11 +951,48 @@ void SkipNiPSysData(ByteReader& r, std::uint32_t version, bool isMeshVariant = f
         if (version >= 0x0A020000u) {
             r.U32(); // unknownInt2
             r.U8();  // unknownByte3
-            const auto count = r.CountU32(); // numUnknownInts1
-            r.Skip(static_cast<std::size_t>(count) * 4u); // unknownInts1
+            const auto count = r.CountU32(256u);
+            r.Skip(static_cast<std::size_t>(count) * 4u);
         }
         r.I32(); // particleMeshes link
     }
+    return out;
+}
+
+// Older NiParticlesData blocks can appear without the NiPSysData ParticleDesc tail. They are
+// not sufficient for simulation yet, so keep their byte-exact skip path separate.
+std::uint32_t SkipNiGeometryDataHeader(ByteReader& r, std::uint32_t version) {
+    if (version >= 0x0A020000u) r.U32();
+    const std::uint32_t numVerts = r.CountU16(65535u);
+    r.U8(); r.U8();
+    if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 12u);
+    const std::uint16_t dataFlags = r.CountU16(0xFFFFu);
+    const std::uint32_t numUvSets = dataFlags & 0x3Fu;
+    const bool hasTangentSpace = (dataFlags & 0xF000u) != 0;
+    if (r.U8()) {
+        r.Skip(static_cast<std::size_t>(numVerts) * 12u);
+        if (hasTangentSpace) r.Skip(static_cast<std::size_t>(numVerts) * 24u);
+    }
+    r.Skip(16);
+    if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 16u);
+    for (std::uint32_t set = 0; set < numUvSets; ++set)
+        r.Skip(static_cast<std::size_t>(numVerts) * 8u);
+    r.U16();
+    if (version >= 0x14000004u) r.I32();
+    return numVerts;
+}
+
+std::uint32_t SkipNiParticlesData(ByteReader& r, std::uint32_t version) {
+    const std::uint32_t numVerts = SkipNiGeometryDataHeader(r, version);
+    if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 4u);
+    r.U16();
+    if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 4u);
+    if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 16u);
+    if (version >= 0x14000004u) {
+        if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 4u);
+        if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 12u);
+    }
+    return numVerts;
 }
 
 // NiPSysModifier-Basis (gemeinsam für alle Partikel-Modifier/Emitter): name(String) +
@@ -2744,6 +2813,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
     std::unordered_map<std::uint32_t, SkinInstanceBlock> skinInstanceByBlock;
     std::unordered_map<std::uint32_t, SkinDataBlock> skinDataByBlock;
     std::unordered_map<std::uint32_t, SkinPartitionBlock> skinPartitionByBlock;
+    std::unordered_map<std::uint32_t, NifParticleDataInfo> particleDataByBlock;
     struct LodRangeData {
         NifVec3 center{};
         std::vector<std::pair<float, float>> ranges;
@@ -3106,7 +3176,8 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 }
             }
         } else if (type == "NiPSysData" || type == "NiMeshPSysData") {
-            SkipNiPSysData(r, hdr.version, type == "NiMeshPSysData");
+            auto parsed = ParseNiPSysData(r, hdr.version, type == "NiMeshPSysData");
+            particleDataByBlock[blockIdx] = std::move(parsed.info);
         } else if (type == "NiParticlesData" || type == "NiRotatingParticlesData") {
             SkipNiParticlesData(r, hdr.version);
         } else if (type == "NiPSysEmitterCtlr") {
@@ -4472,6 +4543,16 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             std::memcpy(b, row.data(), rowBytes);
         }
         embeddedPixelTextures[pixelBlock] = std::move(out);
+    }
+
+    // Resolve each dynamic particle system to its authored NiPSysData/NiMeshPSysData block.
+    // A missing data ref remains explicit instead of creating synthetic particles.
+    for (auto& system : model.particleSystems) {
+        if (system.dataRef < 0) continue;
+        const auto it = particleDataByBlock.find(static_cast<std::uint32_t>(system.dataRef));
+        if (it == particleDataByBlock.end()) continue;
+        system.hasParticleData = true;
+        system.particleData = it->second;
     }
 
     // Zweistufige Textur-Aufloesung fuer alle klassischen Slots abschliessen. SourceTexture-
