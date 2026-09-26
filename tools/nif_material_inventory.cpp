@@ -116,6 +116,7 @@ int main(int argc, char** argv) {
     std::map<std::string, std::size_t> uvFallbackFiles;
     std::map<std::string, std::size_t> noUvFiles;
     std::vector<std::string> uvGapDetails;
+    std::vector<std::string> applyModeDetails;
     std::size_t unmaterializedShaderDescriptors = 0;
     std::size_t unmaterializedApplyModeParts = 0;
     std::size_t unsupportedEffectBindings = 0;
@@ -174,6 +175,26 @@ int main(int argc, char** argv) {
                 if (part.textureApplyMode == 3u || part.textureApplyMode == 4u) {
                     ++unmaterializedApplyModeParts;
                     rendererGapFiles.insert(entry.path().string());
+                    std::ostringstream detail;
+                    detail << "APPLYMODEDETAIL"
+                           << "\tpath=" << Clean(entry.path().string())
+                           << "\tpart=" << partIndex
+                           << "\tmode=" << part.textureApplyMode
+                           << "\tname=" << ApplyModeName(part.textureApplyMode)
+                           << "\tshader=" << Clean(shader)
+                           << "\tuvSets=" << part.uvSets.size()
+                           << "\talphaBlend=" << (part.alphaBlend ? 1 : 0)
+                           << "\talphaTest=" << (part.alphaTest ? 1 : 0)
+                           << "\tspecular=" << (part.specularEnabled ? 1 : 0)
+                           << "\tslots=";
+                    bool firstSlot = true;
+                    for (std::size_t slot = 0; slot < part.textureSlots.size(); ++slot) {
+                        if (!part.textureSlots[slot].present) continue;
+                        if (!firstSlot) detail << ',';
+                        detail << slot;
+                        firstSlot = false;
+                    }
+                    applyModeDetails.push_back(detail.str());
                 }
                 applyModeFiles[part.textureApplyMode].insert(entry.path().string());
                 if (shader != "<fixed-function>")
@@ -505,6 +526,8 @@ int main(int argc, char** argv) {
                           << "\tpath=" << Clean(path) << '\n';
         }
     }
+    for (const auto& detail : applyModeDetails)
+        std::cout << detail << '\n';
     for (const auto& [mode, partCount] : vertexColorModes)
         std::cout << "VERTEXCOLOR\tmode=" << mode << "\tparts=" << partCount << '\n';
     for (const auto& [mode, partCount] : faceDrawModes)
