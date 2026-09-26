@@ -115,6 +115,7 @@ int main(int argc, char** argv) {
     std::size_t noUsableUvBindings = 0;
     std::map<std::string, std::size_t> uvFallbackFiles;
     std::map<std::string, std::size_t> noUvFiles;
+    std::vector<std::string> uvGapDetails;
     std::size_t unmaterializedShaderDescriptors = 0;
     std::size_t unmaterializedApplyModeParts = 0;
     std::size_t unsupportedEffectBindings = 0;
@@ -154,7 +155,8 @@ int main(int argc, char** argv) {
             unsupportedEffects += model->textureEffectUnsupportedBlocks;
             inheritedProperties += model->inheritedPropertyBindings;
 
-            for (const auto& part : model->parts) {
+            for (std::size_t partIndex = 0; partIndex < model->parts.size(); ++partIndex) {
+                const auto& part = model->parts[partIndex];
                 ++parts;
                 const std::string shader = part.shaderName.empty() ? "<fixed-function>" : part.shaderName;
                 ++shaderParts[shader];
@@ -217,6 +219,20 @@ int main(int argc, char** argv) {
                             ++noUvFiles[entry.path().string()];
                         }
                         rendererGapFiles.insert(entry.path().string());
+                        std::ostringstream detail;
+                        detail << "UVGAP"
+                               << "\tpath=" << Clean(entry.path().string())
+                               << "\tpart=" << partIndex
+                               << "\tslot=" << slot
+                               << "\trequestedUv=" << texture.uvSet
+                               << "\tbaseUv=" << part.baseUvSet
+                               << "\tuvSets=" << part.uvSets.size()
+                               << "\tvertices=" << part.positions.size()
+                               << "\ttriangles=" << (part.triangleIndices.size() / 3u)
+                               << "\tfallback=" << (hasBaseFallbackUvs ? "uv0" : "none")
+                               << "\tshader=" << Clean(shader)
+                               << "\tsource=" << Clean(texture.texture);
+                        uvGapDetails.push_back(detail.str());
                     }
                     if (shader != "<fixed-function>") {
                         auto& shaderStat = shaderClassicSlots[{shader, slot}];
@@ -257,6 +273,20 @@ int main(int argc, char** argv) {
                                 ++noUvFiles[entry.path().string()];
                             }
                             rendererGapFiles.insert(entry.path().string());
+                            std::ostringstream detail;
+                            detail << "UVGAP"
+                                   << "\tpath=" << Clean(entry.path().string())
+                                   << "\tpart=" << partIndex
+                                   << "\tshaderMap=" << shaderSlot.mapId
+                                   << "\trequestedUv=" << shaderSlot.texture.uvSet
+                                   << "\tbaseUv=" << part.baseUvSet
+                                   << "\tuvSets=" << part.uvSets.size()
+                                   << "\tvertices=" << part.positions.size()
+                                   << "\ttriangles=" << (part.triangleIndices.size() / 3u)
+                                   << "\tfallback=" << (hasBaseFallbackUvs ? "uv0" : "none")
+                                   << "\tshader=" << Clean(shader)
+                                   << "\tsource=" << Clean(shaderSlot.texture.texture);
+                            uvGapDetails.push_back(detail.str());
                         }
                     }
                     ++stat.descriptors;
@@ -406,6 +436,8 @@ int main(int argc, char** argv) {
     for (const auto& [path, count] : noUvFiles)
         std::cout << "NOUVFILE\tbindings=" << count
                   << "\tpath=" << Clean(path) << '\n';
+    for (const auto& detail : uvGapDetails)
+        std::cout << detail << '\n';
     for (const auto& [method, partCount] : transformMethods)
         std::cout << "TEXTRANSFORM\tmethod=" << method << "\tparts=" << partCount << '\n';
     for (const auto& [mode, bindingCount] : classicClampModes)
