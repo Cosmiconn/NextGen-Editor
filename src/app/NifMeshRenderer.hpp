@@ -87,6 +87,14 @@ private:
         std::array<float, 2> center{0.5f, 0.5f};
     };
 
+    static constexpr std::size_t kMaxEnvironmentSphereEffects = 6;
+
+    struct EnvironmentSphereEffectBinding {
+        std::uint32_t texture = 0;
+        std::uint32_t clampMode = 3;
+        std::uint32_t filterMode = 2;
+    };
+
     struct SubMesh {
         std::uint32_t vao = 0;
         std::uint32_t vbo = 0;
@@ -99,6 +107,11 @@ private:
         std::array<float, 3> localBoundsMin{};
         std::array<float, 3> localBoundsMax{};
         std::array<TextureBinding, 10> textures{};
+        // GL 3.3 guarantees at least 16 fragment texture units. Ten are reserved for the
+        // classic NiTexturingProperty stages, leaving six guaranteed units for authored
+        // ENVIRONMENT_MAP + SPHERE_MAP NiTextureEffects in the same draw.
+        std::array<EnvironmentSphereEffectBinding, kMaxEnvironmentSphereEffects> environmentSphereEffects{};
+        std::size_t environmentSphereEffectCount = 0;
         std::vector<core::NifTextureTransformAnimation> textureTransformAnimations;
         struct FlipAnimation {
             std::uint32_t slot = 0;
@@ -159,8 +172,9 @@ private:
     std::unordered_map<std::string, std::uint32_t> textureCache_; // Schlüssel: aufgelöster Textur-Pfad
     std::vector<const LoadedModel*> perObjectModel_;             // parallel zu set, nullptr = kein Mesh
     struct UniformLocations {
-        int locViewProj = -1, locModel = -1, locLightDir = -1, locCameraPos = -1, locAmbientColor = -1, locDiffuseColor = -1, locSpecularColor = -1, locEmissiveColor = -1, locGlossiness = -1, locSpecularEnabled = -1, locApplyMode = -1, locVcAlphaTextureBlender = -1, locVertexColorMode = -1, locBumpLumaScale = -1, locBumpLumaOffset = -1, locBumpMatrix = -1, locAlphaTest = -1, locAlphaCutoff = -1, locAlphaTestFunc = -1, locMaterialAlpha = -1;
+        int locViewProj = -1, locModel = -1, locLightDir = -1, locCameraPos = -1, locAmbientColor = -1, locDiffuseColor = -1, locSpecularColor = -1, locEmissiveColor = -1, locGlossiness = -1, locSpecularEnabled = -1, locApplyMode = -1, locVcAlphaTextureBlender = -1, locVertexColorMode = -1, locBumpLumaScale = -1, locBumpLumaOffset = -1, locBumpMatrix = -1, locAlphaTest = -1, locAlphaCutoff = -1, locAlphaTestFunc = -1, locMaterialAlpha = -1, locEnvironmentSphereCount = -1;
         std::array<int, 10> locHasTex{}, locUvSet{}, locHasTransform{}, locTranslation{}, locScale{}, locRotation{}, locTransformType{}, locCenter{}, locSampler{};
+        std::array<int, kMaxEnvironmentSphereEffects> locEnvironmentSampler{};
     } uniforms_;
     struct DrawItem {
         const SubMesh* sub = nullptr;
