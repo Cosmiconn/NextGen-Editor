@@ -180,13 +180,15 @@ anderes Paketicon dargestellt.
 - [x] Primäre Navigation Karte / Spieldaten / Animationen / Projekt ist als kompakte Icon+Text-Navigation mit klarer Active-Linie umgesetzt.
 - [x] Project-Hub-Karten sind an die semantischen Final-Icons angebunden; fehlende Runtime-Größen fallen auf den nächstgelegenen freigegebenen Export zurück.
 - [x] Custom NPC und Custom Mob besitzen im Spieldaten-Launcher getrennte, echte Final-Paket-Icons und führen weiterhin in denselben funktionalen Wizard mit passend gesetztem Modus.
-- [ ] echte NG-SVG-Quelle nach `assets/ui/branding/` übernehmen und Windows-ICO final aus dem Final-Paket regenerieren.
+- [ ] echte NG-SVG-Quelle nach `assets/ui/branding/` übernehmen; der Git-Checkout enthält sie derzeit noch nicht.
+- [x] Windows-ICO/Resource 101 mit dem NG-Markenicon ist bereits in die App eingebettet.
 - [x] 14 neue Additional-UI-Icons an reale Controls angebunden (2D/3D, KFM, AI, XP, Preise, Eye, Lock/Unlock, Copy, Duplicate, Delete, Command Palette, Recent Projects).
 - [x] zentrale Map-Panel-Header (Outliner, Layer, Asset Browser, Properties, Visibility, 2D, 3D) sowie KFM, Settings/Help auf Paketicons migriert und über einen gemeinsamen Panel-Header-Component vereinheitlicht.
 - [x] zentrale Modul-Header für Spieldaten, Multi SHN, Quest, AI, Custom NPC/Mob, Skill, Drop Table und Interface auf den gemeinsamen Header-Component + Final-Paketicons migriert; Portal bleibt bewusst auf dem dokumentierten Legacy-Fallback, da das Final-Paket kein dediziertes Portal-Haupticon enthält.
 - [x] UI-QA 26.09.: AI-Aktionen verwenden `module.ai`, Spawn-Einträge `nav.spawns`, Portal-Positionierung `transform.move`, Route/MobRoam `gameplay.path`; die Route-ID fällt bis zum Rasterimport funktional auf DrawList zurück.
 - [x] UI-QA 26.09.: gemeinsame Search-Chrome verwendet `panel.search` in Asset Browser, Szene-Outliner, AI Workspace, NIF Inspector und Interface; NIF-/Interface-Filter verwenden `panel.filter`.
-- [ ] verbleibende kleinere Spezial-/Unterpanel-Header vollständig migrieren.
+- [x] kleinere klar zuordenbare Spezial-/Unterpanel-Header nachgezogen: Map-Launcher, Quest-/Skill-Listen und Properties sowie Active Tool verwenden den gemeinsamen Header; AI-Bibliothek/Editor und NIF-Material behalten ihre Inline-Aktionen und tragen dort Paketicons.
+- [ ] verbleibende reine Abschnittslabels weiter prüfen; bestehende Inline-Header mit bereits korrektem Paketicon müssen nicht künstlich auf den großen Panel-Header umgebaut werden.
 - [ ] DrawList-Fallbacks weiter auf die oben dokumentierten Semantik- oder Runtime-Import-Lücken reduzieren; keine Paketsemantik umdeuten.
 
 ## Runtime-QA-Hinweis
