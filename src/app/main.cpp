@@ -15869,8 +15869,7 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
         }
         ImGui::TextDisabled(L("Shadernamen: %s","Shader names: %s"), shaderList.c_str());
     }
-    const std::uint32_t unsupportedRenderStateBlocks = model.textureEffectBlocks;
-    if (genericShaderFallbackParts > 0 || unsupportedRenderStateBlocks > 0) {
+    if (genericShaderFallbackParts > 0 || model.textureEffectBlocks > 0) {
         ImGui::TextColored(
             ImVec4(1.0f,0.72f,0.30f,1.0f),
             "%s",L("Materialdateien können vollständig gefunden sein, obwohl Shader-/Effect-Semantik noch nur generisch dargestellt wird.",
@@ -15879,6 +15878,14 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
             L("%zu Mesh-Part(s) mit generischem Shader-Fallback · TextureEffect %u",
               "%zu mesh part(s) using generic shader fallback · TextureEffect %u"),
             genericShaderFallbackParts, model.textureEffectBlocks);
+        if (model.textureEffectBlocks > 0) {
+            ImGui::TextDisabled(
+                L("TextureEffect klassifiziert: Env/Sphere %u · andere/aus %u · Node-Bindings %u · Rendering noch deaktiviert",
+                  "TextureEffect classified: env/sphere %u · other/off %u · node bindings %u · rendering still disabled"),
+                model.textureEffectEnvironmentSphereBlocks,
+                model.textureEffectUnsupportedBlocks,
+                model.textureEffectNodeBindings);
+        }
     }
     if (model.vertexColorPropertyBlocks > 0) {
         ImGui::TextDisabled(
