@@ -416,13 +416,13 @@ Dieser Abschnitt ist der verbindliche Ausbau-Fahrplan für den laufenden Branch 
 - weitergehende schreibende Transition-/KFM-Feldbearbeitung nur, wenn zusätzlich zur Codec-Erhaltung auch die Runtime-Semantik ausreichend verifiziert ist.
 
 ### Globales UX
-- gespeicherte Workspace-Layouts;
-- Unsaved-Changes-Anzeige;
-- Recent Projects / Recent Maps;
-- Toasts;
-- globale Command-Palette;
-- konfigurierbare Shortcuts;
-- vollständiger konsistenter Icon-Satz in 16–20 px für Panel-Aktionen.
+- gespeicherte Workspace-Layouts; **umgesetzt**
+- Unsaved-Changes-Anzeige; **umgesetzt**
+- Recent Projects / Recent Maps; **umgesetzt**
+- Toasts unten rechts, 4 s, maximal 3 gleichzeitig; **umgesetzt**
+- globale Command-Palette; **umgesetzt**
+- konfigurierbare Shortcuts; **umgesetzt**
+- vollständiger konsistenter Icon-Satz in 16–20 px für Panel-Aktionen; **laufende QA / Vollimport des Final-Pakets noch offen**.
 
 ### Priorität
 Die unmittelbare Reihenfolge ist:
