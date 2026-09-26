@@ -709,6 +709,9 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                     sub.alphaSrcBlend = part.alphaSrcBlend;
                     sub.alphaDstBlend = part.alphaDstBlend;
                     sub.alphaTestFunc = part.alphaTestFunc;
+                    sub.depthTest = part.depthTest;
+                    sub.depthWrite = part.depthWrite;
+                    sub.depthFunction = part.depthFunction;
                     sub.faceDrawMode = part.faceDrawMode;
                     sub.billboard = part.billboard;
                     sub.billboardMode = part.billboardMode;
@@ -1228,7 +1231,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     glGetBooleanv(GL_DEPTH_WRITEMASK, &prevDepthMask);
     GLint prevProgram = 0, prevVao = 0, prevActiveTexture = 0;
     std::array<GLint, 10> prevTextures{};
-    GLint prevCullFace = GL_BACK, prevFrontFace = GL_CCW;
+    GLint prevCullFace = GL_BACK, prevFrontFace = GL_CCW, prevDepthFunc = GL_LESS;
     GLint prevBlendSrcRgb = GL_ONE, prevBlendDstRgb = GL_ZERO;
     GLint prevBlendSrcAlpha = GL_ONE, prevBlendDstAlpha = GL_ZERO;
     glGetIntegerv(GL_CURRENT_PROGRAM, &prevProgram);
@@ -1236,6 +1239,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     glGetIntegerv(GL_ACTIVE_TEXTURE, &prevActiveTexture);
     glGetIntegerv(GL_CULL_FACE_MODE, &prevCullFace);
     glGetIntegerv(GL_FRONT_FACE, &prevFrontFace);
+    glGetIntegerv(GL_DEPTH_FUNC, &prevDepthFunc);
     glGetIntegerv(GL_BLEND_SRC_RGB, &prevBlendSrcRgb);
     glGetIntegerv(GL_BLEND_DST_RGB, &prevBlendDstRgb);
     glGetIntegerv(GL_BLEND_SRC_ALPHA, &prevBlendSrcAlpha);
@@ -1367,6 +1371,20 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
         }
     };
 
+    const auto depthFunction = [](std::uint32_t f) -> GLenum {
+        switch (f) {
+            case 0: return GL_ALWAYS;   // ZCOMP_ALWAYS
+            case 1: return GL_LESS;     // ZCOMP_LESS
+            case 2: return GL_EQUAL;    // ZCOMP_EQUAL
+            case 3: return GL_LEQUAL;   // ZCOMP_LESS_EQUAL
+            case 4: return GL_GREATER;  // ZCOMP_GREATER
+            case 5: return GL_NOTEQUAL; // ZCOMP_NOT_EQUAL
+            case 6: return GL_GEQUAL;   // ZCOMP_GREATER_EQUAL
+            case 7: return GL_NEVER;    // ZCOMP_NEVER
+            default: return GL_LEQUAL;
+        }
+    };
+
     const auto applyFaceDrawMode = [](std::uint32_t mode) {
         // FaceDrawMode laut NIF-Spezifikation:
         // 0 DRAW_CCW_OR_BOTH (anwendungsabhaengig), 1 DRAW_CCW, 2 DRAW_CW, 3 DRAW_BOTH.
@@ -1412,6 +1430,9 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
         const SubMesh& sub = *item.sub;
         glUniformMatrix4fv(locModel, 1, GL_FALSE, item.model.m);
         applyFaceDrawMode(sub.faceDrawMode);
+        if (sub.depthTest) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
+        glDepthMask(sub.depthWrite ? GL_TRUE : GL_FALSE);
+        glDepthFunc(depthFunction(sub.depthFunction));
         if (blendedPass) glBlendFunc(blendFactor(sub.alphaSrcBlend), blendFactor(sub.alphaDstBlend));
 
         glUniform1i(locAlphaTest, sub.alphaTest ? 1 : 0);
@@ -1472,16 +1493,15 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
         glDrawElements(GL_TRIANGLES, static_cast<int>(sub.indexCount), GL_UNSIGNED_INT, nullptr);
     };
 
-    // Pass 1: Opaque + Alpha-Test. Diese Geometrie etabliert den korrekten Tiefenpuffer.
+    // Pass 1: Opaque + Alpha-Test. Depth-Test/Write/Funktion werden pro Submesh aus
+    // NiZBufferProperty angewandt; ohne Property gelten die konservativen Standardwerte.
     glDisable(GL_BLEND);
-    glDepthMask(GL_TRUE);
     for (const auto& item : opaqueItems) drawItem(item, false);
 
-    // Pass 2: echte Transparenz back-to-front. Tiefentest bleibt aktiv, aber transparente
-    // Flaechen schreiben nicht in den Tiefenpuffer und verdecken sich dadurch nicht vorzeitig.
+    // Pass 2: echte Transparenz back-to-front. Auch hier gewinnt der explizite NIF-Z-State:
+    // manche Fiesta-Effekte sind absichtlich read-only, andere schreiben trotz Blending.
     if (!blendedItems.empty()) {
         glEnable(GL_BLEND);
-        glDepthMask(GL_FALSE);
         for (const auto& item : blendedItems) drawItem(item, true);
     }
 
@@ -1494,6 +1514,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     glActiveTexture(static_cast<GLenum>(prevActiveTexture));
     glUseProgram(static_cast<GLuint>(prevProgram));
     glDepthMask(prevDepthMask);
+    glDepthFunc(static_cast<GLenum>(prevDepthFunc));
     glBlendFuncSeparate(static_cast<GLenum>(prevBlendSrcRgb), static_cast<GLenum>(prevBlendDstRgb),
                         static_cast<GLenum>(prevBlendSrcAlpha), static_cast<GLenum>(prevBlendDstAlpha));
     glCullFace(static_cast<GLenum>(prevCullFace));
