@@ -17,6 +17,14 @@ Die App-Shell besitzt eine funktionale Menüleiste in derselben dunklen Navy-Spr
 ## Inputs
 28–32 px, dunkle Fläche, 1 px Border. Fokus = Cyan/Blue. X/Y/Z-Farbe nur am Prefix.
 
+### Search Input
+Für eigenständige Such-/Filterfelder wird zentral `DrawSearchInput(...)` verwendet:
+- links das freigegebene `panel.search`-Paketicon;
+- danach das normale fokussierbare Textfeld;
+- vorhandene Toolbar-Breiten bleiben erhalten, damit Quick-Filter und Statusaktionen nicht verdrängt werden;
+- Popup-/Command-Palette-Autofokus muss das **Textfeld** fokussieren, nicht das vorgeschaltete Icon;
+- kompakte SHN-Spaltenfilter direkt unter Tabellenköpfen bleiben bewusst iconfrei, damit nicht jede Spalte zusätzliche Chrome erhält.
+
 ## Tabs
 Flach. Active = blauer Unterstrich oder leicht gefülltes Segment.
 
