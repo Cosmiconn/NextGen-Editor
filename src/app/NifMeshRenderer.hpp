@@ -83,6 +83,7 @@ private:
         std::array<float, 2> translation{0.0f, 0.0f};
         std::array<float, 2> scale{1.0f, 1.0f};
         float rotation = 0.0f;
+        std::uint32_t transformType = core::kNifTextureTransformMayaDeprecated;
         std::array<float, 2> center{0.5f, 0.5f};
     };
 
@@ -159,7 +160,7 @@ private:
     std::vector<const LoadedModel*> perObjectModel_;             // parallel zu set, nullptr = kein Mesh
     struct UniformLocations {
         int locViewProj = -1, locModel = -1, locLightDir = -1, locCameraPos = -1, locAmbientColor = -1, locDiffuseColor = -1, locSpecularColor = -1, locEmissiveColor = -1, locGlossiness = -1, locSpecularEnabled = -1, locApplyMode = -1, locVcAlphaTextureBlender = -1, locVertexColorMode = -1, locBumpLumaScale = -1, locBumpLumaOffset = -1, locBumpMatrix = -1, locAlphaTest = -1, locAlphaCutoff = -1, locAlphaTestFunc = -1, locMaterialAlpha = -1;
-        std::array<int, 10> locHasTex{}, locUvSet{}, locHasTransform{}, locTranslation{}, locScale{}, locRotation{}, locCenter{}, locSampler{};
+        std::array<int, 10> locHasTex{}, locUvSet{}, locHasTransform{}, locTranslation{}, locScale{}, locRotation{}, locTransformType{}, locCenter{}, locSampler{};
     } uniforms_;
     struct DrawItem {
         const SubMesh* sub = nullptr;
