@@ -2,6 +2,7 @@
 #include "mapeditor/core/KfmFile.hpp"
 #include "mapeditor/core/KfAnimation.hpp"
 #include "mapeditor/core/NifModel.hpp"
+#include "mapeditor/core/NifAnimationPose.hpp"
 #include <functional>
 
 namespace theseed::mapeditor::app {
@@ -35,6 +36,7 @@ private:
     float previewSkeletonYaw_ = 0.35f;
     float previewSkeletonPitch_ = -0.20f;
     float previewSkeletonZoom_ = 1.0f;
+    bool previewShowMesh_ = true;
     std::string previewMessage_;
 
     std::string message_;
