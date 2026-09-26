@@ -811,7 +811,14 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                         dst.scale = {src.scale.u, src.scale.v};
                         dst.rotation = src.rotation;
                         dst.center = {src.center.u, src.center.v};
-                        if (!src.present || (!src.embeddedTexture && src.texture.empty())) continue;
+                        if (!src.present) continue;
+                        if (src.sourceUsesEmbeddedPixelData && !src.embeddedTexture) {
+                            std::fprintf(stderr,
+                                "[NifMeshRenderer] Eingebetteter Textur-Slot %zu ohne dekodierte PixelData #%d: %s\n",
+                                slotIndex, src.sourcePixelDataRef, obj.modelPath.c_str());
+                            continue;
+                        }
+                        if (!src.sourceUsesEmbeddedPixelData && src.texture.empty()) continue;
 
                         const bool hasSlotUvs = src.uvSet < part.uvSets.size() &&
                                                 part.uvSets[src.uvSet].size() == part.positions.size();
@@ -828,8 +835,9 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                             continue;
                         }
 
-                        if (src.embeddedTexture) {
-                            const std::string cacheKey = key + "#embedded:" + std::to_string(slotIndex) + ":" + src.texture;
+                        if (src.sourceUsesEmbeddedPixelData) {
+                            const std::string cacheKey = key + "#embedded:" + std::to_string(slotIndex) +
+                                                         ":pixel:" + std::to_string(src.sourcePixelDataRef);
                             dst.texture = GetOrLoadEmbeddedTexture(*src.embeddedTexture, cacheKey);
                         } else if (auto texPath = resolveTexturePath(src.texture)) {
                             dst.texture = GetOrLoadTexture(*texPath);
@@ -852,10 +860,17 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                         for (std::size_t fi = 0; fi < srcAnim.frames.size(); ++fi) {
                             const auto& frame = srcAnim.frames[fi];
                             std::uint32_t textureId = 0;
-                            if (frame.embeddedTexture) {
-                                const std::string cacheKey = key + "#flip:" + std::to_string(ai) + ":" +
-                                                             std::to_string(fi) + ":" + frame.texture;
-                                textureId = GetOrLoadEmbeddedTexture(*frame.embeddedTexture, cacheKey);
+                            if (frame.sourceUsesEmbeddedPixelData) {
+                                if (frame.embeddedTexture) {
+                                    const std::string cacheKey = key + "#flip:" + std::to_string(ai) + ":" +
+                                                                 std::to_string(fi) + ":pixel:" +
+                                                                 std::to_string(frame.sourcePixelDataRef);
+                                    textureId = GetOrLoadEmbeddedTexture(*frame.embeddedTexture, cacheKey);
+                                } else {
+                                    std::fprintf(stderr,
+                                        "[NifMeshRenderer] Eingebettetes Flipbook-Frame ohne dekodierte PixelData #%d: %s\n",
+                                        frame.sourcePixelDataRef, obj.modelPath.c_str());
+                                }
                             } else if (!frame.texture.empty()) {
                                 if (auto texPath = resolveTexturePath(frame.texture)) textureId = GetOrLoadTexture(*texPath);
                                 else std::fprintf(stderr, "[NifMeshRenderer] Flipbook-Textur nicht gefunden: %s\n",
