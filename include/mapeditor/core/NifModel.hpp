@@ -52,6 +52,10 @@ struct NifUvSetDiagnostic {
     std::uint32_t firstBadIndex = 0;
     NifVec2 firstBadValue{};
     bool nonFinite = false;
+    std::uint32_t extremeCount = 0;
+    bool hasFinite = false;
+    float minFiniteU = 0.0f, maxFiniteU = 0.0f;
+    float minFiniteV = 0.0f, maxFiniteV = 0.0f;
     float maxFiniteAbs = 0.0f;
 };
 
