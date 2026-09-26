@@ -3,7 +3,15 @@
 - Build the effective geometry property chain child-first: properties authored directly on NiTriShape/NiTriStrips win, then nearest parent NiNode properties, then higher ancestors.
 - Resolve material state authoritatively after geometry rebuilds through that effective chain; existing Texturing, Alpha, ZBuffer, Stencil/FaceDrawMode and Specular resolvers now receive inherited refs as well.
 - Expose the number of inherited property bindings in NifModel and the read-only NIF Inspector so problematic assets can be diagnosed without guessing.
-- NiTextureEffect and NiVertexColorProperty remain diagnostic-only and are not claimed as implemented by this change.
+- NiTextureEffect remains diagnostic-only and is not claimed as implemented by this change.
+
+## NIF rendering follow-up — NiVertexColorProperty
+- Parse the existing 10-byte Fiesta property payload as flags(u16), vertex mode(u32), and lighting mode(u32) instead of discarding it.
+- Resolve NiVertexColorProperty through the same child-first inherited NiProperty chain used by material/texturing/depth state.
+- Render the documented classic modes: SRC_IGNORE, SRC_EMISSIVE, and SRC_AMB_DIF; the latter respects the emissive-only light mode and otherwise feeds ambient+diffuse.
+- Preserve the existing VCAlphaTextureBlender path unchanged because that shader has its own verified RGB/alpha contract.
+- Without an explicit NiVertexColorProperty, mesh vertex colors retain the classic ambient+diffuse default; meshes without vertex colors remain unchanged.
+- Report NiVertexColorProperty as rendered in the NIF Inspector and show the effective per-mesh vertex-color mode.
 
 ## NIF rendering follow-up — embedded texture source fidelity
 - Treat `NiSourceTexture::Use External = 0` as a first-class material/flipbook source even when its file-name field is empty; preserve the PixelData block reference into runtime material slots.
