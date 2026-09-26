@@ -34,7 +34,7 @@ Rot/Grün-Legende, Brush/Rectangle, sichtbares Undo/Redo. Footprint→Walk verwe
 Daten-IDE statt Roh-Tabelle: Dokumentkopf, Dirty, Filter, Save-Bar. Referenz-/Error-Hinweise sind evidenzbasiert: aktuell Item/Mob/ActiveSkill-Familien per verifizierter ID-Menge; Grün=vorhanden, Rot=fehlend, Gelb=mehrdeutig, eindeutige Treffer als Cross-Link.
 
 ## Quest
-General / Requirements / Objectives / Rewards / Dialogs / Scripts. Referenzen als Links. Später Flow View als Tab.
+General / Requirements / Objectives / Rewards / Dialogs / Scripts. Referenzen als Links. Form/Flow-Umschaltung im Detailbereich: Flow bleibt read-only und verwendet ausschließlich die belegten `needPred/predecessor`-Kanten, zeigt Vorgänger-Kette, direkte Folgequests sowie Zyklus-/Missing-/Duplicate-ID-Zustände. Scripttext wird nicht heuristisch als Graph interpretiert.
 
 ## Skill
 Serie links, Stufe/Detail rechts. Animation/VFX nutzen datenbelegte Such-Picker über alle gleichartigen ActiveSkillView-Felder; rechts im Picker steht eine Referenz-Vorschau mit Häufigkeit, konkreten Skills und Quellspalten sowie direkter Navigation. Das ist bewusst noch kein KF/NIF-Playback und keine Behauptung physischer Asset-Gültigkeit.
