@@ -83,6 +83,7 @@ int main(int argc, char** argv) {
         bool uvSetsSane = true;
         bool embeddedSlotsValid = true;
         std::size_t embeddedSlotCount = 0;
+        bool embeddedSlotKeepsSourceName = false;
         for (const auto& part : simple->parts) {
             for (const auto& uvSet : part.uvSets) {
                 for (const auto& uv : uvSet) {
@@ -95,6 +96,8 @@ int main(int argc, char** argv) {
             for (const auto& slot : part.textureSlots) {
                 if (!slot.embeddedTexture) continue;
                 ++embeddedSlotCount;
+                if (slot.sourceUsesEmbeddedPixelData && !slot.texture.empty())
+                    embeddedSlotKeepsSourceName = true;
                 const auto& tex = *slot.embeddedTexture;
                 if (tex.width == 0 || tex.height == 0 ||
                     tex.rgba.size() != static_cast<std::size_t>(tex.width) * tex.height * 4) {
@@ -106,6 +109,8 @@ int main(int argc, char** argv) {
         Check(embeddedSlotsValid, "Alle eingebetteten Materialslot-Texturen sind vollständig dekodiert");
         Check(embeddedSlotCount > 0,
               "Referenzdatei bindet mindestens eine eingebettete PixelData an einen Materialslot");
+        Check(embeddedSlotKeepsSourceName,
+              "Embedded-Materialslot bleibt trotz Dateinamen als Use-External=0 klassifiziert");
         Check(simple->decodedEmbeddedTextures > 0,
               "Referenzdatei dekodiert mindestens einen NiPixelData-Block");
         Check(simple->undecodedEmbeddedTextures == 0,
@@ -161,6 +166,7 @@ int main(int argc, char** argv) {
         bool uvSetsSane = true;
         bool embeddedSlotsValid = true;
         std::size_t embeddedSlots = 0;
+        bool embeddedSlotKeepsSourceName = false;
         for (const auto& part : extra->parts) {
             if (part.positions.empty() || part.triangleIndices.empty() ||
                 part.triangleIndices.size() % 3 != 0) {
@@ -178,6 +184,8 @@ int main(int argc, char** argv) {
                 if (!slot.sourceUsesEmbeddedPixelData) continue;
                 if (slot.embeddedTexture) {
                     ++embeddedSlots;
+                    if (slot.sourceUsesEmbeddedPixelData && !slot.texture.empty())
+                        embeddedSlotKeepsSourceName = true;
                     const auto& tex = *slot.embeddedTexture;
                     if (tex.width == 0 || tex.height == 0 ||
                         tex.rgba.size() != static_cast<std::size_t>(tex.width) * tex.height * 4) {
@@ -191,6 +199,8 @@ int main(int argc, char** argv) {
         Check(embeddedSlotsValid, "Zusätzliche eingebettete Materialslots sind vollständig dekodiert");
         Check(embeddedSlots > 0,
               "Zusätzliche NIF-Datei bindet eingebettete PixelData an Materialslots");
+        Check(embeddedSlotKeepsSourceName,
+              "Zusätzliche NIF-Datei respektiert Use External=0 trotz Dateinamen");
         Check(extra->decodedEmbeddedTextures > 0,
               "Zusätzliche NIF-Datei dekodiert mindestens einen NiPixelData-Block");
         Check(extra->undecodedEmbeddedTextures == 0,
