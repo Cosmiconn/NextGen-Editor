@@ -15869,18 +15869,24 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
         }
         ImGui::TextDisabled(L("Shadernamen: %s","Shader names: %s"), shaderList.c_str());
     }
-    const std::uint32_t structuralRenderStateBlocks =
-        model.textureEffectBlocks + model.vertexColorPropertyBlocks + model.zBufferPropertyBlocks;
-    if (genericShaderFallbackParts > 0 || structuralRenderStateBlocks > 0) {
+    const std::uint32_t unsupportedRenderStateBlocks =
+        model.textureEffectBlocks + model.vertexColorPropertyBlocks;
+    if (genericShaderFallbackParts > 0 || unsupportedRenderStateBlocks > 0) {
         ImGui::TextColored(
             ImVec4(1.0f,0.72f,0.30f,1.0f),
-            "%s",L("Materialdateien können vollständig gefunden sein, obwohl Shader-/Renderstate-Semantik noch nur generisch dargestellt wird.",
-                   "All material files can be resolved while shader/render-state semantics are still rendered through a generic fallback."));
+            "%s",L("Materialdateien können vollständig gefunden sein, obwohl Shader-/Effect-Semantik noch nur generisch dargestellt wird.",
+                   "All material files can be resolved while shader/effect semantics are still rendered through a generic fallback."));
         ImGui::TextDisabled(
-            L("%zu Mesh-Part(s) mit generischem Shader-Fallback · TextureEffect %u · VertexColorProperty %u · ZBufferProperty %u",
-              "%zu mesh part(s) using generic shader fallback · TextureEffect %u · VertexColorProperty %u · ZBufferProperty %u"),
+            L("%zu Mesh-Part(s) mit generischem Shader-Fallback · TextureEffect %u · VertexColorProperty %u",
+              "%zu mesh part(s) using generic shader fallback · TextureEffect %u · VertexColorProperty %u"),
             genericShaderFallbackParts, model.textureEffectBlocks,
-            model.vertexColorPropertyBlocks, model.zBufferPropertyBlocks);
+            model.vertexColorPropertyBlocks);
+    }
+    if (model.zBufferPropertyBlocks > 0) {
+        ImGui::TextDisabled(
+            L("NiZBufferProperty: %u Block/Blöcke · Z-Test/Z-Write/Funktion werden pro Mesh gerendert",
+              "NiZBufferProperty: %u block(s) · Z test/write/function rendered per mesh"),
+            model.zBufferPropertyBlocks);
     }
     if (model.recovered || model.partial) {
         ImGui::TextDisabled("%s%s",
@@ -15981,6 +15987,12 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                     L("Shader-spezifische Semantik ist für diesen Namen noch nicht separat modelliert.",
                       "Shader-specific semantics for this name are not modeled separately yet."));
             }
+            ImGui::TextDisabled(
+                L("Z-State: Test %s · Write %s · Func %u",
+                  "Z state: test %s · write %s · func %u"),
+                part.depthTest ? L("an","on") : L("aus","off"),
+                part.depthWrite ? L("an","on") : L("aus","off"),
+                part.depthFunction);
 
             bool anyTexture=false;
             for (std::size_t si=0; si<part.textureSlots.size(); ++si) {
