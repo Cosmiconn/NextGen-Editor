@@ -6,6 +6,7 @@
 #include "mapeditor/core/NifModel.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 
 using namespace theseed::mapeditor::core;
@@ -56,6 +57,25 @@ int main(int argc, char** argv) {
         }
     } else {
         std::fprintf(stderr, "     Fehler: %s\n", simple.error().c_str());
+    }
+
+    if (simple) {
+        std::printf("\n== NIF-Node-Hierarchie ==\n");
+        bool parentIndicesValid = true;
+        bool localTransformsFinite = true;
+        for (const auto& node : simple->nodes) {
+            if (node.parentIndex < -1 ||
+                (node.parentIndex >= 0 && static_cast<std::size_t>(node.parentIndex) >= simple->nodes.size()))
+                parentIndicesValid = false;
+            localTransformsFinite = localTransformsFinite &&
+                std::isfinite(node.localTranslation.x) &&
+                std::isfinite(node.localTranslation.y) &&
+                std::isfinite(node.localTranslation.z) &&
+                std::isfinite(node.localScale);
+            for (const float v : node.localRotation) localTransformsFinite = localTransformsFinite && std::isfinite(v);
+        }
+        Check(parentIndicesValid, "Alle NIF-Node-Parent-Indizes liegen innerhalb der exportierten Hierarchie");
+        Check(localTransformsFinite, "Lokale NIF-Bind-Transforms sind endlich und für KF-Preview nutzbar");
     }
 
     if (simple) {
