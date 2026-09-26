@@ -257,9 +257,9 @@ struct NifModel {
     bool partial = false;   // stopped before all declared blocks were consumed
     std::uint32_t decodedEmbeddedTextures = 0;
     std::uint32_t undecodedEmbeddedTextures = 0;
-    // Render-Diagnose: diese Blocktypen werden strukturell gelesen, ihre vollständige
-    // Gamebryo/Fiesta-Rendersemantik wird vom aktuellen OpenGL-Editorpfad aber noch nicht
-    // vollständig materialisiert.
+    // Render-Diagnose für im NIF vorkommende Property-/Effect-Familien.
+    // TextureEffect und VertexColorProperty sind noch nicht vollständig materialisiert;
+    // NiZBufferProperty wird inzwischen vollständig in den Mesh-Renderstate übernommen.
     std::uint32_t textureEffectBlocks = 0;
     std::uint32_t vertexColorPropertyBlocks = 0;
     std::uint32_t zBufferPropertyBlocks = 0;
