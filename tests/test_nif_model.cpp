@@ -104,6 +104,8 @@ int main(int argc, char** argv) {
         }
         Check(uvSetsSane, "Alle erhaltenen UV-Sets sind endlich/plausibel oder wurden verworfen");
         Check(embeddedSlotsValid, "Alle eingebetteten Materialslot-Texturen sind vollständig dekodiert");
+        Check(simple->undecodedEmbeddedTextures == 0,
+              "Alle NiPixelData-Blöcke der Referenzdatei sind dekodiert");
         std::printf("     Eingebettete Materialslots: %zu, PixelData dekodiert/nicht dekodiert: %u/%u\n",
                     embeddedSlotCount, simple->decodedEmbeddedTextures, simple->undecodedEmbeddedTextures);
     }
@@ -183,6 +185,8 @@ int main(int argc, char** argv) {
         Check(geometryValid, "Zusätzliche NIF-Datei liefert gültige Geometrie");
         Check(uvSetsSane, "Zusätzliche NIF-Datei enthält nur plausible erhaltene UV-Sets");
         Check(embeddedSlotsValid, "Zusätzliche eingebettete Materialslots sind vollständig dekodiert");
+        Check(extra->undecodedEmbeddedTextures == 0,
+              "Zusätzliche NIF-Datei dekodiert alle NiPixelData-Blöcke");
         std::printf("     Parts=%zu, Embedded-Slots=%zu, PixelData dekodiert/nicht dekodiert=%u/%u\n",
                     extra->parts.size(), embeddedSlots,
                     extra->decodedEmbeddedTextures, extra->undecodedEmbeddedTextures);
