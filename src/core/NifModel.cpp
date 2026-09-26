@@ -3639,6 +3639,11 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         if (part.baseUvSet < part.uvSets.size()) part.uvs = part.uvSets[part.baseUvSet];
     }
 
+    // Skin-Bone-Refs sind an dieser Stelle noch NIF-Blockindizes. Nach dem Export der
+    // Node-Hierarchie werden sie stabil auf NifModel::nodes remapped.
+    std::vector<std::vector<std::int32_t>> partSkinBoneSceneRefs(model.parts.size());
+    std::vector<std::int32_t> partSkinRootSceneRef(model.parts.size(), -1);
+
     // Szenengraph anwenden: Weltmatrix je Geometrie = Produkt der lokalen Transformationen von der
     // Wurzel bis zum Geometrieblock. Positionen/Normalen liegen hier schon im Editor-Rahmen
     // (x, legacyZ, legacyY) - die Matrizen gelten im Legacy-Rahmen, daher wird zurueckgetauscht,
@@ -3740,6 +3745,13 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             out.scale = sn.scale;
             return out;
         };
+        auto publicTransform = [](const SkinTransform& in) {
+            NifTransform out;
+            out.rotation = in.rotation;
+            out.translation = in.translation;
+            out.scale = in.scale;
+            return out;
+        };
         auto relativeBoneTransform = [&](int boneBlock, int skeletonRoot, SkinTransform& out) {
             out = SkinTransform{};
             if (boneBlock < 0 || static_cast<std::size_t>(boneBlock) >= scene.size()) return false;
@@ -3776,7 +3788,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         std::unordered_map<std::int32_t, std::int32_t> skinRefByData;
         for (const auto& g : geomNodes) if (g.dataRef >= 0 && g.skinInstanceRef >= 0) skinRefByData[g.dataRef] = g.skinInstanceRef;
 
-        auto applySkinning = [&](NifMeshPart& part, std::int32_t dataRef) {
+        auto applySkinning = [&](NifMeshPart& part, std::int32_t dataRef, std::size_t partIndex) {
             const auto sr = skinRefByData.find(dataRef);
             if (sr == skinRefByData.end() || sr->second < 0) return;
             const auto siIt = skinInstanceByBlock.find(static_cast<std::uint32_t>(sr->second));
@@ -3792,6 +3804,24 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
 
             const std::vector<NifVec3> sourcePos = part.positions;
             const std::vector<NifVec3> sourceNorm = part.normals;
+
+            // Preserve exactly the already-verified skin inputs before the bind-pose bake. The
+            // normal Map renderer keeps using the baked vertices, while KFM preview can replay
+            // the same formula with animated local NIF-node transforms.
+            part.skinBinding.emplace();
+            auto& exportedSkin = *part.skinBinding;
+            exportedSkin.sourcePositions = sourcePos;
+            exportedSkin.sourceNormals = sourceNorm;
+            exportedSkin.skinTransform = publicTransform(skin.skinTransform);
+            exportedSkin.vertexInfluences.resize(sourcePos.size());
+            const std::size_t exportedBoneCount = std::min(skin.bones.size(), inst.bones.size());
+            exportedSkin.bones.resize(exportedBoneCount);
+            partSkinBoneSceneRefs[partIndex].assign(inst.bones.begin(),
+                inst.bones.begin() + static_cast<std::ptrdiff_t>(exportedBoneCount));
+            partSkinRootSceneRef[partIndex] = inst.skeletonRoot;
+            for (std::size_t b = 0; b < exportedBoneCount; ++b)
+                exportedSkin.bones[b].bindTransform = publicTransform(skin.bones[b].transform);
+
             std::vector<NifVec3> accumPos(sourcePos.size());
             std::vector<NifVec3> accumNorm(sourceNorm.size());
             std::vector<float> accumulatedWeight(sourcePos.size(), 0.0f);
@@ -3825,6 +3855,9 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                                 if (relativeBoneTransform(inst.bones[globalBone], inst.skeletonRoot, rel)) {
                                     trans = multiplyTransform(rel, skin.bones[globalBone].transform);
                                 }
+                                if (globalBone < exportedSkin.bones.size())
+                                    exportedSkin.vertexInfluences[vi].push_back(
+                                        {static_cast<std::uint16_t>(globalBone), weight});
                                 const NifVec3 p = transformSkinPoint(trans, sourcePos[vi]);
                                 accumPos[vi].x += p.x * weight; accumPos[vi].y += p.y * weight; accumPos[vi].z += p.z * weight;
                                 if (vi < sourceNorm.size()) {
@@ -3841,6 +3874,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             }
 
             // Older/non-partitioned geometry stores sparse weights directly in NiSkinData.
+            exportedSkin.partitionWeights = usedPartitionWeights;
             if (!usedPartitionWeights && skin.hasVertexWeights) {
                 std::vector<std::uint8_t> influenceCount(sourcePos.size(), 0);
                 const std::size_t boneCount = std::min(skin.bones.size(), inst.bones.size());
@@ -3853,6 +3887,9 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                     for (const auto& vw : skin.bones[b].weights) {
                         const std::size_t vi = vw.vertex;
                         if (vi >= sourcePos.size() || vw.weight == 0.0f) continue;
+                        if (b < exportedSkin.bones.size())
+                            exportedSkin.vertexInfluences[vi].push_back(
+                                {static_cast<std::uint16_t>(b), vw.weight});
                         const NifVec3 p = transformSkinPoint(trans, sourcePos[vi]);
                         accumPos[vi].x += p.x * vw.weight; accumPos[vi].y += p.y * vw.weight; accumPos[vi].z += p.z * vw.weight;
                         if (vi < sourceNorm.size()) {
@@ -3885,7 +3922,17 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             for (int b = static_cast<int>(geomIt->second); b >= 0 && chain.size() < 64; b = parentOf[static_cast<std::size_t>(b)]) chain.push_back(b);
 
             NifMeshPart& part = model.parts[p];
-            applySkinning(part, partDataBlock[p]);
+            applySkinning(part, partDataBlock[p], p);
+
+            if (part.skinBinding) {
+                SkinTransform meshToModel;
+                for (const int b : chain) {
+                    const SceneNode& sn = scene[static_cast<std::size_t>(b)];
+                    if (!sn.present) continue;
+                    meshToModel = multiplyTransform(sceneTransform(sn), meshToModel);
+                }
+                part.skinBinding->meshToModelTransform = publicTransform(meshToModel);
+            }
 
             // Laufzeit-LOD: das direkte Kind unter dem NiLODNode entspricht demselben Index im
             // Range-Array. NifSkope verwendet near <= distance < far; ohne Range-Daten wird nur
@@ -4015,6 +4062,25 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 }
                 parent = static_cast<std::size_t>(parent) < parentOf2.size()
                     ? parentOf2[static_cast<std::size_t>(parent)] : -1;
+            }
+        }
+
+        // Skin bindings now receive stable exported node indices. A missing mapping is kept as
+        // -1 and will make only that influence remain in bind pose during animation preview.
+        for (std::size_t partIndex = 0; partIndex < model.parts.size(); ++partIndex) {
+            auto& part = model.parts[partIndex];
+            if (!part.skinBinding) continue;
+            auto& skin = *part.skinBinding;
+
+            const auto rootScene = partSkinRootSceneRef[partIndex];
+            if (rootScene >= 0 && static_cast<std::size_t>(rootScene) < sceneToModel.size())
+                skin.skeletonRootNodeIndex = sceneToModel[static_cast<std::size_t>(rootScene)];
+
+            const auto& refs = partSkinBoneSceneRefs[partIndex];
+            for (std::size_t b = 0; b < skin.bones.size() && b < refs.size(); ++b) {
+                const auto sceneRef = refs[b];
+                if (sceneRef >= 0 && static_cast<std::size_t>(sceneRef) < sceneToModel.size())
+                    skin.bones[b].nodeIndex = sceneToModel[static_cast<std::size_t>(sceneRef)];
             }
         }
     }
