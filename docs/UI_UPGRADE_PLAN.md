@@ -204,6 +204,7 @@ Zusätzlich in der laufenden zweiten Ausbaustufe umgesetzt:
 - QA/Politur: Asset Browser, Szene-Outliner, AI Workspace, NIF Inspector und Interface verwenden eine gemeinsame Search-Chrome mit `panel.search`; NIF-/Interface-Filter verwenden `panel.filter`.
 - Icon-Checkout-Audit: das Final-ZIP selbst ist vollständig, Git enthält aktuell aber nur einen Runtime-Subset. Vollimport von SVG-Mastern + 68×6 Runtime-Rastern bleibt reproduzierbar über `tools/ui/import_icon_pack.py` offen.
 - Icon-Konsistenzcheck: `tools/ui/check_icon_consistency.py` läuft in CI und prüft die 68 semantischen IDs, `UiIconAssets.cpp`, die freigegebenen Größen sowie jeden eingecheckten Runtime-PNG-Pfad; ein partieller Runtime-Subset bleibt dabei ausdrücklich zulässig.
+- QA/Politur: Map-Launcher, Quest-/Skill-Unterpanels und Active Tool verwenden jetzt die gemeinsame Header-Chrome; AI-Bibliothek/Editor und NIF-Material behalten ihre kompakten Inline-Aktionen, zeigen dort aber die passenden finalen Paketicons.
 
 Noch offen für spätere Ausbaustufen:
 - NPC-/Mob-/Portal-Outliner sind inzwischen spezialisiert: semantische Rollen-/Gruppenicons, Auswahl-Details, direkte Kontextaktionen, Gate-Zielnavigation und Schnellfilter (NPC-Rolle, Mob-Belegung, Portal-Typ); zusätzlich strukturieren einklappbare semantische Gruppen mit Trefferzählern die Listen nach `Role + RoleArg0`, Mob-Belegung und Portal-Typ;
