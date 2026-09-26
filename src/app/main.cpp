@@ -13944,10 +13944,11 @@ bool DrawObjectTransformGizmo(EditorState& state, const ImVec2& imageScreenPos, 
     return usingGizmo || overGizmo;
 }
 
-void DrawObjectGizmoToolbar(EditorState& state, const ImVec2& imageScreenPos) {
-    if (state.editMode != EditMode::ObjectPlacement) return;
+bool DrawObjectGizmoToolbar(EditorState& state, const ImVec2& imageScreenPos) {
+    if (state.editMode != EditMode::ObjectPlacement) return false;
     const ImVec2 restore = ImGui::GetCursorScreenPos();
     ImGui::SetCursorScreenPos(ImVec2(imageScreenPos.x + 10.0f, imageScreenPos.y + 10.0f));
+    ImGui::BeginGroup();
     ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(11, 27, 41, 235));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(18, 67, 104, 245));
 
@@ -13992,7 +13993,13 @@ void DrawObjectGizmoToolbar(EditorState& state, const ImVec2& imageScreenPos) {
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", groundHint.c_str());
 
     ImGui::PopStyleColor(2);
+    ImGui::EndGroup();
+    const ImVec2 toolbarMin = ImGui::GetItemRectMin();
+    const ImVec2 toolbarMax = ImGui::GetItemRectMax();
+    const bool toolbarCapturing =
+        ImGui::IsMouseHoveringRect(toolbarMin, toolbarMax, false);
     ImGui::SetCursorScreenPos(restore);
+    return toolbarCapturing;
 }
 
 void DrawPreview3DContent(EditorState& state) {
@@ -14074,12 +14081,25 @@ void DrawPreview3DContent(EditorState& state) {
     DrawPortals3D(state,imageScreenPos,w,h);
     DrawRoamRoutes3D(state,imageScreenPos,w,h);
     const bool gizmoCapturing = DrawObjectTransformGizmo(state, imageScreenPos, w, h);
-    DrawObjectGizmoToolbar(state, imageScreenPos);
+    const bool gizmoToolbarCapturing = DrawObjectGizmoToolbar(state, imageScreenPos);
     DrawNpcOverlay3D(state, imageScreenPos, w, h);
+
+    // Viewport-Overlays liegen absichtlich über dem Image. Ihre Hit-Flächen müssen deshalb
+    // vor Picking/Kamera explizit berücksichtigt werden, sonst kann ein Button-Klick in die
+    // darunterliegende 3D-Auswahl oder Orbit-Steuerung "durchfallen".
+    const ImVec2 zoomBtnSize(26.0f, 26.0f);
+    const ImVec2 zoomPos(imageScreenPos.x + avail.x - zoomBtnSize.x - 10.0f,
+                         imageScreenPos.y + avail.y - zoomBtnSize.y * 2.0f - 16.0f);
+    const ImVec2 zoomMax(zoomPos.x + zoomBtnSize.x,
+                         zoomPos.y + zoomBtnSize.y * 2.0f + 4.0f);
+    const bool zoomControlsCapturing =
+        ImGui::IsMouseHoveringRect(zoomPos, zoomMax, false);
+    const bool viewportUiCapturing =
+        gizmoCapturing || gizmoToolbarCapturing || zoomControlsCapturing;
 
     // Direktes 3D-Picking: echte NIF-Dreiecke haben Vorrang. Nur Objekte ohne
     // ladbares Mesh fallen weiterhin auf den projizierten Ursprung/Footprint zurück.
-    if (state.editMode==EditMode::ObjectPlacement && viewImageHovered && !gizmoCapturing &&
+    if (state.editMode==EditMode::ObjectPlacement && viewImageHovered && !viewportUiCapturing &&
         ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
         const ImVec2 mouse=ImGui::GetMousePos();
         int bestId=kNoObjectSelection;
@@ -14175,14 +14195,14 @@ void DrawPreview3DContent(EditorState& state) {
     {
         ImGuiIO& io = ImGui::GetIO();
         const bool hovered3d = viewImageHovered;
-        if (hovered3d && !gizmoCapturing && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) state.cameraLooking = true;
+        if (hovered3d && !viewportUiCapturing && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) state.cameraLooking = true;
         if (!ImGui::IsMouseDown(ImGuiMouseButton_Right)) state.cameraLooking = false;
         if (state.cameraLooking) {
             const ImVec2 delta = io.MouseDelta;
             // Maus nach rechts = nach rechts drehen (Yaw sinkt), Maus nach oben = nach oben schauen (Pitch sinkt).
             state.camera.LookBy(-delta.x * 0.0045f, delta.y * 0.0045f);
         }
-        if (hovered3d && !gizmoCapturing) {
+        if (hovered3d && !viewportUiCapturing) {
             if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
                 const ImVec2 delta = io.MouseDelta;
                 state.camera.OrbitBy(delta.x * 0.01f, -delta.y * 0.01f);
@@ -14194,7 +14214,7 @@ void DrawPreview3DContent(EditorState& state) {
             }
             if (io.MouseWheel != 0.0f) state.camera.ZoomSteps(io.MouseWheel);
         }
-        if ((hovered3d || state.cameraLooking) && !gizmoCapturing && !io.WantTextInput) {
+        if ((hovered3d || state.cameraLooking) && !viewportUiCapturing && !io.WantTextInput) {
             float fwd = 0.0f, right = 0.0f, up = 0.0f;
             if (ImGui::IsKeyDown(ImGuiKey_W) || ImGui::IsKeyDown(ImGuiKey_UpArrow)) fwd += 1.0f;
             if (ImGui::IsKeyDown(ImGuiKey_S) || ImGui::IsKeyDown(ImGuiKey_DownArrow)) fwd -= 1.0f;
@@ -14218,8 +14238,6 @@ void DrawPreview3DContent(EditorState& state) {
 
     // Zoom +/- Knöpfe unten rechts über dem 3D-Bild (siehe Mockup) - zusätzlich zum
     // Mausrad, für Nutzer ohne Maus mit Rad bzw. als deutlicher sichtbarer Zugriffspunkt.
-    const ImVec2 zoomBtnSize(26.0f, 26.0f);
-    const ImVec2 zoomPos(imageScreenPos.x + avail.x - zoomBtnSize.x - 10.0f, imageScreenPos.y + avail.y - zoomBtnSize.y * 2.0f - 16.0f);
     ImGui::SetCursorScreenPos(zoomPos);
     ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(28, 34, 42, 230));
     if (UI::Button("+##zoomIn", zoomBtnSize)) state.camera.ZoomSteps(2.0f);
