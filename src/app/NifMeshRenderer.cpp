@@ -1346,6 +1346,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     const auto& locTranslation = uniforms_.locTranslation;
     const auto& locScale = uniforms_.locScale;
     const auto& locRotation = uniforms_.locRotation;
+    const auto& locTransformType = uniforms_.locTransformType;
     const auto& locCenter = uniforms_.locCenter;
     const auto& locSampler = uniforms_.locSampler;
     for (int slot = 0; slot < 10; ++slot) glUniform1i(locSampler[slot], slot);
