@@ -15757,6 +15757,7 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
     std::size_t missingGenericShaderTextureCount = 0;
     std::size_t unresolvedEmbeddedGenericShaderTextureCount = 0;
     std::size_t unresolvedGenericShaderSourceCount = 0;
+    std::map<std::uint32_t,std::size_t> textureApplyFallbackModes;
     std::set<std::string> missingTextureRefs;
     std::set<std::string> shaderNames;
     std::set<std::pair<std::string,std::uint32_t>> genericShaderMaps;
@@ -15767,6 +15768,10 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                 ++genericShaderFallbackParts;
         }
         triangleCount += part.triangleIndices.size() / 3;
+        if (part.textureApplyMode != 0u &&
+            part.textureApplyMode != 1u &&
+            part.textureApplyMode != 2u)
+            ++textureApplyFallbackModes[part.textureApplyMode];
         for (const auto& slot : part.textureSlots) {
             if (!slot.present) continue;
             ++textureCount;
@@ -15899,6 +15904,23 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
         }
         ImGui::TextDisabled(L("Shadernamen: %s","Shader names: %s"), shaderList.c_str());
     }
+    if (!textureApplyFallbackModes.empty()) {
+        std::string applyModeList;
+        for (const auto& [mode, count] : textureApplyFallbackModes) {
+            if (!applyModeList.empty()) applyModeList += ", ";
+            const char* modeName =
+                mode == 3u ? "APPLY_HILIGHT" :
+                mode == 4u ? "APPLY_HILIGHT2" : "UNKNOWN";
+            applyModeList += std::string(modeName) + " (" + std::to_string(mode) + "): " +
+                             std::to_string(count);
+        }
+        ImGui::TextColored(
+            ImVec4(1.0f,0.72f,0.30f,1.0f),
+            L("NiTexturingProperty ApplyMode noch nicht materialisiert: %s · Renderer nutzt Modulate-Fallback",
+              "NiTexturingProperty ApplyMode not materialized yet: %s · renderer uses modulate fallback"),
+            applyModeList.c_str());
+    }
+
     if (genericShaderFallbackParts > 0 || model.textureEffectBlocks > 0) {
         ImGui::TextColored(
             ImVec4(1.0f,0.72f,0.30f,1.0f),
