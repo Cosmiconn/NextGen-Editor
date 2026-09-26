@@ -272,5 +272,18 @@ int main(int argc, char** argv) {
     for (const auto& [path, error] : failures)
         std::cout << "FAIL\tpath=" << Clean(path) << "\terror=" << error << '\n';
 
-    return files == 0 ? 1 : 0;
+    if (files == 0) {
+        std::cerr << "No NIF files found.\n";
+        return 1;
+    }
+    if (failed != 0) {
+        std::cerr << "Fixture material audit failed: " << failed << " NIF file(s) did not load.\n";
+        return 1;
+    }
+    if (undecodedEmbedded != 0) {
+        std::cerr << "Fixture material audit failed: " << undecodedEmbedded
+                  << " embedded texture(s) were not decoded.\n";
+        return 1;
+    }
+    return 0;
 }
