@@ -383,7 +383,9 @@ struct NifParticleSystemInfo {
     std::uint32_t stencilFailAction = 0, stencilZFailAction = 0, stencilPassAction = 0;
     std::uint32_t faceDrawMode = 3;
 
+    // Raw local AVObject transform plus resolved root->system transform.
     NifVec3 translation{};
+    NifTransform sceneTransform{};
     std::array<float, 9> rotation{1.0f, 0.0f, 0.0f,
                                   0.0f, 1.0f, 0.0f,
                                   0.0f, 0.0f, 1.0f};

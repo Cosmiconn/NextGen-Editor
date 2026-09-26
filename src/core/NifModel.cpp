@@ -4214,6 +4214,19 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             out.scale = in.scale;
             return out;
         };
+        for (auto& system : model.particleSystems) {
+            SkinTransform effective{};
+            int node = static_cast<int>(system.blockIndex);
+            int guard = 0;
+            for (; node >= 0 && guard < 128; ++guard) {
+                if (static_cast<std::size_t>(node) >= scene.size()) break;
+                const auto& sn = scene[static_cast<std::size_t>(node)];
+                if (sn.present) effective = multiplyTransform(sceneTransform(sn), effective);
+                node = parentOf[static_cast<std::size_t>(node)];
+            }
+            system.sceneTransform = publicTransform(effective);
+        }
+
         auto relativeBoneTransform = [&](int boneBlock, int skeletonRoot, SkinTransform& out) {
             out = SkinTransform{};
             if (boneBlock < 0 || static_cast<std::size_t>(boneBlock) >= scene.size()) return false;
