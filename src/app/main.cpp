@@ -12187,7 +12187,7 @@ void DrawToolsContent(EditorState& state) {
                         if (DrawIconButton("npcLuaAction","Lua / AI",DrawIconCode,false,ImVec2(86,56),true,"module.ai"))
                             OpenAiScriptEditor(state,rec.values[0]);
                         ImGui::SameLine();
-                        if (DrawIconButton("npcRouteAction","Route",DrawIconRoute,false,ImVec2(86,56)))
+                        if (DrawIconButton("npcRouteAction","Route",DrawIconRoute,false,ImVec2(86,56),true,"gameplay.path"))
                             OpenPatrolRouteEditor(state,rec.values[0]);
 
                         if (rec.values[6] == "Merchant") {
@@ -12290,10 +12290,12 @@ void DrawToolsContent(EditorState& state) {
                                     const std::string header = sr.values[1] + " x" + sr.values[2] + "##spawn";
                                     if (UI::CollapsingHeader(header.c_str())) {
                                         DrawShineRecordFields(sr.values, spawnTable->columns, 1);
-                                        if (DrawTinyIconButton("mobLua",DrawIconCode,false,L("KI / Lua bearbeiten","Edit AI / Lua")))
+                                        if (DrawTinyIconButton("mobLua",DrawIconCode,false,L("KI / Lua bearbeiten","Edit AI / Lua"),
+                                                               ImVec2(22,22),"module.ai"))
                                             OpenAiScriptEditor(state,sr.values[1]);
                                         ImGui::SameLine(0,3);
-                                        if (DrawTinyIconButton("mobRoute",DrawIconRoute,false,L("MobRoam-Route bearbeiten","Edit MobRoam route")))
+                                        if (DrawTinyIconButton("mobRoute",DrawIconRoute,false,L("MobRoam-Route bearbeiten","Edit MobRoam route"),
+                                                                 ImVec2(22,22),"gameplay.path"))
                                             OpenPatrolRouteEditor(state,sr.values[1]);
                                         ImGui::SameLine();
                                         if (state.mobDeleteArmed && UI::SmallButton(L("Monster entfernen","Remove monster"))) removeSpawn = static_cast<int>(si);
@@ -14411,7 +14413,8 @@ void DrawSceneOutlinerPanel(EditorState& state) {
         ImGui::TextDisabled("%zu NPCs", indices.size());
         ImGui::SameLine();
         if (DrawTinyIconButton("npcRouteOverlayVisible", DrawIconRoute, state.showRoamRoutes,
-                               state.showRoamRoutes ? L("Routen-Overlay ausblenden","Hide route overlay") : L("Routen-Overlay einblenden","Show route overlay"))) {
+                               state.showRoamRoutes ? L("Routen-Overlay ausblenden","Hide route overlay") : L("Routen-Overlay einblenden","Show route overlay"),
+                               ImVec2(22,22),"gameplay.path")) {
             state.showRoamRoutes = !state.showRoamRoutes;
             state.roamOverlayKey.clear();
         }
@@ -14515,17 +14518,20 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                         if (hasSelectedRoute) {
                             ImGui::SameLine();
                             DrawInlineIcon("route", DrawIconRoute, IM_COL32(90,220,255,245),
-                                           L("MobRoam-Route vorhanden","MobRoam route available"));
+                                           L("MobRoam-Route vorhanden","MobRoam route available"),
+                                           ImVec2(20,20),"gameplay.path");
                         }
 
                         ImGui::Indent(24.0f);
                         if (DrawTinyIconButton("npcInlineDialog",DrawIconDialog,false,L("Dialog bearbeiten","Edit dialog")))
                             OpenNpcDialogEditor(state,rec.values[0]);
                         ImGui::SameLine(0,3);
-                        if (DrawTinyIconButton("npcInlineAi",DrawIconCode,false,L("Lua / AI bearbeiten","Edit Lua / AI")))
+                        if (DrawTinyIconButton("npcInlineAi",DrawIconCode,false,L("Lua / AI bearbeiten","Edit Lua / AI"),
+                                                   ImVec2(22,22),"module.ai"))
                             OpenAiScriptEditor(state,rec.values[0]);
                         ImGui::SameLine(0,3);
-                        if (DrawTinyIconButton("npcInlineRoute",DrawIconRoute,false,L("Route bearbeiten","Edit route")))
+                        if (DrawTinyIconButton("npcInlineRoute",DrawIconRoute,false,L("Route bearbeiten","Edit route"),
+                                                      ImVec2(22,22),"gameplay.path"))
                             OpenPatrolRouteEditor(state,rec.values[0]);
                         if (entry.role == "Merchant") {
                             ImGui::SameLine(0,3);
@@ -14578,7 +14584,8 @@ void DrawSceneOutlinerPanel(EditorState& state) {
         ImGui::TextDisabled(L("%zu Spawn-Zonen","%zu spawn zones"), zones->records.size());
         ImGui::SameLine();
         if (DrawTinyIconButton("mobRouteOverlayVisible", DrawIconRoute, state.showRoamRoutes,
-                               state.showRoamRoutes ? L("Routen-Overlay ausblenden","Hide route overlay") : L("Routen-Overlay einblenden","Show route overlay"))) {
+                               state.showRoamRoutes ? L("Routen-Overlay ausblenden","Hide route overlay") : L("Routen-Overlay einblenden","Show route overlay"),
+                               ImVec2(22,22),"gameplay.path")) {
             state.showRoamRoutes = !state.showRoamRoutes;
             state.roamOverlayKey.clear();
         }
@@ -14689,7 +14696,8 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                         if (hasSelectedRoute) {
                             ImGui::SameLine();
                             DrawInlineIcon("route", DrawIconRoute, IM_COL32(90,220,255,245),
-                                           L("Mindestens eine MobRoam-Route vorhanden","At least one MobRoam route is available"));
+                                           L("Mindestens eine MobRoam-Route vorhanden","At least one MobRoam route is available"),
+                                           ImVec2(20,20),"gameplay.path");
                         }
 
                         if (spawns) {
@@ -14698,15 +14706,18 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                                 const auto& spawn=spawns->records[si];
                                 if (spawn.values.size()<2 || spawn.values[0]!=rec.values[0]) continue;
                                 ImGui::PushID(static_cast<int>(si));
-                                DrawInlineIcon("mobEntry",DrawIconPerson,IM_COL32(180,195,215,235),L("MobRegen-Eintrag","MobRegen entry"),ImVec2(18,18));
+                                DrawInlineIcon("mobEntry",DrawIconPerson,IM_COL32(180,195,215,235),L("MobRegen-Eintrag","MobRegen entry"),
+                                               ImVec2(18,18),"nav.spawns");
                                 ImGui::SameLine(0,3);
                                 const int amount=spawn.values.size()>=3?std::max(0,std::atoi(spawn.values[2].c_str())):0;
                                 ImGui::Text("%s  x%d",spawn.values[1].c_str(),amount);
                                 ImGui::SameLine();
-                                if (DrawTinyIconButton("mobEntryAi",DrawIconCode,false,L("Lua / AI bearbeiten","Edit Lua / AI"),ImVec2(19,19)))
+                                if (DrawTinyIconButton("mobEntryAi",DrawIconCode,false,L("Lua / AI bearbeiten","Edit Lua / AI"),
+                                                       ImVec2(19,19),"module.ai"))
                                     OpenAiScriptEditor(state,spawn.values[1]);
                                 ImGui::SameLine(0,2);
-                                if (DrawTinyIconButton("mobEntryRoute",DrawIconRoute,false,L("MobRoam-Route bearbeiten","Edit MobRoam route"),ImVec2(19,19)))
+                                if (DrawTinyIconButton("mobEntryRoute",DrawIconRoute,false,L("MobRoam-Route bearbeiten","Edit MobRoam route"),
+                                                          ImVec2(19,19),"gameplay.path"))
                                     OpenPatrolRouteEditor(state,spawn.values[1]);
                                 ImGui::PopID();
                             }
@@ -14820,7 +14831,8 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                         } else {
                             ImGui::TextDisabled("Position: %.0f / %.0f",m.x,m.y);
                             ImGui::SameLine();
-                            if (DrawTinyIconButton("portalInlinePick",DrawIconMove,state.portalPickMode,L("Position per 2D-Klick setzen","Set position by 2D click"),ImVec2(19,19)))
+                            if (DrawTinyIconButton("portalInlinePick",DrawIconMove,state.portalPickMode,L("Position per 2D-Klick setzen","Set position by 2D click"),
+                                                      ImVec2(19,19),"transform.move"))
                                 state.portalPickMode=!state.portalPickMode;
                         }
                         ImGui::Unindent(24.0f);
