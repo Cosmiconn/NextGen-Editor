@@ -3740,6 +3740,30 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 dst.center = src.center;
                 refs[slotIndex] = src.sourceRef;
             }
+            // ShaderTexDesc immer verlustfrei am Part erhalten. mapId bleibt shader-spezifisch
+            // und wird erst in einem nachweislich bekannten Shaderpfad auf feste Renderer-Slots
+            // abgebildet. Dadurch kann der Material-Auditor unbekannte Shaderdaten inventarisieren,
+            // ohne ihnen plausible, aber unbewiesene Semantik zu geben.
+            part.shaderTextureSlots.clear();
+            part.shaderTextureSlots.reserve(ts.shaderSlots.size());
+            for (const auto& [mapId, src] : ts.shaderSlots) {
+                NifShaderTextureSlot shaderSlot;
+                shaderSlot.mapId = mapId;
+                shaderSlot.sourceTextureRef = src.sourceRef;
+                auto& dst = shaderSlot.texture;
+                dst.present = src.present;
+                dst.uvSet = src.uvSet;
+                dst.clampMode = src.clampMode;
+                dst.filterMode = src.filterMode;
+                dst.hasTransform = src.hasTransform;
+                dst.translation = src.translation;
+                dst.scale = src.scale;
+                dst.rotation = src.rotation;
+                dst.transformType = src.transformType;
+                dst.center = src.center;
+                part.shaderTextureSlots.push_back(std::move(shaderSlot));
+            }
+
             // Original Gamebryo VCAlphaTextureBlender shader: artist maps
             // 0=Texture1, 1=Texture2, 2=Detail.
             if (part.shaderName == "VCAlphaTextureBlender") {
@@ -4362,6 +4386,26 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                                   it->second.filename.c_str(), it->second.pixelDataRef);
             }
         }
+        // ShaderTexDesc-Quellen separat auflösen. Sie dürfen nicht automatisch in die
+        // klassischen Slots gespiegelt werden; nur verifizierte Shaderpfade wie
+        // VCAlphaTextureBlender tun das oben explizit.
+        for (auto& shaderSlot : part.shaderTextureSlots) {
+            if (shaderSlot.sourceTextureRef < 0) continue;
+            const auto it = sourceTextures.find(static_cast<std::uint32_t>(shaderSlot.sourceTextureRef));
+            if (it == sourceTextures.end()) continue;
+            auto& slot = shaderSlot.texture;
+            slot.texture = it->second.filename;
+            slot.sourceUsesEmbeddedPixelData = it->second.useExternal == 0;
+            slot.sourcePixelDataRef = it->second.pixelDataRef;
+            if (it->second.useExternal == 0 && it->second.pixelDataRef >= 0) {
+                const auto pix = embeddedPixelTextures.find(static_cast<std::uint32_t>(it->second.pixelDataRef));
+                if (pix != embeddedPixelTextures.end()) slot.embeddedTexture = pix->second;
+                else std::fprintf(stderr,
+                                  "[NifModel] ShaderTexDesc map %u source '%s' verweist auf nicht dekodierte NiPixelData %d\n",
+                                  shaderSlot.mapId, it->second.filename.c_str(), it->second.pixelDataRef);
+            }
+        }
+
         // Kompatibilitaets-Aliase fuer bestehende Aufrufer/Diagnose.
         if (part.textureSlots[0].present) {
             part.diffuseTexture = part.textureSlots[0].texture;
