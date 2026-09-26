@@ -40,6 +40,9 @@ Eye/Lock stehen immer gleich. Hierarchie: 16 px Einrückung. Gruppen zeigen Coun
 Reihenfolge: Transform → Modell/Daten → Anzeige → Gameplay/Spezial.  
 2-spaltige Label/Value-Struktur. Referenzen werden klickbare Chips/Links.
 
+## Context Menus
+Kontextmenüs verwenden zentral `DrawContextMenuHeader(...)`: semantisches Paketicon (oder dokumentierter Fallback), kurzer Kontexttitel, optionale Sekundärinfo, danach klar getrennte Aktionsgruppen. Fokus/Navigation steht vor Bearbeiten; destructive Aktionen stehen separat am Ende. Portal bleibt auf dem Legacy-Fallback, solange kein dediziertes Final-Paketicon existiert.
+
 ## Toasts
 Unten rechts, 3.5–4.5 s, max. 3 gleichzeitig. Statusfarbe nur als Accent-Balken.
 
