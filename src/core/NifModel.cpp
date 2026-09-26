@@ -3038,6 +3038,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         } else if (type == "NiPosData") {
             SkipNiPosData(r);
         } else if (type == "NiParticleSystem" || type == "NiMeshParticleSystem") {
+            ++model.particleSystemBlocks;
             // NiMeshParticleSystem hat laut Referenz denselben NiParticleSystem-Kopf (nur die
             // referenzierte Daten-Klasse unterscheidet sich, NiMeshPSysData statt NiPSysData -
             // für unsere Zwecke, da wir keine Partikel rendern, ist nur die Kopf-Länge relevant).

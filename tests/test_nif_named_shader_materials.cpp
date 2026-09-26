@@ -152,6 +152,8 @@ void CheckParticleTextureIsolationFixture(const fs::path& root) {
                 if (frame.texture.find("fly01.dds") != std::string::npos) leakedParticleTexture = true;
     }
 
+    Check(model->particleSystemBlocks > 0u,
+          std::string(kFile) + ": NiParticleSystem wird als eigene noch nicht materialisierte Renderklasse gezaehlt");
     Check(!phantomEmptyPart,
           std::string(kFile) + ": Particle-Material erzeugt keinen leeren Mesh-Part");
     Check(untexturedSixtyVertexParts > 0u,

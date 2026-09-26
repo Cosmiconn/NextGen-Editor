@@ -91,6 +91,8 @@ int main(int argc, char** argv) {
     std::size_t undecodedEmbedded = 0;
     std::size_t unsupportedEffects = 0;
     std::size_t inheritedProperties = 0;
+    std::size_t particleSystems = 0;
+    std::map<std::string, std::size_t> particleFiles;
 
     std::map<std::string, std::size_t> shaderParts;
     std::map<std::string, std::set<std::string>> shaderFiles;
@@ -159,6 +161,13 @@ int main(int argc, char** argv) {
             undecodedEmbedded += model->undecodedEmbeddedTextures;
             unsupportedEffects += model->textureEffectUnsupportedBlocks;
             inheritedProperties += model->inheritedPropertyBindings;
+            if (model->particleSystemBlocks > 0u) {
+                particleSystems += model->particleSystemBlocks;
+                particleFiles[entry.path().string()] += model->particleSystemBlocks;
+                // Parsing a particle system is not visual parity: until simulation/draw exists,
+                // any such file is a renderer-fidelity gap.
+                rendererGapFiles.insert(entry.path().string());
+            }
 
             for (std::size_t partIndex = 0; partIndex < model->parts.size(); ++partIndex) {
                 const auto& part = model->parts[partIndex];
@@ -407,6 +416,8 @@ int main(int argc, char** argv) {
               << "\tundecodedEmbedded=" << undecodedEmbedded
               << "\tunsupportedEffects=" << unsupportedEffects
               << "\tinheritedProperties=" << inheritedProperties
+              << "\tparticleSystems=" << particleSystems
+              << "\tparticleFiles=" << particleFiles.size()
               << "\tuvOverflowParts=" << uvRendererOverflowParts
               << "\tuvOverflowBindings=" << uvRendererOverflowBindings
               << "\tmissingRequestedUvBindings=" << missingRequestedUvBindings
@@ -528,6 +539,10 @@ int main(int argc, char** argv) {
     }
     for (const auto& detail : applyModeDetails)
         std::cout << detail << '\n';
+    for (const auto& [path, count] : particleFiles)
+        std::cout << "PARTICLEFILE\tsystems=" << count
+                  << "\trenderer=unmaterialized"
+                  << "\tpath=" << Clean(path) << '\n';
     for (const auto& [mode, partCount] : vertexColorModes)
         std::cout << "VERTEXCOLOR\tmode=" << mode << "\tparts=" << partCount << '\n';
     for (const auto& [mode, partCount] : faceDrawModes)
