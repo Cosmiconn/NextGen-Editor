@@ -37,6 +37,17 @@ std::string Clean(std::string value) {
     return value;
 }
 
+const char* ApplyModeName(std::uint32_t mode) {
+    switch (mode) {
+        case 0: return "APPLY_REPLACE";
+        case 1: return "APPLY_DECAL";
+        case 2: return "APPLY_MODULATE";
+        case 3: return "APPLY_HILIGHT";
+        case 4: return "APPLY_HILIGHT2";
+        default: return "UNKNOWN";
+    }
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -217,10 +228,15 @@ int main(int argc, char** argv) {
     for (const auto& [method, partCount] : transformMethods)
         std::cout << "TEXTRANSFORM\tmethod=" << method << "\tparts=" << partCount << '\n';
     for (const auto& [mode, partCount] : applyModes) {
-        std::cout << "APPLYMODE\tmode=" << mode << "\tparts=" << partCount << '\n';
+        std::cout << "APPLYMODE\tmode=" << mode
+                  << "\tname=" << ApplyModeName(mode)
+                  << "\tparts=" << partCount;
+        if (mode == 3u || mode == 4u) std::cout << "\trenderer=modulate-fallback";
+        std::cout << '\n';
         if (mode != 2u) {
             for (const auto& path : applyModeFiles[mode])
                 std::cout << "APPLYMODEFILE\tmode=" << mode
+                          << "\tname=" << ApplyModeName(mode)
                           << "\tpath=" << Clean(path) << '\n';
         }
     }
