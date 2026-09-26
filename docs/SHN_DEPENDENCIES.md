@@ -38,6 +38,24 @@ View-Tabelle, alle mit identischer Zeilenanzahl UND übereinstimmendem Namens-St
 Ein neuer Eintrag in einer dieser Basis-Dateien braucht mit sehr hoher Wahrscheinlichkeit eine
 passende Zeile in den anderen Familienmitgliedern.
 
+### Verifizierte ID-Mengen und Cross-Link-Regel (26.09.2026)
+
+Die drei Familien wurden zusätzlich direkt gegen `NA2016.zip` auf ihre `ID`-Spalten geprüft.
+Das Ergebnis ist stärker als die frühere reine Zeilenzahl-/Namens-Stamm-Evidenz:
+
+| Familie | Zeilen | eindeutige IDs | ID-Mengen zwischen Familienmitgliedern | wichtige Besonderheit |
+|---|---:|---:|---|---|
+| Item | 14.999 | 14.999 | exakt identisch | `ItemViewInfo` hat 115 IDs an anderer Zeilenposition als `ItemInfo`; Cross-Link MUSS per ID suchen, niemals per Row-Index |
+| Mob | 2.878 | 2.878 | exakt identisch | IDs liegen in allen drei geprüften Dateien zeilenweise gleich |
+| ActiveSkill | 2.791 | 2.790 | exakt identisch | ID **9034** kommt zweimal vor; ein ID-only Cross-Link ist dort absichtlich als mehrdeutig zu behandeln |
+
+Daraus folgt für den Editor:
+- grün: ID in allen **geladenen** verifizierten Familienmitgliedern vorhanden;
+- rot: ID fehlt in mindestens einem geladenen Familienmitglied;
+- gelb: ID ist im aktuellen oder Ziel-Dokument mehrfach vorhanden und daher als ID-only-Link mehrdeutig;
+- ein nicht geladenes Familienmitglied ist **kein Fehler** und wird nur als „nicht geladen“ angezeigt;
+- Cross-Links navigieren per `ID`, nicht per Zeilennummer.
+
 ## Weitere Namens-Stamm-Paare (mittlere bis hohe Konfidenz)
 
 Zeilenzahl-Differenzen sind hier bewusst vermerkt - sie deuten auf Teilmengen- oder
@@ -84,3 +102,5 @@ Basis-Datei ändert (nicht nur bei neuen Einträgen):
 `FindDependencyPeers` (main.cpp, vereint `FindRowCountPeers` + `FindNameStemPeers`) markiert
 im Datei-Browser des Single-SHN-Editors automatisch alle hier per Namens-Stamm ODER
 Zeilenanzahl gefundenen Familienmitglieder mit einem gelben ⚠-Symbol + Tooltip.
+
+Zusätzlich besitzt der Single-SHN-Grid jetzt eine **streng begrenzte semantische Referenzprüfung** für die drei oben verifizierten ID-Familien Item/Mob/ActiveSkill. ID-Zellen erhalten Grün/Rot/Gelb-Status, der ausgewählte Datensatz zeigt die geladenen Familienziele, und eindeutige Treffer sind direkt anklickbar. Für andere Dateien/Spalten wird bewusst keine Referenzsemantik erfunden.

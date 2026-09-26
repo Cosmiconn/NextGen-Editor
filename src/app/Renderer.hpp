@@ -86,6 +86,11 @@ public:
                             float uvOffsetX = 0.0f, float uvOffsetY = 0.0f);
     [[nodiscard]] std::uint32_t EndTopDownScene();
 
+    // Unabhängige, nicht-interaktive Ganzkarten-Draufsicht für das Minimap-Dock. Verwendet
+    // bewusst einen dritten FBO, damit 2D-Editor-Zoom und Minimap im selben ImGui-Frame nicht
+    // dieselbe GL-Textur überschreiben. Diese API exportiert KEINE Fiesta-Datei.
+    [[nodiscard]] std::uint32_t RenderTopDownOverview(int width, int height);
+
 private:
     void EnsureFramebuffer(int width, int height);
     // Gemeinsame Zeichenlogik für 3D-Perspektiv- und 2D-Draufsicht (Shader-Uniforms setzen,
@@ -129,6 +134,16 @@ private:
     int fbo2dWidth_ = 0;
     int fbo2dHeight_ = 0;
     void EnsureFramebuffer2d(int width, int height);
+
+    // Dritter FBO nur für die Minimap-/Overview-Vorschau. Die Trennung ist notwendig, weil
+    // ImGui Textur-IDs erst am Frame-Ende zeichnet und eine später neu gerenderte 2D-Textur
+    // sonst rückwirkend auch die bereits eingereihte Minimap-Anzeige verändern würde.
+    std::uint32_t fboOverview_ = 0;
+    std::uint32_t fboOverviewColorTex_ = 0;
+    std::uint32_t fboOverviewDepthRbo_ = 0;
+    int fboOverviewWidth_ = 0;
+    int fboOverviewHeight_ = 0;
+    void EnsureFramebufferOverview(int width, int height);
 
     // Einfaches Vollbild-Quad (2 Dreiecke) für DrawTopDownOverlay.
     std::uint32_t overlayVao_ = 0;

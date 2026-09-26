@@ -51,6 +51,75 @@ int main(int argc, char** argv) {
         }
     }
 
+    // Regression: echte World/ItemDropTable.txt-Dateien besitzen 290 Datenspalten plus ein
+    // "\t;"-Sentinel im Header. Manche Records tragen dort ";" und andere nur ein leeres
+    // Auffuellfeld. Beides darf NICHT als 291. Datenspalte erscheinen; Speichern muss das
+    // Sentinel trotzdem byte-/formatgetreu erhalten.
+    {
+        constexpr std::size_t kWideColumns = 290;
+        const auto widePath = std::filesystem::temp_directory_path() / "nextgen_shinetext_wide_sentinel.txt";
+        const auto wideRoundtrip = std::filesystem::temp_directory_path() / "nextgen_shinetext_wide_roundtrip.txt";
+        const auto wideEdited = std::filesystem::temp_directory_path() / "nextgen_shinetext_wide_edit.txt";
+
+        std::ofstream wideOut(widePath, std::ios::binary | std::ios::trunc);
+        assert(wideOut);
+        wideOut << "#TABLE\tItemGroup\r\n";
+        wideOut << "#COLUMNTYPE";
+        for (std::size_t i = 0; i < kWideColumns; ++i) wideOut << "\tDWord";
+        wideOut << "\t;\r\n";
+        wideOut << "#COLUMNNAME";
+        for (std::size_t i = 0; i < kWideColumns; ++i) wideOut << "\tC" << i;
+        wideOut << "\t;\r\n";
+
+        auto writeWideRecord = [&](const char* prefix, bool semicolon) {
+            wideOut << "#RECORD";
+            for (std::size_t i = 0; i < kWideColumns; ++i)
+                wideOut << "\t" << (i == 0 ? prefix : std::to_string(i));
+            wideOut << "\t";
+            if (semicolon) wideOut << ";";
+            wideOut << "\r\n";
+        };
+        writeWideRecord("A", true);
+        writeWideRecord("B", false);
+        wideOut.close();
+
+        auto wide = LoadShineTextFile(widePath);
+        assert(wide && wide->tables.size() == 1);
+        assert(wide->tables[0].trailingSemicolonSentinel);
+        assert(wide->tables[0].columns.size() == kWideColumns);
+        assert(wide->tables[0].records.size() == 2);
+        assert(wide->tables[0].records[0].values.size() == kWideColumns);
+        assert(wide->tables[0].records[1].values.size() == kWideColumns);
+
+        assert(SaveShineTextFile(*wide, wideRoundtrip));
+        {
+            std::ifstream a(widePath, std::ios::binary), b(wideRoundtrip, std::ios::binary);
+            std::vector<char> av((std::istreambuf_iterator<char>(a)), {}), bv((std::istreambuf_iterator<char>(b)), {});
+            assert(av == bv && "wide Shine sentinel roundtrip must remain byte-identical");
+        }
+
+        wide->tables[0].records[0].values[0] = "EDIT";
+        ShineRecord added;
+        added.values.assign(kWideColumns, "0");
+        added.values[0] = "NEW";
+        added.sourceLine = 0;
+        wide->tables[0].records.push_back(std::move(added));
+        assert(SaveShineTextFile(*wide, wideEdited));
+
+        auto wideReloaded = LoadShineTextFile(wideEdited);
+        assert(wideReloaded && wideReloaded->tables.size() == 1);
+        assert(wideReloaded->tables[0].columns.size() == kWideColumns);
+        assert(wideReloaded->tables[0].records.size() == 3);
+        assert(wideReloaded->tables[0].records[0].values[0] == "EDIT");
+        assert(wideReloaded->tables[0].records.back().values[0] == "NEW");
+        for (const auto& record : wideReloaded->tables[0].records)
+            assert(record.values.size() == kWideColumns);
+
+        std::filesystem::remove(widePath);
+        std::filesystem::remove(wideRoundtrip);
+        std::filesystem::remove(wideEdited);
+    }
+
     // Bestehenden Record bearbeiten, speichern, neu laden, Änderung muss ankommen - Rest der
     // Datei (andere Records, Kommentare) darf sich nicht verändern.
     auto edited = f;

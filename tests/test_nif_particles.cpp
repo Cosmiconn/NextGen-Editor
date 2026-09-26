@@ -140,12 +140,94 @@ int main(int argc, char** argv) {
             check(model->parts.size() == 13 && vertices == 2978 && triangles == 1760 && textures == 12,
                   "machine: 13 parts / 2978 vertices / 1760 triangles / 12 textures");
         }
+        if (std::string(name) == "DarkVally_Frog.nif") {
+            check(model->textureEffectBlocks > 0, "real fixture contains NiTextureEffect");
+            check(model->textureEffectEnvironmentSphereBlocks > 0,
+                  "real fixture contains verified environment/sphere effect");
+            const auto effectPart = std::find_if(model->parts.begin(), model->parts.end(), [](const auto& part) {
+                return std::any_of(part.textureEffects.begin(), part.textureEffects.end(), [](const auto& effect) {
+                    return effect.enabled && effect.textureType == 2u && effect.coordGenType == 2u &&
+                           effect.sourceTextureRef >= 0;
+                });
+            });
+            check(effectPart != model->parts.end(),
+                  "NiTextureEffect node binding reaches affected real mesh part");
+            if (effectPart != model->parts.end()) {
+                const auto effect = std::find_if(effectPart->textureEffects.begin(), effectPart->textureEffects.end(),
+                    [](const auto& candidate) {
+                        return candidate.enabled && candidate.textureType == 2u &&
+                               candidate.coordGenType == 2u;
+                    });
+                check(effect != effectPart->textureEffects.end() &&
+                      (!effect->texture.empty() || effect->embeddedTexture || effect->sourceUsesEmbeddedPixelData),
+                      "NiTextureEffect source is preserved/resolved");
+            }
+        }
         std::cout << name << ": " << model->parts.size() << " parts, " << vertices << " vertices, " << triangles << " triangles\n";
     }
     for (const char* name : {"RouTempDn01_ground.nif", "treeThin.nif", "DarkVally_Frog.nif", "MapLinkGate2.nif"}) {
         const auto model = LoadNifMesh(fixtures / name, false);
         check(model && !model->parts.empty() && !model->recovered && !model->partial, name);
         if (!model) std::cerr << model.error() << '\n';
+    }
+    {
+        const auto gate = LoadNifMesh(fixtures / "MapLinkGate2.nif", false);
+        check(gate.has_value(), "MapLinkGate2 particle metadata loads");
+        if (gate) {
+            check(gate->particleSystemBlocks == gate->particleSystems.size(),
+                  "particle block count matches preserved particle system descriptors");
+            check(!gate->particleSystems.empty(),
+                  "MapLinkGate2 exposes authored particle systems instead of silently skipping them");
+            std::size_t systemsWithData = 0;
+            std::size_t authoredParticles = 0;
+            for (const auto& system : gate->particleSystems) {
+                check(system.dataRef >= 0, "particle system keeps data block reference");
+                check(!system.modifierRefs.empty(), "particle system keeps modifier wiring");
+                check(system.modifierTypes.size() == system.modifierRefs.size(),
+                      "particle modifier references resolve to explicit block types");
+                for (const auto& modifierType : system.modifierTypes)
+                    check(modifierType != "<invalid>", "particle modifier type reference is valid");
+                if (system.hasParticleData) {
+                    ++systemsWithData;
+                    check(system.particleData.activeCount <= system.particleData.capacity,
+                          "particle active count never exceeds authored capacity");
+                    check(system.particleData.particles.size() == system.particleData.capacity,
+                          "particle state array preserves every authored slot");
+                    authoredParticles += system.particleData.particles.size();
+                }
+            }
+            std::size_t parsedModifiers = 0;
+            for (const auto& system : gate->particleSystems) {
+                parsedModifiers += system.modifiers.size();
+                for (const auto& modifier : system.modifiers) {
+                    check(!modifier.type.empty(), "parsed particle modifier keeps its concrete type");
+                    check(modifier.targetRef >= 0, "parsed particle modifier keeps target system reference");
+                }
+            }
+            check(parsedModifiers > 0u, "MapLinkGate2 preserves particle modifier parameters");
+            check(systemsWithData == gate->particleSystems.size(),
+                  "every MapLinkGate2 particle system resolves its NiPSysData block");
+            check(authoredParticles > 0u,
+                  "MapLinkGate2 preserves authored particle positions/state for renderer bootstrap");
+            std::size_t texturedSystems = 0;
+            for (const auto& system : gate->particleSystems)
+                if (system.textureSlots[0].present &&
+                    (!system.textureSlots[0].texture.empty() || system.textureSlots[0].embeddedTexture))
+                    ++texturedSystems;
+            check(texturedSystems > 0u,
+                  "MapLinkGate2 particle materials resolve their authored base textures");
+            for (const auto& system : gate->particleSystems) {
+                for (const auto& animation : system.textureTransformAnimations)
+                    check(animation.slot < system.textureSlots.size() && animation.operation <= 4u,
+                          "particle texture-transform controller targets supported slot/operation");
+                for (const auto& animation : system.textureFlipAnimations)
+                    check(animation.slot < system.textureSlots.size() && !animation.frames.empty(),
+                          "particle flip controller resolves authored frame textures");
+                for (const auto& shaderSlot : system.shaderTextureSlots)
+                    check(shaderSlot.texture.present,
+                          "particle ShaderTexDesc stays attached to its particle material");
+            }
+        }
     }
     // Strict standard loading must reject both missing and trailing footer bytes.
     std::ifstream input(fixtures / "machine.nif", std::ios::binary);

@@ -13,17 +13,44 @@ Der Emulator ist ein separates Projekt und wurde in diesem Editor-Release nicht 
 GUI-freier Kern und Prüfwerkzeuge, ohne externe Bibliotheken:
 
 ```powershell
-cmake -S . -B build -DNEXTGEN_EDITOR_BUILD_GUI=OFF
+cmake -S . -B build -DNEXTGEN_EDITOR_CORE_ONLY=ON
 cmake --build build --config Release
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-Vollständige Windows-App mit vcpkg:
+Vollständige Windows-App mit vcpkg. Unter Windows ist die GUI standardmäßig aktiviert; wenn
+`VCPKG_ROOT` oder `VCPKG_INSTALLATION_ROOT` gesetzt ist, wird der Toolchain-Pfad automatisch
+erkannt:
 
 ```powershell
-cmake -S . -B build -DNEXTGEN_EDITOR_BUILD_GUI=ON "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+cmake -S . -B build
 cmake --build build --config Release
-.\build\Release\map_editor.exe
+.\build\Release\Editor.exe
+```
+
+Ohne gesetzte vcpkg-Umgebungsvariable kann der Toolchain-Pfad weiterhin explizit angegeben werden:
+
+```powershell
+cmake -S . -B build "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
+cmake --build build --config Release
+```
+
+Ältere Revisionen konnten in einem vorhandenen `build`-Ordner
+`NEXTGEN_EDITOR_BUILD_GUI=OFF` hinterlassen. Unter Windows wird dieser alte Cachewert jetzt
+automatisch korrigiert: ein normaler Configure/Build erzeugt wieder `Editor.exe`.
+
+```powershell
+cmake -S . -B build
+cmake --build build --config Release --target map_editor
+.\\build\\Release\\Editor.exe
+```
+
+Nur wenn bewusst **ohne** Desktop-Editor gebaut werden soll, wird der neue explizite
+Core-only-Schalter verwendet:
+
+```powershell
+cmake -S . -B build-core -DNEXTGEN_EDITOR_CORE_ONLY=ON
+cmake --build build-core --config Release
 ```
 
 C++23 einschließlich `std::expected` ist erforderlich. Lokal geprüft mit MSVC 19.51.

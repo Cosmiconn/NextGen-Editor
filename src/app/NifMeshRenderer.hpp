@@ -6,7 +6,9 @@
 // Platzhalter - beide Renderer arbeiten zusammen im selben 3D-Vorschau-Pass.
 //
 // Texturierung: klassische NiTexturingProperty-Slots Base/Dark/Detail/Gloss/Glow/Bump/Decal
-// werden gleichzeitig ausgewertet, inklusive eigener UV-Sets und Texture-Transforms. DDS/TGA
+// werden gleichzeitig ausgewertet, inklusive eigener UV-Sets und Texture-Transforms.
+// VCAlphaTextureBlender wird zusätzlich mit seinen drei ShaderTexDesc-Maps und Vertex-Alpha
+// nach der originalen Gamebryo-Shaderlogik gerendert. DDS/TGA
 // werden intern dekodiert; unter Windows ergaenzt WIC JPG/PNG/BMP (relevant z.B. fuer echte
 // Fiesta-Bumpmaps). Use External=0 verwendet weiterhin eingebettete NiPixelData.
 //
@@ -16,8 +18,10 @@
 #include "Camera.hpp"
 #include "mapeditor/core/NifModel.hpp"
 #include "mapeditor/core/ObjectPlacement.hpp"
+#include "mapeditor/core/DdsImage.hpp"
 
 #include <array>
+#include <expected>
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -26,6 +30,12 @@
 #include <vector>
 
 namespace theseed::mapeditor::app {
+
+// Plattform-Rasterdecoder für Editor-Vorschauen. Unter Windows nutzt er denselben WIC-Pfad
+// wie der NIF-Renderer (PNG/JPG/BMP), auf anderen Plattformen liefert er einen klaren Fehler.
+// Dadurch braucht der Interface-Browser keine zweite Bildbibliothek.
+std::expected<core::DdsImage, std::string> LoadPlatformRasterImage(
+    const std::filesystem::path& file);
 
 class NifMeshRenderer {
 public:
@@ -50,6 +60,13 @@ public:
     [[nodiscard]] bool HasRealMesh(std::size_t objectIndex) const;
     [[nodiscard]] std::size_t RealMeshCount() const;
 
+    // Exaktes Editor-Picking gegen die geladenen NIF-Dreiecke. Liefert die Entfernung
+    // entlang des normalisierten Weltstrahls oder nullopt, wenn dieses Objekt nicht
+    // getroffen wurde. Billboard- und LOD-Transforms entsprechen dem Renderpfad.
+    [[nodiscard]] std::optional<float> RaycastObject(
+        const core::ObjectPlacementSet& set, std::size_t objectIndex, const OrbitCamera& camera,
+        const std::array<float, 3>& rayOrigin, const std::array<float, 3>& rayDirection) const;
+
     // Zeichnet alle Objekte mit erfolgreich geladenem Mesh in den aktuell gebundenen
     // Framebuffer (siehe HeightmapRenderer::BeginScene/EndScene).
     // hidden: optional, je Objektindex != 0 -> Objekt wird nicht gezeichnet (Sichtbarkeit/Kategorien).
@@ -66,7 +83,16 @@ private:
         std::array<float, 2> translation{0.0f, 0.0f};
         std::array<float, 2> scale{1.0f, 1.0f};
         float rotation = 0.0f;
+        std::uint32_t transformType = core::kNifTextureTransformMayaDeprecated;
         std::array<float, 2> center{0.5f, 0.5f};
+    };
+
+    static constexpr std::size_t kMaxEnvironmentSphereEffects = 6;
+
+    struct EnvironmentSphereEffectBinding {
+        std::uint32_t texture = 0;
+        std::uint32_t clampMode = 3;
+        std::uint32_t filterMode = 2;
     };
 
     struct SubMesh {
@@ -74,7 +100,18 @@ private:
         std::uint32_t vbo = 0;
         std::uint32_t ebo = 0;
         std::uint32_t indexCount = 0;
+        // CPU-Kopie nur fuer Editor-Ray-Picking. Sie liegt im deduplizierten Modell-Cache,
+        // nicht pro platzierter Instanz.
+        std::vector<core::NifVec3> pickPositions;
+        std::vector<std::uint32_t> pickIndices;
+        std::array<float, 3> localBoundsMin{};
+        std::array<float, 3> localBoundsMax{};
         std::array<TextureBinding, 10> textures{};
+        // GL 3.3 guarantees at least 16 fragment texture units. Ten are reserved for the
+        // classic NiTexturingProperty stages, leaving six guaranteed units for authored
+        // ENVIRONMENT_MAP + SPHERE_MAP NiTextureEffects in the same draw.
+        std::array<EnvironmentSphereEffectBinding, kMaxEnvironmentSphereEffects> environmentSphereEffects{};
+        std::size_t environmentSphereEffectCount = 0;
         std::vector<core::NifTextureTransformAnimation> textureTransformAnimations;
         struct FlipAnimation {
             std::uint32_t slot = 0;
@@ -83,6 +120,11 @@ private:
         };
         std::vector<FlipAnimation> textureFlipAnimations;
         std::uint32_t textureApplyMode = 2;
+        bool vcAlphaTextureBlender = false;
+        // Effektiver klassischer NIF-Vertexfarbenmodus: 0 ignore, 1 emission,
+        // 2 ambient+diffuse. Der dedizierte VCAlphaTextureBlender nutzt weiterhin
+        // seinen eigenen Shadervertrag und wertet Vertex-RGB/Alpha separat aus.
+        std::uint32_t vertexColorMode = 0;
         std::array<float, 3> ambientColor{1.0f, 1.0f, 1.0f};
         std::array<float, 3> diffuseColor{1.0f, 1.0f, 1.0f};
         std::array<float, 3> specularColor{1.0f, 1.0f, 1.0f};
@@ -100,6 +142,16 @@ private:
         std::uint8_t alphaSrcBlend = 6;
         std::uint8_t alphaDstBlend = 7;
         std::uint8_t alphaTestFunc = 4;
+        bool depthTest = true;
+        bool depthWrite = true;
+        std::uint32_t depthFunction = 3; // ZCOMP_LESS_EQUAL
+        bool stencilEnabled = false;
+        std::uint32_t stencilFunction = 7; // TEST_ALWAYS
+        std::uint32_t stencilReference = 0;
+        std::uint32_t stencilMask = 0xFFFFFFFFu;
+        std::uint32_t stencilFailAction = 0;
+        std::uint32_t stencilZFailAction = 0;
+        std::uint32_t stencilPassAction = 0;
         std::uint32_t faceDrawMode = 3;
 
         bool billboard = false;
@@ -127,8 +179,9 @@ private:
     std::unordered_map<std::string, std::uint32_t> textureCache_; // Schlüssel: aufgelöster Textur-Pfad
     std::vector<const LoadedModel*> perObjectModel_;             // parallel zu set, nullptr = kein Mesh
     struct UniformLocations {
-        int locViewProj = -1, locModel = -1, locLightDir = -1, locCameraPos = -1, locAmbientColor = -1, locDiffuseColor = -1, locSpecularColor = -1, locEmissiveColor = -1, locGlossiness = -1, locSpecularEnabled = -1, locApplyMode = -1, locBumpLumaScale = -1, locBumpLumaOffset = -1, locBumpMatrix = -1, locAlphaTest = -1, locAlphaCutoff = -1, locAlphaTestFunc = -1, locMaterialAlpha = -1;
-        std::array<int, 10> locHasTex{}, locUvSet{}, locHasTransform{}, locTranslation{}, locScale{}, locRotation{}, locCenter{}, locSampler{};
+        int locViewProj = -1, locView = -1, locModel = -1, locLightDir = -1, locCameraPos = -1, locAmbientColor = -1, locDiffuseColor = -1, locSpecularColor = -1, locEmissiveColor = -1, locGlossiness = -1, locSpecularEnabled = -1, locApplyMode = -1, locVcAlphaTextureBlender = -1, locVertexColorMode = -1, locBumpLumaScale = -1, locBumpLumaOffset = -1, locBumpMatrix = -1, locAlphaTest = -1, locAlphaCutoff = -1, locAlphaTestFunc = -1, locMaterialAlpha = -1, locEnvironmentSphereCount = -1;
+        std::array<int, 10> locHasTex{}, locUvSet{}, locHasTransform{}, locTranslation{}, locScale{}, locRotation{}, locTransformType{}, locCenter{}, locSampler{};
+        std::array<int, kMaxEnvironmentSphereEffects> locEnvironmentSampler{};
     } uniforms_;
     struct DrawItem {
         const SubMesh* sub = nullptr;

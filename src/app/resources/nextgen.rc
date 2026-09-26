@@ -1,0 +1,3 @@
+// Windows executable icon for NextGen-Editor.
+// 101 is intentionally kept simple so no generated resource header is required.
+101 ICON "nextgen.ico"

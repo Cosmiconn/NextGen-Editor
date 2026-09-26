@@ -333,6 +333,7 @@ void SkipNiPortal(ByteReader& r) {
 struct NiNodeBlock {
     AVObjectBase base;
     std::vector<std::int32_t> children;
+    std::vector<std::int32_t> effects;
 };
 
 NiNodeBlock ParseNiNode(ByteReader& r) {
@@ -344,8 +345,9 @@ NiNodeBlock ParseNiNode(ByteReader& r) {
         node.children.push_back(r.I32());
     }
     const std::uint32_t numEffects = r.CountU32(1000u);
+    node.effects.reserve(numEffects);
     for (std::uint32_t i = 0; i < numEffects; ++i) {
-        r.I32();
+        node.effects.push_back(r.I32());
     }
     return node;
 }
@@ -387,14 +389,39 @@ NiNodeBlock ParseNiRoom(ByteReader& r) {
     return node;
 }
 
-void SkipNiZBufferProperty(ByteReader& r) {
+struct NifZBufferState {
+    bool test = true;
+    bool write = true;
+    std::uint32_t function = 3; // ZCOMP_LESS_EQUAL
+};
+
+NifZBufferState ParseNiZBufferProperty(ByteReader& r) {
     ParseObjectNetBase(r);
-    r.Skip(6);
+    const std::uint16_t flags = r.U16();
+    const std::uint32_t function = r.U32();
+    return NifZBufferState{
+        (flags & 0x0001u) != 0,
+        (flags & 0x0002u) != 0,
+        function
+    };
 }
 
-void SkipNiVertexColorProperty(ByteReader& r) {
+struct NifVertexColorState {
+    std::uint16_t flags = 0;
+    std::uint32_t vertexMode = 2;    // SRC_AMB_DIF
+    std::uint32_t lightingMode = 1;  // EMI_AMB_DIF
+};
+
+NifVertexColorState ParseNiVertexColorProperty(ByteReader& r) {
     ParseObjectNetBase(r);
-    r.Skip(10);
+    NifVertexColorState out;
+    // Fiesta's supported NIF layouts store the 10-byte NiVertexColorProperty payload
+    // explicitly as flags(u16), vertex_mode(u32), lighting_mode(u32). This is the same
+    // layout consumed by the previous skip path; only the already-read semantics are kept.
+    out.flags = r.U16();
+    out.vertexMode = r.U32();
+    out.lightingMode = r.U32();
+    return out;
 }
 
 // NiAlphaProperty: ObjectNetBase (bei allen geprüften Dateien leer -> 8 Byte) + flags(u16) +
@@ -832,59 +859,91 @@ void SkipKeyGroupBytes(ByteReader& r) {
 // verifizierten Code nicht anzufassen - inhaltlich identisch (gleiche Feldreihenfolge, gleicher
 // UV-Fix aus v0.20.0), da für Partikel-Meshes keine Rendering-Daten extrahiert werden (nur
 // Länge muss stimmen).
-std::uint32_t SkipNiGeometryDataHeader(ByteReader& r, std::uint32_t version) {
-    // NiGeometryData::unknownInt precedes numVertices since 10.2.0.0.
-    // The supported versions are restricted in ParseHeader (no Bethesda layouts).
-    if (version >= 0x0A020000u) r.U32();
+struct ParsedParticleData {
+    NifParticleDataInfo info;
+};
+
+ParsedParticleData ParseNiPSysData(ByteReader& r, std::uint32_t version, bool isMeshVariant = false) {
+    ParsedParticleData out;
+    auto& info = out.info;
+
+    // NiGeometryData header. Particle positions/colors are authored render data, so retain
+    // them instead of merely advancing the reader. Coordinates use the same legacy Z-up ->
+    // editor Y-up remap as NiTriShape/NiTriStrips.
+    if (version >= 0x0A020000u) r.U32(); // group ID / unknownInt
     const std::uint32_t numVerts = r.CountU16(65535u);
+    info.capacity = numVerts;
+    info.particles.resize(numVerts);
     r.U8(); r.U8(); // keep_flags, compress_flags
-    const std::uint8_t hasVerts = r.U8();
-    if (hasVerts) r.Skip(static_cast<std::size_t>(numVerts) * 12u);
+    info.hasPositions = r.U8() != 0;
+    if (info.hasPositions) {
+        for (std::uint32_t i = 0; i < numVerts; ++i) {
+            const float x = r.F32(), y = r.F32(), z = r.F32();
+            info.particles[i].position = {x, z, y};
+        }
+    }
     const std::uint16_t dataFlags = r.CountU16(0xFFFFu);
     const std::uint32_t numUvSets = dataFlags & 0x3Fu;
-    const bool hasTangentSpace = (dataFlags & 0xF000u) != 0; // KORRIGIERT [0.44.35]: alle 4 oberen Bit von tspace_flag (0xF0), nicht nur Bit 4 (0x10) - siehe SkipNiGeometryDataHeader
-    const std::uint8_t hasNormals = r.U8();
+    const bool hasTangentSpace = (dataFlags & 0xF000u) != 0;
+    const bool hasNormals = r.U8() != 0;
     if (hasNormals) {
         r.Skip(static_cast<std::size_t>(numVerts) * 12u);
-        if (hasTangentSpace) r.Skip(static_cast<std::size_t>(numVerts) * 12u * 2u);
+        if (hasTangentSpace) r.Skip(static_cast<std::size_t>(numVerts) * 24u);
     }
-    r.Skip(16); // Bounding-Sphere
-    const std::uint8_t hasColors = r.U8();
-    if (hasColors) r.Skip(static_cast<std::size_t>(numVerts) * 16u);
-    for (std::uint32_t set = 0; set < numUvSets; ++set) {
+    r.Skip(16); // bounding sphere
+    info.hasColors = r.U8() != 0;
+    if (info.hasColors) {
+        for (std::uint32_t i = 0; i < numVerts; ++i) {
+            info.particles[i].color = {r.F32(), r.F32(), r.F32(), r.F32()};
+        }
+    }
+    for (std::uint32_t set = 0; set < numUvSets; ++set)
         r.Skip(static_cast<std::size_t>(numVerts) * 8u);
-    }
     r.U16(); // consistency_flags
     if (version >= 0x14000004u) r.I32(); // additional_data ref
-    return numVerts;
-}
 
-// NiParticlesData : NiGeometryData + has_radii+Radii + num_active(u16) + has_sizes+Sizes +
-// has_rotations+Rotations(Quaternion je 16 Byte) + has_rotation_angles+Angles +
-// has_rotation_axes+Achsen(Vector3 je 12 Byte).
-std::uint32_t SkipNiParticlesData(ByteReader& r, std::uint32_t version) {
-    const std::uint32_t numVerts = SkipNiGeometryDataHeader(r, version);
-    if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 4u); // has_radii
-    r.U16(); // num_active
-    if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 4u); // has_sizes
-    if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 16u); // has_rotations (Quaternion)
-    if (version >= 0x14000004u) {
-        if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 4u); // rotation_angles
-        if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 12u); // rotation_axes
+    info.hasRadii = r.U8() != 0;
+    if (info.hasRadii)
+        for (auto& particle : info.particles) particle.radius = r.F32();
+    info.activeCount = r.U16();
+    if (info.activeCount > info.capacity) r.Invalidate();
+
+    info.hasSizes = r.U8() != 0;
+    if (info.hasSizes)
+        for (auto& particle : info.particles) particle.size = r.F32();
+
+    info.hasRotations = r.U8() != 0;
+    if (info.hasRotations) {
+        for (auto& particle : info.particles) {
+            particle.rotationQuaternion = {r.F32(), r.F32(), r.F32(), r.F32()};
+        }
     }
-    // NiRotatingParticlesData adds fields only through 4.2.2.0, outside our versions.
-    return numVerts;
-}
+    if (version >= 0x14000004u) {
+        info.hasRotationAngles = r.U8() != 0;
+        if (info.hasRotationAngles)
+            for (auto& particle : info.particles) particle.rotationAngle = r.F32();
+        info.hasRotationAxes = r.U8() != 0;
+        if (info.hasRotationAxes) {
+            for (auto& particle : info.particles) {
+                const float x = r.F32(), y = r.F32(), z = r.F32();
+                particle.rotationAxis = {x, z, y};
+            }
+        }
+    }
 
-// NiPSysData : NiParticlesData + je Vertex ein NiParticleInfo (Velocity-Vector3(12) +
-// age/life_span/last_update(je f32=4) + spawn_generation/code(je u16=2) = 28 Byte) +
-// has_unknown_floats+Floats + 2 abschließende u16-Felder.
-// NiMeshPSysData has a counted uint array, not a fixed trailer (Niflib).
-void SkipNiPSysData(ByteReader& r, std::uint32_t version, bool isMeshVariant = false) {
-    const std::uint32_t numVerts = SkipNiParticlesData(r, version);
-    // ParticleDesc: Vector3 + [3 legacy floats] + 3 floats + uint.
-    const std::size_t particleBytes = version <= 0x0A040001u ? 40u : 28u;
-    r.Skip(static_cast<std::size_t>(numVerts) * particleBytes);
+    // NiPSysData ParticleDesc. 20.0.0.4 uses the compact 28-byte form:
+    // velocity + age/lifeSpan/lastUpdate + spawnGeneration/code. Older supported versions
+    // carry three additional legacy floats between velocity and age.
+    for (auto& particle : info.particles) {
+        const float vx = r.F32(), vy = r.F32(), vz = r.F32();
+        particle.velocity = {vx, vz, vy};
+        if (version <= 0x0A040001u) { r.F32(); r.F32(); r.F32(); }
+        particle.age = r.F32();
+        particle.lifeSpan = r.F32();
+        particle.lastUpdate = r.F32();
+        particle.spawnGeneration = r.U16();
+        particle.code = r.U16();
+    }
     if (version >= 0x14000004u && r.U8())
         r.Skip(static_cast<std::size_t>(numVerts) * 4u); // unknown_floats3
     r.U16(); r.U16(); // unknown_short_1, unknown_short_2
@@ -892,235 +951,247 @@ void SkipNiPSysData(ByteReader& r, std::uint32_t version, bool isMeshVariant = f
         if (version >= 0x0A020000u) {
             r.U32(); // unknownInt2
             r.U8();  // unknownByte3
-            const auto count = r.CountU32(); // numUnknownInts1
-            r.Skip(static_cast<std::size_t>(count) * 4u); // unknownInts1
+            const auto count = r.CountU32(256u);
+            r.Skip(static_cast<std::size_t>(count) * 4u);
         }
         r.I32(); // particleMeshes link
     }
+    return out;
 }
 
-// NiPSysModifier-Basis (gemeinsam für alle Partikel-Modifier/Emitter): name(String) +
-// order(u32) + target_ref(i32) + active(u8).
-void SkipNiPSysModifierBase(ByteReader& r) {
-    r.SizedString(); // name
-    r.U32();         // order
-    r.I32();         // target_ref
-    r.U8();          // active
+// Compatibility wrapper retained for the focused byte-layout tests. The production parser
+// now consumes the same bytes through ParseNiPSysData and preserves their authored state.
+void SkipNiPSysData(ByteReader& r, std::uint32_t version, bool isMeshVariant = false) {
+    (void)ParseNiPSysData(r, version, isMeshVariant);
 }
 
-// NiPSysColliderManager: NiPSysModifier-Basis + collider_ref(i32).
-void SkipNiPSysColliderManager(ByteReader& r) {
-    SkipNiPSysModifierBase(r);
-    r.I32(); // collider_ref
-}
-
-// NiPSysCollider-Basis (gemeinsam für alle Kollider-Typen): KEINE NiObjectNET-Basis (reines
-// NiObject!) - bounce(f32) + spawn_on_collide(u8) + die_on_collide(u8) +
-// spawn_modifier_ref(i32) + parent_ptr(i32) + next_collider_ref(i32) + collider_object_ptr
-// (i32) = 22 Byte.
-void SkipNiPSysColliderBase(ByteReader& r) {
-    r.F32(); // bounce
-    r.U8();  // spawn_on_collide
-    r.U8();  // die_on_collide
-    r.I32(); // spawn_modifier_ref
-    r.I32(); // parent
-    r.I32(); // next_collider_ref
-    r.I32(); // collider_object
-}
-
-// NiPSysPlanarCollider: NiPSysCollider-Basis + width(f32) + height(f32) + x_axis(Vector3) +
-// y_axis(Vector3).
-void SkipNiPSysPlanarCollider(ByteReader& r) {
-    SkipNiPSysColliderBase(r);
-    r.Skip(4 + 4 + 12 + 12);
-}
-
-// NiPSysEmitter-Basis (gemeinsam für alle Emitter-Typen): NiPSysModifier + 6 Floats
-// (speed/speed_variation/declination/declination_variation/planar_angle/
-// planar_angle_variation) + initial_color(Color4=16 Byte) + 4 Floats (initial_radius/
-// radius_variation/life_span/life_span_variation).
-void SkipNiPSysEmitterBase(ByteReader& r) {
-    SkipNiPSysModifierBase(r);
-    r.Skip(6 * 4);  // 6 Floats
-    r.Skip(16);     // initial_color (Color4)
-    r.F32(); // initial radius
-    if (r.LegacyLayout() || r.Version() >= 0x0A040001u) r.F32(); // radius variation
-    r.F32(); r.F32(); // lifespan, lifespan variation
-}
-
-// NiPSysVolumeEmitter-Basis: NiPSysEmitter + emitter_object_ref(i32).
-void SkipNiPSysVolumeEmitterBase(ByteReader& r) {
-    SkipNiPSysEmitterBase(r);
-    r.I32(); // emitter_object_ref
-}
-
-// NiPSysBoxEmitter: NiPSysVolumeEmitter + width/height/depth (3 Floats).
-void SkipNiPSysBoxEmitter(ByteReader& r) {
-    SkipNiPSysVolumeEmitterBase(r);
-    r.Skip(3 * 4);
-}
-
-void SkipNiPSysCylinderEmitter(ByteReader& r) {
-    SkipNiPSysVolumeEmitterBase(r);
-    r.F32(); // radius
-    r.F32(); // height
-}
-
-void SkipNiPSysSphereEmitter(ByteReader& r) {
-    SkipNiPSysVolumeEmitterBase(r);
-    r.F32(); // radius
-}
-
-void SkipNiPSysBombModifier(ByteReader& r) {
-    SkipNiPSysModifierBase(r);
-    r.I32(); // bomb object
-    r.F32(); r.F32(); r.F32(); // bomb axis
-    r.F32(); // decay
-    r.F32(); // deltaV
-    r.U32(); // decay type
-    r.U32(); // symmetry type
-}
-
-// NiPSysMeshEmitter: NiPSysEmitter + num_emitter_meshes(u32)+Refs + initial_velocity_type(u32)
-// + emission_axis(Vector3) + emission_type(u32) laut Referenz (PyFFI) - deren genaue
-// Reihenfolge/Typgrößen aber NICHT eindeutig dokumentiert sind (siehe docs/MAP_FORMAT.md
-// Abschnitt 19). STATT die einzelnen Felder zu raten, wird hier nur die GESAMTLÄNGE
-// empirisch verwendet: über 70 reale Dateien hinweg beginnt der jeweils nächste Block
-// (erkennbar an seiner NiPSysModifierBase) mit überwältigender Mehrheit (41 von 70, weitere
-// 4 nur 2 Byte versetzt) rund 315 Byte nach Blockbeginn - unabhängig vom genauen Feld-
-// Layout innerhalb dieser Byte (die Werte selbst werden ohnehin nirgends weiterverwendet, da
-// keine Partikel gerendert werden). Ein systematischer Massentest-Scan über viele
-// Kandidatenwerte (236-260) zeigte KEIN einzelnes eindeutiges Optimum, sondern ein Plateau
-// mehrerer Werte (236/243/244/247/258/260) bei gleichauf bestem Ergebnis (1818/3436) - ein
-// klares Indiz, dass `num_emitter_meshes` in der Praxis PRO INSTANZ variiert (eine fest
-// codierte Länge kann also grundsätzlich nie für alle Dateien exakt stimmen). 244 gewählt,
-// da es der ursprünglichen 246-Byte-Schätzung am nächsten liegt.
-// NiPSysMeshEmitter: NiPSysEmitter + num_emitter_meshes(u32) + emitter_meshes(Ptr, je i32) +
-// initial_velocity_type(u32-Enum VelocityType) + emission_type(u32-Enum EmitFrom) +
-// emission_axis(Vector3). Struktur aus der autoritativen offiziellen niftools/nifxml-
-// Referenzdatei (nif.xml, direkt von GitHub geladen) übernommen - ersetzt den früheren
-// empirischen Kompromiss (fester Skip von 244 Byte, siehe docs/MAP_FORMAT.md Abschnitt 19),
-// der auf zwischenzeitlich durch andere Fixes veränderte (jetzt falsche) Blockpositionen
-// zurückging.
-void SkipNiPSysMeshEmitter(ByteReader& r) {
-    SkipNiPSysEmitterBase(r);
-    const std::uint32_t numEmitterMeshes = r.CountU32(256u);
-    for (std::uint32_t i = 0; i < numEmitterMeshes; ++i) {
-        r.I32();
+// Older NiParticlesData blocks can appear without the NiPSysData ParticleDesc tail. They are
+// not sufficient for simulation yet, so keep their byte-exact skip path separate.
+std::uint32_t SkipNiGeometryDataHeader(ByteReader& r, std::uint32_t version) {
+    if (version >= 0x0A020000u) r.U32();
+    const std::uint32_t numVerts = r.CountU16(65535u);
+    r.U8(); r.U8();
+    if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 12u);
+    const std::uint16_t dataFlags = r.CountU16(0xFFFFu);
+    const std::uint32_t numUvSets = dataFlags & 0x3Fu;
+    const bool hasTangentSpace = (dataFlags & 0xF000u) != 0;
+    if (r.U8()) {
+        r.Skip(static_cast<std::size_t>(numVerts) * 12u);
+        if (hasTangentSpace) r.Skip(static_cast<std::size_t>(numVerts) * 24u);
     }
-    r.U32(); // initial_velocity_type
-    r.U32(); // emission_type
-    r.Skip(12); // emission_axis (Vector3)
-}
-
-// NiPSysAgeDeathModifier: NiPSysModifier + spawn_on_death(u8) + spawn_modifier_ref(i32).
-void SkipNiPSysAgeDeathModifier(ByteReader& r) {
-    SkipNiPSysModifierBase(r);
-    r.U8();
-    r.I32();
-}
-
-// NiPSysSpawnModifier: NiPSysModifier + num_spawn_generations(u16) + percentage_spawned(f32) +
-// min/max_num_to_spawn(je u16) + spawn_speed_variation/spawn_dir_variation/life_span/
-// life_span_variation (je f32).
-void SkipNiPSysSpawnModifier(ByteReader& r) {
-    SkipNiPSysModifierBase(r);
-    r.U16(); r.F32(); r.U16(); r.U16(); r.F32(); r.F32(); r.F32(); r.F32();
-}
-
-// NiPSysGrowFadeModifier: NiPSysModifier + grow_time(f32) + grow_generation(u16) +
-// fade_time(f32) + fade_generation(u16).
-void SkipNiPSysGrowFadeModifier(ByteReader& r) {
-    SkipNiPSysModifierBase(r);
-    r.F32(); r.U16(); r.F32(); r.U16();
-}
-
-// NiPSysColorModifier: NiPSysModifier + data_ref(i32, zeigt auf NiColorData).
-void SkipNiPSysColorModifier(ByteReader& r) {
-    SkipNiPSysModifierBase(r);
-    r.I32();
-}
-
-// NiPSysRotationModifier: NiPSysModifier + 4 Floats (initial_rotation_speed/_variation,
-// initial_rotation_angle/_variation) + 2 Bytes (random_rot_speed_sign, random_initial_axis) +
-// initial_axis (Vector3).
-void SkipNiPSysRotationModifier(ByteReader& r) {
-    SkipNiPSysModifierBase(r);
-    r.F32(); // rotation speed
-    if (r.LegacyLayout() || r.Version() >= 0x14000002u) {
-        r.F32(); r.F32(); r.F32(); // speed variation, angle, angle variation
-        r.U8(); // random speed sign
-    }
-    r.U8(); // random axis
-    r.Skip(12);
-}
-
-// NiPSysGravityModifier: NiPSysModifier + gravity_object_ref(i32) + gravity_axis(Vector3) +
-// decay/strength(je f32) + force_type(u32) + turbulence/turbulence_scale(je f32).
-void SkipNiPSysGravityModifier(ByteReader& r) {
-    SkipNiPSysModifierBase(r);
-    r.I32();
-    r.Skip(12);
-    r.F32(); r.F32();
-    r.U32();
-    r.F32(); r.F32();
-}
-
-// NiPSysDragModifier: NiPSysModifier + drag_object_ptr(i32) + drag_axis(Vector3) +
-// percentage/range/range_falloff (je f32). Struktur aus der autoritativen nif.xml-Referenz.
-void SkipNiPSysDragModifier(ByteReader& r) {
-    SkipNiPSysModifierBase(r);
-    r.I32();    // drag_object
-    r.Skip(12); // drag_axis (Vector3)
-    r.F32();    // percentage
-    r.F32();    // range
-    r.F32();    // range_falloff
-}
-
-// NiPSysPositionModifier: NiPSysModifier, keine eigenen Felder.
-void SkipNiPSysPositionModifier(ByteReader& r) {
-    SkipNiPSysModifierBase(r);
-}
-
-// NiPSysBoundUpdateModifier: NiPSysModifier + update_skip(u16).
-void SkipNiPSysBoundUpdateModifier(ByteReader& r) {
-    SkipNiPSysModifierBase(r);
+    r.Skip(16);
+    if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 16u);
+    for (std::uint32_t set = 0; set < numUvSets; ++set)
+        r.Skip(static_cast<std::size_t>(numVerts) * 8u);
     r.U16();
+    if (version >= 0x14000004u) r.I32();
+    return numVerts;
 }
 
-// NiPSysMeshUpdateModifier: NiPSysModifier + num_meshes(u32) + meshes(Refs, je i32) - laut
-// Referenz (PyFFI) eine einfache, unzweideutige Ref-Liste (kein Sonderfall wie bei
-// NiPSysMeshEmitter, siehe Abschnitt 19).
-void SkipNiPSysMeshUpdateModifier(ByteReader& r) {
-    SkipNiPSysModifierBase(r);
-    const std::uint32_t numMeshes = r.CountU32(256u);
-    for (std::uint32_t i = 0; i < numMeshes; ++i) {
-        r.I32();
+std::uint32_t SkipNiParticlesData(ByteReader& r, std::uint32_t version) {
+    const std::uint32_t numVerts = SkipNiGeometryDataHeader(r, version);
+    if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 4u);
+    r.U16();
+    if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 4u);
+    if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 16u);
+    if (version >= 0x14000004u) {
+        if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 4u);
+        if (r.U8()) r.Skip(static_cast<std::size_t>(numVerts) * 12u);
     }
+    return numVerts;
 }
+
+// Particle modifier parser. These fields were already byte-exact in the old Skip* helpers;
+// the same layout is now retained as runtime data so rendering/simulation never needs guessed
+// defaults. Legacy test entry points remain as wrappers below.
+NifParticleModifierInfo ParseNiPSysModifierBase(ByteReader& r, const char* type) {
+    NifParticleModifierInfo out;
+    out.type = type;
+    out.name = r.SizedString();
+    out.order = r.U32();
+    out.targetRef = r.I32();
+    out.active = r.U8() != 0;
+    return out;
+}
+
+void ParseEmitterBase(ByteReader& r, NifParticleModifierInfo& out) {
+    out.emitter = true;
+    out.speed = r.F32(); out.speedVariation = r.F32();
+    out.declination = r.F32(); out.declinationVariation = r.F32();
+    out.planarAngle = r.F32(); out.planarAngleVariation = r.F32();
+    out.initialColor = {r.F32(), r.F32(), r.F32(), r.F32()};
+    out.initialRadius = r.F32();
+    if (r.LegacyLayout() || r.Version() >= 0x0A040001u) out.radiusVariation = r.F32();
+    out.lifeSpan = r.F32(); out.lifeSpanVariation = r.F32();
+}
+
+NifParticleModifierInfo ParseVolumeEmitter(ByteReader& r, const char* type) {
+    auto out = ParseNiPSysModifierBase(r, type);
+    ParseEmitterBase(r, out);
+    out.emitterObjectRef = r.I32();
+    return out;
+}
+
+NifParticleModifierInfo ParseBoxEmitter(ByteReader& r) {
+    auto out = ParseVolumeEmitter(r, "NiPSysBoxEmitter");
+    out.emitterWidth = r.F32(); out.emitterHeight = r.F32(); out.emitterDepth = r.F32();
+    return out;
+}
+NifParticleModifierInfo ParseCylinderEmitter(ByteReader& r) {
+    auto out = ParseVolumeEmitter(r, "NiPSysCylinderEmitter");
+    out.emitterRadius = r.F32(); out.emitterHeight = r.F32();
+    return out;
+}
+NifParticleModifierInfo ParseSphereEmitter(ByteReader& r) {
+    auto out = ParseVolumeEmitter(r, "NiPSysSphereEmitter");
+    out.emitterRadius = r.F32();
+    return out;
+}
+NifParticleModifierInfo ParseMeshEmitter(ByteReader& r) {
+    auto out = ParseNiPSysModifierBase(r, "NiPSysMeshEmitter");
+    ParseEmitterBase(r, out);
+    const auto count = r.CountU32(256u);
+    out.emitterMeshRefs.reserve(count);
+    for (std::uint32_t i = 0; i < count; ++i) out.emitterMeshRefs.push_back(r.I32());
+    out.initialVelocityType = r.U32();
+    out.emissionType = r.U32();
+    const float x=r.F32(), y=r.F32(), z=r.F32();
+    out.emissionAxis = {x,z,y};
+    return out;
+}
+NifParticleModifierInfo ParseAgeDeathModifier(ByteReader& r) {
+    auto out=ParseNiPSysModifierBase(r,"NiPSysAgeDeathModifier");
+    out.spawnOnDeath=r.U8()!=0; out.spawnModifierRef=r.I32(); return out;
+}
+NifParticleModifierInfo ParseSpawnModifier(ByteReader& r) {
+    auto out=ParseNiPSysModifierBase(r,"NiPSysSpawnModifier");
+    out.numSpawnGenerations=r.U16(); out.percentageSpawned=r.F32();
+    out.minNumToSpawn=r.U16(); out.maxNumToSpawn=r.U16();
+    out.spawnSpeedVariation=r.F32(); out.spawnDirVariation=r.F32();
+    out.spawnLifeSpan=r.F32(); out.spawnLifeSpanVariation=r.F32(); return out;
+}
+NifParticleModifierInfo ParseGrowFadeModifier(ByteReader& r) {
+    auto out=ParseNiPSysModifierBase(r,"NiPSysGrowFadeModifier");
+    out.growTime=r.F32(); out.growGeneration=r.U16(); out.fadeTime=r.F32(); out.fadeGeneration=r.U16(); return out;
+}
+NifParticleModifierInfo ParseColorModifier(ByteReader& r) {
+    auto out=ParseNiPSysModifierBase(r,"NiPSysColorModifier"); out.colorDataRef=r.I32(); return out;
+}
+NifParticleModifierInfo ParseRotationModifier(ByteReader& r) {
+    auto out=ParseNiPSysModifierBase(r,"NiPSysRotationModifier");
+    out.initialRotationSpeed=r.F32();
+    if (r.LegacyLayout() || r.Version() >= 0x14000002u) {
+        out.initialRotationSpeedVariation=r.F32(); out.initialRotationAngle=r.F32();
+        out.initialRotationAngleVariation=r.F32(); out.randomRotationSpeedSign=r.U8()!=0;
+    }
+    out.randomInitialAxis=r.U8()!=0;
+    const float x=r.F32(), y=r.F32(), z=r.F32(); out.initialAxis={x,z,y}; return out;
+}
+NifParticleModifierInfo ParseGravityModifier(ByteReader& r) {
+    auto out=ParseNiPSysModifierBase(r,"NiPSysGravityModifier"); out.forceObjectRef=r.I32();
+    const float x=r.F32(), y=r.F32(), z=r.F32(); out.forceAxis={x,z,y};
+    out.forceDecay=r.F32(); out.forceStrength=r.F32(); out.forceType=r.U32();
+    out.turbulence=r.F32(); out.turbulenceScale=r.F32(); return out;
+}
+NifParticleModifierInfo ParseDragModifier(ByteReader& r) {
+    auto out=ParseNiPSysModifierBase(r,"NiPSysDragModifier"); out.forceObjectRef=r.I32();
+    const float x=r.F32(), y=r.F32(), z=r.F32(); out.forceAxis={x,z,y};
+    out.dragPercentage=r.F32(); out.dragRange=r.F32(); out.dragRangeFalloff=r.F32(); return out;
+}
+NifParticleModifierInfo ParsePositionModifier(ByteReader& r) { return ParseNiPSysModifierBase(r,"NiPSysPositionModifier"); }
+NifParticleModifierInfo ParseBoundUpdateModifier(ByteReader& r) {
+    auto out=ParseNiPSysModifierBase(r,"NiPSysBoundUpdateModifier"); out.updateSkip=r.U16(); return out;
+}
+NifParticleModifierInfo ParseMeshUpdateModifier(ByteReader& r) {
+    auto out=ParseNiPSysModifierBase(r,"NiPSysMeshUpdateModifier"); const auto count=r.CountU32(256u);
+    out.meshRefs.reserve(count); for(std::uint32_t i=0;i<count;++i) out.meshRefs.push_back(r.I32()); return out;
+}
+NifParticleModifierInfo ParseBombModifier(ByteReader& r) {
+    auto out=ParseNiPSysModifierBase(r,"NiPSysBombModifier"); out.forceObjectRef=r.I32();
+    const float x=r.F32(), y=r.F32(), z=r.F32(); out.forceAxis={x,z,y};
+    out.forceDecay=r.F32(); out.forceStrength=r.F32(); out.initialVelocityType=r.U32(); out.emissionType=r.U32(); return out;
+}
+NifParticleModifierInfo ParseColliderManager(ByteReader& r) {
+    auto out=ParseNiPSysModifierBase(r,"NiPSysColliderManager"); out.linkedRef=r.I32(); return out;
+}
+
+void SkipNiPSysModifierBase(ByteReader& r) { (void)ParseNiPSysModifierBase(r,"NiPSysModifier"); }
+void SkipNiPSysColliderManager(ByteReader& r) { (void)ParseColliderManager(r); }
+void SkipNiPSysColliderBase(ByteReader& r) {
+    r.F32(); r.U8(); r.U8(); r.I32(); r.I32(); r.I32(); r.I32();
+}
+void SkipNiPSysPlanarCollider(ByteReader& r) { SkipNiPSysColliderBase(r); r.Skip(4+4+12+12); }
+void SkipNiPSysEmitterBase(ByteReader& r) { auto out=ParseNiPSysModifierBase(r,"NiPSysEmitter"); ParseEmitterBase(r,out); }
+void SkipNiPSysVolumeEmitterBase(ByteReader& r) { auto out=ParseVolumeEmitter(r,"NiPSysVolumeEmitter"); (void)out; }
+void SkipNiPSysBoxEmitter(ByteReader& r) { (void)ParseBoxEmitter(r); }
+void SkipNiPSysCylinderEmitter(ByteReader& r) { (void)ParseCylinderEmitter(r); }
+void SkipNiPSysSphereEmitter(ByteReader& r) { (void)ParseSphereEmitter(r); }
+void SkipNiPSysBombModifier(ByteReader& r) { (void)ParseBombModifier(r); }
+void SkipNiPSysMeshEmitter(ByteReader& r) { (void)ParseMeshEmitter(r); }
+void SkipNiPSysAgeDeathModifier(ByteReader& r) { (void)ParseAgeDeathModifier(r); }
+void SkipNiPSysSpawnModifier(ByteReader& r) { (void)ParseSpawnModifier(r); }
+void SkipNiPSysGrowFadeModifier(ByteReader& r) { (void)ParseGrowFadeModifier(r); }
+void SkipNiPSysColorModifier(ByteReader& r) { (void)ParseColorModifier(r); }
+void SkipNiPSysRotationModifier(ByteReader& r) { (void)ParseRotationModifier(r); }
+void SkipNiPSysGravityModifier(ByteReader& r) { (void)ParseGravityModifier(r); }
+void SkipNiPSysDragModifier(ByteReader& r) { (void)ParseDragModifier(r); }
+void SkipNiPSysPositionModifier(ByteReader& r) { (void)ParsePositionModifier(r); }
+void SkipNiPSysBoundUpdateModifier(ByteReader& r) { (void)ParseBoundUpdateModifier(r); }
+void SkipNiPSysMeshUpdateModifier(ByteReader& r) { (void)ParseMeshUpdateModifier(r); }
 
 // NiDynamicEffect-Basis (gemeinsam für NiTextureEffect und NiLight/NiDirectionalLight):
 // AVObjectBase + switch_state(u8) + num_affected_nodes(u32) + je Knoten ein Ref(i32).
-void SkipNiDynamicEffectBase(ByteReader& r) {
-    ParseAVObjectBase(r);
-    if (r.LegacyLayout() || r.Version() >= 0x0A01006Au) r.U8(); // switch_state
+struct NifDynamicEffectState {
+    AVObjectBase base;
+    bool switchState = true;
+    std::vector<std::int32_t> affectedNodes;
+};
+
+NifDynamicEffectState ParseNiDynamicEffectBase(ByteReader& r) {
+    NifDynamicEffectState out;
+    out.base = ParseAVObjectBase(r);
+    if (r.LegacyLayout() || r.Version() >= 0x0A01006Au) out.switchState = r.U8() != 0;
     const std::uint32_t numAffected = r.CountU32(256u);
-    r.Skip(static_cast<std::size_t>(numAffected) * 4u);
+    out.affectedNodes.reserve(numAffected);
+    for (std::uint32_t i = 0; i < numAffected; ++i) out.affectedNodes.push_back(r.I32());
+    return out;
+}
+
+void SkipNiDynamicEffectBase(ByteReader& r) {
+    (void)ParseNiDynamicEffectBase(r);
 }
 
 // NiTextureEffect: NiDynamicEffect + model_projection_matrix(Matrix33=9 Floats) +
 // model_projection_translation(Vector3) + texture_filtering(u32) + texture_clamping(u32) +
 // texture_type(u32) + coordinate_generation_type(u32) + source_texture_ref(i32) +
 // enable_plane(u8) + plane(NiPlane: normal(Vector3)+constant(f32) = 16 Byte).
-void SkipNiTextureEffect(ByteReader& r) {
-    SkipNiDynamicEffectBase(r);
-    r.Skip(36); // model_projection_matrix (Matrix33)
-    r.Skip(12); // model_projection_translation (Vector3)
-    r.U32(); r.U32(); r.U32(); r.U32(); // filtering, clamping, texture_type, coord_gen_type
-    r.I32(); // source_texture_ref
-    r.U8();  // enable_plane
-    r.Skip(16); // plane (Vector3 + f32)
+struct NifTextureEffectState {
+    NifDynamicEffectState dynamic;
+    std::array<float, 9> projectionRotation{};
+    NifVec3 projectionPosition{};
+    std::uint32_t filterMode = 0;
+    std::uint32_t clampMode = 0;
+    std::uint32_t textureType = 0;
+    std::uint32_t coordGenType = 0;
+    std::int32_t sourceTextureRef = -1;
+    bool enablePlane = false;
+    std::array<float, 4> clipPlane{};
+};
+
+NifTextureEffectState ParseNiTextureEffect(ByteReader& r) {
+    NifTextureEffectState out;
+    out.dynamic = ParseNiDynamicEffectBase(r);
+    for (float& v : out.projectionRotation) v = r.F32();
+    out.projectionPosition = {r.F32(), r.F32(), r.F32()};
+    out.filterMode = r.U32();
+    out.clampMode = r.U32();
+    out.textureType = r.U32();
+    out.coordGenType = r.U32();
+    out.sourceTextureRef = r.I32();
+    out.enablePlane = r.U8() != 0;
+    for (float& v : out.clipPlane) v = r.F32();
     if (!r.LegacyLayout() && r.Version() <= 0x0A020000u) { r.I16(); r.I16(); } // PS2 L/K
+    return out;
 }
 
 // NiLight-Basis (gemeinsam für alle Licht-Typen): NiDynamicEffect + dimmer(f32) +
@@ -1624,6 +1695,7 @@ struct NiTriStripsBlock {
     AVObjectBase base;
     std::int32_t dataRef = -1;
     std::int32_t skinInstanceRef = -1;
+    std::string shaderName;
 };
 
 // Gemeinsame Kopf-Struktur für NiTriShape UND NiTriStrips ("NiTriBasedGeom"): AVObjectBase +
@@ -1647,15 +1719,15 @@ NiTriStripsBlock ParseNiTriStripsHeader(ByteReader& r) {
     block.skinInstanceRef = r.I32();
     const std::uint8_t hasShader = r.U8();
     if (!r.LegacyLayout()) {
-        if (hasShader) { r.SizedString(); r.I32(); }
+        if (hasShader) { block.shaderName = r.SizedString(); r.I32(); }
         return block;
     }
     if (hasShader == 1) {
         // Geskinnte Charakter-Meshes ("FxSkinningBaseMap" in reschar/): Shader-Name (SizedString) +
         // "Shader Extra Data" (i32, -1) laut nif.xml (CHANGELOG [0.44.30]).
         // Bei LEEREM Namen (z.B. Cypian/Bark02.nif, Teva/Pillar_B.nif) fehlt das Extra-Data-Feld.
-        const std::string shaderName = r.SizedString();
-        if (!shaderName.empty()) r.I32();
+        block.shaderName = r.SizedString();
+        if (!block.shaderName.empty()) r.I32();
     } else {
         // has_shader=0: es folgt in vielen Dateien ein ECHTER String (Laenge > 0, z.B. Gruppe der
         // AdlF-Tore) und in den meisten der leere String (Laenge 0). Steht dort aber 0xFFFFFFFF
@@ -1681,19 +1753,31 @@ NiTriStripsBlock ParseNiTriStripsHeader(ByteReader& r) {
 // Ref(i32). Byte-exakt verifiziert an Leviathan_altar_water_effect01.nif: has_shader=0,
 // world_space=1, 9 Modifier-Refs (allesamt plausible Blockindizes 25-34) - die berechnete
 // Länge landet exakt auf dem folgenden NiPSysEmitterCtlr (target=6 zeigt exakt hierher zurück).
-NiTriStripsBlock SkipNiParticleSystem(ByteReader& r) {
-    NiTriStripsBlock block;
+struct NiParticleSystemBlock {
+    AVObjectBase base;
+    std::int32_t dataRef = -1;
+    std::int32_t skinInstanceRef = -1;
+    bool hasShader = false;
+    std::string shaderName;
+    std::int32_t shaderExtraDataRef = -1;
+    bool worldSpace = false;
+    std::vector<std::int32_t> modifiers;
+};
+
+NiParticleSystemBlock ParseNiParticleSystem(ByteReader& r) {
+    NiParticleSystemBlock block;
     block.base = ParseAVObjectBase(r);
     block.dataRef = r.I32();
-    r.I32(); // skin_instance ref
-    const std::uint8_t hasShader = r.U8();
-    if (hasShader) {
-        r.SizedString(); // MaterialDataShader.name
-        r.I32();          // MaterialDataShader.extra_data_ref
+    block.skinInstanceRef = r.I32();
+    block.hasShader = r.U8() != 0;
+    if (block.hasShader) {
+        block.shaderName = r.SizedString();
+        block.shaderExtraDataRef = r.I32();
     }
-    r.U8(); // world_space
+    block.worldSpace = r.U8() != 0;
     const std::uint32_t numModifiers = r.CountU32(256u);
-    r.Skip(static_cast<std::size_t>(numModifiers) * 4u);
+    block.modifiers.reserve(numModifiers);
+    for (std::uint32_t i = 0; i < numModifiers; ++i) block.modifiers.push_back(r.I32());
     return block;
 }
 
@@ -1733,8 +1817,10 @@ NifMaterial ParseNiMaterialProperty(ByteReader& r, bool fifteenFloats) {
 struct RawTriStripsData {
     std::vector<NifVec3> vertices;
     std::vector<NifVec3> normals;
+    std::vector<NifColor4> vertexColors;
     std::vector<NifVec2> uvs;
     std::vector<std::vector<NifVec2>> uvSets;
+    std::vector<NifUvSetDiagnostic> uvSetDiagnostics;
     std::vector<std::vector<std::uint16_t>> strips;
 };
 
@@ -1772,6 +1858,7 @@ struct NifTextureState {
     std::int32_t controllerRef = -1;
     std::uint32_t applyMode = 2; // APPLY_MODULATE
     std::array<NifTextureSlotState, 10> slots{};
+    std::vector<std::pair<std::uint32_t, NifTextureSlotState>> shaderSlots;
     float bumpMapLumaScale = 1.0f;
     float bumpMapLumaOffset = 0.0f;
     std::array<float, 4> bumpMapMatrix{1.0f, 0.0f, 0.0f, 1.0f};
@@ -1837,29 +1924,28 @@ NifTextureState ParseNiTexturingProperty(ByteReader& r, bool hasPS2Fields) {
         }
     }
 
-    // Seit 10.0.1.0 folgen ShaderTexDesc-Eintraege. Sie werden noch nicht als klassische
-    // Fiesta-Slots gerendert, muessen aber byte-exakt konsumiert werden.
+    // ShaderTexDesc ist shader-spezifisch. Den TexDesc deshalb vollständig bewahren und
+    // erst zusammen mit dem Shadernamen der Geometrie zuordnen.
     const std::uint32_t numShaderTextures = r.CountU32(64);
     for (std::uint32_t i = 0; i < numShaderTextures; ++i) {
         const std::uint8_t hasMap = r.U8();
         if (!hasMap) continue;
-        r.I32();    // source_ref
-        r.U32();    // clamp_mode
-        r.U32();    // filter_mode
-        r.U32();    // uv_set
-        if (hasPS2Fields) {
-            r.I16();
-            r.I16();
+        NifTextureSlotState slot;
+        slot.present = true;
+        slot.sourceRef = r.I32();
+        slot.clampMode = r.U32();
+        slot.filterMode = r.U32();
+        slot.uvSet = r.U32();
+        if (hasPS2Fields) { r.I16(); r.I16(); }
+        slot.hasTransform = r.U8() != 0;
+        if (slot.hasTransform) {
+            slot.translation = {r.F32(), r.F32()};
+            slot.scale = {r.F32(), r.F32()};
+            slot.rotation = r.F32();
+            slot.transformType = r.U32();
+            slot.center = {r.F32(), r.F32()};
         }
-        const std::uint8_t hasTransform = r.U8();
-        if (hasTransform) {
-            r.F32(); r.F32();
-            r.F32(); r.F32();
-            r.F32();
-            r.U32();
-            r.F32(); r.F32();
-        }
-        r.U32();    // map_id
+        state.shaderSlots.emplace_back(r.U32(), slot);
     }
     return state;
 }
@@ -2102,30 +2188,60 @@ void SkipNiPixelData(ByteReader& r, bool isOlderVersion) {
     r.Skip(dataSize);
 }
 
-// WICHTIGER, GRÖSSERER FUND (siehe docs/MAP_FORMAT.md, Abschnitt "UV-Koordinaten..."):
-// Die aus NiTriStripsData/NiTriShapeData extrahierten UV-Koordinaten sind in praktisch JEDER
-// bisher geprüften echten Datei unbrauchbar (extrem große/kleine, inkonsistente Float-Werte),
-// UNABHÄNGIG von Textur, Geometrie oder numUvSets - selbst am bislang am gründlichsten
-// verifizierten Referenzobjekt (santuary.nif). Die Byte-LÄNGE des UV-Abschnitts ist dabei
-// zweifelsfrei korrekt (mehrfach bestätigt: alle Felder danach - inkl. Dreieckszahl, Streifen-
-// länge und der bekannte 8-Byte-Trailer - treffen exakt bis zum Dateiende; auch alle Vertex-
-// und Normalen-Daten VOR den UVs sind einwandfrei, alle 86 Normalen von santuary.nif sind
-// exakte Einheitsvektoren). Die Ursache bleibt ungeklärt (evtl. Datenqualitätsproblem in den
-// Originaldateien - z.B. ungenutzter/nie befüllter UV-Kanal - oder ein noch nicht gefundenes
-// Detail der echten Kodierung). Bis das geklärt ist: lieber KEINE Textur anzeigen als eine
-// mit Sicherheit falsch gemappte - die Prüfung hier verwirft unplausible UV-Sets komplett
-// (der Aufrufer fällt dann automatisch auf die Materialfarbe zurück, siehe NifMeshPart::uvs
-// Kommentar). Betrifft NICHT die Vertex-Positionen/Normalen/Dreiecke - nur die UV-Koordinaten.
-void SanitizeUvs(std::vector<NifVec2>& uvs) {
-    for (const auto& uv : uvs) {
-        const bool implausible =
-            !std::isfinite(uv.u) || !std::isfinite(uv.v) ||
-            std::abs(uv.u) > 1000.0f || std::abs(uv.v) > 1000.0f;
-        if (implausible) {
-            uvs.clear();
-            return;
+// UV-Sicherheitsnetz:
+// Der frühere Befund "praktisch alle UVs unbrauchbar" war eine Folge des damals falsch
+// positionierten 2-Byte-Felds vor den UV-Daten. Nach der Korrektur (Feld liegt hinter den
+// UV-Sets) liefern die verifizierten Referenzdateien plausible authored UVs.
+// Sanitize bleibt trotzdem als harte Schutzschicht gegen Recovery-/Sondervarianten erhalten.
+// Wichtig seit Multi-Texture: NICHT nur der alte Base-Alias, sondern jedes einzelne UV-Set
+// muss geprüft werden, weil Base/Dark/Detail/Gloss/Glow/Bump/Decals unterschiedliche Sets
+// referenzieren können. Ein verworfenes sekundäres Set erlaubt dem Renderer den bestehenden
+// deterministischen UV0-Fallback, statt mit NaN/extremen Koordinaten eine korrekte (auch
+// eingebettete) Textur scheinbar verschwinden zu lassen.
+NifUvSetDiagnostic SanitizeUvs(std::vector<NifVec2>& uvs) {
+    NifUvSetDiagnostic diagnostic;
+    diagnostic.originalCount = static_cast<std::uint32_t>(
+        std::min<std::size_t>(uvs.size(), std::numeric_limits<std::uint32_t>::max()));
+    for (std::size_t i = 0; i < uvs.size(); ++i) {
+        const auto& uv = uvs[i];
+        const bool finite = std::isfinite(uv.u) && std::isfinite(uv.v);
+        if (finite) {
+            if (!diagnostic.hasFinite) {
+                diagnostic.hasFinite = true;
+                diagnostic.minFiniteU = diagnostic.maxFiniteU = uv.u;
+                diagnostic.minFiniteV = diagnostic.maxFiniteV = uv.v;
+            } else {
+                diagnostic.minFiniteU = std::min(diagnostic.minFiniteU, uv.u);
+                diagnostic.maxFiniteU = std::max(diagnostic.maxFiniteU, uv.u);
+                diagnostic.minFiniteV = std::min(diagnostic.minFiniteV, uv.v);
+                diagnostic.maxFiniteV = std::max(diagnostic.maxFiniteV, uv.v);
+            }
+            diagnostic.maxFiniteAbs =
+                std::max({diagnostic.maxFiniteAbs, std::abs(uv.u), std::abs(uv.v)});
+            if (std::abs(uv.u) > 1000.0f || std::abs(uv.v) > 1000.0f)
+                ++diagnostic.extremeCount;
+        }
+        // UVs are not range-limited by the NIF format. Large finite coordinates are valid
+        // input for repeat/mirror-style sampling and occur in real ResMap assets (ship.nif).
+        // Sanitization therefore rejects only values that cannot participate in arithmetic.
+        if (!finite && !diagnostic.discarded) {
+            diagnostic.discarded = true;
+            diagnostic.firstBadIndex = static_cast<std::uint32_t>(
+                std::min<std::size_t>(i, std::numeric_limits<std::uint32_t>::max()));
+            diagnostic.firstBadValue = uv;
+            diagnostic.nonFinite = true;
         }
     }
+    if (diagnostic.discarded) uvs.clear();
+    return diagnostic;
+}
+
+void SanitizeUvSets(std::vector<std::vector<NifVec2>>& uvSets, std::vector<NifVec2>& baseUvs,
+                    std::vector<NifUvSetDiagnostic>& diagnostics) {
+    diagnostics.clear();
+    diagnostics.reserve(uvSets.size());
+    for (auto& uvSet : uvSets) diagnostics.push_back(SanitizeUvs(uvSet));
+    baseUvs = uvSets.empty() ? std::vector<NifVec2>{} : uvSets.front();
 }
 
 RawTriStripsData ParseNiTriStripsData(ByteReader& r, bool hasTrailer, bool isOlderVersion) {
@@ -2190,8 +2306,9 @@ RawTriStripsData ParseNiTriStripsData(ByteReader& r, bool hasTrailer, bool isOld
     r.F32(); r.F32(); r.F32(); r.F32(); // Bounding-Sphere (center xyz + radius)
     const std::uint8_t hasColors = r.U8();
     if (hasColors) {
+        d.vertexColors.reserve(numVerts);
         for (std::uint32_t i = 0; i < numVerts; ++i) {
-            r.F32(); r.F32(); r.F32(); r.F32();
+            d.vertexColors.push_back({r.F32(), r.F32(), r.F32(), r.F32()});
         }
     }
     // HAUPTFUND DIESER KORREKTUR: das früher hier (VOR den UV-Daten) gelesene "uv_flags"-u16
@@ -2283,7 +2400,7 @@ RawTriStripsData ParseNiTriStripsData(ByteReader& r, bool hasTrailer, bool isOld
             r.Skip(8);
         }
     }
-    SanitizeUvs(d.uvs);
+    SanitizeUvSets(d.uvSets, d.uvs, d.uvSetDiagnostics);
     return d;
 }
 
@@ -2310,8 +2427,10 @@ void ExpandTriangleStrip(const std::vector<std::uint16_t>& strip, std::vector<st
 struct RawTriShapeData {
     std::vector<NifVec3> vertices;
     std::vector<NifVec3> normals;
+    std::vector<NifColor4> vertexColors;
     std::vector<NifVec2> uvs;
     std::vector<std::vector<NifVec2>> uvSets;
+    std::vector<NifUvSetDiagnostic> uvSetDiagnostics;
     std::vector<std::uint16_t> triangleIndices; // flach, 3 pro Dreieck, direkt in `vertices` indiziert
 };
 
@@ -2375,8 +2494,9 @@ RawTriShapeData ParseNiTriShapeData(ByteReader& r, bool hasTrailer, bool isOlder
     r.F32(); r.F32(); r.F32(); r.F32(); // Bounding-Sphere (center xyz + radius)
     const std::uint8_t hasColors = r.U8();
     if (hasColors) {
+        d.vertexColors.reserve(numVerts);
         for (std::uint32_t i = 0; i < numVerts; ++i) {
-            r.F32(); r.F32(); r.F32(); r.F32();
+            d.vertexColors.push_back({r.F32(), r.F32(), r.F32(), r.F32()});
         }
     }
     // Kein "uv_flags" vor den UV-Daten - siehe ParseNiTriStripsData für die vollständige
@@ -2439,7 +2559,7 @@ RawTriShapeData ParseNiTriShapeData(ByteReader& r, bool hasTrailer, bool isOlder
             r.Skip(8);
         }
     }
-    SanitizeUvs(d.uvs);
+    SanitizeUvSets(d.uvSets, d.uvs, d.uvSetDiagnostics);
     return d;
 }
 
@@ -2590,6 +2710,8 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         std::array<float, 9> rotation{};
         float scale = 1.0f;
         std::vector<std::int32_t> children;
+        std::vector<std::int32_t> properties;
+        std::vector<std::int32_t> effects;
         std::string name;
         bool billboard = false;
         std::uint16_t billboardMode = 0;
@@ -2609,8 +2731,10 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
     // bei erkannter Inkonsistenz aus den Geometrie-Knoten neu aufgebaut.
     struct RawGeom {
         std::vector<NifVec3> positions, normals;
+        std::vector<NifColor4> vertexColors;
         std::vector<NifVec2> uvs;
         std::vector<std::vector<NifVec2>> uvSets;
+        std::vector<NifUvSetDiagnostic> uvSetDiagnostics;
         std::vector<std::uint32_t> triangleIndices;
     };
     struct GeomNode {
@@ -2618,17 +2742,23 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         std::int32_t dataRef = -1;
         std::int32_t skinInstanceRef = -1;
         std::vector<std::int32_t> properties;
+        std::string shaderName;
     };
     std::unordered_map<std::int32_t, RawGeom> rawByData;
     std::vector<GeomNode> geomNodes;
     std::unordered_map<std::uint32_t, NifMaterial> materialByBlock;
     std::unordered_map<std::uint32_t, NifAlphaState> alphaByBlock;
+    std::unordered_map<std::uint32_t, NifZBufferState> zBufferByBlock;
     std::unordered_map<std::uint32_t, NifStencilState> stencilByBlock;
+    std::unordered_map<std::uint32_t, NifVertexColorState> vertexColorByBlock;
     std::unordered_map<std::uint32_t, bool> specularByBlock;
     std::unordered_map<std::uint32_t, NifTextureState> texStateByBlock;
+    std::unordered_map<std::uint32_t, NifTextureEffectState> textureEffectByBlock;
     std::unordered_map<std::uint32_t, SkinInstanceBlock> skinInstanceByBlock;
     std::unordered_map<std::uint32_t, SkinDataBlock> skinDataByBlock;
     std::unordered_map<std::uint32_t, SkinPartitionBlock> skinPartitionByBlock;
+    std::unordered_map<std::uint32_t, NifParticleDataInfo> particleDataByBlock;
+    std::unordered_map<std::uint32_t, NifParticleModifierInfo> particleModifierByBlock;
     struct LodRangeData {
         NifVec3 center{};
         std::vector<std::pair<float, float>> ranges;
@@ -2642,12 +2772,16 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         sn.rotation = n.base.rotation;
         sn.scale = n.base.scale;
         sn.children = n.children;
+        sn.properties = n.base.properties;
+        sn.effects = n.effects;
         sn.name = n.base.net.name;
     };
 
     for (std::uint32_t blockIdx = 0; blockIdx < hdr.numBlocks; ++blockIdx) {
         if (blockIdx >= hdr.blockTypeIndex.size()) break;
         const std::string& type = hdr.blockTypes[hdr.blockTypeIndex[blockIdx]];
+        if (type.rfind("NiPSys", 0) == 0 && type.find("Ctlr") != std::string::npos)
+            model.particleControllerTypes.push_back(type);
         if (nameResync && blockIdx > 0 && BlockStartsWithName(type) && !PlausibleNamedStart(r, 0)) {
             // Namens-Resynchronisation (nur als eigene Stufe NACH einem gescheiterten Standardlauf):
             // steht die Position nicht auf einem plausiblen Blockanfang, den naechsten plausiblen
@@ -2877,7 +3011,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         } else if (type == "NiMorphData") {
             SkipNiMorphData(r);
         } else if (type == "NiPSysColliderManager") {
-            SkipNiPSysColliderManager(r);
+            particleModifierByBlock[blockIdx] = ParseColliderManager(r);
         } else if (type == "NiFogProperty") {
             SkipNiFogProperty(r);
             SkipExtraBytesIfFollowedByTriData(r, hdr, blockIdx);
@@ -2933,10 +3067,43 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         } else if (type == "NiPosData") {
             SkipNiPosData(r);
         } else if (type == "NiParticleSystem" || type == "NiMeshParticleSystem") {
-            // NiMeshParticleSystem hat laut Referenz denselben NiParticleSystem-Kopf (nur die
-            // referenzierte Daten-Klasse unterscheidet sich, NiMeshPSysData statt NiPSysData -
-            // für unsere Zwecke, da wir keine Partikel rendern, ist nur die Kopf-Länge relevant).
-            NiTriStripsBlock psys = SkipNiParticleSystem(r);
+            ++model.particleSystemBlocks;
+            // NiMeshParticleSystem has the same scene-object header as NiParticleSystem; the
+            // referenced data class determines whether particles are quads or mesh instances.
+            NiParticleSystemBlock psys = ParseNiParticleSystem(r);
+            if (blockIdx < scene.size()) {
+                SceneNode& sn = scene[blockIdx];
+                sn.present = true;
+                sn.translation = psys.base.translation;
+                sn.rotation = psys.base.rotation;
+                sn.scale = psys.base.scale;
+                sn.properties = psys.base.properties;
+                sn.name = psys.base.net.name;
+            }
+            NifParticleSystemInfo publicSystem;
+            publicSystem.blockIndex = blockIdx;
+            publicSystem.name = psys.base.net.name;
+            publicSystem.meshParticles = type == "NiMeshParticleSystem";
+            publicSystem.worldSpace = psys.worldSpace;
+            publicSystem.hasShader = psys.hasShader;
+            publicSystem.shaderName = psys.shaderName;
+            publicSystem.dataRef = psys.dataRef;
+            publicSystem.propertyRefs = psys.base.properties;
+            publicSystem.modifierRefs = psys.modifiers;
+            publicSystem.modifierTypes.reserve(psys.modifiers.size());
+            for (const auto modifierRef : psys.modifiers) {
+                if (modifierRef < 0 || static_cast<std::size_t>(modifierRef) >= hdr.blockTypeIndex.size()) {
+                    publicSystem.modifierTypes.emplace_back("<invalid>");
+                    continue;
+                }
+                const auto typeIndex = hdr.blockTypeIndex[static_cast<std::size_t>(modifierRef)];
+                if (typeIndex >= hdr.blockTypes.size()) publicSystem.modifierTypes.emplace_back("<invalid>");
+                else publicSystem.modifierTypes.push_back(hdr.blockTypes[typeIndex]);
+            }
+            publicSystem.translation = psys.base.translation;
+            publicSystem.rotation = psys.base.rotation;
+            publicSystem.scale = psys.base.scale;
+            model.particleSystems.push_back(std::move(publicSystem));
             // KORRIGIERT: currentMeshHasTexturing wurde bisher NUR bei NiTriStrips/NiTriShape
             // aktualisiert - bei einem NiParticleSystem blieb der Wert vom zuletzt gesehenen,
             // völlig unabhängigen Mesh stehen. Die folgende NiMaterialProperty des
@@ -2957,7 +3124,8 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 }
             }
         } else if (type == "NiPSysData" || type == "NiMeshPSysData") {
-            SkipNiPSysData(r, hdr.version, type == "NiMeshPSysData");
+            auto parsed = ParseNiPSysData(r, hdr.version, type == "NiMeshPSysData");
+            particleDataByBlock[blockIdx] = std::move(parsed.info);
         } else if (type == "NiParticlesData" || type == "NiRotatingParticlesData") {
             SkipNiParticlesData(r, hdr.version);
         } else if (type == "NiPSysEmitterCtlr") {
@@ -2997,35 +3165,35 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         } else if (type == "NiColorData") {
             SkipNiColorData(r);
         } else if (type == "NiPSysAgeDeathModifier") {
-            SkipNiPSysAgeDeathModifier(r);
+            particleModifierByBlock[blockIdx] = ParseAgeDeathModifier(r);
         } else if (type == "NiPSysBoxEmitter") {
-            SkipNiPSysBoxEmitter(r);
+            particleModifierByBlock[blockIdx] = ParseBoxEmitter(r);
         } else if (type == "NiPSysCylinderEmitter") {
-            SkipNiPSysCylinderEmitter(r);
+            particleModifierByBlock[blockIdx] = ParseCylinderEmitter(r);
         } else if (type == "NiPSysSphereEmitter") {
-            SkipNiPSysSphereEmitter(r);
+            particleModifierByBlock[blockIdx] = ParseSphereEmitter(r);
         } else if (type == "NiPSysBombModifier") {
-            SkipNiPSysBombModifier(r);
+            particleModifierByBlock[blockIdx] = ParseBombModifier(r);
         } else if (type == "NiPSysMeshEmitter") {
-            SkipNiPSysMeshEmitter(r);
+            particleModifierByBlock[blockIdx] = ParseMeshEmitter(r);
         } else if (type == "NiPSysSpawnModifier") {
-            SkipNiPSysSpawnModifier(r);
+            particleModifierByBlock[blockIdx] = ParseSpawnModifier(r);
         } else if (type == "NiPSysGrowFadeModifier") {
-            SkipNiPSysGrowFadeModifier(r);
+            particleModifierByBlock[blockIdx] = ParseGrowFadeModifier(r);
         } else if (type == "NiPSysColorModifier") {
-            SkipNiPSysColorModifier(r);
+            particleModifierByBlock[blockIdx] = ParseColorModifier(r);
         } else if (type == "NiPSysRotationModifier") {
-            SkipNiPSysRotationModifier(r);
+            particleModifierByBlock[blockIdx] = ParseRotationModifier(r);
         } else if (type == "NiPSysGravityModifier") {
-            SkipNiPSysGravityModifier(r);
+            particleModifierByBlock[blockIdx] = ParseGravityModifier(r);
         } else if (type == "NiPSysDragModifier") {
-            SkipNiPSysDragModifier(r);
+            particleModifierByBlock[blockIdx] = ParseDragModifier(r);
         } else if (type == "NiPSysPositionModifier") {
-            SkipNiPSysPositionModifier(r);
+            particleModifierByBlock[blockIdx] = ParsePositionModifier(r);
         } else if (type == "NiPSysBoundUpdateModifier") {
-            SkipNiPSysBoundUpdateModifier(r);
+            particleModifierByBlock[blockIdx] = ParseBoundUpdateModifier(r);
         } else if (type == "NiPSysMeshUpdateModifier") {
-            SkipNiPSysMeshUpdateModifier(r);
+            particleModifierByBlock[blockIdx] = ParseMeshUpdateModifier(r);
         } else if (type == "NiSkinInstance") {
             skinInstanceByBlock[blockIdx] = ParseNiSkinInstance(r);
         } else if (type == "NiSkinData") {
@@ -3033,7 +3201,16 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         } else if (type == "NiSkinPartition") {
             skinPartitionByBlock[blockIdx] = ParseNiSkinPartition(r);
         } else if (type == "NiTextureEffect") {
-            SkipNiTextureEffect(r);
+            ++model.textureEffectBlocks;
+            auto effect = ParseNiTextureEffect(r);
+            if (effect.dynamic.switchState &&
+                effect.textureType == 2u && effect.coordGenType == 2u &&
+                effect.sourceTextureRef >= 0) {
+                ++model.textureEffectEnvironmentSphereBlocks;
+            } else {
+                ++model.textureEffectUnsupportedBlocks;
+            }
+            textureEffectByBlock[blockIdx] = std::move(effect);
         } else if (type == "NiDirectionalLight" || type == "NiAmbientLight") {
             // NiAmbientLight ist laut Referenz (PyFFI) ebenfalls reine NiLight-Basis ohne
             // eigene Zusatzfelder, exakt wie NiDirectionalLight.
@@ -3041,7 +3218,8 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         } else if (type == "NiPointLight") {
             SkipNiPointLight(r);
         } else if (type == "NiZBufferProperty") {
-            SkipNiZBufferProperty(r);
+            ++model.zBufferPropertyBlocks;
+            zBufferByBlock[blockIdx] = ParseNiZBufferProperty(r);
             // Siehe SkipExtraBytesIfFollowedByTriData - hier bewusst weiterhin mit
             // Versions-Gate belassen (siehe Abschnitt 38: ein unbedingter Test verursachte
             // eine Regression), auch wenn sich das bei NiAlphaProperty als unnötig
@@ -3050,7 +3228,8 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 SkipExtraBytesIfFollowedByTriData(r, hdr, blockIdx);
             }
         } else if (type == "NiVertexColorProperty") {
-            SkipNiVertexColorProperty(r);
+            ++model.vertexColorPropertyBlocks;
+            vertexColorByBlock[blockIdx] = ParseNiVertexColorProperty(r);
             SkipExtraBytesIfFollowedByTriData(r, hdr, blockIdx);
         } else if (type == "NiAlphaProperty") {
             alphaByBlock[blockIdx] = ParseNiAlphaProperty(r);
@@ -3070,9 +3249,10 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 sn.translation = strips.base.translation;
                 sn.rotation = strips.base.rotation;
                 sn.scale = strips.base.scale;
+                sn.properties = strips.base.properties;
                 if (strips.dataRef >= 0) dataToGeometry[strips.dataRef] = blockIdx;
             }
-            geomNodes.push_back({blockIdx, strips.dataRef, strips.skinInstanceRef, strips.base.properties});
+            geomNodes.push_back({blockIdx, strips.dataRef, strips.skinInstanceRef, strips.base.properties, strips.shaderName});
             currentMeshHasTexturing = false;
             for (const auto propRef : strips.base.properties) {
                 if (propRef < 0 || static_cast<std::uint32_t>(propRef) >= hdr.blockTypeIndex.size()) continue;
@@ -3278,8 +3458,10 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 RawGeom rg;
                 rg.positions = raw.vertices;
                 rg.normals = raw.normals;
+                rg.vertexColors = raw.vertexColors;
                 rg.uvs = raw.uvs;
                 rg.uvSets = raw.uvSets;
+                rg.uvSetDiagnostics = raw.uvSetDiagnostics;
                 for (const auto& strip : raw.strips) ExpandTriangleStrip(strip, rg.triangleIndices);
                 rawByData[static_cast<std::int32_t>(blockIdx)] = std::move(rg);
             }
@@ -3288,8 +3470,10 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             NifMeshPart& part = model.parts.back();
             part.positions = std::move(raw.vertices);
             part.normals = std::move(raw.normals);
+            part.vertexColors = std::move(raw.vertexColors);
             part.uvs = std::move(raw.uvs);
             part.uvSets = std::move(raw.uvSets);
+            part.uvSetDiagnostics = std::move(raw.uvSetDiagnostics);
             for (const auto& strip : raw.strips) {
                 ExpandTriangleStrip(strip, part.triangleIndices);
             }
@@ -3311,8 +3495,10 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 RawGeom rg;
                 rg.positions = raw.vertices;
                 rg.normals = raw.normals;
+                rg.vertexColors = raw.vertexColors;
                 rg.uvs = raw.uvs;
                 rg.uvSets = raw.uvSets;
+                rg.uvSetDiagnostics = raw.uvSetDiagnostics;
                 rg.triangleIndices.assign(raw.triangleIndices.begin(), raw.triangleIndices.end());
                 rawByData[static_cast<std::int32_t>(blockIdx)] = std::move(rg);
             }
@@ -3321,8 +3507,10 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             NifMeshPart& part = model.parts.back();
             part.positions = std::move(raw.vertices);
             part.normals = std::move(raw.normals);
+            part.vertexColors = std::move(raw.vertexColors);
             part.uvs = std::move(raw.uvs);
             part.uvSets = std::move(raw.uvSets);
+            part.uvSetDiagnostics = std::move(raw.uvSetDiagnostics);
             part.triangleIndices.reserve(raw.triangleIndices.size());
             for (const auto idx : raw.triangleIndices) {
                 part.triangleIndices.push_back(idx); // bereits flache Dreiecksliste, keine Streifen-Expansion nötig
@@ -3369,9 +3557,89 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
     // behandelt. model.parts bleibt einfach leer; NifMeshRenderer iteriert bereits sicher
     // über eine leere parts-Liste (kein Sonderfall nötig).
 
-    // Konsistenzpruefung der Parts; bei Widerspruch aus den Geometrie-Knoten neu aufbauen.
+    // NiTextureEffect is not a NiProperty. It is referenced by NiNode::effects and applies
+    // to that node's direct subgraph in the verified classic runtime behavior. Preserve the
+    // real node-to-effect bindings here; rendering remains a separate, explicitly gated step.
     {
-        bool consistent = rawByData.size() == model.parts.size();
+        for (const auto& node : scene) {
+            if (!node.present) continue;
+            for (const auto ref : node.effects) {
+                if (ref < 0) continue;
+                if (textureEffectByBlock.contains(static_cast<std::uint32_t>(ref)))
+                    ++model.textureEffectNodeBindings;
+            }
+        }
+    }
+
+    // NiAVObject-Properties sind im NIF-Szenengraph vererbbar. Bisher wurden nur die
+    // direkten Property-Refs von NiTriShape/NiTriStrips ausgewertet; dadurch gingen z.B.
+    // Texturing/Material/Alpha/Z-Properties verloren, wenn sie auf einem übergeordneten
+    // NiNode lagen. Die effektive Liste bleibt bewusst child-first: ein direkt am Mesh
+    // gesetzter Property-Typ überschreibt denselben Typ eines Elternknotens.
+    {
+        std::vector<int> parentOf(scene.size(), -1);
+        for (std::size_t i = 0; i < scene.size(); ++i) {
+            for (const auto child : scene[i].children) {
+                if (child < 0 || static_cast<std::size_t>(child) >= scene.size()) continue;
+                if (parentOf[static_cast<std::size_t>(child)] < 0)
+                    parentOf[static_cast<std::size_t>(child)] = static_cast<int>(i);
+            }
+        }
+
+        for (auto& g : geomNodes) {
+            std::unordered_set<std::int32_t> seen(g.properties.begin(), g.properties.end());
+            int parent = g.block < parentOf.size() ? parentOf[g.block] : -1;
+            for (int guard = 0; parent >= 0 && guard < 64; ++guard) {
+                const auto parentIndex = static_cast<std::size_t>(parent);
+                if (parentIndex >= scene.size()) break;
+                for (const auto ref : scene[parentIndex].properties) {
+                    if (ref >= 0 && seen.insert(ref).second) {
+                        g.properties.push_back(ref);
+                        ++model.inheritedPropertyBindings;
+                    }
+                }
+                parent = parentOf[parentIndex];
+            }
+        }
+
+        for (auto& system : model.particleSystems) {
+            std::unordered_set<std::int32_t> seen(system.propertyRefs.begin(), system.propertyRefs.end());
+            int parent = system.blockIndex < parentOf.size() ? parentOf[system.blockIndex] : -1;
+            for (int guard = 0; parent >= 0 && guard < 64; ++guard) {
+                const auto parentIndex = static_cast<std::size_t>(parent);
+                if (parentIndex >= scene.size()) break;
+                for (const auto ref : scene[parentIndex].properties) {
+                    if (ref >= 0 && seen.insert(ref).second) {
+                        system.propertyRefs.push_back(ref);
+                        ++model.inheritedPropertyBindings;
+                    }
+                }
+                parent = parentOf[parentIndex];
+            }
+        }
+    }
+
+    // Konsistenzpruefung der Parts; bei Widerspruch aus den Geometrie-Knoten neu aufbauen.
+    // Die reine Anzahl ist NICHT ausreichend: Particle-Systeme besitzen eigene
+    // NiMaterialProperty/NiTexturingProperty-Bloecke, erzeugen aber keine renderbaren Mesh-Parts.
+    // In store.nif kompensierten sich dadurch zufaellig ein Phantom-Partikel-Material und ein
+    // zusaetzlicher echter Geometrieblock (3 Materialien == 3 GeometryData-Bloecke). Der alte
+    // Count-Check hielt das fuer konsistent und der sequentielle Textur-Fallback band anschliessend
+    // die Partikel-Fliptextur fly01.dds an das 60-Vertex-Map-Mesh ohne UVs.
+    {
+        bool consistent = rawByData.size() == model.parts.size() &&
+                          partDataBlock.size() == model.parts.size();
+        std::unordered_set<std::int32_t> mappedData;
+        if (consistent) {
+            for (const auto dataRef : partDataBlock) {
+                if (dataRef < 0 || rawByData.find(dataRef) == rawByData.end() ||
+                    !mappedData.insert(dataRef).second) {
+                    consistent = false;
+                    break;
+                }
+            }
+        }
+        if (consistent && mappedData.size() != rawByData.size()) consistent = false;
         for (const auto& part : model.parts) {
             if (!consistent) break;
             for (const auto idx : part.triangleIndices) {
@@ -3388,8 +3656,11 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 NifMeshPart part;
                 part.positions = it->second.positions;
                 part.normals = it->second.normals;
+                part.vertexColors = it->second.vertexColors;
                 part.uvs = it->second.uvs;
                 part.uvSets = it->second.uvSets;
+                part.uvSetDiagnostics = it->second.uvSetDiagnostics;
+                part.shaderName = g.shaderName;
                 part.triangleIndices = it->second.triangleIndices;
                 for (const auto ref : g.properties) {
                     if (ref < 0) continue;
@@ -3413,6 +3684,50 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 partBaseTextureRef = std::move(newTexRef);
                 partDataBlock = std::move(newPartData);
             }
+        }
+    }
+
+    // Material follows the same scene-graph inheritance as the other NiProperties.
+    // Resolve it authoritatively after any geometry-driven part rebuild, so shared or parent
+    // materials do not depend on block adjacency.
+    {
+        std::unordered_map<std::int32_t, NifMaterial> materialByData;
+        for (const auto& g : geomNodes) {
+            for (const auto ref : g.properties) {
+                if (ref < 0) continue;
+                const auto it = materialByBlock.find(static_cast<std::uint32_t>(ref));
+                if (it != materialByBlock.end()) {
+                    materialByData[g.dataRef] = it->second;
+                    break;
+                }
+            }
+        }
+        for (std::size_t p = 0; p < model.parts.size() && p < partDataBlock.size(); ++p) {
+            const auto it = materialByData.find(partDataBlock[p]);
+            if (it != materialByData.end()) model.parts[p].material = it->second;
+        }
+    }
+
+    // Resolve NiVertexColorProperty through the same effective child-first property chain.
+    // Direct geometry state wins over inherited parent state because g.properties keeps that order.
+    {
+        std::unordered_map<std::int32_t, NifVertexColorState> vertexColorByData;
+        for (const auto& g : geomNodes) {
+            for (const auto ref : g.properties) {
+                if (ref < 0) continue;
+                const auto it = vertexColorByBlock.find(static_cast<std::uint32_t>(ref));
+                if (it != vertexColorByBlock.end()) {
+                    vertexColorByData[g.dataRef] = it->second;
+                    break;
+                }
+            }
+        }
+        for (std::size_t p = 0; p < model.parts.size() && p < partDataBlock.size(); ++p) {
+            const auto it = vertexColorByData.find(partDataBlock[p]);
+            if (it == vertexColorByData.end()) continue;
+            model.parts[p].hasVertexColorProperty = true;
+            model.parts[p].vertexColorMode = it->second.vertexMode;
+            model.parts[p].vertexLightingMode = it->second.lightingMode;
         }
     }
 
@@ -3440,8 +3755,34 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         }
     }
 
-    // Resolve NiStencilProperty through the geometry property references.  For now the
-    // renderer consumes FaceDrawMode; stencil-buffer operations remain preserved for a later pass.
+    // Resolve NiZBufferProperty through the geometry property references. This is not
+    // cosmetic state: sky/water/effect meshes frequently rely on read-only depth or a
+    // disabled Z test. Applying it per mesh prevents otherwise correctly resolved textures
+    // from disappearing behind depth writes that the original NIF explicitly disabled.
+    {
+        std::unordered_map<std::int32_t, NifZBufferState> zBufferByData;
+        for (const auto& g : geomNodes) {
+            for (const auto ref : g.properties) {
+                if (ref < 0) continue;
+                const auto it = zBufferByBlock.find(static_cast<std::uint32_t>(ref));
+                if (it != zBufferByBlock.end()) {
+                    zBufferByData[g.dataRef] = it->second;
+                    break;
+                }
+            }
+        }
+        for (std::size_t p = 0; p < model.parts.size() && p < partDataBlock.size(); ++p) {
+            const auto it = zBufferByData.find(partDataBlock[p]);
+            if (it == zBufferByData.end()) continue;
+            model.parts[p].depthTest = it->second.test;
+            model.parts[p].depthWrite = it->second.write;
+            model.parts[p].depthFunction = it->second.function;
+        }
+    }
+
+    // Resolve the complete NiStencilProperty through the same effective child-first property
+    // chain as the other render states. Direct geometry state therefore wins over inherited
+    // parent state, while authored disabled properties remain distinguishable from no property.
     {
         std::unordered_map<std::int32_t, NifStencilState> stencilByData;
         for (const auto& g : geomNodes) {
@@ -3453,7 +3794,26 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         }
         for (std::size_t p = 0; p < model.parts.size() && p < partDataBlock.size(); ++p) {
             const auto it = stencilByData.find(partDataBlock[p]);
-            if (it != stencilByData.end()) model.parts[p].faceDrawMode = it->second.drawMode;
+            if (it == stencilByData.end()) continue;
+            auto& part = model.parts[p];
+            part.hasStencilProperty = true;
+            part.stencilEnabled = it->second.enabled;
+            part.stencilFunction = it->second.function;
+            part.stencilReference = it->second.reference;
+            part.stencilMask = it->second.mask;
+            part.stencilFailAction = it->second.failAction;
+            part.stencilZFailAction = it->second.zFailAction;
+            part.stencilPassAction = it->second.passAction;
+            part.faceDrawMode = it->second.drawMode;
+        }
+    }
+
+    {
+        std::unordered_map<std::int32_t, std::string> shaderByData;
+        for (const auto& g : geomNodes) shaderByData[g.dataRef] = g.shaderName;
+        for (std::size_t p = 0; p < model.parts.size() && p < partDataBlock.size(); ++p) {
+            const auto it = shaderByData.find(partDataBlock[p]);
+            if (it != shaderByData.end()) model.parts[p].shaderName = it->second;
         }
     }
 
@@ -3525,8 +3885,51 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 dst.center = src.center;
                 refs[slotIndex] = src.sourceRef;
             }
+            // ShaderTexDesc immer verlustfrei am Part erhalten. mapId bleibt shader-spezifisch
+            // und wird erst in einem nachweislich bekannten Shaderpfad auf feste Renderer-Slots
+            // abgebildet. Dadurch kann der Material-Auditor unbekannte Shaderdaten inventarisieren,
+            // ohne ihnen plausible, aber unbewiesene Semantik zu geben.
+            part.shaderTextureSlots.clear();
+            part.shaderTextureSlots.reserve(ts.shaderSlots.size());
+            for (const auto& [mapId, src] : ts.shaderSlots) {
+                NifShaderTextureSlot shaderSlot;
+                shaderSlot.mapId = mapId;
+                shaderSlot.sourceTextureRef = src.sourceRef;
+                auto& dst = shaderSlot.texture;
+                dst.present = src.present;
+                dst.uvSet = src.uvSet;
+                dst.clampMode = src.clampMode;
+                dst.filterMode = src.filterMode;
+                dst.hasTransform = src.hasTransform;
+                dst.translation = src.translation;
+                dst.scale = src.scale;
+                dst.rotation = src.rotation;
+                dst.transformType = src.transformType;
+                dst.center = src.center;
+                part.shaderTextureSlots.push_back(std::move(shaderSlot));
+            }
+
+            // Original Gamebryo VCAlphaTextureBlender shader: artist maps
+            // 0=Texture1, 1=Texture2, 2=Detail.
+            if (part.shaderName == "VCAlphaTextureBlender") {
+                for (const auto& [mapId, src] : ts.shaderSlots) {
+                    if (mapId > 2u) continue;
+                    auto& dst = part.textureSlots[mapId];
+                    dst.present = src.present;
+                    dst.uvSet = src.uvSet;
+                    dst.clampMode = src.clampMode;
+                    dst.filterMode = src.filterMode;
+                    dst.hasTransform = src.hasTransform;
+                    dst.translation = src.translation;
+                    dst.scale = src.scale;
+                    dst.rotation = src.rotation;
+                    dst.transformType = src.transformType;
+                    dst.center = src.center;
+                    refs[mapId] = src.sourceRef;
+                }
+            }
             partTextureRefs[p] = refs;
-            const auto& base = ts.slots[0];
+            const auto& base = part.textureSlots[0];
             if (base.present) {
                 part.baseUvSet = base.uvSet;
                 part.textureClampMode = base.clampMode;
@@ -3597,6 +4000,11 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
     for (auto& part : model.parts) {
         if (part.baseUvSet < part.uvSets.size()) part.uvs = part.uvSets[part.baseUvSet];
     }
+
+    // Skin-Bone-Refs sind an dieser Stelle noch NIF-Blockindizes. Nach dem Export der
+    // Node-Hierarchie werden sie stabil auf NifModel::nodes remapped.
+    std::vector<std::vector<std::int32_t>> partSkinBoneSceneRefs(model.parts.size());
+    std::vector<std::int32_t> partSkinRootSceneRef(model.parts.size(), -1);
 
     // Szenengraph anwenden: Weltmatrix je Geometrie = Produkt der lokalen Transformationen von der
     // Wurzel bis zum Geometrieblock. Positionen/Normalen liegen hier schon im Editor-Rahmen
@@ -3699,6 +4107,13 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             out.scale = sn.scale;
             return out;
         };
+        auto publicTransform = [](const SkinTransform& in) {
+            NifTransform out;
+            out.rotation = in.rotation;
+            out.translation = in.translation;
+            out.scale = in.scale;
+            return out;
+        };
         auto relativeBoneTransform = [&](int boneBlock, int skeletonRoot, SkinTransform& out) {
             out = SkinTransform{};
             if (boneBlock < 0 || static_cast<std::size_t>(boneBlock) >= scene.size()) return false;
@@ -3735,7 +4150,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         std::unordered_map<std::int32_t, std::int32_t> skinRefByData;
         for (const auto& g : geomNodes) if (g.dataRef >= 0 && g.skinInstanceRef >= 0) skinRefByData[g.dataRef] = g.skinInstanceRef;
 
-        auto applySkinning = [&](NifMeshPart& part, std::int32_t dataRef) {
+        auto applySkinning = [&](NifMeshPart& part, std::int32_t dataRef, std::size_t partIndex) {
             const auto sr = skinRefByData.find(dataRef);
             if (sr == skinRefByData.end() || sr->second < 0) return;
             const auto siIt = skinInstanceByBlock.find(static_cast<std::uint32_t>(sr->second));
@@ -3751,6 +4166,24 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
 
             const std::vector<NifVec3> sourcePos = part.positions;
             const std::vector<NifVec3> sourceNorm = part.normals;
+
+            // Preserve exactly the already-verified skin inputs before the bind-pose bake. The
+            // normal Map renderer keeps using the baked vertices, while KFM preview can replay
+            // the same formula with animated local NIF-node transforms.
+            part.skinBinding.emplace();
+            auto& exportedSkin = *part.skinBinding;
+            exportedSkin.sourcePositions = sourcePos;
+            exportedSkin.sourceNormals = sourceNorm;
+            exportedSkin.skinTransform = publicTransform(skin.skinTransform);
+            exportedSkin.vertexInfluences.resize(sourcePos.size());
+            const std::size_t exportedBoneCount = std::min(skin.bones.size(), inst.bones.size());
+            exportedSkin.bones.resize(exportedBoneCount);
+            partSkinBoneSceneRefs[partIndex].assign(inst.bones.begin(),
+                inst.bones.begin() + static_cast<std::ptrdiff_t>(exportedBoneCount));
+            partSkinRootSceneRef[partIndex] = inst.skeletonRoot;
+            for (std::size_t b = 0; b < exportedBoneCount; ++b)
+                exportedSkin.bones[b].bindTransform = publicTransform(skin.bones[b].transform);
+
             std::vector<NifVec3> accumPos(sourcePos.size());
             std::vector<NifVec3> accumNorm(sourceNorm.size());
             std::vector<float> accumulatedWeight(sourcePos.size(), 0.0f);
@@ -3784,6 +4217,9 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                                 if (relativeBoneTransform(inst.bones[globalBone], inst.skeletonRoot, rel)) {
                                     trans = multiplyTransform(rel, skin.bones[globalBone].transform);
                                 }
+                                if (globalBone < exportedSkin.bones.size())
+                                    exportedSkin.vertexInfluences[vi].push_back(
+                                        {static_cast<std::uint16_t>(globalBone), weight});
                                 const NifVec3 p = transformSkinPoint(trans, sourcePos[vi]);
                                 accumPos[vi].x += p.x * weight; accumPos[vi].y += p.y * weight; accumPos[vi].z += p.z * weight;
                                 if (vi < sourceNorm.size()) {
@@ -3800,6 +4236,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             }
 
             // Older/non-partitioned geometry stores sparse weights directly in NiSkinData.
+            exportedSkin.partitionWeights = usedPartitionWeights;
             if (!usedPartitionWeights && skin.hasVertexWeights) {
                 std::vector<std::uint8_t> influenceCount(sourcePos.size(), 0);
                 const std::size_t boneCount = std::min(skin.bones.size(), inst.bones.size());
@@ -3812,6 +4249,9 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                     for (const auto& vw : skin.bones[b].weights) {
                         const std::size_t vi = vw.vertex;
                         if (vi >= sourcePos.size() || vw.weight == 0.0f) continue;
+                        if (b < exportedSkin.bones.size())
+                            exportedSkin.vertexInfluences[vi].push_back(
+                                {static_cast<std::uint16_t>(b), vw.weight});
                         const NifVec3 p = transformSkinPoint(trans, sourcePos[vi]);
                         accumPos[vi].x += p.x * vw.weight; accumPos[vi].y += p.y * vw.weight; accumPos[vi].z += p.z * vw.weight;
                         if (vi < sourceNorm.size()) {
@@ -3844,7 +4284,47 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             for (int b = static_cast<int>(geomIt->second); b >= 0 && chain.size() < 64; b = parentOf[static_cast<std::size_t>(b)]) chain.push_back(b);
 
             NifMeshPart& part = model.parts[p];
-            applySkinning(part, partDataBlock[p]);
+
+            // NiTextureEffect is attached through NiNode::effects rather than the property
+            // list. Resolve the effective child->parent chain for this geometry and preserve
+            // every distinct authored effect. Rendering may support only a verified subset,
+            // but unsupported combinations must remain visible to diagnostics instead of
+            // being silently discarded.
+            part.textureEffects.clear();
+            std::unordered_set<std::int32_t> seenTextureEffects;
+            for (const int b : chain) {
+                const SceneNode& effectNode = scene[static_cast<std::size_t>(b)];
+                for (const auto ref : effectNode.effects) {
+                    if (ref < 0 || !seenTextureEffects.insert(ref).second) continue;
+                    const auto effectIt = textureEffectByBlock.find(static_cast<std::uint32_t>(ref));
+                    if (effectIt == textureEffectByBlock.end()) continue;
+                    const auto& src = effectIt->second;
+                    NifTextureEffectBinding binding;
+                    binding.enabled = src.dynamic.switchState;
+                    binding.projectionRotation = src.projectionRotation;
+                    binding.projectionPosition = src.projectionPosition;
+                    binding.filterMode = src.filterMode;
+                    binding.clampMode = src.clampMode;
+                    binding.textureType = src.textureType;
+                    binding.coordGenType = src.coordGenType;
+                    binding.sourceTextureRef = src.sourceTextureRef;
+                    binding.clippingPlaneEnabled = src.enablePlane;
+                    binding.clippingPlane = src.clipPlane;
+                    part.textureEffects.push_back(std::move(binding));
+                }
+            }
+
+            applySkinning(part, partDataBlock[p], p);
+
+            if (part.skinBinding) {
+                SkinTransform meshToModel;
+                for (const int b : chain) {
+                    const SceneNode& sn = scene[static_cast<std::size_t>(b)];
+                    if (!sn.present) continue;
+                    meshToModel = multiplyTransform(sceneTransform(sn), meshToModel);
+                }
+                part.skinBinding->meshToModelTransform = publicTransform(meshToModel);
+            }
 
             // Laufzeit-LOD: das direkte Kind unter dem NiLODNode entspricht demselben Index im
             // Range-Array. NifSkope verwendet near <= distance < far; ohne Range-Daten wird nur
@@ -3905,34 +4385,95 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         }
     }
 
-    // Benannte Knoten mit Weltposition/-rotation (Anbringpunkte, siehe NifNodeInfo).
+    // NIF-Node-Hierarchie für Attachments UND KFM/KF-Skeleton-Preview. Frühere Versionen
+    // exportierten nur benannte Nodes mit Kindern und verloren dadurch Parent-/Bind-Information.
+    // Jetzt werden alle echten NiNode-artigen Scene-Einträge erhalten (Name ODER Kinder);
+    // Geometrieeinträge bleiben draußen, da recordNode() deren Name/Kinder nicht setzt.
     {
         std::vector<int> parentOf2(scene.size(), -1);
         for (std::size_t i = 0; i < scene.size(); ++i)
-            for (const auto c : scene[i].children)
-                if (c >= 0 && static_cast<std::size_t>(c) < scene.size() && parentOf2[static_cast<std::size_t>(c)] < 0) parentOf2[static_cast<std::size_t>(c)] = static_cast<int>(i);
+            for (const auto child : scene[i].children)
+                if (child >= 0 && static_cast<std::size_t>(child) < scene.size() &&
+                    parentOf2[static_cast<std::size_t>(child)] < 0)
+                    parentOf2[static_cast<std::size_t>(child)] = static_cast<int>(i);
+
+        std::vector<int> sceneToModel(scene.size(), -1);
         for (std::size_t i = 0; i < scene.size(); ++i) {
-            if (!scene[i].present || scene[i].name.empty() || scene[i].children.empty()) continue;
-            // Weltposition = lokaler Ursprung durch die Kette Knoten -> Wurzel
+            if (!scene[i].present || (scene[i].name.empty() && scene[i].children.empty())) continue;
+
+            // Weltposition = lokaler Ursprung durch die Kette Knoten -> Wurzel.
             float px = 0.0f, py = 0.0f, pz = 0.0f;
             std::array<float, 9> Rw = {1, 0, 0, 0, 1, 0, 0, 0, 1};
             int guard = 0;
-            for (int b = static_cast<int>(i); b >= 0 && guard < 64; b = parentOf2[static_cast<std::size_t>(b)], ++guard) {
+            for (int b = static_cast<int>(i); b >= 0 && guard < 64;
+                 b = parentOf2[static_cast<std::size_t>(b)], ++guard) {
                 const SceneNode& sn = scene[static_cast<std::size_t>(b)];
                 if (!sn.present) continue;
                 const auto& R = sn.rotation;
-                const float nx = R[0] * px + R[1] * py + R[2] * pz, ny = R[3] * px + R[4] * py + R[5] * pz, nz = R[6] * px + R[7] * py + R[8] * pz;
-                px = nx * sn.scale + sn.translation.x; py = ny * sn.scale + sn.translation.y; pz = nz * sn.scale + sn.translation.z;
-                // Rw = R * Rw
+                const float nx = R[0] * px + R[1] * py + R[2] * pz;
+                const float ny = R[3] * px + R[4] * py + R[5] * pz;
+                const float nz = R[6] * px + R[7] * py + R[8] * pz;
+                px = nx * sn.scale + sn.translation.x;
+                py = ny * sn.scale + sn.translation.y;
+                pz = nz * sn.scale + sn.translation.z;
+
                 std::array<float, 9> M{};
-                for (int r2 = 0; r2 < 3; ++r2) for (int c2 = 0; c2 < 3; ++c2) M[static_cast<std::size_t>(r2 * 3 + c2)] = R[static_cast<std::size_t>(r2 * 3)] * Rw[static_cast<std::size_t>(c2)] + R[static_cast<std::size_t>(r2 * 3 + 1)] * Rw[static_cast<std::size_t>(3 + c2)] + R[static_cast<std::size_t>(r2 * 3 + 2)] * Rw[static_cast<std::size_t>(6 + c2)];
+                for (int r2 = 0; r2 < 3; ++r2)
+                    for (int c2 = 0; c2 < 3; ++c2)
+                        M[static_cast<std::size_t>(r2 * 3 + c2)] =
+                            R[static_cast<std::size_t>(r2 * 3)] * Rw[static_cast<std::size_t>(c2)] +
+                            R[static_cast<std::size_t>(r2 * 3 + 1)] * Rw[static_cast<std::size_t>(3 + c2)] +
+                            R[static_cast<std::size_t>(r2 * 3 + 2)] * Rw[static_cast<std::size_t>(6 + c2)];
                 Rw = M;
             }
+
             NifNodeInfo info;
             info.name = scene[i].name;
-            info.position = {px, pz, py}; // Legacy (x,y,z) -> Editor-Rahmen (x, z, y)
+            info.localTranslation = scene[i].translation;
+            info.localRotation = scene[i].rotation;
+            info.localScale = scene[i].scale;
+            info.position = {px, pz, py}; // Legacy (x,y,z) -> Editor-Rahmen (x,z,y)
             info.rotation = Rw;
+            sceneToModel[i] = static_cast<int>(model.nodes.size());
             model.nodes.push_back(std::move(info));
+        }
+
+        // Parent-Index erst nach dem Aufbau setzen. Falls zwischen zwei erfassten Nodes ein
+        // nicht erfasster Scene-Eintrag liegt, bis zum nächsten erfassten Vorfahren hochlaufen.
+        for (std::size_t sceneIndex = 0; sceneIndex < scene.size(); ++sceneIndex) {
+            const int modelIndex = sceneToModel[sceneIndex];
+            if (modelIndex < 0) continue;
+            int parent = parentOf2[sceneIndex];
+            int guard = 0;
+            while (parent >= 0 && guard++ < 64) {
+                if (static_cast<std::size_t>(parent) < sceneToModel.size() &&
+                    sceneToModel[static_cast<std::size_t>(parent)] >= 0) {
+                    model.nodes[static_cast<std::size_t>(modelIndex)].parentIndex =
+                        sceneToModel[static_cast<std::size_t>(parent)];
+                    break;
+                }
+                parent = static_cast<std::size_t>(parent) < parentOf2.size()
+                    ? parentOf2[static_cast<std::size_t>(parent)] : -1;
+            }
+        }
+
+        // Skin bindings now receive stable exported node indices. A missing mapping is kept as
+        // -1 and will make only that influence remain in bind pose during animation preview.
+        for (std::size_t partIndex = 0; partIndex < model.parts.size(); ++partIndex) {
+            auto& part = model.parts[partIndex];
+            if (!part.skinBinding) continue;
+            auto& skin = *part.skinBinding;
+
+            const auto rootScene = partSkinRootSceneRef[partIndex];
+            if (rootScene >= 0 && static_cast<std::size_t>(rootScene) < sceneToModel.size())
+                skin.skeletonRootNodeIndex = sceneToModel[static_cast<std::size_t>(rootScene)];
+
+            const auto& refs = partSkinBoneSceneRefs[partIndex];
+            for (std::size_t b = 0; b < skin.bones.size() && b < refs.size(); ++b) {
+                const auto sceneRef = refs[b];
+                if (sceneRef >= 0 && static_cast<std::size_t>(sceneRef) < sceneToModel.size())
+                    skin.bones[b].nodeIndex = sceneToModel[static_cast<std::size_t>(sceneRef)];
+            }
         }
     }
 
@@ -3968,6 +4509,218 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         embeddedPixelTextures[pixelBlock] = std::move(out);
     }
 
+    // Resolve effective particle material/render state directly from the particle system's
+    // property references. propertyRefs is child-first, so the first property of each family
+    // wins and inherited parent state cannot overwrite an authored child override.
+    for (auto& system : model.particleSystems) {
+        const NifTextureState* textureState = nullptr;
+        std::uint32_t texturePropertyBlock = 0;
+        bool haveMaterial = false, haveAlpha = false, haveDepth = false;
+        bool haveStencil = false, haveSpecular = false;
+        for (const auto ref : system.propertyRefs) {
+            if (ref < 0) continue;
+            const auto key = static_cast<std::uint32_t>(ref);
+            if (!haveMaterial) {
+                const auto it = materialByBlock.find(key);
+                if (it != materialByBlock.end()) { system.material = it->second; haveMaterial = true; }
+            }
+            if (textureState == nullptr) {
+                const auto it = texStateByBlock.find(key);
+                if (it != texStateByBlock.end()) {
+                    textureState = &it->second;
+                    texturePropertyBlock = key;
+                }
+            }
+            if (!haveAlpha) {
+                const auto it = alphaByBlock.find(key);
+                if (it != alphaByBlock.end()) {
+                    system.alphaBlend = it->second.blend;
+                    system.alphaTest = it->second.test;
+                    system.alphaThreshold = it->second.threshold;
+                    system.alphaSrcBlend = it->second.srcBlend;
+                    system.alphaDstBlend = it->second.dstBlend;
+                    system.alphaTestFunc = it->second.testFunc;
+                    haveAlpha = true;
+                }
+            }
+            if (!haveDepth) {
+                const auto it = zBufferByBlock.find(key);
+                if (it != zBufferByBlock.end()) {
+                    system.depthTest = it->second.test;
+                    system.depthWrite = it->second.write;
+                    system.depthFunction = it->second.function;
+                    haveDepth = true;
+                }
+            }
+            if (!haveStencil) {
+                const auto it = stencilByBlock.find(key);
+                if (it != stencilByBlock.end()) {
+                    system.hasStencilProperty = true;
+                    system.stencilEnabled = it->second.enabled;
+                    system.stencilFunction = it->second.function;
+                    system.stencilReference = it->second.reference;
+                    system.stencilMask = it->second.mask;
+                    system.stencilFailAction = it->second.failAction;
+                    system.stencilZFailAction = it->second.zFailAction;
+                    system.stencilPassAction = it->second.passAction;
+                    haveStencil = true;
+                }
+            }
+            if (!haveSpecular) {
+                const auto it = specularByBlock.find(key);
+                if (it != specularByBlock.end()) { system.specularEnabled = it->second; haveSpecular = true; }
+            }
+        }
+
+        if (textureState == nullptr) continue;
+        system.textureApplyMode = textureState->applyMode;
+        system.bumpMapLumaScale = textureState->bumpMapLumaScale;
+        system.bumpMapLumaOffset = textureState->bumpMapLumaOffset;
+        system.bumpMapMatrix = textureState->bumpMapMatrix;
+
+        const auto resolveSource = [&](NifTextureSlot& dst, std::int32_t sourceRef) {
+            if (sourceRef < 0) return;
+            const auto st = sourceTextures.find(static_cast<std::uint32_t>(sourceRef));
+            if (st == sourceTextures.end()) return;
+            dst.texture = st->second.filename;
+            dst.sourceUsesEmbeddedPixelData = st->second.useExternal == 0;
+            dst.sourcePixelDataRef = st->second.pixelDataRef;
+            if (st->second.useExternal == 0 && st->second.pixelDataRef >= 0) {
+                const auto pix = embeddedPixelTextures.find(static_cast<std::uint32_t>(st->second.pixelDataRef));
+                if (pix != embeddedPixelTextures.end()) dst.embeddedTexture = pix->second;
+            }
+        };
+        const auto copyTexDesc = [&](NifTextureSlot& dst, const NifTextureSlotState& src) {
+            dst.present = src.present;
+            dst.uvSet = src.uvSet;
+            dst.clampMode = src.clampMode;
+            dst.filterMode = src.filterMode;
+            dst.hasTransform = src.hasTransform;
+            dst.translation = src.translation;
+            dst.scale = src.scale;
+            dst.rotation = src.rotation;
+            dst.transformType = src.transformType;
+            dst.center = src.center;
+            if (src.present) resolveSource(dst, src.sourceRef);
+        };
+
+        for (std::size_t slotIndex = 0; slotIndex < textureState->slots.size(); ++slotIndex)
+            copyTexDesc(system.textureSlots[slotIndex], textureState->slots[slotIndex]);
+
+        system.shaderTextureSlots.clear();
+        system.shaderTextureSlots.reserve(textureState->shaderSlots.size());
+        for (const auto& [mapId, src] : textureState->shaderSlots) {
+            NifShaderTextureSlot shaderSlot;
+            shaderSlot.mapId = mapId;
+            shaderSlot.sourceTextureRef = src.sourceRef;
+            copyTexDesc(shaderSlot.texture, src);
+            system.shaderTextureSlots.push_back(std::move(shaderSlot));
+        }
+        // Same verified mapping as mesh materials: VCAlphaTextureBlender map IDs 0/1/2 are
+        // Texture1/Texture2/Detail. Other shader map IDs remain preserved but diagnostic-only.
+        if (system.shaderName == "VCAlphaTextureBlender") {
+            for (const auto& [mapId, src] : textureState->shaderSlots) {
+                if (mapId <= 2u) copyTexDesc(system.textureSlots[mapId], src);
+            }
+        }
+
+        const auto makeTrack = [&](const NifSingleControllerState& controller) {
+            NifFloatTrack track;
+            track.active = (controller.flags & 0x0008u) != 0;
+            track.extrapolation = static_cast<std::uint8_t>((controller.flags & 0x0006u) >> 1u);
+            track.frequency = controller.frequency;
+            track.phase = controller.phase;
+            track.startTime = controller.startTime;
+            track.stopTime = controller.stopTime;
+            if (controller.interpolatorRef >= 0) {
+                const auto ii = floatInterpolatorsByBlock.find(
+                    static_cast<std::uint32_t>(controller.interpolatorRef));
+                if (ii != floatInterpolatorsByBlock.end()) {
+                    track.currentValue = ii->second.value;
+                    if (ii->second.dataRef >= 0) {
+                        const auto di = floatDataByBlock.find(static_cast<std::uint32_t>(ii->second.dataRef));
+                        if (di != floatDataByBlock.end()) {
+                            track.interpolation = di->second.interpolation;
+                            track.keys = di->second.keys;
+                        }
+                    }
+                }
+            }
+            return track;
+        };
+
+        system.textureTransformAnimations.clear();
+        system.textureFlipAnimations.clear();
+        std::int32_t controllerRef = textureState->controllerRef;
+        std::unordered_set<std::int32_t> seenControllers;
+        for (int guard = 0; controllerRef >= 0 && guard < 128; ++guard) {
+            if (!seenControllers.insert(controllerRef).second) break;
+            std::int32_t nextRef = -1;
+            const auto tt = texTransformControllersByBlock.find(static_cast<std::uint32_t>(controllerRef));
+            if (tt != texTransformControllersByBlock.end()) {
+                nextRef = tt->second.base.nextRef;
+                if (tt->second.base.targetRef == static_cast<std::int32_t>(texturePropertyBlock) &&
+                    tt->second.operation <= 4u) {
+                    NifTextureTransformAnimation animation;
+                    animation.slot = tt->second.textureSlot & 7u;
+                    animation.operation = tt->second.operation;
+                    animation.track = makeTrack(tt->second.base);
+                    system.textureTransformAnimations.push_back(std::move(animation));
+                }
+            } else {
+                const auto ff = flipControllersByBlock.find(static_cast<std::uint32_t>(controllerRef));
+                if (ff == flipControllersByBlock.end()) break;
+                nextRef = ff->second.base.nextRef;
+                if (ff->second.base.targetRef == static_cast<std::int32_t>(texturePropertyBlock)) {
+                    NifTextureFlipAnimation animation;
+                    animation.slot = ff->second.textureSlot & 7u;
+                    animation.track = makeTrack(ff->second.base);
+                    animation.frames.reserve(ff->second.sourceRefs.size());
+                    for (const auto sourceRef : ff->second.sourceRefs) {
+                        if (sourceRef < 0) continue;
+                        const auto st = sourceTextures.find(static_cast<std::uint32_t>(sourceRef));
+                        if (st == sourceTextures.end()) continue;
+                        NifTextureFlipFrame frame;
+                        frame.texture = st->second.filename;
+                        frame.sourceUsesEmbeddedPixelData = st->second.useExternal == 0;
+                        frame.sourcePixelDataRef = st->second.pixelDataRef;
+                        if (st->second.useExternal == 0 && st->second.pixelDataRef >= 0) {
+                            const auto pix = embeddedPixelTextures.find(
+                                static_cast<std::uint32_t>(st->second.pixelDataRef));
+                            if (pix != embeddedPixelTextures.end()) frame.embeddedTexture = pix->second;
+                        }
+                        animation.frames.push_back(std::move(frame));
+                    }
+                    system.textureFlipAnimations.push_back(std::move(animation));
+                }
+            }
+            controllerRef = nextRef;
+        }
+    }
+
+    // Resolve authored modifier refs to their parsed payloads in exactly the order stored by
+    // NiParticleSystem. Missing refs remain visible through modifierRefs/modifierTypes and do
+    // not get replaced by synthetic defaults.
+    for (auto& system : model.particleSystems) {
+        system.modifiers.clear();
+        system.modifiers.reserve(system.modifierRefs.size());
+        for (const auto ref : system.modifierRefs) {
+            if (ref < 0) continue;
+            const auto it = particleModifierByBlock.find(static_cast<std::uint32_t>(ref));
+            if (it != particleModifierByBlock.end()) system.modifiers.push_back(it->second);
+        }
+    }
+
+    // Resolve each dynamic particle system to its authored NiPSysData/NiMeshPSysData block.
+    // A missing data ref remains explicit instead of creating synthetic particles.
+    for (auto& system : model.particleSystems) {
+        if (system.dataRef < 0) continue;
+        const auto it = particleDataByBlock.find(static_cast<std::uint32_t>(system.dataRef));
+        if (it == particleDataByBlock.end()) continue;
+        system.hasParticleData = true;
+        system.particleData = it->second;
+    }
+
     // Zweistufige Textur-Aufloesung fuer alle klassischen Slots abschliessen. SourceTexture-
     // Bloecke stehen haeufig erst hinter der Property, daher wird der Dateiname/embedded PixelData
     // bewusst erst jetzt eingetragen.
@@ -3981,6 +4734,8 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             if (it == sourceTextures.end()) continue;
             auto& slot = part.textureSlots[slotIndex];
             slot.texture = it->second.filename;
+            slot.sourceUsesEmbeddedPixelData = it->second.useExternal == 0;
+            slot.sourcePixelDataRef = it->second.pixelDataRef;
             if (it->second.useExternal == 0 && it->second.pixelDataRef >= 0) {
                 auto pix = embeddedPixelTextures.find(static_cast<std::uint32_t>(it->second.pixelDataRef));
                 if (pix != embeddedPixelTextures.end()) slot.embeddedTexture = pix->second;
@@ -3988,10 +4743,51 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                                   it->second.filename.c_str(), it->second.pixelDataRef);
             }
         }
+        // ShaderTexDesc-Quellen separat auflösen. Sie dürfen nicht automatisch in die
+        // klassischen Slots gespiegelt werden; nur verifizierte Shaderpfade wie
+        // VCAlphaTextureBlender tun das oben explizit.
+        for (auto& shaderSlot : part.shaderTextureSlots) {
+            if (shaderSlot.sourceTextureRef < 0) continue;
+            const auto it = sourceTextures.find(static_cast<std::uint32_t>(shaderSlot.sourceTextureRef));
+            if (it == sourceTextures.end()) continue;
+            auto& slot = shaderSlot.texture;
+            slot.texture = it->second.filename;
+            slot.sourceUsesEmbeddedPixelData = it->second.useExternal == 0;
+            slot.sourcePixelDataRef = it->second.pixelDataRef;
+            if (it->second.useExternal == 0 && it->second.pixelDataRef >= 0) {
+                const auto pix = embeddedPixelTextures.find(static_cast<std::uint32_t>(it->second.pixelDataRef));
+                if (pix != embeddedPixelTextures.end()) slot.embeddedTexture = pix->second;
+                else std::fprintf(stderr,
+                                  "[NifModel] ShaderTexDesc map %u source '%s' verweist auf nicht dekodierte NiPixelData %d\n",
+                                  shaderSlot.mapId, it->second.filename.c_str(), it->second.pixelDataRef);
+            }
+        }
+
         // Kompatibilitaets-Aliase fuer bestehende Aufrufer/Diagnose.
         if (part.textureSlots[0].present) {
             part.diffuseTexture = part.textureSlots[0].texture;
             part.embeddedDiffuseTexture = part.textureSlots[0].embeddedTexture;
+        }
+    }
+
+    // NiTextureEffect sources are resolved only after every NiSourceTexture/NiPixelData
+    // block is known. Embedded effects deliberately never fall back to an external file when
+    // their PixelData cannot be decoded; doing so would change the authored NIF semantics.
+    for (auto& part : model.parts) {
+        for (auto& effect : part.textureEffects) {
+            if (effect.sourceTextureRef < 0) continue;
+            const auto st = sourceTextures.find(static_cast<std::uint32_t>(effect.sourceTextureRef));
+            if (st == sourceTextures.end()) continue;
+            effect.texture = st->second.filename;
+            effect.sourceUsesEmbeddedPixelData = st->second.useExternal == 0;
+            effect.sourcePixelDataRef = st->second.pixelDataRef;
+            if (st->second.useExternal == 0 && st->second.pixelDataRef >= 0) {
+                const auto pix = embeddedPixelTextures.find(static_cast<std::uint32_t>(st->second.pixelDataRef));
+                if (pix != embeddedPixelTextures.end()) effect.embeddedTexture = pix->second;
+                else std::fprintf(stderr,
+                                  "[NifModel] NiTextureEffect source '%s' verweist auf nicht dekodierte NiPixelData %d\n",
+                                  st->second.filename.c_str(), st->second.pixelDataRef);
+            }
         }
     }
 
@@ -4010,6 +4806,8 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 if (st == sourceTextures.end()) continue;
                 NifTextureFlipFrame frame;
                 frame.texture = st->second.filename;
+                frame.sourceUsesEmbeddedPixelData = st->second.useExternal == 0;
+                frame.sourcePixelDataRef = st->second.pixelDataRef;
                 if (st->second.useExternal == 0 && st->second.pixelDataRef >= 0) {
                     const auto pix = embeddedPixelTextures.find(static_cast<std::uint32_t>(st->second.pixelDataRef));
                     if (pix != embeddedPixelTextures.end()) frame.embeddedTexture = pix->second;
@@ -4029,6 +4827,8 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         part.diffuseTexture = it->second.filename;
         part.textureSlots[0].present = true;
         part.textureSlots[0].texture = it->second.filename;
+        part.textureSlots[0].sourceUsesEmbeddedPixelData = it->second.useExternal == 0;
+        part.textureSlots[0].sourcePixelDataRef = it->second.pixelDataRef;
         part.textureSlots[0].uvSet = part.baseUvSet;
         part.textureSlots[0].clampMode = part.textureClampMode;
         part.textureSlots[0].filterMode = part.textureFilterMode;
@@ -4051,6 +4851,59 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
 }
 
 } // namespace
+
+NifVec2 ApplyNifTextureTransform(const NifTextureSlot& slot, NifVec2 uv) {
+    if (!slot.hasTransform) return uv;
+
+    const float c = std::cos(slot.rotation);
+    const float sn = std::sin(slot.rotation);
+    const auto rotate = [&](NifVec2 p) {
+        return NifVec2{c * p.u - sn * p.v, sn * p.u + c * p.v};
+    };
+    const auto scale = [&](NifVec2 p) {
+        return NifVec2{p.u * slot.scale.u, p.v * slot.scale.v};
+    };
+    const auto translate = [&](NifVec2 p) {
+        return NifVec2{p.u + slot.translation.u, p.v + slot.translation.v};
+    };
+    const auto back = [&](NifVec2 p) {
+        return NifVec2{p.u - slot.center.u, p.v - slot.center.v};
+    };
+    const auto center = [&](NifVec2 p) {
+        return NifVec2{p.u + slot.center.u, p.v + slot.center.v};
+    };
+
+    // nif.xml TransformMethod matrix order (column-vector convention):
+    // 0 TM_Maya Deprecated: Center * Rotation * Back * Translate * Scale
+    // 1 TM_Max:             Center * Scale * Rotation * Translate * Back
+    // 2 TM_Maya:            Center * Rotation * Back * FromMaya * Translate * Scale
+    // FromMaya flips V and translates it by +1 => (u, 1-v).
+    switch (slot.transformType) {
+        case kNifTextureTransformMax: {
+            NifVec2 p = back(uv);
+            p = translate(p);
+            p = rotate(p);
+            p = scale(p);
+            return center(p);
+        }
+        case kNifTextureTransformMaya: {
+            NifVec2 p = scale(uv);
+            p = translate(p);
+            p.v = 1.0f - p.v;
+            p = back(p);
+            p = rotate(p);
+            return center(p);
+        }
+        case kNifTextureTransformMayaDeprecated:
+        default: {
+            NifVec2 p = scale(uv);
+            p = translate(p);
+            p = back(p);
+            p = rotate(p);
+            return center(p);
+        }
+    }
+}
 
 std::expected<NifModel, std::string> LoadNifMesh(const std::filesystem::path& file, bool allowRecovery) {
     std::ifstream in(file, std::ios::binary | std::ios::ate);
@@ -4170,6 +5023,221 @@ std::expected<NifModel, std::string> LoadNifMesh(const std::filesystem::path& fi
         }
     }
     return std::unexpected(firstError);
+}
+
+
+std::vector<NifGroundContactSegment> ComputeGroundContactSegments(const NifModel& model) {
+    float minY = 0.0f, maxY = 0.0f;
+    bool any = false;
+    for (const auto& part : model.parts) {
+        for (const auto& v : part.positions) {
+            if (!any) {
+                minY = maxY = v.y;
+                any = true;
+            } else {
+                minY = std::min(minY, v.y);
+                maxY = std::max(maxY, v.y);
+            }
+        }
+    }
+    if (!any) return {};
+
+    // Placement-NIFs are authored around their local origin. When the geometry spans y=0,
+    // use that plane: it correctly ignores below-ground foundations/decorations and matches
+    // the plane that is placed on the terrain. Models whose geometry does not span y=0 use
+    // their actual lowest plane instead of assuming a pivot convention they do not follow.
+    const float height = std::max(0.0f, maxY - minY);
+    const float eps = std::clamp(height * 0.0015f, 0.05f, 2.0f);
+    const float planeY = (minY <= eps && maxY >= -eps) ? 0.0f : minY;
+
+    struct Point2 {
+        float x = 0.0f;
+        float z = 0.0f;
+    };
+    struct PointKey {
+        std::int64_t x = 0;
+        std::int64_t z = 0;
+        bool operator==(const PointKey&) const = default;
+    };
+    struct EdgeKey {
+        PointKey a{};
+        PointKey b{};
+        bool operator==(const EdgeKey&) const = default;
+    };
+    struct EdgeHash {
+        std::size_t operator()(const EdgeKey& e) const noexcept {
+            auto mix = [](std::uint64_t v) {
+                v ^= v >> 33;
+                v *= 0xff51afd7ed558ccdULL;
+                v ^= v >> 33;
+                v *= 0xc4ceb9fe1a85ec53ULL;
+                v ^= v >> 33;
+                return v;
+            };
+            const auto ax = mix(static_cast<std::uint64_t>(e.a.x));
+            const auto az = mix(static_cast<std::uint64_t>(e.a.z));
+            const auto bx = mix(static_cast<std::uint64_t>(e.b.x));
+            const auto bz = mix(static_cast<std::uint64_t>(e.b.z));
+            return static_cast<std::size_t>(ax ^ (az << 1) ^ (bx << 2) ^ (bz << 3));
+        }
+    };
+
+    // Millimetre-ish quantization in Fiesta model units. It is only used to identify the
+    // same authored edge across adjacent triangles; returned coordinates remain untouched.
+    constexpr double kQuantize = 1000.0;
+    auto pointKey = [](const Point2& p) {
+        return PointKey{
+            static_cast<std::int64_t>(std::llround(static_cast<double>(p.x) * kQuantize)),
+            static_cast<std::int64_t>(std::llround(static_cast<double>(p.z) * kQuantize))
+        };
+    };
+    auto edgeKey = [&](Point2 a, Point2 b) {
+        PointKey ka = pointKey(a), kb = pointKey(b);
+        if (kb.x < ka.x || (kb.x == ka.x && kb.z < ka.z)) std::swap(ka, kb);
+        return EdgeKey{ka, kb};
+    };
+    auto validSegment = [](const Point2& a, const Point2& b) {
+        const float dx = b.x - a.x;
+        const float dz = b.z - a.z;
+        return dx * dx + dz * dz > 1.0e-8f;
+    };
+
+    std::unordered_map<EdgeKey, NifGroundContactSegment, EdgeHash> uniqueSegments;
+    auto keepSegment = [&](const Point2& a, const Point2& b) {
+        if (!validSegment(a, b)) return;
+        const EdgeKey key = edgeKey(a, b);
+        uniqueSegments.try_emplace(key, NifGroundContactSegment{a.x, a.z, b.x, b.z});
+    };
+
+    auto side = [&](float y) {
+        const float d = y - planeY;
+        if (d > eps) return 1;
+        if (d < -eps) return -1;
+        return 0;
+    };
+
+    for (const auto& part : model.parts) {
+        if (part.positions.empty() || part.triangleIndices.size() < 3) continue;
+
+        // Coplanar floor triangles need special treatment: count their edges within the mesh
+        // part and keep only boundary edges. Otherwise every triangulation diagonal would be
+        // visible in the 2D editor.
+        struct CountedEdge {
+            Point2 a{};
+            Point2 b{};
+            std::uint32_t count = 0;
+        };
+        std::unordered_map<EdgeKey, CountedEdge, EdgeHash> coplanarEdges;
+        auto countCoplanarEdge = [&](const Point2& a, const Point2& b) {
+            if (!validSegment(a, b)) return;
+            const EdgeKey key = edgeKey(a, b);
+            auto [it, inserted] = coplanarEdges.try_emplace(key, CountedEdge{a, b, 0});
+            ++it->second.count;
+        };
+
+        for (std::size_t ti = 0; ti + 2 < part.triangleIndices.size(); ti += 3) {
+            const auto ia = part.triangleIndices[ti + 0];
+            const auto ib = part.triangleIndices[ti + 1];
+            const auto ic = part.triangleIndices[ti + 2];
+            if (ia >= part.positions.size() || ib >= part.positions.size() || ic >= part.positions.size())
+                continue;
+
+            const auto& a3 = part.positions[ia];
+            const auto& b3 = part.positions[ib];
+            const auto& c3 = part.positions[ic];
+            const int sa = side(a3.y), sb = side(b3.y), sc = side(c3.y);
+            const Point2 a{a3.x, a3.z}, b{b3.x, b3.z}, c{c3.x, c3.z};
+
+            if (sa == 0 && sb == 0 && sc == 0) {
+                countCoplanarEdge(a, b);
+                countCoplanarEdge(b, c);
+                countCoplanarEdge(c, a);
+                continue;
+            }
+
+            std::vector<Point2> hits;
+            hits.reserve(4);
+            auto appendUnique = [&](const Point2& p) {
+                const PointKey key = pointKey(p);
+                for (const auto& existing : hits)
+                    if (pointKey(existing) == key) return;
+                hits.push_back(p);
+            };
+            auto intersectEdge = [&](const core::NifVec3& p0, int s0,
+                                     const core::NifVec3& p1, int s1) {
+                const Point2 q0{p0.x, p0.z};
+                const Point2 q1{p1.x, p1.z};
+                if (s0 == 0 && s1 == 0) {
+                    keepSegment(q0, q1);
+                    appendUnique(q0);
+                    appendUnique(q1);
+                    return;
+                }
+                if (s0 == 0) {
+                    appendUnique(q0);
+                    return;
+                }
+                if (s1 == 0) {
+                    appendUnique(q1);
+                    return;
+                }
+                if (s0 == s1) return;
+                const float denom = p1.y - p0.y;
+                if (std::abs(denom) <= 1.0e-8f) return;
+                const float t = std::clamp((planeY - p0.y) / denom, 0.0f, 1.0f);
+                appendUnique(Point2{
+                    p0.x + (p1.x - p0.x) * t,
+                    p0.z + (p1.z - p0.z) * t
+                });
+            };
+
+            intersectEdge(a3, sa, b3, sb);
+            intersectEdge(b3, sb, c3, sc);
+            intersectEdge(c3, sc, a3, sa);
+
+            if (hits.size() >= 2) {
+                // Tolerance can occasionally classify all three edges as touching. Use the
+                // farthest pair; this avoids a tiny spurious segment around a near-coplanar
+                // vertex while preserving the actual plane/triangle intersection.
+                std::size_t bestA = 0, bestB = 1;
+                float bestD2 = -1.0f;
+                for (std::size_t i = 0; i < hits.size(); ++i) {
+                    for (std::size_t j = i + 1; j < hits.size(); ++j) {
+                        const float dx = hits[j].x - hits[i].x;
+                        const float dz = hits[j].z - hits[i].z;
+                        const float d2 = dx * dx + dz * dz;
+                        if (d2 > bestD2) {
+                            bestD2 = d2;
+                            bestA = i;
+                            bestB = j;
+                        }
+                    }
+                }
+                keepSegment(hits[bestA], hits[bestB]);
+            }
+        }
+
+        for (const auto& [key, edge] : coplanarEdges) {
+            (void)key;
+            // Two coplanar triangles share an interior edge. Odd count is retained instead
+            // of requiring exactly one so duplicated triangles cannot erase a real boundary.
+            if ((edge.count & 1u) != 0u) keepSegment(edge.a, edge.b);
+        }
+    }
+
+    std::vector<NifGroundContactSegment> result;
+    result.reserve(uniqueSegments.size());
+    for (const auto& [key, segment] : uniqueSegments) {
+        (void)key;
+        result.push_back(segment);
+    }
+    std::sort(result.begin(), result.end(), [](const auto& a, const auto& b) {
+        if (a.x0 != b.x0) return a.x0 < b.x0;
+        if (a.z0 != b.z0) return a.z0 < b.z0;
+        if (a.x1 != b.x1) return a.x1 < b.x1;
+        return a.z1 < b.z1;
+    });
+    return result;
 }
 
 std::vector<std::pair<float, float>> ComputeFootprintHull(const NifModel& model) {

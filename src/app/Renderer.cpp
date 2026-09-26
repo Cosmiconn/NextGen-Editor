@@ -53,6 +53,7 @@ uniform float uUvScale[8];
 uniform float uLayerVisible[8]; // 0 = Layer ausgeblendet (Map-Editor "Sichtbarkeit")
 uniform vec4 uLayerRegion[8]; // Welt-X/Z-Start, Welt-Breite/Tiefe der Region, die die Blend-Map des Layers abdeckt
 uniform vec2 uMapSpan;
+uniform vec2 uBlockSize;
 
 uniform sampler2D uDiffuse0;
 uniform sampler2D uBlend0;
@@ -78,18 +79,15 @@ vec3 SampleLayer(sampler2D diffuseTex, sampler2D blendTex, float uvScale, vec4 r
     vec2 mapUv = (vWorldPos.xz - region.xy) / region.zw;
     if (mapUv.x < 0.0 || mapUv.y < 0.0 || mapUv.x > 1.0 || mapUv.y > 1.0) return vec3(0.0);
     float weight = texture(blendTex, mapUv).r;
-    // KORRIGIERT (zurückgenommen): der vorherige "finale" V-Flip nur für die Diffuse-Textur
-    // (relativ zur Blend-Achse) hat das Problem NICHT gelöst - Nutzer-Rückmeldung mit
-    // Vergleichs-Screenshots (2D View mit rotem Block/Walk-Overlay vs. Nahaufnahme derselben
-    // Steintextur) zeigt: das rote Block/Walk-Overlay ist korrekt ausgerichtet ("richtig
-    // rum"), aber die Diffuse-Textur ist weiterhin oben/unten vertauscht - GENAU das Symptom,
-    // das der vorherige Flip eigentlich beheben sollte. Da Block/Walk dieselbe mapUv-Achse wie
-    // Blend nutzt (beide nachweislich korrekt), war der Flip demnach die falsche Richtung -
-    // jetzt wieder auf direkte Übernahme von mapUv umgestellt, wie beim Blend-Lookup. Falls
-    // die Textur danach WEITERHIN falsch orientiert ist, liegt die Ursache vermutlich nicht in
-    // der UV-Zuordnung, sondern in der Zeilenreihenfolge beim DDS-Dekodieren selbst (siehe
-    // DdsImage.cpp) - das wäre der nächste Verdächtige, siehe HANDOFF.md.
-    vec2 diffuseUv = mapUv * uvScale;
+    // Diffuse detail density is a WORLD-space property, not a map-size property.
+    // The previous mapUv*uvScale interpretation made one ground tile span thousands of
+    // world units on large maps. Legacy maps use 50-unit terrain blocks by default; the
+    // earlier renderer's 500-unit reference therefore corresponds to ten terrain blocks.
+    // Keeping that reference relative to the actual block size preserves scale on maps
+    // with non-default block dimensions while still honoring UVScaleDiffuse.
+    vec2 localWorld = vWorldPos.xz - region.xy;
+    vec2 referenceTile = max(uBlockSize * 10.0, vec2(1.0));
+    vec2 diffuseUv = (localWorld / referenceTile) * max(uvScale, 0.0001);
     vec3 diffuseColor = texture(diffuseTex, diffuseUv).rgb;
     return diffuseColor * weight;
 }
@@ -100,14 +98,9 @@ void main() {
     vec3 baseColor;
 
     if (uUseTextures && uLayerCount > 0) {
-        // KORRIGIERT: uvScale ist die Anzahl Wiederholungen ÜBER DIE GESAMTE KARTENFLÄCHE
-        // (Standard-Konvention), nicht - wie zuvor angenommen - ein Kehrwert einer festen
-        // Welteinheiten-Periode. Beleg: echte .ini-Werte für UVScaleDiffuse liegen bei 4-5
-        // (siehe docs/MAP_FORMAT.md) - mit der alten "/500"-Formel hätte sich eine Textur auf
-        // einer 12800 Einheiten breiten Karte ca. 128x statt der vermutlich beabsichtigten 4-5x
-        // wiederholt. Das erklärt eher ein vom Nutzer gemeldetes "Emblem erscheint mehrfach"
-        // als eine reine Spiegelung. mapUv (0..1 über die Kartenfläche) ist dieselbe Basis wie
-        // beim Blend-Lookup, nur zusätzlich mit uvScale multipliziert.
+        // Blend weights remain normalized to each layer region. Diffuse textures are
+        // intentionally sampled in world scale inside SampleLayer(), so visual texel size does
+        // not grow with the overall map dimensions.
         vec3 color = vec3(0.0);
         if (uLayerCount > 0) color += SampleLayer(uDiffuse0, uBlend0, uUvScale[0], uLayerRegion[0]) * uLayerVisible[0];
         if (uLayerCount > 1) color += SampleLayer(uDiffuse1, uBlend1, uUvScale[1], uLayerRegion[1]) * uLayerVisible[1];
@@ -287,6 +280,12 @@ void HeightmapRenderer::Shutdown() {
     fbo2dColorTex_ = fbo2dDepthRbo_ = fbo2d_ = 0;
     fbo2dWidth_ = fbo2dHeight_ = 0;
 
+    if (fboOverviewColorTex_) glDeleteTextures(1, &fboOverviewColorTex_);
+    if (fboOverviewDepthRbo_) glDeleteRenderbuffers(1, &fboOverviewDepthRbo_);
+    if (fboOverview_) glDeleteFramebuffers(1, &fboOverview_);
+    fboOverviewColorTex_ = fboOverviewDepthRbo_ = fboOverview_ = 0;
+    fboOverviewWidth_ = fboOverviewHeight_ = 0;
+
     if (overlayVbo_) glDeleteBuffers(1, &overlayVbo_);
     if (overlayVao_) glDeleteVertexArrays(1, &overlayVao_);
     if (overlayShaderProgram_) glDeleteProgram(overlayShaderProgram_);
@@ -452,8 +451,8 @@ void HeightmapRenderer::EnsureFramebuffer(int width, int height) {
 
     glGenRenderbuffers(1, &fboDepthRbo_);
     glBindRenderbuffer(GL_RENDERBUFFER, fboDepthRbo_);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, fboDepthRbo_);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, fboDepthRbo_);
 
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         std::fprintf(stderr, "[Renderer] Framebuffer unvollständig!\n");
@@ -479,7 +478,8 @@ void HeightmapRenderer::BeginScene(const OrbitCamera& camera, int width, int hei
     glViewport(0, 0, width, height);
     glEnable(GL_DEPTH_TEST);
     glClearColor(0.10f, 0.11f, 0.13f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glClearStencil(0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
     if (indexCount_ > 0) {
         const Mat4 view = camera.ViewMatrix();
@@ -501,6 +501,8 @@ void HeightmapRenderer::DrawTerrainMesh(const Mat4& viewProj, bool wireframe) {
     glUniform1f(glGetUniformLocation(shaderProgram_, "uMaxHeight"), maxHeight_);
     glUniform1i(glGetUniformLocation(shaderProgram_, "uUseTextures"), textureLayerCount_ > 0 ? 1 : 0);
     glUniform2f(glGetUniformLocation(shaderProgram_, "uMapSpan"), mapSpanX_, mapSpanZ_);
+    glUniform2f(glGetUniformLocation(shaderProgram_, "uBlockSize"),
+                std::max(blockW_, 0.001f), std::max(blockH_, 0.001f));
 
     glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
     glBindVertexArray(vao_);
@@ -583,8 +585,8 @@ void HeightmapRenderer::EnsureFramebuffer2d(int width, int height) {
 
     glGenRenderbuffers(1, &fbo2dDepthRbo_);
     glBindRenderbuffer(GL_RENDERBUFFER, fbo2dDepthRbo_);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, fbo2dDepthRbo_);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, fbo2dDepthRbo_);
 
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         std::fprintf(stderr, "[Renderer] 2D-Framebuffer unvollständig!\n");
@@ -592,6 +594,62 @@ void HeightmapRenderer::EnsureFramebuffer2d(int width, int height) {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     fbo2dWidth_ = width;
     fbo2dHeight_ = height;
+}
+
+void HeightmapRenderer::EnsureFramebufferOverview(int width, int height) {
+    if (fboOverview_ != 0 && width == fboOverviewWidth_ && height == fboOverviewHeight_) return;
+
+    if (fboOverviewColorTex_) glDeleteTextures(1, &fboOverviewColorTex_);
+    if (fboOverviewDepthRbo_) glDeleteRenderbuffers(1, &fboOverviewDepthRbo_);
+    if (fboOverview_) glDeleteFramebuffers(1, &fboOverview_);
+
+    glGenFramebuffers(1, &fboOverview_);
+    glBindFramebuffer(GL_FRAMEBUFFER, fboOverview_);
+
+    glGenTextures(1, &fboOverviewColorTex_);
+    glBindTexture(GL_TEXTURE_2D, fboOverviewColorTex_);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, fboOverviewColorTex_, 0);
+
+    glGenRenderbuffers(1, &fboOverviewDepthRbo_);
+    glBindRenderbuffer(GL_RENDERBUFFER, fboOverviewDepthRbo_);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, fboOverviewDepthRbo_);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        std::fprintf(stderr, "[Renderer] Overview-Framebuffer unvollständig!\\n");
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    fboOverviewWidth_ = width;
+    fboOverviewHeight_ = height;
+}
+
+std::uint32_t HeightmapRenderer::RenderTopDownOverview(int width, int height) {
+    if (width <= 0 || height <= 0) return 0;
+    EnsureFramebufferOverview(width, height);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, fboOverview_);
+    glViewport(0, 0, width, height);
+    glEnable(GL_DEPTH_TEST);
+    glClearColor(0.10f, 0.11f, 0.13f, 1.0f);
+    glClearStencil(0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+
+    if (indexCount_ > 0) {
+        const float centerX = mapSpanX_ * 0.5f;
+        const float centerZ = mapSpanZ_ * 0.5f;
+        const float halfW = std::max(mapSpanX_ * 0.5f, 1.0f);
+        const float halfH = std::max(mapSpanZ_ * 0.5f, 1.0f);
+        const float eyeHeight = maxHeight_ + 500.0f;
+        DrawTerrainMesh(OrthoTopDownViewProj(centerX, centerZ, halfW, halfH, eyeHeight), false);
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    return fboOverviewColorTex_;
 }
 
 void HeightmapRenderer::BeginTopDownScene(int width, int height) {
@@ -602,7 +660,8 @@ void HeightmapRenderer::BeginTopDownScene(int width, int height) {
     glViewport(0, 0, width, height);
     glEnable(GL_DEPTH_TEST);
     glClearColor(0.10f, 0.11f, 0.13f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glClearStencil(0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
     if (indexCount_ > 0) {
         const bool windowed = tdHalfW_ > 0.0f && tdHalfH_ > 0.0f;

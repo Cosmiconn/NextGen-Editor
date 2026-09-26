@@ -15,6 +15,8 @@
 #include <cstdio>
 #include <cctype>
 #include <limits>
+#include <unordered_map>
+#include <unordered_set>
 
 #ifdef _WIN32
 #define NOMINMAX
@@ -41,6 +43,7 @@ layout(location = 6) in vec2 aUv4;
 layout(location = 7) in vec2 aUv5;
 layout(location = 8) in vec2 aUv6;
 layout(location = 9) in vec2 aUv7;
+layout(location = 10) in vec4 aColor;
 
 uniform mat4 uViewProj;
 uniform mat4 uModel;
@@ -55,6 +58,7 @@ out vec2 vUv4;
 out vec2 vUv5;
 out vec2 vUv6;
 out vec2 vUv7;
+out vec4 vColor;
 
 void main() {
     vec4 worldPos = uModel * vec4(aPos, 1.0);
@@ -62,6 +66,7 @@ void main() {
     vNormal = mat3(uModel) * aNormal;
     vUv0 = aUv0; vUv1 = aUv1; vUv2 = aUv2; vUv3 = aUv3;
     vUv4 = aUv4; vUv5 = aUv5; vUv6 = aUv6; vUv7 = aUv7;
+    vColor = aColor;
     gl_Position = uViewProj * worldPos;
 }
 )";
@@ -78,10 +83,12 @@ in vec2 vUv4;
 in vec2 vUv5;
 in vec2 vUv6;
 in vec2 vUv7;
+in vec4 vColor;
 out vec4 FragColor;
 
 uniform vec3 uLightDir;
 uniform vec3 uCameraPos;
+uniform mat4 uView;
 uniform vec3 uAmbientColor;
 uniform vec3 uDiffuseColor;
 uniform vec3 uSpecularColor;
@@ -89,12 +96,15 @@ uniform vec3 uEmissiveColor;
 uniform float uGlossiness;
 uniform bool uSpecularEnabled;
 uniform int uApplyMode;
+uniform bool uVcAlphaTextureBlender;
+uniform int uVertexColorMode;
 uniform bool uHasTex[10];
 uniform int uUvSet[10];
 uniform bool uHasTexTransform[10];
 uniform vec2 uTexTranslation[10];
 uniform vec2 uTexScale[10];
 uniform float uTexRotation[10];
+uniform int uTexTransformType[10];
 uniform vec2 uTexCenter[10];
 uniform sampler2D uTex0;
 uniform sampler2D uTex1;
@@ -106,6 +116,16 @@ uniform sampler2D uTex6;
 uniform sampler2D uTex7;
 uniform sampler2D uTex8;
 uniform sampler2D uTex9;
+// NiTextureEffect is separate from NiTexturingProperty. The verified Fiesta path is
+// TEX_ENVIRONMENT_MAP + CG_SPHERE_MAP. GL 3.3 guarantees 16 fragment texture units,
+// so six effect samplers fit beside the ten classic slots.
+uniform int uEnvironmentSphereCount;
+uniform sampler2D uEnvironmentTex0;
+uniform sampler2D uEnvironmentTex1;
+uniform sampler2D uEnvironmentTex2;
+uniform sampler2D uEnvironmentTex3;
+uniform sampler2D uEnvironmentTex4;
+uniform sampler2D uEnvironmentTex5;
 uniform float uBumpLumaScale;
 uniform float uBumpLumaOffset;
 uniform mat2 uBumpMatrix;
@@ -125,18 +145,40 @@ vec2 pickUv(int setIndex) {
     return vUv0;
 }
 
+vec2 rotateTextureUv(vec2 p, float angle) {
+    float c = cos(angle);
+    float s = sin(angle);
+    return vec2(c * p.x - s * p.y, s * p.x + c * p.y);
+}
+
 vec2 slotUv(int slot) {
     vec2 uv = pickUv(clamp(uUvSet[slot], 0, 7));
     if (!uHasTexTransform[slot]) return uv;
-    vec2 p = uv - uTexCenter[slot];
-    // NIF/NifSkope fixed-function order: center -> rotate -> scale -> translation -> -center
-    // appears as the following order when applied to the coordinate vector.
-    p += uTexTranslation[slot];
-    p *= uTexScale[slot];
-    float c = cos(uTexRotation[slot]);
-    float s = sin(uTexRotation[slot]);
-    p = mat2(c, s, -s, c) * p;
-    return p + uTexCenter[slot];
+
+    const int TM_MAYA_DEPRECATED = 0;
+    const int TM_MAX = 1;
+    const int TM_MAYA = 2;
+    int method = uTexTransformType[slot];
+
+    // nif.xml TransformMethod matrix order, applied right-to-left to the UV column vector:
+    // 0: Center * Rotation * Back * Translate * Scale
+    // 1: Center * Scale * Rotation * Translate * Back
+    // 2: Center * Rotation * Back * FromMaya * Translate * Scale
+    if (method == TM_MAX) {
+        vec2 p = uv - uTexCenter[slot];          // Back
+        p += uTexTranslation[slot];              // Translate
+        p = rotateTextureUv(p, uTexRotation[slot]);
+        p *= uTexScale[slot];                    // Scale
+        return p + uTexCenter[slot];             // Center
+    }
+
+    vec2 p = uv * uTexScale[slot];               // Scale
+    p += uTexTranslation[slot];                  // Translate
+    if (method == TM_MAYA) p.y = 1.0 - p.y;     // FromMaya
+    // Unknown values deliberately follow the format default (TM_MAYA_DEPRECATED).
+    p -= uTexCenter[slot];                        // Back
+    p = rotateTextureUv(p, uTexRotation[slot]);  // Rotation
+    return p + uTexCenter[slot];                 // Center
 }
 
 float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
@@ -162,17 +204,71 @@ vec3 bumpNormal(vec3 baseNormal) {
     return normalize(baseNormal - tangent * grad.x - bitangent * grad.y);
 }
 
+vec2 environmentSphereUv(vec3 worldNormal) {
+    // Classic GL_SPHERE_MAP is defined in eye coordinates: u points from the eye-space
+    // origin to the fragment/vertex and n is the normal transformed to eye space.
+    // Projecting a world-space reflection vector would make the environment pattern rotate
+    // with the world instead of remaining camera-relative.
+    vec3 eyePosition = (uView * vec4(vWorldPos, 1.0)).xyz;
+    vec3 eyeNormal = normalize(mat3(uView) * worldNormal);
+    float eyeLen2 = dot(eyePosition, eyePosition);
+    if (eyeLen2 <= 1e-12) return vec2(0.5);
+    vec3 u = eyePosition * inversesqrt(eyeLen2);
+    vec3 r = normalize(reflect(u, eyeNormal));
+    float m2 = r.x * r.x + r.y * r.y + (r.z + 1.0) * (r.z + 1.0);
+    if (m2 <= 1e-12) return vec2(0.5);
+    float m = 2.0 * sqrt(m2);
+    return r.xy / m + vec2(0.5);
+}
+
+vec3 environmentSphereColor(vec2 uv) {
+    vec3 sum = vec3(0.0);
+    if (uEnvironmentSphereCount > 0) sum += texture(uEnvironmentTex0, uv).rgb;
+    if (uEnvironmentSphereCount > 1) sum += texture(uEnvironmentTex1, uv).rgb;
+    if (uEnvironmentSphereCount > 2) sum += texture(uEnvironmentTex2, uv).rgb;
+    if (uEnvironmentSphereCount > 3) sum += texture(uEnvironmentTex3, uv).rgb;
+    if (uEnvironmentSphereCount > 4) sum += texture(uEnvironmentTex4, uv).rgb;
+    if (uEnvironmentSphereCount > 5) sum += texture(uEnvironmentTex5, uv).rgb;
+    return sum;
+}
+
 void main() {
     vec4 base = uHasTex[0] ? texture(uTex0, slotUv(0)) : vec4(1.0);
-    vec3 surface = uDiffuseColor;
-    if (uHasTex[0]) {
-        if (uApplyMode == 0) surface = base.rgb;                         // APPLY_REPLACE
-        else if (uApplyMode == 1) surface = mix(surface, base.rgb, base.a); // APPLY_DECAL
-        else surface *= base.rgb;                                       // APPLY_MODULATE/HILIGHT fallback
+
+    // Classic NiVertexColorProperty follows OpenGL color-material semantics.
+    // SRC_AMB_DIF replaces authored ambient+diffuse with the per-vertex color;
+    // SRC_EMISSIVE replaces authored emission. The dedicated VCAlpha shader keeps
+    // its original path below because its RGB/alpha inputs have different semantics.
+    vec3 materialAmbient = uAmbientColor;
+    vec3 materialDiffuse = uDiffuseColor;
+    vec3 materialEmission = uEmissiveColor;
+    if (!uVcAlphaTextureBlender) {
+        if (uVertexColorMode == 2) {
+            materialAmbient = vColor.rgb;
+            materialDiffuse = vColor.rgb;
+        } else if (uVertexColorMode == 1) {
+            materialEmission = vColor.rgb;
+        }
     }
 
-    if (uHasTex[1]) surface *= texture(uTex1, slotUv(1)).rgb; // Dark map
-    if (uHasTex[2]) surface *= clamp(texture(uTex2, slotUv(2)).rgb * 2.0, 0.0, 2.0); // Detail map
+    vec3 surface = materialDiffuse;
+    if (uVcAlphaTextureBlender && uHasTex[0] && uHasTex[1] && uHasTex[2]) {
+        // Original Gamebryo VCAlphaTextureBlender-P.hlsl:
+        // Texture1/Texture2 are blended by vertex alpha, then multiplied by Detail*2.
+        vec3 texture1 = texture(uTex0, slotUv(0)).rgb;
+        vec3 texture2 = texture(uTex1, slotUv(1)).rgb;
+        vec3 blended = mix(texture2, texture1, clamp(vColor.a, 0.0, 1.0));
+        vec3 detail = texture(uTex2, slotUv(2)).rgb * 2.0;
+        surface = uDiffuseColor * vColor.rgb * blended * detail;
+    } else {
+        if (uHasTex[0]) {
+            if (uApplyMode == 0) surface = base.rgb;                         // APPLY_REPLACE
+            else if (uApplyMode == 1) surface = mix(surface, base.rgb, base.a); // APPLY_DECAL
+            else surface *= base.rgb;                                       // APPLY_MODULATE/HILIGHT fallback
+        }
+        if (uHasTex[1]) surface *= texture(uTex1, slotUv(1)).rgb; // Dark map
+        if (uHasTex[2]) surface *= clamp(texture(uTex2, slotUv(2)).rgb * 2.0, 0.0, 2.0); // Detail map
+    }
 
     // Decals are layered in file order. Their alpha controls only the sticker blend, not the
     // alpha of the underlying surface.
@@ -182,7 +278,7 @@ void main() {
     if (uHasTex[9]) { vec4 d = texture(uTex9, slotUv(9)); surface = mix(surface, d.rgb, d.a); }
 
     float alpha = uMaterialAlpha;
-    if (uHasTex[0] && uApplyMode != 1) alpha *= base.a;
+    if (!uVcAlphaTextureBlender && uHasTex[0] && uApplyMode != 1) alpha *= base.a;
     if (uAlphaTest) {
         bool passAlpha = true;
         if (uAlphaTestFunc == 0) passAlpha = false;
@@ -206,11 +302,16 @@ void main() {
     float glossMask = uHasTex[3] ? luma(texture(uTex3, slotUv(3)).rgb) : 1.0;
     vec3 glow = uHasTex[4] ? texture(uTex4, slotUv(4)).rgb : vec3(0.0);
 
-    vec3 ambient = surface * uAmbientColor * 0.28;
+    vec3 ambient = surface * materialAmbient * 0.28;
     vec3 diffuse = surface * (0.22 + 0.78 * ndl);
     vec3 specular = uSpecularColor * specPower * glossMask;
-    vec3 emissive = uEmissiveColor + glow;
-    FragColor = vec4(ambient + diffuse + specular + emissive, alpha);
+    vec3 emissive = materialEmission + glow;
+    // NIF TextureType::TEX_ENVIRONMENT_MAP is additive to the ordinary textured,
+    // lit/decal result. It does not replace or multiply the base material.
+    vec3 environment = uEnvironmentSphereCount > 0
+        ? environmentSphereColor(environmentSphereUv(n))
+        : vec3(0.0);
+    FragColor = vec4(ambient + diffuse + specular + emissive + environment, alpha);
 }
 )";
 
@@ -314,6 +415,86 @@ std::expected<core::DdsImage, std::string> LoadWicImage(const std::filesystem::p
 }
 #endif
 
+
+std::string TextureLookupKey(std::string value) {
+    std::string out;
+    out.reserve(value.size());
+    for (unsigned char ch : value) {
+        if (std::isspace(ch)) continue;
+        out.push_back(static_cast<char>(std::tolower(ch)));
+    }
+    return out;
+}
+
+bool IsTextureExtension(const std::filesystem::path& path) {
+    std::string ext = path.extension().string();
+    for (char& ch : ext) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    return ext == ".dds" || ext == ".tga" || ext == ".bmp" ||
+           ext == ".png" || ext == ".jpg" || ext == ".jpeg";
+}
+
+// mapDir normally is <Client>/resmap/field/<Map>. NPC previews deliberately pass a fake
+// two-level path below <Client>. Keep both layouts supported and never assume a global drive.
+std::filesystem::path DeriveClientAssetRoot(const std::filesystem::path& mapDir) {
+    if (mapDir.empty()) return {};
+    const auto assetRoot = mapDir.parent_path().parent_path();
+    if (assetRoot.empty()) return {};
+    if (core::legacy::EqualsCaseInsensitive(assetRoot.filename().string(), "resmap"))
+        return assetRoot.parent_path();
+    return assetRoot;
+}
+
+struct ClientTextureIndex {
+    bool built = false;
+    std::unordered_map<std::string, std::filesystem::path> unique;
+    std::unordered_set<std::string> ambiguous;
+
+    void Build(const std::filesystem::path& clientRoot) {
+        if (built) return;
+        built = true;
+        if (clientRoot.empty()) return;
+
+        // Search only known Fiesta asset trees. This is deliberately narrower than a recursive
+        // search of the whole client, so a stray backup/export file cannot silently become a
+        // material texture.
+        static constexpr const char* kRoots[] = {
+            "resmap", "resitem", "reseffect", "reschar", "resmenu", "ressystem"
+        };
+        for (const char* rootName : kRoots) {
+            auto resolvedRoot = core::legacy::ResolveCaseInsensitivePath(clientRoot, rootName);
+            if (!resolvedRoot) continue;
+            std::error_code ec;
+            std::filesystem::recursive_directory_iterator it(
+                *resolvedRoot, std::filesystem::directory_options::skip_permission_denied, ec);
+            const std::filesystem::recursive_directory_iterator end;
+            for (; it != end; it.increment(ec)) {
+                if (ec) { ec.clear(); continue; }
+                if (!it->is_regular_file(ec) || ec || !IsTextureExtension(it->path())) {
+                    ec.clear();
+                    continue;
+                }
+                const std::string key = TextureLookupKey(it->path().filename().string());
+                if (key.empty() || ambiguous.contains(key)) continue;
+                const auto [found, inserted] = unique.emplace(key, it->path());
+                if (!inserted && found->second != it->path()) {
+                    unique.erase(found);
+                    ambiguous.insert(key);
+                }
+            }
+        }
+    }
+
+    std::optional<std::filesystem::path> FindUnique(const std::filesystem::path& clientRoot,
+                                                    const std::string& filename) {
+        Build(clientRoot);
+        const std::string key = TextureLookupKey(filename);
+        if (key.empty() || ambiguous.contains(key)) return std::nullopt;
+        const auto it = unique.find(key);
+        return it == unique.end() ? std::nullopt
+                                  : std::optional<std::filesystem::path>(it->second);
+    }
+};
+
 std::vector<core::NifVec3> ComputeFallbackNormals(const core::NifMeshPart& part) {
     std::vector<core::NifVec3> normals(part.positions.size(), core::NifVec3{0.0f, 0.0f, 0.0f});
     for (std::size_t i = 0; i + 2 < part.triangleIndices.size(); i += 3) {
@@ -346,6 +527,16 @@ std::vector<core::NifVec3> ComputeFallbackNormals(const core::NifMeshPart& part)
 
 } // namespace
 
+std::expected<core::DdsImage, std::string> LoadPlatformRasterImage(
+    const std::filesystem::path& file) {
+#ifdef _WIN32
+    return LoadWicImage(file);
+#else
+    (void)file;
+    return std::unexpected("Plattform-Rasterdecoder ist nur unter Windows verfügbar");
+#endif
+}
+
 NifMeshRenderer::~NifMeshRenderer() { Shutdown(); }
 
 void NifMeshRenderer::Init() {
@@ -354,6 +545,7 @@ void NifMeshRenderer::Init() {
     const std::uint32_t fs = CompileShader(GL_FRAGMENT_SHADER, kFragmentShaderSrc);
     shaderProgram_ = LinkProgram(vs, fs);
     uniforms_.locViewProj = glGetUniformLocation(shaderProgram_, "uViewProj");
+    uniforms_.locView = glGetUniformLocation(shaderProgram_, "uView");
     uniforms_.locModel = glGetUniformLocation(shaderProgram_, "uModel");
     uniforms_.locLightDir = glGetUniformLocation(shaderProgram_, "uLightDir");
     uniforms_.locCameraPos = glGetUniformLocation(shaderProgram_, "uCameraPos");
@@ -364,6 +556,8 @@ void NifMeshRenderer::Init() {
     uniforms_.locGlossiness = glGetUniformLocation(shaderProgram_, "uGlossiness");
     uniforms_.locSpecularEnabled = glGetUniformLocation(shaderProgram_, "uSpecularEnabled");
     uniforms_.locApplyMode = glGetUniformLocation(shaderProgram_, "uApplyMode");
+    uniforms_.locVcAlphaTextureBlender = glGetUniformLocation(shaderProgram_, "uVcAlphaTextureBlender");
+    uniforms_.locVertexColorMode = glGetUniformLocation(shaderProgram_, "uVertexColorMode");
     uniforms_.locBumpLumaScale = glGetUniformLocation(shaderProgram_, "uBumpLumaScale");
     uniforms_.locBumpLumaOffset = glGetUniformLocation(shaderProgram_, "uBumpLumaOffset");
     uniforms_.locBumpMatrix = glGetUniformLocation(shaderProgram_, "uBumpMatrix");
@@ -371,6 +565,7 @@ void NifMeshRenderer::Init() {
     uniforms_.locAlphaCutoff = glGetUniformLocation(shaderProgram_, "uAlphaCutoff");
     uniforms_.locAlphaTestFunc = glGetUniformLocation(shaderProgram_, "uAlphaTestFunc");
     uniforms_.locMaterialAlpha = glGetUniformLocation(shaderProgram_, "uMaterialAlpha");
+    uniforms_.locEnvironmentSphereCount = glGetUniformLocation(shaderProgram_, "uEnvironmentSphereCount");
 
     for (int slot = 0; slot < 10; ++slot) {
         char name[64];
@@ -380,10 +575,15 @@ void NifMeshRenderer::Init() {
         std::snprintf(name, sizeof(name), "uTexTranslation[%d]", slot); uniforms_.locTranslation[slot] = glGetUniformLocation(shaderProgram_, name);
         std::snprintf(name, sizeof(name), "uTexScale[%d]", slot); uniforms_.locScale[slot] = glGetUniformLocation(shaderProgram_, name);
         std::snprintf(name, sizeof(name), "uTexRotation[%d]", slot); uniforms_.locRotation[slot] = glGetUniformLocation(shaderProgram_, name);
+        std::snprintf(name, sizeof(name), "uTexTransformType[%d]", slot); uniforms_.locTransformType[slot] = glGetUniformLocation(shaderProgram_, name);
         std::snprintf(name, sizeof(name), "uTexCenter[%d]", slot); uniforms_.locCenter[slot] = glGetUniformLocation(shaderProgram_, name);
         std::snprintf(name, sizeof(name), "uTex%d", slot); uniforms_.locSampler[slot] = glGetUniformLocation(shaderProgram_, name);
     }
-
+    for (std::size_t effect = 0; effect < kMaxEnvironmentSphereEffects; ++effect) {
+        char name[64];
+        std::snprintf(name, sizeof(name), "uEnvironmentTex%zu", effect);
+        uniforms_.locEnvironmentSampler[effect] = glGetUniformLocation(shaderProgram_, name);
+    }
 
 }
 
@@ -489,6 +689,8 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
     perObjectModel_.assign(set.Count(), nullptr);
     std::unordered_map<std::string, std::optional<std::filesystem::path>> resolvedModels;
     std::unordered_map<std::string, std::optional<std::filesystem::path>> resolvedTextures;
+    const std::filesystem::path clientAssetRoot = DeriveClientAssetRoot(mapDir);
+    ClientTextureIndex clientTextureIndex;
 
     for (std::size_t i = 0; i < set.Count(); ++i) {
         const auto& obj = set.At(i);
@@ -536,7 +738,7 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                     // NiTexturingProperty-Slots waehlen ihr Set spaeter per Uniform; dadurch koennen
                     // Base/Detail/Decal unterschiedliche UV-Kanaele benutzen.
                     constexpr std::size_t kGpuUvSets = 8;
-                    constexpr std::size_t kVertexStrideFloats = 6 + kGpuUvSets * 2;
+                    constexpr std::size_t kVertexStrideFloats = 6 + kGpuUvSets * 2 + 4;
                     std::vector<float> vertexData;
                     vertexData.reserve(part.positions.size() * kVertexStrideFloats);
                     for (std::size_t v = 0; v < part.positions.size(); ++v) {
@@ -554,6 +756,9 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                             }
                             vertexData.push_back(u); vertexData.push_back(vv);
                         }
+                        const core::NifColor4 color =
+                            (part.vertexColors.size() == part.positions.size()) ? part.vertexColors[v] : core::NifColor4{};
+                        vertexData.insert(vertexData.end(), {color.r, color.g, color.b, color.a});
                     }
 
                     SubMesh sub;
@@ -564,6 +769,27 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                     sub.glossiness = std::clamp(part.material.glossiness, 0.0f, 128.0f);
                     sub.specularEnabled = part.specularEnabled;
                     sub.textureApplyMode = part.textureApplyMode;
+                    sub.vcAlphaTextureBlender = part.shaderName == "VCAlphaTextureBlender";
+                    const bool hasVertexColors =
+                        part.vertexColors.size() == part.positions.size();
+                    if (hasVertexColors) {
+                        if (!part.hasVertexColorProperty) {
+                            // Classic NIF default: authored vertex colors feed ambient+diffuse.
+                            sub.vertexColorMode = 2;
+                        } else if (part.vertexColorMode == 0) {
+                            sub.vertexColorMode = 0;
+                        } else if (part.vertexColorMode == 1) {
+                            sub.vertexColorMode = 1;
+                        } else if (part.vertexColorMode == 2) {
+                            // SRC_AMB_DIF + LIGHT_MODE_EMISSIVE disables color-material;
+                            // EMI_AMB_DIF is the normal ambient+diffuse path.
+                            sub.vertexColorMode = part.vertexLightingMode == 0 ? 0u : 2u;
+                        } else {
+                            // Unknown future enum: retain the classic safe default rather than
+                            // dropping authored vertex colors entirely.
+                            sub.vertexColorMode = 2;
+                        }
+                    }
                     sub.bumpMapLumaScale = part.bumpMapLumaScale;
                     sub.bumpMapLumaOffset = part.bumpMapLumaOffset;
                     // NIF Matrix22 is read row-major; glUniformMatrix2fv expects column-major.
@@ -596,6 +822,16 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                     sub.alphaSrcBlend = part.alphaSrcBlend;
                     sub.alphaDstBlend = part.alphaDstBlend;
                     sub.alphaTestFunc = part.alphaTestFunc;
+                    sub.depthTest = part.depthTest;
+                    sub.depthWrite = part.depthWrite;
+                    sub.depthFunction = part.depthFunction;
+                    sub.stencilEnabled = part.stencilEnabled;
+                    sub.stencilFunction = part.stencilFunction;
+                    sub.stencilReference = part.stencilReference;
+                    sub.stencilMask = part.stencilMask;
+                    sub.stencilFailAction = part.stencilFailAction;
+                    sub.stencilZFailAction = part.stencilZFailAction;
+                    sub.stencilPassAction = part.stencilPassAction;
                     sub.faceDrawMode = part.faceDrawMode;
                     sub.billboard = part.billboard;
                     sub.billboardMode = part.billboardMode;
@@ -620,22 +856,62 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                         continue;
                     }
                     sub.indexCount = static_cast<std::uint32_t>(validIndices.size());
+                    sub.pickPositions = part.positions;
+                    sub.pickIndices = validIndices;
+                    sub.localBoundsMin = {boundsMin.x,boundsMin.y,boundsMin.z};
+                    sub.localBoundsMax = {boundsMax.x,boundsMax.y,boundsMax.z};
 
                     // Alle klassischen Textur-Slots laden. Jeder Slot behaelt sein eigenes UV-Set,
                     // Clamp/Filter und seine optionale NIF-Texturtransformation.
-                    auto lowerOf = [](std::string t) {
-                        for (char& ch : t) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-                        return t;
-                    };
                     auto findTexturePath = [&](const std::string& textureName) -> std::optional<std::filesystem::path> {
-                        auto texPath = core::legacy::ResolveLegacyAssetPath(mapDir, textureName);
-                        if (texPath || modelDir.empty()) return texPath;
+                        if (textureName.empty()) return std::nullopt;
+                        const auto native = core::legacy::LegacyPathToNative(textureName);
+
+                        // 1) NIF-relative reference. This is the most specific interpretation and
+                        // therefore always wins when it exists.
+                        if (!modelDir.empty()) {
+                            if (auto local = core::legacy::ResolveCaseInsensitivePath(modelDir, native)) return local;
+                            const auto stripped = core::legacy::StripResmapPrefix(native);
+                            if (stripped != native) {
+                                if (auto local = core::legacy::ResolveCaseInsensitivePath(modelDir, stripped)) return local;
+                            }
+                        }
+
+                        // 2) Existing map/resmap resolver (map-local, shared resmap roots,
+                        // case/whitespace tolerant and ambiguity-safe).
+                        if (auto texPath = core::legacy::ResolveLegacyAssetPath(mapDir, textureName))
+                            return texPath;
+
+                        // 3) Explicit client-rooted paths such as resitem\..., reseffect\...,
+                        // reschar\... or resmenu\.... Earlier code stopped at <Client>/resmap and
+                        // therefore could not resolve a valid texture merely because the NIF lived
+                        // in resmap while its material referenced a sibling Fiesta asset tree.
+                        if (!clientAssetRoot.empty()) {
+                            if (auto rooted = core::legacy::ResolveCaseInsensitivePath(clientAssetRoot, native))
+                                return rooted;
+                        }
+
+                        // 4) Basename beside the NIF. Preserve the old whitespace/case tolerance.
                         std::string want = textureName;
-                        if (const auto slash = want.find_last_of("\\/"); slash != std::string::npos) want = want.substr(slash + 1);
-                        const std::string wantLower = lowerOf(want);
-                        std::error_code fec;
-                        for (const auto& entry : std::filesystem::directory_iterator(modelDir, fec)) {
-                            if (lowerOf(entry.path().filename().string()) == wantLower) return entry.path();
+                        if (const auto slash = want.find_last_of("\\/"); slash != std::string::npos)
+                            want = want.substr(slash + 1);
+                        const std::string wantLower = TextureLookupKey(want);
+                        if (!modelDir.empty()) {
+                            std::error_code fec;
+                            for (const auto& entry : std::filesystem::directory_iterator(modelDir, fec)) {
+                                if (fec) break;
+                                if (TextureLookupKey(entry.path().filename().string()) == wantLower)
+                                    return entry.path();
+                            }
+                        }
+
+                        // 5) Only for a bare/stale reference: search the known Fiesta client asset
+                        // trees by basename, but accept it ONLY if the result is unique across all
+                        // of them. Ambiguous names remain unresolved instead of showing a plausible
+                        // but wrong texture.
+                        if (!clientAssetRoot.empty() && !want.empty()) {
+                            if (auto unique = clientTextureIndex.FindUnique(clientAssetRoot, want))
+                                return unique;
                         }
                         return std::nullopt;
                     };
@@ -657,16 +933,35 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                         dst.translation = {src.translation.u, src.translation.v};
                         dst.scale = {src.scale.u, src.scale.v};
                         dst.rotation = src.rotation;
+                        dst.transformType = src.transformType;
                         dst.center = {src.center.u, src.center.v};
-                        if (!src.present || (!src.embeddedTexture && src.texture.empty())) continue;
+                        if (!src.present) continue;
+                        if (src.sourceUsesEmbeddedPixelData && !src.embeddedTexture) {
+                            std::fprintf(stderr,
+                                "[NifMeshRenderer] Eingebetteter Textur-Slot %zu ohne dekodierte PixelData #%d: %s\n",
+                                slotIndex, src.sourcePixelDataRef, obj.modelPath.c_str());
+                            continue;
+                        }
+                        if (!src.sourceUsesEmbeddedPixelData && src.texture.empty()) continue;
 
                         const bool hasSlotUvs = src.uvSet < part.uvSets.size() &&
                                                 part.uvSets[src.uvSet].size() == part.positions.size();
-                        const bool hasBaseFallbackUvs = src.uvSet == 0 && part.uvs.size() == part.positions.size();
-                        if (!hasSlotUvs && !hasBaseFallbackUvs) continue;
+                        const bool hasBaseFallbackUvs = part.uvs.size() == part.positions.size();
+                        if (!hasSlotUvs && hasBaseFallbackUvs) {
+                            // Some Fiesta exports reference an unavailable secondary UV set even
+                            // though UV0 is valid. Dropping the complete texture made whole material
+                            // layers disappear; render with UV0 as a deterministic fallback.
+                            dst.uvSet = 0;
+                        } else if (!hasSlotUvs) {
+                            std::fprintf(stderr,
+                                "[NifMeshRenderer] Textur-Slot %zu ohne brauchbares UV-Set (%u): %s\n",
+                                slotIndex, src.uvSet, obj.modelPath.c_str());
+                            continue;
+                        }
 
-                        if (src.embeddedTexture) {
-                            const std::string cacheKey = key + "#embedded:" + std::to_string(slotIndex) + ":" + src.texture;
+                        if (src.sourceUsesEmbeddedPixelData) {
+                            const std::string cacheKey = key + "#embedded:" + std::to_string(slotIndex) +
+                                                         ":pixel:" + std::to_string(src.sourcePixelDataRef);
                             dst.texture = GetOrLoadEmbeddedTexture(*src.embeddedTexture, cacheKey);
                         } else if (auto texPath = resolveTexturePath(src.texture)) {
                             dst.texture = GetOrLoadTexture(*texPath);
@@ -674,6 +969,52 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                             std::fprintf(stderr, "[NifMeshRenderer] Objekt-Textur-Slot %zu nicht gefunden: %s\n",
                                          slotIndex, src.texture.c_str());
                         }
+                    }
+
+                    // Verified NiTextureEffect path: ENVIRONMENT_MAP + SPHERE_MAP. Other
+                    // texture/coord-generation combinations remain preserved in NifModel and
+                    // diagnostic-only until their exact Fiesta runtime semantics are proven.
+                    for (std::size_t effectIndex = 0; effectIndex < part.textureEffects.size(); ++effectIndex) {
+                        const auto& effect = part.textureEffects[effectIndex];
+                        if (!effect.enabled || effect.textureType != 2u || effect.coordGenType != 2u) continue;
+                        if (effect.clippingPlaneEnabled) {
+                            std::fprintf(stderr,
+                                "[NifMeshRenderer] Env/Sphere TextureEffect mit Clipping-Plane bleibt deaktiviert: %s\n",
+                                obj.modelPath.c_str());
+                            continue;
+                        }
+                        std::uint32_t textureId = 0;
+                        if (effect.sourceUsesEmbeddedPixelData) {
+                            if (effect.embeddedTexture) {
+                                const std::string cacheKey = key + "#textureEffect:" +
+                                    std::to_string(effectIndex) + ":pixel:" +
+                                    std::to_string(effect.sourcePixelDataRef);
+                                textureId = GetOrLoadEmbeddedTexture(*effect.embeddedTexture, cacheKey);
+                            } else {
+                                std::fprintf(stderr,
+                                    "[NifMeshRenderer] TextureEffect ohne dekodierte eingebettete PixelData #%d: %s\n",
+                                    effect.sourcePixelDataRef, obj.modelPath.c_str());
+                            }
+                        } else if (!effect.texture.empty()) {
+                            if (auto texPath = resolveTexturePath(effect.texture)) {
+                                textureId = GetOrLoadTexture(*texPath);
+                            } else {
+                                std::fprintf(stderr,
+                                    "[NifMeshRenderer] TextureEffect-Textur nicht gefunden: %s (%s)\n",
+                                    effect.texture.c_str(), obj.modelPath.c_str());
+                            }
+                        }
+                        if (textureId == 0) continue;
+                        if (sub.environmentSphereEffectCount >= kMaxEnvironmentSphereEffects) {
+                            std::fprintf(stderr,
+                                "[NifMeshRenderer] Mehr als %zu Env/Sphere-Effects an einem Mesh-Part; Rest bleibt diagnostisch: %s\n",
+                                kMaxEnvironmentSphereEffects, obj.modelPath.c_str());
+                            break;
+                        }
+                        auto& dstEffect = sub.environmentSphereEffects[sub.environmentSphereEffectCount++];
+                        dstEffect.texture = textureId;
+                        dstEffect.clampMode = effect.clampMode;
+                        dstEffect.filterMode = effect.filterMode;
                     }
 
                     // Zeitabhaengige NiTextureTransformController-Spuren koennen direkt auf
@@ -689,10 +1030,17 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                         for (std::size_t fi = 0; fi < srcAnim.frames.size(); ++fi) {
                             const auto& frame = srcAnim.frames[fi];
                             std::uint32_t textureId = 0;
-                            if (frame.embeddedTexture) {
-                                const std::string cacheKey = key + "#flip:" + std::to_string(ai) + ":" +
-                                                             std::to_string(fi) + ":" + frame.texture;
-                                textureId = GetOrLoadEmbeddedTexture(*frame.embeddedTexture, cacheKey);
+                            if (frame.sourceUsesEmbeddedPixelData) {
+                                if (frame.embeddedTexture) {
+                                    const std::string cacheKey = key + "#flip:" + std::to_string(ai) + ":" +
+                                                                 std::to_string(fi) + ":pixel:" +
+                                                                 std::to_string(frame.sourcePixelDataRef);
+                                    textureId = GetOrLoadEmbeddedTexture(*frame.embeddedTexture, cacheKey);
+                                } else {
+                                    std::fprintf(stderr,
+                                        "[NifMeshRenderer] Eingebettetes Flipbook-Frame ohne dekodierte PixelData #%d: %s\n",
+                                        frame.sourcePixelDataRef, obj.modelPath.c_str());
+                                }
                             } else if (!frame.texture.empty()) {
                                 if (auto texPath = resolveTexturePath(frame.texture)) textureId = GetOrLoadTexture(*texPath);
                                 else std::fprintf(stderr, "[NifMeshRenderer] Flipbook-Textur nicht gefunden: %s\n",
@@ -720,6 +1068,9 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                         glVertexAttribPointer(location, 2, GL_FLOAT, GL_FALSE, strideBytes,
                                               reinterpret_cast<void*>((6 + uvSet * 2) * sizeof(float)));
                     }
+                    glEnableVertexAttribArray(10);
+                    glVertexAttribPointer(10, 4, GL_FLOAT, GL_FALSE, strideBytes,
+                                          reinterpret_cast<void*>((6 + kGpuUvSets * 2) * sizeof(float)));
 
                     glGenBuffers(1, &sub.ebo);
                     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sub.ebo);
@@ -871,6 +1222,54 @@ std::array<float, 3> Cross3(const std::array<float, 3>& a, const std::array<floa
             a[0] * b[1] - a[1] * b[0]};
 }
 
+float Dot3(const std::array<float,3>& a,const std::array<float,3>& b) {
+    return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+}
+
+std::array<float,3> Sub3(const std::array<float,3>& a,const std::array<float,3>& b) {
+    return {a[0]-b[0],a[1]-b[1],a[2]-b[2]};
+}
+
+bool RayTriangle(const std::array<float,3>& origin,const std::array<float,3>& dir,
+                 const std::array<float,3>& a,const std::array<float,3>& b,
+                 const std::array<float,3>& c,float& tOut) {
+    // Möller-Trumbore, bewusst zweiseitig: viele Fiesta-NIFs rendern beide Seiten.
+    const auto e1=Sub3(b,a), e2=Sub3(c,a);
+    const auto p=Cross3(dir,e2);
+    const float det=Dot3(e1,p);
+    if(std::abs(det)<1.0e-7f) return false;
+    const float inv=1.0f/det;
+    const auto tv=Sub3(origin,a);
+    const float u=Dot3(tv,p)*inv;
+    if(u<0.0f||u>1.0f) return false;
+    const auto q=Cross3(tv,e1);
+    const float v=Dot3(dir,q)*inv;
+    if(v<0.0f||u+v>1.0f) return false;
+    const float t=Dot3(e2,q)*inv;
+    if(t<0.0f) return false;
+    tOut=t;
+    return true;
+}
+
+bool RayWorldAabb(const std::array<float,3>& origin,const std::array<float,3>& dir,
+                  const std::array<float,3>& bmin,const std::array<float,3>& bmax,
+                  float maxDistance) {
+    float tmin=0.0f, tmax=maxDistance;
+    for(int axis=0;axis<3;++axis) {
+        if(std::abs(dir[axis])<1.0e-8f) {
+            if(origin[axis]<bmin[axis]||origin[axis]>bmax[axis]) return false;
+            continue;
+        }
+        float a=(bmin[axis]-origin[axis])/dir[axis];
+        float b=(bmax[axis]-origin[axis])/dir[axis];
+        if(a>b) std::swap(a,b);
+        tmin=std::max(tmin,a);
+        tmax=std::min(tmax,b);
+        if(tmin>tmax) return false;
+    }
+    return tmax>=0.0f;
+}
+
 Mat4 BillboardFacingRotation(const std::array<float, 3>& pivotWorld,
                              const OrbitCamera& camera, std::uint16_t mode) {
     // OrbitCamera speichert die Kamera im gespiegelten Anzeigeraum; fuer Weltkoordinaten
@@ -914,6 +1313,77 @@ Mat4 ApplyBillboard(const Mat4& objectModel, float objectScale,
 }
 } // namespace
 
+std::optional<float> NifMeshRenderer::RaycastObject(
+    const core::ObjectPlacementSet& set, std::size_t objectIndex, const OrbitCamera& camera,
+    const std::array<float,3>& rayOrigin, const std::array<float,3>& rayDirection) const {
+    if(objectIndex>=perObjectModel_.size()||objectIndex>=set.Count()) return std::nullopt;
+    const LoadedModel* model=perObjectModel_[objectIndex];
+    if(model==nullptr) return std::nullopt;
+
+    const auto& obj=set.At(objectIndex);
+    if(!std::isfinite(obj.posX)||!std::isfinite(obj.posY)||!std::isfinite(obj.posZ)||
+       !std::isfinite(obj.rotX)||!std::isfinite(obj.rotY)||!std::isfinite(obj.rotZ)||
+       !std::isfinite(obj.rotW)||!std::isfinite(obj.scale)) return std::nullopt;
+
+    Mat4 modelMat=QuatToMat4Local(obj.rotX,obj.rotY,obj.rotZ,obj.rotW);
+    for(int col=0;col<3;++col) {
+        modelMat.m[col*4+0]*=obj.scale;
+        modelMat.m[col*4+1]*=obj.scale;
+        modelMat.m[col*4+2]*=obj.scale;
+    }
+    modelMat.m[12]=obj.posX; modelMat.m[13]=obj.posY; modelMat.m[14]=obj.posZ;
+
+    const Mat4 view=camera.ViewMatrix();
+    float best=std::numeric_limits<float>::infinity();
+
+    for(const auto& sub:model->subMeshes) {
+        if(sub.pickPositions.empty()||sub.pickIndices.empty()) continue;
+        if(sub.lodControlled) {
+            const auto lodWorld=TransformPoint(modelMat,sub.lodCenter);
+            const auto lodView=TransformPoint(view,lodWorld);
+            const float distance=std::sqrt(lodView[0]*lodView[0]+lodView[1]*lodView[1]+lodView[2]*lodView[2]);
+            if(!(sub.lodNear<=distance&&distance<sub.lodFar)) continue;
+        }
+
+        Mat4 effective=modelMat;
+        if(sub.billboard)
+            effective=ApplyBillboard(modelMat,obj.scale,sub.billboardPivot,sub.billboardMode,
+                                     sub.billboardInverseRotation,camera);
+
+        std::array<float,3> worldMin{
+            std::numeric_limits<float>::max(),std::numeric_limits<float>::max(),std::numeric_limits<float>::max()};
+        std::array<float,3> worldMax{
+            std::numeric_limits<float>::lowest(),std::numeric_limits<float>::lowest(),std::numeric_limits<float>::lowest()};
+        for(int mask=0;mask<8;++mask) {
+            const std::array<float,3> local{
+                (mask&1)?sub.localBoundsMax[0]:sub.localBoundsMin[0],
+                (mask&2)?sub.localBoundsMax[1]:sub.localBoundsMin[1],
+                (mask&4)?sub.localBoundsMax[2]:sub.localBoundsMin[2]};
+            const auto p=TransformPoint(effective,local);
+            for(int axis=0;axis<3;++axis) {
+                worldMin[axis]=std::min(worldMin[axis],p[axis]);
+                worldMax[axis]=std::max(worldMax[axis],p[axis]);
+            }
+        }
+        if(!RayWorldAabb(rayOrigin,rayDirection,worldMin,worldMax,best)) continue;
+
+        for(std::size_t ti=0;ti+2<sub.pickIndices.size();ti+=3) {
+            const auto ia=sub.pickIndices[ti], ib=sub.pickIndices[ti+1], ic=sub.pickIndices[ti+2];
+            if(ia>=sub.pickPositions.size()||ib>=sub.pickPositions.size()||ic>=sub.pickPositions.size()) continue;
+            const auto toWorld=[&](const core::NifVec3& p){
+                return TransformPoint(effective,{p.x,p.y,p.z});
+            };
+            const auto a=toWorld(sub.pickPositions[ia]);
+            const auto b=toWorld(sub.pickPositions[ib]);
+            const auto c=toWorld(sub.pickPositions[ic]);
+            float t=0.0f;
+            if(RayTriangle(rayOrigin,rayDirection,a,b,c,t)&&t<best) best=t;
+        }
+    }
+    if(!std::isfinite(best)) return std::nullopt;
+    return best;
+}
+
 void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamera& camera, int width, int height,
                            const std::vector<char>* hidden) {
     if (width <= 0 || height <= 0 || perObjectModel_.empty()) return;
@@ -924,22 +1394,44 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     const GLboolean prevDepthTest = glIsEnabled(GL_DEPTH_TEST);
     const GLboolean prevBlend = glIsEnabled(GL_BLEND);
     const GLboolean prevCull = glIsEnabled(GL_CULL_FACE);
+    const GLboolean prevStencilTest = glIsEnabled(GL_STENCIL_TEST);
     GLboolean prevDepthMask = GL_TRUE;
     glGetBooleanv(GL_DEPTH_WRITEMASK, &prevDepthMask);
     GLint prevProgram = 0, prevVao = 0, prevActiveTexture = 0;
-    std::array<GLint, 10> prevTextures{};
-    GLint prevCullFace = GL_BACK, prevFrontFace = GL_CCW;
+    std::array<GLint, 10 + kMaxEnvironmentSphereEffects> prevTextures{};
+    GLint prevCullFace = GL_BACK, prevFrontFace = GL_CCW, prevDepthFunc = GL_LESS;
     GLint prevBlendSrcRgb = GL_ONE, prevBlendDstRgb = GL_ZERO;
     GLint prevBlendSrcAlpha = GL_ONE, prevBlendDstAlpha = GL_ZERO;
+    GLint prevStencilFunc = GL_ALWAYS, prevStencilRef = 0, prevStencilValueMask = -1;
+    GLint prevStencilWriteMask = -1, prevStencilFail = GL_KEEP;
+    GLint prevStencilZFail = GL_KEEP, prevStencilZPass = GL_KEEP;
+    GLint prevStencilBackFunc = GL_ALWAYS, prevStencilBackRef = 0, prevStencilBackValueMask = -1;
+    GLint prevStencilBackWriteMask = -1, prevStencilBackFail = GL_KEEP;
+    GLint prevStencilBackZFail = GL_KEEP, prevStencilBackZPass = GL_KEEP;
     glGetIntegerv(GL_CURRENT_PROGRAM, &prevProgram);
     glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &prevVao);
     glGetIntegerv(GL_ACTIVE_TEXTURE, &prevActiveTexture);
     glGetIntegerv(GL_CULL_FACE_MODE, &prevCullFace);
     glGetIntegerv(GL_FRONT_FACE, &prevFrontFace);
+    glGetIntegerv(GL_DEPTH_FUNC, &prevDepthFunc);
     glGetIntegerv(GL_BLEND_SRC_RGB, &prevBlendSrcRgb);
     glGetIntegerv(GL_BLEND_DST_RGB, &prevBlendDstRgb);
     glGetIntegerv(GL_BLEND_SRC_ALPHA, &prevBlendSrcAlpha);
     glGetIntegerv(GL_BLEND_DST_ALPHA, &prevBlendDstAlpha);
+    glGetIntegerv(GL_STENCIL_FUNC, &prevStencilFunc);
+    glGetIntegerv(GL_STENCIL_REF, &prevStencilRef);
+    glGetIntegerv(GL_STENCIL_VALUE_MASK, &prevStencilValueMask);
+    glGetIntegerv(GL_STENCIL_WRITEMASK, &prevStencilWriteMask);
+    glGetIntegerv(GL_STENCIL_FAIL, &prevStencilFail);
+    glGetIntegerv(GL_STENCIL_PASS_DEPTH_FAIL, &prevStencilZFail);
+    glGetIntegerv(GL_STENCIL_PASS_DEPTH_PASS, &prevStencilZPass);
+    glGetIntegerv(GL_STENCIL_BACK_FUNC, &prevStencilBackFunc);
+    glGetIntegerv(GL_STENCIL_BACK_REF, &prevStencilBackRef);
+    glGetIntegerv(GL_STENCIL_BACK_VALUE_MASK, &prevStencilBackValueMask);
+    glGetIntegerv(GL_STENCIL_BACK_WRITEMASK, &prevStencilBackWriteMask);
+    glGetIntegerv(GL_STENCIL_BACK_FAIL, &prevStencilBackFail);
+    glGetIntegerv(GL_STENCIL_BACK_PASS_DEPTH_FAIL, &prevStencilBackZFail);
+    glGetIntegerv(GL_STENCIL_BACK_PASS_DEPTH_PASS, &prevStencilBackZPass);
     for (std::size_t unit = 0; unit < prevTextures.size(); ++unit) {
         glActiveTexture(static_cast<GLenum>(GL_TEXTURE0 + unit));
         glGetIntegerv(GL_TEXTURE_BINDING_2D, &prevTextures[unit]);
@@ -953,6 +1445,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     const float animationTime = std::chrono::duration<float>(std::chrono::steady_clock::now() - animationEpoch).count();
 
     const auto& locViewProj = uniforms_.locViewProj;
+    const auto& locView = uniforms_.locView;
     const auto& locModel = uniforms_.locModel;
     const auto& locLightDir = uniforms_.locLightDir;
     const auto& locCameraPos = uniforms_.locCameraPos;
@@ -963,6 +1456,8 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     const auto& locGlossiness = uniforms_.locGlossiness;
     const auto& locSpecularEnabled = uniforms_.locSpecularEnabled;
     const auto& locApplyMode = uniforms_.locApplyMode;
+    const auto& locVcAlphaTextureBlender = uniforms_.locVcAlphaTextureBlender;
+    const auto& locVertexColorMode = uniforms_.locVertexColorMode;
     const auto& locBumpLumaScale = uniforms_.locBumpLumaScale;
     const auto& locBumpLumaOffset = uniforms_.locBumpLumaOffset;
     const auto& locBumpMatrix = uniforms_.locBumpMatrix;
@@ -970,17 +1465,23 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     const auto& locAlphaCutoff = uniforms_.locAlphaCutoff;
     const auto& locAlphaTestFunc = uniforms_.locAlphaTestFunc;
     const auto& locMaterialAlpha = uniforms_.locMaterialAlpha;
+    const auto& locEnvironmentSphereCount = uniforms_.locEnvironmentSphereCount;
+    const auto& locEnvironmentSampler = uniforms_.locEnvironmentSampler;
     const auto& locHasTex = uniforms_.locHasTex;
     const auto& locUvSet = uniforms_.locUvSet;
     const auto& locHasTransform = uniforms_.locHasTransform;
     const auto& locTranslation = uniforms_.locTranslation;
     const auto& locScale = uniforms_.locScale;
     const auto& locRotation = uniforms_.locRotation;
+    const auto& locTransformType = uniforms_.locTransformType;
     const auto& locCenter = uniforms_.locCenter;
     const auto& locSampler = uniforms_.locSampler;
     for (int slot = 0; slot < 10; ++slot) glUniform1i(locSampler[slot], slot);
+    for (std::size_t effect = 0; effect < kMaxEnvironmentSphereEffects; ++effect)
+        glUniform1i(locEnvironmentSampler[effect], 10 + static_cast<int>(effect));
 
     glUniformMatrix4fv(locViewProj, 1, GL_FALSE, viewProj.m);
+    glUniformMatrix4fv(locView, 1, GL_FALSE, view.m);
     glUniform3f(locLightDir, -0.4f, -1.0f, -0.3f);
     glUniform3f(locCameraPos, camera.EyeX(), camera.EyeY(), -camera.EyeZ());
     glEnable(GL_DEPTH_TEST);
@@ -1066,6 +1567,46 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
         }
     };
 
+    const auto depthFunction = [](std::uint32_t f) -> GLenum {
+        switch (f) {
+            case 0: return GL_ALWAYS;   // ZCOMP_ALWAYS
+            case 1: return GL_LESS;     // ZCOMP_LESS
+            case 2: return GL_EQUAL;    // ZCOMP_EQUAL
+            case 3: return GL_LEQUAL;   // ZCOMP_LESS_EQUAL
+            case 4: return GL_GREATER;  // ZCOMP_GREATER
+            case 5: return GL_NOTEQUAL; // ZCOMP_NOT_EQUAL
+            case 6: return GL_GEQUAL;   // ZCOMP_GREATER_EQUAL
+            case 7: return GL_NEVER;    // ZCOMP_NEVER
+            default: return GL_LEQUAL;
+        }
+    };
+
+    const auto stencilFunction = [](std::uint32_t f) -> GLenum {
+        switch (f) {
+            case 0: return GL_NEVER;
+            case 1: return GL_LESS;
+            case 2: return GL_EQUAL;
+            case 3: return GL_LEQUAL;
+            case 4: return GL_GREATER;
+            case 5: return GL_NOTEQUAL;
+            case 6: return GL_GEQUAL;
+            case 7: return GL_ALWAYS;
+            default: return GL_ALWAYS; // keep geometry visible; material audit reports the gap
+        }
+    };
+
+    const auto stencilAction = [](std::uint32_t action) -> GLenum {
+        switch (action) {
+            case 0: return GL_KEEP;
+            case 1: return GL_ZERO;
+            case 2: return GL_REPLACE;
+            case 3: return GL_INCR;
+            case 4: return GL_DECR;
+            case 5: return GL_INVERT;
+            default: return GL_KEEP; // conservative runtime fallback; audit remains explicit
+        }
+    };
+
     const auto applyFaceDrawMode = [](std::uint32_t mode) {
         // FaceDrawMode laut NIF-Spezifikation:
         // 0 DRAW_CCW_OR_BOTH (anwendungsabhaengig), 1 DRAW_CCW, 2 DRAW_CW, 3 DRAW_BOTH.
@@ -1084,7 +1625,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
         }
     };
 
-    const auto applyTextureSampling = [](const TextureBinding& tex) {
+    const auto applyTextureSampling = [](const auto& tex) {
         if (tex.texture == 0) return;
         const GLint wrapS = (tex.clampMode == 0u || tex.clampMode == 1u) ? GL_CLAMP_TO_EDGE : GL_REPEAT;
         const GLint wrapT = (tex.clampMode == 0u || tex.clampMode == 2u) ? GL_CLAMP_TO_EDGE : GL_REPEAT;
@@ -1111,6 +1652,23 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
         const SubMesh& sub = *item.sub;
         glUniformMatrix4fv(locModel, 1, GL_FALSE, item.model.m);
         applyFaceDrawMode(sub.faceDrawMode);
+        if (sub.depthTest) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
+        glDepthMask(sub.depthWrite ? GL_TRUE : GL_FALSE);
+        glDepthFunc(depthFunction(sub.depthFunction));
+        if (sub.stencilEnabled) {
+            glEnable(GL_STENCIL_TEST);
+            glStencilFunc(stencilFunction(sub.stencilFunction),
+                          static_cast<GLint>(sub.stencilReference),
+                          static_cast<GLuint>(sub.stencilMask));
+            // NiStencilProperty exposes one compare/value mask, not a separate write mask.
+            // Gamebryo-compatible loaders therefore leave stencil writes fully enabled.
+            glStencilMask(0xFFFFFFFFu);
+            glStencilOp(stencilAction(sub.stencilFailAction),
+                        stencilAction(sub.stencilZFailAction),
+                        stencilAction(sub.stencilPassAction));
+        } else {
+            glDisable(GL_STENCIL_TEST);
+        }
         if (blendedPass) glBlendFunc(blendFactor(sub.alphaSrcBlend), blendFactor(sub.alphaDstBlend));
 
         glUniform1i(locAlphaTest, sub.alphaTest ? 1 : 0);
@@ -1124,6 +1682,8 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
         glUniform1f(locGlossiness, sub.glossiness);
         glUniform1i(locSpecularEnabled, sub.specularEnabled ? 1 : 0);
         glUniform1i(locApplyMode, static_cast<int>(sub.textureApplyMode));
+        glUniform1i(locVcAlphaTextureBlender, sub.vcAlphaTextureBlender ? 1 : 0);
+        glUniform1i(locVertexColorMode, static_cast<int>(sub.vertexColorMode));
         glUniform1f(locBumpLumaScale, sub.bumpMapLumaScale);
         glUniform1f(locBumpLumaOffset, sub.bumpMapLumaOffset);
         glUniformMatrix2fv(locBumpMatrix, 1, GL_FALSE, sub.bumpMapMatrix.data());
@@ -1161,25 +1721,36 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
             glUniform2f(locTranslation[slot], tex.translation[0], tex.translation[1]);
             glUniform2f(locScale[slot], tex.scale[0], tex.scale[1]);
             glUniform1f(locRotation[slot], tex.rotation);
+            glUniform1i(locTransformType[slot], static_cast<int>(tex.transformType));
             glUniform2f(locCenter[slot], tex.center[0], tex.center[1]);
             glActiveTexture(static_cast<GLenum>(GL_TEXTURE0 + slot));
             glBindTexture(GL_TEXTURE_2D, present ? tex.texture : 0);
             if (present) applyTextureSampling(tex);
         }
+
+        const auto environmentCount =
+            std::min(sub.environmentSphereEffectCount, kMaxEnvironmentSphereEffects);
+        glUniform1i(locEnvironmentSphereCount, static_cast<int>(environmentCount));
+        for (std::size_t effect = 0; effect < kMaxEnvironmentSphereEffects; ++effect) {
+            const auto& env = sub.environmentSphereEffects[effect];
+            const bool present = effect < environmentCount && env.texture != 0;
+            glActiveTexture(static_cast<GLenum>(GL_TEXTURE0 + 10 + effect));
+            glBindTexture(GL_TEXTURE_2D, present ? env.texture : 0);
+            if (present) applyTextureSampling(env);
+        }
         glBindVertexArray(sub.vao);
         glDrawElements(GL_TRIANGLES, static_cast<int>(sub.indexCount), GL_UNSIGNED_INT, nullptr);
     };
 
-    // Pass 1: Opaque + Alpha-Test. Diese Geometrie etabliert den korrekten Tiefenpuffer.
+    // Pass 1: Opaque + Alpha-Test. Depth-Test/Write/Funktion werden pro Submesh aus
+    // NiZBufferProperty angewandt; ohne Property gelten die konservativen Standardwerte.
     glDisable(GL_BLEND);
-    glDepthMask(GL_TRUE);
     for (const auto& item : opaqueItems) drawItem(item, false);
 
-    // Pass 2: echte Transparenz back-to-front. Tiefentest bleibt aktiv, aber transparente
-    // Flaechen schreiben nicht in den Tiefenpuffer und verdecken sich dadurch nicht vorzeitig.
+    // Pass 2: echte Transparenz back-to-front. Auch hier gewinnt der explizite NIF-Z-State:
+    // manche Fiesta-Effekte sind absichtlich read-only, andere schreiben trotz Blending.
     if (!blendedItems.empty()) {
         glEnable(GL_BLEND);
-        glDepthMask(GL_FALSE);
         for (const auto& item : blendedItems) drawItem(item, true);
     }
 
@@ -1192,13 +1763,25 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     glActiveTexture(static_cast<GLenum>(prevActiveTexture));
     glUseProgram(static_cast<GLuint>(prevProgram));
     glDepthMask(prevDepthMask);
+    glDepthFunc(static_cast<GLenum>(prevDepthFunc));
     glBlendFuncSeparate(static_cast<GLenum>(prevBlendSrcRgb), static_cast<GLenum>(prevBlendDstRgb),
                         static_cast<GLenum>(prevBlendSrcAlpha), static_cast<GLenum>(prevBlendDstAlpha));
+    glStencilFuncSeparate(GL_FRONT, static_cast<GLenum>(prevStencilFunc), prevStencilRef,
+                          static_cast<GLuint>(prevStencilValueMask));
+    glStencilMaskSeparate(GL_FRONT, static_cast<GLuint>(prevStencilWriteMask));
+    glStencilOpSeparate(GL_FRONT, static_cast<GLenum>(prevStencilFail),
+                        static_cast<GLenum>(prevStencilZFail), static_cast<GLenum>(prevStencilZPass));
+    glStencilFuncSeparate(GL_BACK, static_cast<GLenum>(prevStencilBackFunc), prevStencilBackRef,
+                          static_cast<GLuint>(prevStencilBackValueMask));
+    glStencilMaskSeparate(GL_BACK, static_cast<GLuint>(prevStencilBackWriteMask));
+    glStencilOpSeparate(GL_BACK, static_cast<GLenum>(prevStencilBackFail),
+                        static_cast<GLenum>(prevStencilBackZFail), static_cast<GLenum>(prevStencilBackZPass));
     glCullFace(static_cast<GLenum>(prevCullFace));
     glFrontFace(static_cast<GLenum>(prevFrontFace));
     if (prevDepthTest) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
     if (prevBlend) glEnable(GL_BLEND); else glDisable(GL_BLEND);
     if (prevCull) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
+    if (prevStencilTest) glEnable(GL_STENCIL_TEST); else glDisable(GL_STENCIL_TEST);
 }
 
 } // namespace theseed::mapeditor::app

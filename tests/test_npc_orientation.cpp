@@ -88,6 +88,105 @@ int main() {
         Check(fx2 > 0.5f, "EstimateNpcOrientation findet auf dem Testfall ebenfalls 'nach Osten' (fx=" + std::to_string(fx2) + ")");
     }
 
+    std::printf("\n== Objekt-Transform: Mehrfachauswahl, Lock, Pivot ==\n");
+    {
+        EditorState st;
+        core::PlacedObject a; a.modelPath="a.nif"; a.posX=0.0f; a.scale=1.0f;
+        core::PlacedObject b; b.modelPath="b.nif"; b.posX=10.0f; b.scale=1.0f;
+        st.placementSet.AddObject(a);
+        st.placementSet.AddObject(b);
+        st.selectedObjects={0,1};
+        st.selectedObject=1;
+        SyncObjectEditorMetadata(st);
+
+        MoveSelectedObjectsBy(st,5.0f,2.0f,-3.0f);
+        Check(std::fabs(st.placementSet.At(0).posX-5.0f)<1e-4f &&
+              std::fabs(st.placementSet.At(1).posX-15.0f)<1e-4f,
+              "Gruppenbewegung wendet dasselbe Delta auf alle ausgewählten Objekte an");
+
+        st.objectEditorLocked[1]=1;
+        MoveSelectedObjectsBy(st,5.0f,0.0f,0.0f);
+        Check(std::fabs(st.placementSet.At(0).posX-10.0f)<1e-4f &&
+              std::fabs(st.placementSet.At(1).posX-15.0f)<1e-4f,
+              "Gesperrte Objekte werden bei Gruppenbewegung nicht verändert");
+        st.objectEditorLocked[1]=0;
+
+        const auto pivot=ComputeObjectSelectionPivot(st);
+        Check(pivot.valid && std::fabs(pivot.position.x-12.5f)<1e-4f,
+              "Gruppenpivot liegt im Mittelpunkt der Auswahl");
+
+        const float half=3.14159265f*0.25f;
+        const EditQuat quarterTurn{0.0f,std::sin(half),0.0f,std::cos(half)};
+        RotateSelectedObjectsAroundPivot(st,pivot.position,quarterTurn);
+        const float dx=st.placementSet.At(0).posX-st.placementSet.At(1).posX;
+        const float dz=st.placementSet.At(0).posZ-st.placementSet.At(1).posZ;
+        Check(std::fabs(dx)<1e-3f && std::fabs(std::fabs(dz)-5.0f)<1e-3f,
+              "90-Grad-Gruppenrotation dreht Positionen um den gemeinsamen Pivot");
+
+        const auto pivot2=ComputeObjectSelectionPivot(st);
+        const float beforeDist=std::hypot(st.placementSet.At(0).posX-pivot2.position.x,
+                                          st.placementSet.At(0).posZ-pivot2.position.z);
+        ScaleSelectedObjectsAroundPivot(st,pivot2.position,2.0f);
+        const float afterDist=std::hypot(st.placementSet.At(0).posX-pivot2.position.x,
+                                         st.placementSet.At(0).posZ-pivot2.position.z);
+        Check(std::fabs(afterDist-beforeDist*2.0f)<1e-3f &&
+              std::fabs(st.placementSet.At(0).scale-2.0f)<1e-4f &&
+              std::fabs(st.placementSet.At(1).scale-2.0f)<1e-4f,
+              "Gruppenskalierung skaliert Abstand zum Pivot und Objektmaß gemeinsam");
+    }
+
+    std::printf("\n== AI Workspace: Scan, Dirty-Schutz und Speichern ==\n");
+    {
+        const auto root=std::filesystem::temp_directory_path()/"nextgen_editor_ai_workspace_test";
+        std::error_code ec;
+        std::filesystem::remove_all(root,ec);
+        std::filesystem::create_directories(root/"LuaScript"/"AIScript",ec);
+        std::filesystem::create_directories(root/"MobBehaviorDescript"/"nested",ec);
+        {
+            std::ofstream out(root/"LuaScript"/"AIScript"/"TestMob.lua",std::ios::binary);
+            out << "function AI()\n  return 1\nend\n";
+        }
+        {
+            std::ofstream out(root/"MobBehaviorDescript"/"nested"/"Guard.ps",std::ios::binary);
+            out << "state idle\n";
+        }
+
+        EditorState st;
+        st.shnServerRoot=root.string();
+        ScanAiWorkspace(st);
+        Check(st.aiWorkspaceFiles.size()==2 && st.aiWorkspaceLabels.size()==2,
+              "AI Workspace findet Lua- und PineScript-Dateien rekursiv");
+        Check(std::any_of(st.aiWorkspaceLabels.begin(),st.aiWorkspaceLabels.end(),
+                         [](const std::string& x){ return x.find("Lua")!=std::string::npos && x.find("TestMob.lua")!=std::string::npos; }),
+              "Lua-AIScript erhält einen eindeutigen Bibliotheksnamen");
+        Check(std::any_of(st.aiWorkspaceLabels.begin(),st.aiWorkspaceLabels.end(),
+                         [](const std::string& x){ return x.find("Pine")!=std::string::npos && x.find("Guard.ps")!=std::string::npos; }),
+              "PineScript erhält einen eindeutigen Bibliotheksnamen");
+
+        const auto luaPath=root/"LuaScript"/"AIScript"/"TestMob.lua";
+        const auto pinePath=root/"MobBehaviorDescript"/"nested"/"Guard.ps";
+        Check(LoadAiScriptFile(st,luaPath,"TestMob.lua",false) &&
+              st.aiScriptEditorText.find("function AI")!=std::string::npos,
+              "AI-Skript wird als Text geladen");
+        st.aiScriptEditorText="changed\n";
+        st.aiScriptDirty=true;
+        Check(LoadAiScriptFile(st,luaPath,"TestMob.lua",false) &&
+              st.aiScriptEditorText=="changed\n" && st.aiScriptDirty,
+              "Erneute Auswahl desselben AI-Skripts bewahrt den Dirty-Puffer");
+        Check(!LoadAiScriptFile(st,pinePath,"Guard.ps",false),
+              "Dirty-Schutz verhindert versehentlichen Skriptwechsel");
+        Check(SaveAiScript(st) && !st.aiScriptDirty,
+              "AI-Skript speichert Änderungen und löscht Dirty-State");
+        std::ifstream saved(luaPath,std::ios::binary);
+        const std::string savedText((std::istreambuf_iterator<char>(saved)),std::istreambuf_iterator<char>());
+        Check(savedText=="changed\n","Gespeicherter AI-Text entspricht dem Editorinhalt");
+        Check(LoadAiScriptFile(st,pinePath,"Guard.ps",false) &&
+              st.aiScriptEditorText.find("state idle")!=std::string::npos,
+              "Nach dem Speichern kann auf PineScript gewechselt werden");
+
+        std::filesystem::remove_all(root,ec);
+    }
+
     std::printf("\n%d Fehler.\n", g_failures);
     return g_failures == 0 ? 0 : 1;
 }

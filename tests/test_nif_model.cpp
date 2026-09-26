@@ -6,6 +6,7 @@
 #include "mapeditor/core/NifModel.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 
 using namespace theseed::mapeditor::core;
@@ -26,6 +27,88 @@ void Check(bool condition, const char* what) {
 } // namespace
 
 int main(int argc, char** argv) {
+    {
+        std::printf("== Synthetische konkave Boden-Kontaktkontur ==\n");
+        NifModel contactModel;
+        NifMeshPart part;
+        // L-förmige, komplett in y=0 liegende Bodenfläche. Eine konvexe Hülle würde
+        // den fehlenden oberen rechten Quadranten fälschlich überdecken.
+        part.positions = {
+            {0.0f, 0.0f, 0.0f},
+            {2.0f, 0.0f, 0.0f},
+            {2.0f, 0.0f, 1.0f},
+            {1.0f, 0.0f, 1.0f},
+            {1.0f, 0.0f, 2.0f},
+            {0.0f, 0.0f, 2.0f},
+        };
+        part.triangleIndices = {
+            0, 1, 3,
+            1, 2, 3,
+            0, 3, 5,
+            3, 4, 5,
+        };
+        contactModel.parts.push_back(std::move(part));
+
+        const auto segments = ComputeGroundContactSegments(contactModel);
+        Check(segments.size() == 6,
+              "Konkave L-Grundfläche behält genau ihre sechs Außenkanten");
+        double perimeter = 0.0;
+        bool hasInteriorDiagonal = false;
+        auto samePoint = [](float ax, float az, float bx, float bz) {
+            return std::abs(ax - bx) < 1.0e-5f && std::abs(az - bz) < 1.0e-5f;
+        };
+        for (const auto& edge : segments) {
+            const double dx = static_cast<double>(edge.x1 - edge.x0);
+            const double dz = static_cast<double>(edge.z1 - edge.z0);
+            perimeter += std::sqrt(dx * dx + dz * dz);
+            const bool zeroToInner =
+                (samePoint(edge.x0, edge.z0, 0.0f, 0.0f) &&
+                 samePoint(edge.x1, edge.z1, 1.0f, 1.0f)) ||
+                (samePoint(edge.x1, edge.z1, 0.0f, 0.0f) &&
+                 samePoint(edge.x0, edge.z0, 1.0f, 1.0f));
+            if (zeroToInner) hasInteriorDiagonal = true;
+        }
+        Check(std::abs(perimeter - 8.0) < 1.0e-4,
+              "Kontaktkontur entspricht dem echten L-Umfang statt der konvexen Hülle");
+        Check(!hasInteriorDiagonal,
+              "Interne Triangulationskanten werden aus der 2D-Kontur entfernt");
+    }
+
+    {
+        std::printf("\n== NIF TexDesc TransformMethod ==\n");
+        NifTextureSlot slot;
+        slot.hasTransform = true;
+        slot.translation = {0.1f, -0.2f};
+        slot.scale = {2.0f, 3.0f};
+        slot.rotation = 1.57079632679f; // 90 degrees
+        slot.center = {0.5f, 0.5f};
+        const NifVec2 input{0.2f, 0.3f};
+        const auto nearUv = [](const NifVec2& value, float u, float v) {
+            return std::abs(value.u - u) < 1.0e-5f &&
+                   std::abs(value.v - v) < 1.0e-5f;
+        };
+
+        slot.transformType = kNifTextureTransformMayaDeprecated;
+        Check(nearUv(ApplyNifTextureTransform(slot, input), 0.3f, 0.5f),
+              "TM_Maya Deprecated folgt Center * Rotation * Back * Translate * Scale");
+
+        slot.transformType = kNifTextureTransformMax;
+        Check(nearUv(ApplyNifTextureTransform(slot, input), 1.3f, -0.1f),
+              "TM_Max skaliert nach Rotation um das Texturzentrum");
+
+        slot.transformType = kNifTextureTransformMaya;
+        Check(nearUv(ApplyNifTextureTransform(slot, input), 0.7f, 0.5f),
+              "TM_Maya berücksichtigt den zusätzlichen FromMaya-V-Flip");
+
+        slot.transformType = 99;
+        Check(nearUv(ApplyNifTextureTransform(slot, input), 0.3f, 0.5f),
+              "Unbekannte TransformMethod fällt deterministisch auf Format-Default 0 zurück");
+
+        slot.hasTransform = false;
+        Check(nearUv(ApplyNifTextureTransform(slot, input), input.u, input.v),
+              "TexDesc ohne Transform lässt UV-Koordinaten unverändert");
+    }
+
     if (argc < 2) {
         std::printf("(Test \u00fcbersprungen - Aufruf mit: %s <einfache.nif> [<texturierte.nif>])\n", argv[0]);
         return 0;
@@ -56,6 +139,76 @@ int main(int argc, char** argv) {
         }
     } else {
         std::fprintf(stderr, "     Fehler: %s\n", simple.error().c_str());
+    }
+
+    if (simple) {
+        std::printf("\n== NIF-Node-Hierarchie ==\n");
+        bool parentIndicesValid = true;
+        bool localTransformsFinite = true;
+        for (const auto& node : simple->nodes) {
+            if (node.parentIndex < -1 ||
+                (node.parentIndex >= 0 && static_cast<std::size_t>(node.parentIndex) >= simple->nodes.size()))
+                parentIndicesValid = false;
+            localTransformsFinite = localTransformsFinite &&
+                std::isfinite(node.localTranslation.x) &&
+                std::isfinite(node.localTranslation.y) &&
+                std::isfinite(node.localTranslation.z) &&
+                std::isfinite(node.localScale);
+            for (const float v : node.localRotation) localTransformsFinite = localTransformsFinite && std::isfinite(v);
+        }
+        Check(parentIndicesValid, "Alle NIF-Node-Parent-Indizes liegen innerhalb der exportierten Hierarchie");
+        Check(localTransformsFinite, "Lokale NIF-Bind-Transforms sind endlich und für KF-Preview nutzbar");
+    }
+
+    if (simple) {
+        std::printf("\n== UV-Sets und eingebettete Materialtexturen ==\n");
+        bool uvSetsSane = true;
+        bool embeddedSlotsValid = true;
+        bool textureTransformMethodsValid = true;
+        std::size_t textureTransformCount = 0;
+        std::size_t embeddedSlotCount = 0;
+        bool embeddedSlotKeepsSourceName = false;
+        for (const auto& part : simple->parts) {
+            for (const auto& uvSet : part.uvSets) {
+                for (const auto& uv : uvSet) {
+                    if (!std::isfinite(uv.u) || !std::isfinite(uv.v) ||
+                        std::abs(uv.u) > 1000.0f || std::abs(uv.v) > 1000.0f) {
+                        uvSetsSane = false;
+                    }
+                }
+            }
+            for (const auto& slot : part.textureSlots) {
+                if (slot.hasTransform) {
+                    ++textureTransformCount;
+                    if (slot.transformType > kNifTextureTransformMaya)
+                        textureTransformMethodsValid = false;
+                }
+                if (!slot.embeddedTexture) continue;
+                ++embeddedSlotCount;
+                if (slot.sourceUsesEmbeddedPixelData && !slot.texture.empty())
+                    embeddedSlotKeepsSourceName = true;
+                const auto& tex = *slot.embeddedTexture;
+                if (tex.width == 0 || tex.height == 0 ||
+                    tex.rgba.size() != static_cast<std::size_t>(tex.width) * tex.height * 4) {
+                    embeddedSlotsValid = false;
+                }
+            }
+        }
+        Check(uvSetsSane, "Alle erhaltenen UV-Sets sind endlich/plausibel oder wurden verworfen");
+        Check(textureTransformMethodsValid,
+              "Alle realen TexDesc-Transforms verwenden eine gültige TransformMethod 0..2");
+        std::printf("     Texture-Transforms in Referenzdatei: %zu\n", textureTransformCount);
+        Check(embeddedSlotsValid, "Alle eingebetteten Materialslot-Texturen sind vollständig dekodiert");
+        Check(embeddedSlotCount > 0,
+              "Referenzdatei bindet mindestens eine eingebettete PixelData an einen Materialslot");
+        Check(embeddedSlotKeepsSourceName,
+              "Embedded-Materialslot bleibt trotz Dateinamen als Use-External=0 klassifiziert");
+        Check(simple->decodedEmbeddedTextures > 0,
+              "Referenzdatei dekodiert mindestens einen NiPixelData-Block");
+        Check(simple->undecodedEmbeddedTextures == 0,
+              "Alle NiPixelData-Blöcke der Referenzdatei sind dekodiert");
+        std::printf("     Eingebettete Materialslots: %zu, PixelData dekodiert/nicht dekodiert: %u/%u\n",
+                    embeddedSlotCount, simple->decodedEmbeddedTextures, simple->undecodedEmbeddedTextures);
     }
 
     if (simple) {
@@ -92,23 +245,61 @@ int main(int argc, char** argv) {
         Check(area > 0.0 && area / 2.0 <= boxArea * 1.0001, "Huelle liegt (gegen den Uhrzeigersinn) innerhalb der Bounding-Box");
     }
 
-    if (argc >= 3) {
-        std::printf("\n== Zweite Testdatei (texturiert oder mit weiteren Blocktypen) ==\n");
-        auto second = LoadNifMesh(argv[2]);
-        if (second) {
-            std::printf("     Erfolgreich geladen: %zu Teil(e)\n", second->parts.size());
-            bool allValid = !second->parts.empty();
-            for (const auto& part : second->parts) {
-                if (part.positions.empty() || part.triangleIndices.empty() ||
-                    part.triangleIndices.size() % 3 != 0) {
-                    allValid = false;
+    for (int arg = 2; arg < argc; ++arg) {
+        std::printf("\n== Zusätzliche NIF-Regression: %s ==\n", argv[arg]);
+        auto extra = LoadNifMesh(argv[arg]);
+        Check(extra.has_value(), "Zusätzliche NIF-Datei wird vollständig geladen");
+        if (!extra) {
+            std::fprintf(stderr, "     Fehler: %s\n", extra.error().c_str());
+            continue;
+        }
+
+        bool geometryValid = !extra->parts.empty();
+        bool uvSetsSane = true;
+        bool embeddedSlotsValid = true;
+        std::size_t embeddedSlots = 0;
+        bool embeddedSlotKeepsSourceName = false;
+        for (const auto& part : extra->parts) {
+            if (part.positions.empty() || part.triangleIndices.empty() ||
+                part.triangleIndices.size() % 3 != 0) {
+                geometryValid = false;
+            }
+            for (const auto& uvSet : part.uvSets) {
+                for (const auto& uv : uvSet) {
+                    if (!std::isfinite(uv.u) || !std::isfinite(uv.v) ||
+                        std::abs(uv.u) > 1000.0f || std::abs(uv.v) > 1000.0f) {
+                        uvSetsSane = false;
+                    }
                 }
             }
-            Check(allValid, "Zweite Datei: falls erfolgreich geladen, liefert sie gültige Geometrie");
-        } else {
-            std::printf("     Fehlermeldung (sauberes Scheitern, kein Absturz): %s\n", second.error().c_str());
-            Check(true, "Zweite Datei: falls nicht unterstützt, schlägt sie sauber fehl (kein Absturz)");
+            for (const auto& slot : part.textureSlots) {
+                if (!slot.sourceUsesEmbeddedPixelData) continue;
+                if (slot.embeddedTexture) {
+                    ++embeddedSlots;
+                    if (slot.sourceUsesEmbeddedPixelData && !slot.texture.empty())
+                        embeddedSlotKeepsSourceName = true;
+                    const auto& tex = *slot.embeddedTexture;
+                    if (tex.width == 0 || tex.height == 0 ||
+                        tex.rgba.size() != static_cast<std::size_t>(tex.width) * tex.height * 4) {
+                        embeddedSlotsValid = false;
+                    }
+                }
+            }
         }
+        Check(geometryValid, "Zusätzliche NIF-Datei liefert gültige Geometrie");
+        Check(uvSetsSane, "Zusätzliche NIF-Datei enthält nur plausible erhaltene UV-Sets");
+        Check(embeddedSlotsValid, "Zusätzliche eingebettete Materialslots sind vollständig dekodiert");
+        Check(embeddedSlots > 0,
+              "Zusätzliche NIF-Datei bindet eingebettete PixelData an Materialslots");
+        Check(embeddedSlotKeepsSourceName,
+              "Zusätzliche NIF-Datei respektiert Use External=0 trotz Dateinamen");
+        Check(extra->decodedEmbeddedTextures > 0,
+              "Zusätzliche NIF-Datei dekodiert mindestens einen NiPixelData-Block");
+        Check(extra->undecodedEmbeddedTextures == 0,
+              "Zusätzliche NIF-Datei dekodiert alle NiPixelData-Blöcke");
+        std::printf("     Parts=%zu, Embedded-Slots=%zu, PixelData dekodiert/nicht dekodiert=%u/%u\n",
+                    extra->parts.size(), embeddedSlots,
+                    extra->decodedEmbeddedTextures, extra->undecodedEmbeddedTextures);
     }
 
     std::printf("\n%d Fehler.\n", g_failures);

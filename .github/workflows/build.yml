@@ -14,37 +14,64 @@ jobs:
       matrix:
         os: [windows-latest, ubuntu-24.04]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+      - name: Validate UI icon mappings
+        if: runner.os == 'Linux'
+        run: python3 tools/ui/check_icon_consistency.py
       - name: Install C++23 compiler
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y g++-14
       - name: Configure Linux core
         if: runner.os == 'Linux'
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-14 -DNEXTGEN_EDITOR_BUILD_GUI=OFF
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-14 -DNEXTGEN_EDITOR_CORE_ONLY=ON
       - name: Configure Windows core
         if: runner.os == 'Windows'
-        run: cmake -S . -B build -DNEXTGEN_EDITOR_BUILD_GUI=OFF
+        run: cmake -S . -B build -DNEXTGEN_EDITOR_CORE_ONLY=ON
       - run: cmake --build build --config Release --parallel 2
+      - name: Inventory fixture NIF materials
+        if: runner.os == 'Linux'
+        run: ./build/nif_material_inventory tests/fixtures
       - run: ctest --test-dir build -C Release --output-on-failure
 
   windows-gui:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Configure full GUI
+      - uses: actions/checkout@v7
+      - name: Configure full GUI using Windows defaults
         shell: pwsh
-        run: cmake -S . -B build -DNEXTGEN_EDITOR_BUILD_GUI=ON "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+        run: cmake -S . -B build
       - run: cmake --build build --config Release --parallel 2
+      - name: Audit NIF material renderer coverage
+        if: runner.os == 'Linux'
+        run: ./build/nif_material_inventory tests/fixtures | tee build/nif-material-audit.txt
       - run: ctest --test-dir build -C Release --output-on-failure
       - name: Package Windows application and runtime libraries
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Path artifact | Out-Null
-          Copy-Item build/Release/map_editor.exe,build/Release/nif_probe.exe,build/Release/fiesta_audit.exe,build/Release/nif_benchmark.exe artifact/
+          $ErrorActionPreference = 'Stop'
+          $editorExe = 'build/Release/Editor.exe'
+          if (-not (Test-Path $editorExe -PathType Leaf)) {
+            throw "Windows GUI executable was not produced: $editorExe"
+          }
+
+          New-Item -ItemType Directory -Path artifact -Force | Out-Null
+          Copy-Item $editorExe,build/Release/nif_probe.exe,build/Release/fiesta_audit.exe,build/Release/nif_benchmark.exe artifact/
           Get-ChildItem build/Release/*.dll -ErrorAction SilentlyContinue | Copy-Item -Destination artifact/
           Get-ChildItem build/vcpkg_installed/x64-windows/bin/*.dll -ErrorAction SilentlyContinue | Copy-Item -Destination artifact/
+          if (Test-Path build/Release/assets -PathType Container) {
+            Copy-Item build/Release/assets artifact/assets -Recurse
+          } else {
+            throw 'Runtime UI assets were not copied next to Editor.exe.'
+          }
           Copy-Item docs/third-party artifact/licenses -Recurse
-      - uses: actions/upload-artifact@v4
+
+          if (-not (Test-Path artifact/Editor.exe -PathType Leaf)) {
+            throw 'Editor.exe is missing from the packaged artifact.'
+          }
+          Write-Host 'Packaged Windows files:'
+          Get-ChildItem artifact -Recurse | Select-Object FullName,Length
+      - uses: actions/upload-artifact@v7
         with:
           name: NextGen-Editor-windows
           path: artifact/
+          if-no-files-found: error

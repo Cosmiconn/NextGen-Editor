@@ -1,4 +1,28 @@
 cmake_minimum_required(VERSION 3.21)
+
+# On Windows this repository is primarily the desktop editor.  When vcpkg is
+# installed in one of the conventional environment locations, pick its
+# toolchain automatically so a normal CMake configure can build the GUI.
+#
+# IMPORTANT: do not gate this on NEXTGEN_EDITOR_BUILD_GUI. Older build folders
+# may still have that value cached as OFF. Such a stale cache must not make the
+# Windows editor silently disappear. Explicit headless builds use the separate
+# NEXTGEN_EDITOR_CORE_ONLY switch below.
+if(CMAKE_HOST_WIN32 AND NOT DEFINED CMAKE_TOOLCHAIN_FILE AND
+   (NOT DEFINED NEXTGEN_EDITOR_CORE_ONLY OR NOT NEXTGEN_EDITOR_CORE_ONLY))
+    if(DEFINED ENV{VCPKG_ROOT} AND
+       EXISTS "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake")
+        set(CMAKE_TOOLCHAIN_FILE
+            "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+            CACHE FILEPATH "vcpkg toolchain")
+    elseif(DEFINED ENV{VCPKG_INSTALLATION_ROOT} AND
+           EXISTS "$ENV{VCPKG_INSTALLATION_ROOT}/scripts/buildsystems/vcpkg.cmake")
+        set(CMAKE_TOOLCHAIN_FILE
+            "$ENV{VCPKG_INSTALLATION_ROOT}/scripts/buildsystems/vcpkg.cmake"
+            CACHE FILEPATH "vcpkg toolchain")
+    endif()
+endif()
+
 project(TheSeedMapEditor LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
@@ -25,6 +49,8 @@ add_library(mapeditor_core
     src/core/DdsImage.cpp
     src/core/NifModel.cpp
     src/core/KfmFile.cpp
+    src/core/KfAnimation.cpp
+    src/core/NifAnimationPose.cpp
     src/core/TextureLayerStack.cpp
     src/core/TexturePaintOps.cpp
     src/core/TextureLayerIO.cpp
@@ -49,7 +75,34 @@ target_include_directories(mapeditor_core PUBLIC include)
 target_compile_features(mapeditor_core PUBLIC cxx_std_23)
 
 # -----------------------------------------------------------------------------
-option(NEXTGEN_EDITOR_BUILD_GUI "Build the GLFW/OpenGL GUI application" OFF)
+option(NEXTGEN_EDITOR_CORE_ONLY
+       "Build only core/tools/tests and intentionally suppress the Windows editor"
+       OFF)
+
+if(WIN32)
+    if(NEXTGEN_EDITOR_CORE_ONLY)
+        set(NEXTGEN_EDITOR_BUILD_GUI OFF CACHE BOOL
+            "Build the GLFW/OpenGL GUI application" FORCE)
+        message(STATUS "NextGen-Editor: explicit core-only Windows build")
+    else()
+        # Self-heal build directories that were configured by older revisions
+        # with NEXTGEN_EDITOR_BUILD_GUI=OFF. On Windows the desktop editor is the
+        # primary product, so a normal configure/build must always produce it.
+        if(DEFINED NEXTGEN_EDITOR_BUILD_GUI AND NOT NEXTGEN_EDITOR_BUILD_GUI)
+            message(STATUS
+                "NextGen-Editor: overriding stale NEXTGEN_EDITOR_BUILD_GUI=OFF; "
+                "use -DNEXTGEN_EDITOR_CORE_ONLY=ON for an intentional headless build")
+        endif()
+        set(NEXTGEN_EDITOR_BUILD_GUI ON CACHE BOOL
+            "Build the GLFW/OpenGL GUI application" FORCE)
+    endif()
+else()
+    option(NEXTGEN_EDITOR_BUILD_GUI "Build the GLFW/OpenGL GUI application" OFF)
+    if(NEXTGEN_EDITOR_CORE_ONLY)
+        set(NEXTGEN_EDITOR_BUILD_GUI OFF CACHE BOOL
+            "Build the GLFW/OpenGL GUI application" FORCE)
+    endif()
+endif()
 
 # Standalone-App (GLFW3 + Dear ImGui [docking, glfw+opengl3-binding] + glad)
 # Installation via vcpkg, siehe vcpkg.json.
@@ -71,6 +124,7 @@ if(NOT TARGET glfw)
     FetchContent_MakeAvailable(glfw)
 endif()
 find_package(imgui CONFIG REQUIRED)
+find_package(imguizmo CONFIG REQUIRED)
 find_package(glad CONFIG REQUIRED)
 find_package(OpenGL REQUIRED)
 
@@ -81,12 +135,29 @@ add_executable(map_editor
     src/app/Renderer.cpp
     src/app/ObjectMarkerRenderer.cpp
     src/app/NifMeshRenderer.cpp
+    src/app/UiIconAssets.cpp
 )
+# Der interne CMake-Targetname bleibt stabil; die ausgelieferte Windows-App heißt bewusst Editor.exe.
+set_target_properties(map_editor PROPERTIES OUTPUT_NAME "Editor")
+if (WIN32)
+    target_sources(map_editor PRIVATE src/app/resources/nextgen.rc)
+endif()
 target_include_directories(map_editor PRIVATE src/app)
+
+# Ship the approved runtime UI assets next to Editor.exe. The directory is allowed to
+# contain only the currently migrated subset; missing icons keep their DrawList fallback.
+add_custom_command(TARGET map_editor POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/assets/ui"
+            "$<TARGET_FILE_DIR:map_editor>/assets/ui"
+    COMMENT "Copying NextGen UI assets"
+)
+
 target_link_libraries(map_editor PRIVATE
     mapeditor_core
     glfw
     imgui::imgui
+    imguizmo::imguizmo
     glad::glad
     OpenGL::GL
 )
@@ -104,6 +175,10 @@ add_executable(nif_probe tools/nif_probe.cpp)
 target_link_libraries(nif_probe PRIVATE mapeditor_core)
 add_executable(nif_benchmark tools/nif_benchmark.cpp)
 target_link_libraries(nif_benchmark PRIVATE mapeditor_core)
+add_executable(nif_material_inventory tools/nif_material_inventory.cpp)
+target_link_libraries(nif_material_inventory PRIVATE mapeditor_core)
+add_test(NAME nif_material_inventory
+    COMMAND nif_material_inventory ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures)
 add_executable(fiesta_audit tools/fiesta_audit.cpp)
 target_link_libraries(fiesta_audit PRIVATE mapeditor_core)
 add_executable(test_process_runner tests/test_process_runner.cpp)
@@ -152,6 +227,16 @@ add_executable(test_kfm_file tests/test_kfm_file.cpp)
 target_link_libraries(test_kfm_file PRIVATE mapeditor_core)
 add_test(NAME kfm_file COMMAND test_kfm_file)
 
+add_executable(test_kf_animation tests/test_kf_animation.cpp)
+target_link_libraries(test_kf_animation PRIVATE mapeditor_core)
+add_test(NAME kf_animation COMMAND test_kf_animation
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/nif-extensions/BallCrush_Base_Stand.kf
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/nif-extensions/Arc-f_Bip01_Emotion_ChargdDance69.kf)
+
+add_executable(test_nif_animation_pose tests/test_nif_animation_pose.cpp)
+target_link_libraries(test_nif_animation_pose PRIVATE mapeditor_core)
+add_test(NAME nif_animation_pose COMMAND test_nif_animation_pose)
+
 add_executable(test_packed_images tests/test_packed_images.cpp)
 target_link_libraries(test_packed_images PRIVATE mapeditor_core)
 add_test(NAME packed_images COMMAND test_packed_images)
@@ -162,7 +247,15 @@ add_test(NAME nif_extensions COMMAND test_nif_extensions ${CMAKE_CURRENT_SOURCE_
 
 add_executable(test_nif_model tests/test_nif_model.cpp)
 target_link_libraries(test_nif_model PRIVATE mapeditor_core)
-add_test(NAME nif_model COMMAND test_nif_model ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/tree05.nif)
+add_test(NAME nif_model COMMAND test_nif_model
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/tree05.nif
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/wagon2.nif
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/ship_post.nif)
+
+add_executable(test_nif_named_shader_materials tests/test_nif_named_shader_materials.cpp)
+target_link_libraries(test_nif_named_shader_materials PRIVATE mapeditor_core)
+add_test(NAME nif_named_shader_materials COMMAND test_nif_named_shader_materials
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures)
 
 add_executable(test_nif_particles tests/test_nif_particles.cpp)
 target_link_libraries(test_nif_particles PRIVATE mapeditor_core)
@@ -191,12 +284,14 @@ add_executable(test_npc_orientation
     src/app/Renderer.cpp
     src/app/ObjectMarkerRenderer.cpp
     src/app/NifMeshRenderer.cpp
+    src/app/UiIconAssets.cpp
 )
 target_include_directories(test_npc_orientation PRIVATE src/app)
 target_link_libraries(test_npc_orientation PRIVATE
     mapeditor_core
     glfw
     imgui::imgui
+    imguizmo::imguizmo
     glad::glad
     OpenGL::GL
 )
@@ -230,7 +325,11 @@ get_property(editor_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
 foreach(test_target IN LISTS editor_targets)
     if(test_target MATCHES "^test_")
         if(MSVC)
-            target_compile_options(${test_target} PRIVATE /UNDEBUG)
+            # Release setzt /DNDEBUG global. Ein /UNDEBUG auf derselben MSVC-Kommandozeile
+            # erzeugt D9025. Stattdessen wird nach Verarbeitung der Compiler-Defines ein
+            # kleiner Header erzwungen eingebunden, der NDEBUG vor <cassert> undefiniert.
+            target_compile_options(${test_target} PRIVATE
+                "/FI${CMAKE_CURRENT_SOURCE_DIR}/tests/TestAssertions.hpp")
         else()
             target_compile_options(${test_target} PRIVATE -UNDEBUG)
         endif()

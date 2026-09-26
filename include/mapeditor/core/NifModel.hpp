@@ -27,6 +27,7 @@
 #include <expected>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -39,6 +40,27 @@ struct NifVec3 {
 
 struct NifVec2 {
     float u = 0.0f, v = 0.0f;
+};
+
+// Diagnose fuer auffaellige UV-Sets. Endliche UVs duerfen ausserhalb [0,1] und auch sehr
+// weit ausserhalb liegen (insbesondere bei Repeat-Wrapping) und bleiben deshalb erhalten.
+// Nur NaN/Inf wird als nicht renderbar verworfen; grosse endliche Werte werden weiterhin
+// inventarisiert, damit echte Parser-/Layoutfehler im Korpus sichtbar bleiben.
+struct NifUvSetDiagnostic {
+    bool discarded = false;
+    std::uint32_t originalCount = 0;
+    std::uint32_t firstBadIndex = 0;
+    NifVec2 firstBadValue{};
+    bool nonFinite = false;
+    std::uint32_t extremeCount = 0;
+    bool hasFinite = false;
+    float minFiniteU = 0.0f, maxFiniteU = 0.0f;
+    float minFiniteV = 0.0f, maxFiniteV = 0.0f;
+    float maxFiniteAbs = 0.0f;
+};
+
+struct NifColor4 {
+    float r = 1.0f, g = 1.0f, b = 1.0f, a = 1.0f;
 };
 
 struct NifMaterial {
@@ -63,9 +85,18 @@ struct NifEmbeddedTexture {
 // 0 Base, 1 Dark, 2 Detail, 3 Gloss, 4 Glow, 5 Bump, 6..9 Decal 0..3.
 // Die Struktur bleibt absichtlich generisch, damit jeder Slot sein eigenes UV-Set, Sampling
 // und seine optionale NIF-Texturmatrix behalten kann.
+inline constexpr std::uint32_t kNifTextureTransformMayaDeprecated = 0;
+inline constexpr std::uint32_t kNifTextureTransformMax = 1;
+inline constexpr std::uint32_t kNifTextureTransformMaya = 2;
+
 struct NifTextureSlot {
     bool present = false;
     std::string texture;
+    // Herkunft des NiSourceTexture-Slots explizit erhalten. Bei useExternal=0 ist ein leerer
+    // Dateiname normal; wenn die referenzierte NiPixelData nicht dekodiert werden konnte,
+    // darf dieser Fall nicht als "keine Textur" oder fehlender externer Pfad verschwinden.
+    bool sourceUsesEmbeddedPixelData = false;
+    std::int32_t sourcePixelDataRef = -1;
     std::shared_ptr<const NifEmbeddedTexture> embeddedTexture;
     std::uint32_t uvSet = 0;
     std::uint32_t clampMode = 3;
@@ -74,9 +105,26 @@ struct NifTextureSlot {
     NifVec2 translation{};
     NifVec2 scale{1.0f, 1.0f};
     float rotation = 0.0f;
-    std::uint32_t transformType = 0;
+    // nif.xml TransformMethod: 0=TM_Maya Deprecated, 1=TM_Max, 2=TM_Maya.
+    // Die Reihenfolge von Scale/Rotation/Translation unterscheidet sich sichtbar.
+    std::uint32_t transformType = kNifTextureTransformMayaDeprecated;
     NifVec2 center{0.5f, 0.5f};
 };
+
+// ShaderTexDesc aus NiTexturingProperty bleibt getrennt von den klassischen zehn Slots erhalten.
+// mapId ist shader-spezifisch und darf erst nach Verifikation eines konkreten Shadernamens als
+// feste Rendersemantik interpretiert werden. sourceTextureRef bleibt für Diagnose/Audits sichtbar;
+// texture enthält nach der Deferred-Auflösung dieselben SourceTexture-/Embedded-Daten wie ein
+// klassischer NifTextureSlot.
+struct NifShaderTextureSlot {
+    std::uint32_t mapId = 0;
+    std::int32_t sourceTextureRef = -1;
+    NifTextureSlot texture;
+};
+
+// Reine CPU-Referenz derselben TexDesc-UV-Matrix, die der OpenGL-Renderer im Shader
+// auswertet. Sie hält die Gamebryo-TransformMethod-Semantik testbar, ohne GL-Kontext.
+[[nodiscard]] NifVec2 ApplyNifTextureTransform(const NifTextureSlot& slot, NifVec2 uv);
 
 // Zeitabhaengige Float-Spur fuer NiTextureTransformController/NiFlipController.
 // extrapolation: 0=cycle, 1=reverse, 2=constant/clamp (NiTimeController flags bits 1..2).
@@ -99,6 +147,38 @@ struct NifFloatTrack {
     std::vector<NifFloatKey> keys;
 };
 
+// Verifizierte Transformdarstellung für NIF-Szene/Skinning im ursprünglichen
+// Gamebryo-Koordinatenrahmen. Sie wird zusätzlich zur bereits gerenderten Bind-Pose erhalten,
+// damit KF-Playback dieselben Bone-/Skin-Matrizen erneut auswerten kann.
+struct NifTransform {
+    std::array<float, 9> rotation{1.0f, 0.0f, 0.0f,
+                                  0.0f, 1.0f, 0.0f,
+                                  0.0f, 0.0f, 1.0f};
+    NifVec3 translation{};
+    float scale = 1.0f;
+};
+
+struct NifSkinInfluence {
+    std::uint16_t boneIndex = 0; // Index in NifSkinBinding::bones
+    float weight = 0.0f;
+};
+
+struct NifSkinBoneBinding {
+    std::int32_t nodeIndex = -1; // Index in NifModel::nodes
+    NifTransform bindTransform{}; // NiSkinData bone transform, bytegetreu gelesen
+};
+
+struct NifSkinBinding {
+    std::int32_t skeletonRootNodeIndex = -1;
+    bool partitionWeights = false;
+    NifTransform skinTransform{};        // NiSkinData::Skin Transform
+    NifTransform meshToModelTransform{}; // Geometrie-/Parent-Kette nach dem Skinning
+    std::vector<NifVec3> sourcePositions;
+    std::vector<NifVec3> sourceNormals;
+    std::vector<std::vector<NifSkinInfluence>> vertexInfluences;
+    std::vector<NifSkinBoneBinding> bones;
+};
+
 struct NifTextureTransformAnimation {
     std::uint32_t slot = 0;
     std::uint32_t operation = 0; // 0 U offset, 1 V offset, 2 rotation, 3 U scale, 4 V scale
@@ -107,6 +187,8 @@ struct NifTextureTransformAnimation {
 
 struct NifTextureFlipFrame {
     std::string texture;
+    bool sourceUsesEmbeddedPixelData = false;
+    std::int32_t sourcePixelDataRef = -1;
     std::shared_ptr<const NifEmbeddedTexture> embeddedTexture;
 };
 
@@ -116,19 +198,173 @@ struct NifTextureFlipAnimation {
     std::vector<NifTextureFlipFrame> frames;
 };
 
+// NiTextureEffect ist ein NiDynamicEffect und kein NiProperty. Fiesta verwendet im echten
+// Corpus vor allem ENVIRONMENT_MAP + SPHERE_MAP. Die vollständigen Wire-Felder bleiben hier
+// trotzdem erhalten, damit andere Effect-/CoordGen-Kombinationen nicht still umgedeutet werden.
+struct NifTextureEffectBinding {
+    bool enabled = true;
+    std::array<float, 9> projectionRotation{1.0f,0.0f,0.0f,
+                                            0.0f,1.0f,0.0f,
+                                            0.0f,0.0f,1.0f};
+    NifVec3 projectionPosition{};
+    std::uint32_t filterMode = 2;
+    std::uint32_t clampMode = 3;
+    std::uint32_t textureType = 0;
+    std::uint32_t coordGenType = 0;
+    // Deferred NiSourceTexture block reference. Kept until all source/pixel blocks are parsed,
+    // exactly like the classic NiTexturingProperty slots.
+    std::int32_t sourceTextureRef = -1;
+    std::string texture;
+    bool sourceUsesEmbeddedPixelData = false;
+    std::int32_t sourcePixelDataRef = -1;
+    std::shared_ptr<const NifEmbeddedTexture> embeddedTexture;
+    bool clippingPlaneEnabled = false;
+    std::array<float, 4> clippingPlane{};
+};
+
+struct NifParticleState {
+    NifVec3 position{};
+    NifColor4 color{};
+    float radius = 1.0f;
+    float size = 1.0f;
+    std::array<float, 4> rotationQuaternion{0.0f, 0.0f, 0.0f, 1.0f};
+    float rotationAngle = 0.0f;
+    NifVec3 rotationAxis{0.0f, 1.0f, 0.0f};
+    NifVec3 velocity{};
+    float age = 0.0f;
+    float lifeSpan = 0.0f;
+    float lastUpdate = 0.0f;
+    std::uint16_t spawnGeneration = 0;
+    std::uint16_t code = 0;
+};
+
+struct NifParticleDataInfo {
+    std::uint32_t capacity = 0;
+    std::uint16_t activeCount = 0;
+    bool hasPositions = false;
+    bool hasColors = false;
+    bool hasRadii = false;
+    bool hasSizes = false;
+    bool hasRotations = false;
+    bool hasRotationAngles = false;
+    bool hasRotationAxes = false;
+    std::vector<NifParticleState> particles;
+};
+
+struct NifParticleModifierInfo {
+    std::string type;
+    std::string name;
+    std::uint32_t order = 0;
+    std::int32_t targetRef = -1;
+    bool active = true;
+
+    // Shared emitter payload (valid for Box/Cylinder/Sphere/Mesh emitters).
+    bool emitter = false;
+    float speed = 0.0f, speedVariation = 0.0f;
+    float declination = 0.0f, declinationVariation = 0.0f;
+    float planarAngle = 0.0f, planarAngleVariation = 0.0f;
+    NifColor4 initialColor{};
+    float initialRadius = 1.0f, radiusVariation = 0.0f;
+    float lifeSpan = 0.0f, lifeSpanVariation = 0.0f;
+    std::int32_t emitterObjectRef = -1;
+    float emitterWidth = 0.0f, emitterHeight = 0.0f, emitterDepth = 0.0f, emitterRadius = 0.0f;
+    std::vector<std::int32_t> emitterMeshRefs;
+    std::uint32_t initialVelocityType = 0, emissionType = 0;
+    NifVec3 emissionAxis{};
+
+    // Lifecycle/spawn/grow-fade.
+    bool spawnOnDeath = false;
+    std::int32_t spawnModifierRef = -1;
+    std::uint16_t numSpawnGenerations = 0, minNumToSpawn = 0, maxNumToSpawn = 0;
+    float percentageSpawned = 0.0f, spawnSpeedVariation = 0.0f, spawnDirVariation = 0.0f;
+    float spawnLifeSpan = 0.0f, spawnLifeSpanVariation = 0.0f;
+    float growTime = 0.0f, fadeTime = 0.0f;
+    std::uint16_t growGeneration = 0, fadeGeneration = 0;
+
+    // Color/rotation/forces.
+    std::int32_t colorDataRef = -1;
+    float initialRotationSpeed = 0.0f, initialRotationSpeedVariation = 0.0f;
+    float initialRotationAngle = 0.0f, initialRotationAngleVariation = 0.0f;
+    bool randomRotationSpeedSign = false, randomInitialAxis = false;
+    NifVec3 initialAxis{0.0f, 1.0f, 0.0f};
+    std::int32_t forceObjectRef = -1;
+    NifVec3 forceAxis{};
+    float forceDecay = 0.0f, forceStrength = 0.0f;
+    std::uint32_t forceType = 0;
+    float turbulence = 0.0f, turbulenceScale = 0.0f;
+    float dragPercentage = 0.0f, dragRange = 0.0f, dragRangeFalloff = 0.0f;
+
+    std::uint16_t updateSkip = 0;
+    std::vector<std::int32_t> meshRefs;
+    std::int32_t linkedRef = -1;
+};
+
+// Authored NiParticleSystem/NiMeshParticleSystem scene wiring. Keeping this separate from
+// NifMeshPart is intentional: particle systems are dynamic scene objects, not triangle meshes.
+struct NifParticleSystemInfo {
+    std::uint32_t blockIndex = 0;
+    std::string name;
+    bool meshParticles = false;
+    bool worldSpace = false;
+    bool hasShader = false;
+    std::string shaderName;
+    std::int32_t dataRef = -1;
+    std::vector<std::int32_t> propertyRefs;
+    std::vector<std::int32_t> modifierRefs;
+    // Parallel zu modifierRefs; direkt aus der Header-Blocktyp-Tabelle aufgelöst. Dadurch kann
+    // der Renderer exakt die im Corpus vorkommenden Modifier implementieren statt Typen zu raten.
+    std::vector<std::string> modifierTypes;
+    std::vector<NifParticleModifierInfo> modifiers;
+    bool hasParticleData = false;
+    NifParticleDataInfo particleData;
+
+    // Effective particle render properties. These mirror the authored NiProperty state of the
+    // NiParticleSystem itself (including inherited parent-node properties), not a nearby mesh.
+    NifMaterial material;
+    std::array<NifTextureSlot, 10> textureSlots{};
+    std::vector<NifShaderTextureSlot> shaderTextureSlots;
+    std::uint32_t textureApplyMode = 2;
+    float bumpMapLumaScale = 1.0f;
+    float bumpMapLumaOffset = 0.0f;
+    std::array<float, 4> bumpMapMatrix{1.0f, 0.0f, 0.0f, 1.0f};
+    std::vector<NifTextureTransformAnimation> textureTransformAnimations;
+    std::vector<NifTextureFlipAnimation> textureFlipAnimations;
+    bool specularEnabled = true;
+    bool alphaBlend = false, alphaTest = false;
+    std::uint8_t alphaThreshold = 0, alphaSrcBlend = 6, alphaDstBlend = 7, alphaTestFunc = 4;
+    bool depthTest = true, depthWrite = true;
+    std::uint32_t depthFunction = 3;
+    bool hasStencilProperty = false, stencilEnabled = false;
+    std::uint32_t stencilFunction = 7, stencilReference = 0, stencilMask = 0xFFFFFFFFu;
+    std::uint32_t stencilFailAction = 0, stencilZFailAction = 0, stencilPassAction = 0;
+
+    NifVec3 translation{};
+    std::array<float, 9> rotation{1.0f, 0.0f, 0.0f,
+                                  0.0f, 1.0f, 0.0f,
+                                  0.0f, 0.0f, 1.0f};
+    float scale = 1.0f;
+};
+
 struct NifMeshPart {
     std::string name;
+    std::string shaderName;            // z.B. VCAlphaTextureBlender
     std::vector<NifVec3> positions;
     std::vector<NifVec3> normals;      // leer, falls keine Normalen vorhanden
+    std::vector<NifColor4> vertexColors; // leer => weiss/alpha 1 im Renderer
     std::vector<NifVec2> uvs;          // fuer die Base-Textur ausgewaehltes UV-Set
     std::vector<std::vector<NifVec2>> uvSets; // alle im Geometrieblock vorhandenen UV-Sets
+    std::vector<NifUvSetDiagnostic> uvSetDiagnostics; // Roh-UV-Plausibilitaet je authored Set
     std::vector<std::uint32_t> triangleIndices; // 3 Indizes pro Dreieck, in `positions` indiziert
     NifMaterial material;
     // Vollstaendige klassische NiTexturingProperty-Slots. Die alten Base-Felder bleiben als
     // Kompatibilitaets-/Diagnose-Alias fuer Slot 0 erhalten.
     std::array<NifTextureSlot, 10> textureSlots{};
+    // Shader-spezifische NiTexturingProperty::ShaderTexDesc-Einträge. Diese Rohsemantik wird
+    // bewusst erhalten, auch wenn der Renderer den betreffenden Shader noch nicht materialisiert.
+    std::vector<NifShaderTextureSlot> shaderTextureSlots;
     std::vector<NifTextureTransformAnimation> textureTransformAnimations;
     std::vector<NifTextureFlipAnimation> textureFlipAnimations;
+    std::vector<NifTextureEffectBinding> textureEffects;
     std::uint32_t textureApplyMode = 2; // APPLY_MODULATE
     float bumpMapLumaScale = 1.0f;
     float bumpMapLumaOffset = 0.0f;
@@ -136,6 +372,12 @@ struct NifMeshPart {
     std::string diffuseTexture; // Alias fuer textureSlots[0].texture
     std::shared_ptr<const NifEmbeddedTexture> embeddedDiffuseTexture; // Alias fuer Slot 0
     bool specularEnabled = true; // NiSpecularProperty fehlt => NifSkope nutzt Material-Specular
+    // NiVertexColorProperty. Ohne explizite Property entspricht der klassische NIF-Pfad
+    // bei vorhandenen Vertexfarben SRC_AMB_DIF + EMI_AMB_DIF; der Renderer entscheidet den
+    // Default anhand davon, ob für diesen Part tatsächlich Vertexfarben vorhanden sind.
+    bool hasVertexColorProperty = false;
+    std::uint32_t vertexColorMode = 2;    // 0 SRC_IGNORE, 1 SRC_EMISSIVE, 2 SRC_AMB_DIF
+    std::uint32_t vertexLightingMode = 1; // 0 EMISSIVE, 1 EMI_AMB_DIF
     // NiAlphaProperty render state. Flags follow the Gamebryo/NIF bit layout.
     bool alphaBlend = false;
     bool alphaTest = false;
@@ -144,10 +386,26 @@ struct NifMeshPart {
     std::uint8_t alphaSrcBlend = 6; // SRC_ALPHA
     std::uint8_t alphaDstBlend = 7; // INV_SRC_ALPHA
     std::uint8_t alphaTestFunc = 4; // GREATER
+    // NiZBufferProperty. Defaults match the normal fixed-function editor path when
+    // no explicit Z property is attached: test + write, LESS_EQUAL comparison.
+    bool depthTest = true;
+    bool depthWrite = true;
+    std::uint32_t depthFunction = 3; // ZCOMP_LESS_EQUAL
     std::uint32_t baseUvSet = 0;
     std::uint32_t textureClampMode = 3;
     std::uint32_t textureFilterMode = 2;
-    // NiStencilProperty FaceDrawMode: 0=application default, 1=CCW, 2=CW, 3=both.
+    // NiStencilProperty. The compare/action enums follow the classic Gamebryo/NIF layout:
+    // compare 0..7 = NEVER..ALWAYS, action 0..5 = KEEP/ZERO/REPLACE/INCR/DECR/INVERT.
+    // hasStencilProperty distinguishes an authored disabled property from the no-property default.
+    bool hasStencilProperty = false;
+    bool stencilEnabled = false;
+    std::uint32_t stencilFunction = 7; // TEST_ALWAYS
+    std::uint32_t stencilReference = 0;
+    std::uint32_t stencilMask = 0xFFFFFFFFu;
+    std::uint32_t stencilFailAction = 0;  // ACTION_KEEP
+    std::uint32_t stencilZFailAction = 0; // ACTION_KEEP
+    std::uint32_t stencilPassAction = 0;  // ACTION_KEEP
+    // FaceDrawMode: 0=application default, 1=CCW, 2=CW, 3=both.
     std::uint32_t faceDrawMode = 3;
 
     // Skinning wird beim Laden in der aktuellen Bind-/Skeleton-Pose CPU-seitig ausgewertet.
@@ -156,6 +414,10 @@ struct NifMeshPart {
     bool skinned = false;
     std::uint16_t skinBoneCount = 0;
     std::uint8_t maxSkinInfluences = 0;
+    // Originale Skin-Quelle/Weights/Bind-Matrizen bleiben neben der fertig berechneten Bind-Pose
+    // erhalten. Der normale Map-Renderer nutzt weiterhin positions/normals; nur der
+    // KFM-Preview-Pfad wertet skinBinding zeitabhängig aus.
+    std::optional<NifSkinBinding> skinBinding;
 
     // Dynamische Scene-Graph-Semantik, die nicht dauerhaft in die Vertexdaten eingebrannt
     // werden darf. Die Geometrie selbst bleibt weiterhin in Modellkoordinaten.
@@ -175,11 +437,24 @@ struct NifMeshPart {
     NifVec3 lodCenter{};
 };
 
-// Benannter Knoten (z.B. Skelett-Knochen "Bip01 Head") mit Weltposition (Editor-Rahmen, wie die
-// Vertices der Parts) und Weltrotation (Legacy-Rahmen, zeilenweise) - Anbringpunkte fuer Gesicht, Haare,
-// Waffen in der Charakter-Vorschau (AvatarPreview).
+// Scene-Graph-Knoten (z.B. Skelett-Knochen "Bip01 Head"). Neben der bisherigen
+// Weltposition/-rotation bleiben jetzt auch Parent und lokaler Bind-Transform erhalten. Das ist
+// reine, aus dem NIF gelesene Strukturinformation und erlaubt dem KFM-Preview, verifizierte
+// KF-Transformtracks auf die echte NIF-Hierarchie anzuwenden, ohne eine Bone-Hierarchie zu raten.
+//
+// Coordinate conventions:
+// - position: Weltposition im Editor-Rahmen (x, z, y), wie die gerenderten Vertices.
+// - rotation: bisherige Weltrotation im Legacy/Gamebryo-Rahmen, row-major.
+// - localTranslation/localRotation/localScale: unveränderter lokaler NIF-Transform im
+//   Legacy/Gamebryo-Rahmen. KF-Transforms verwenden denselben lokalen Rahmen.
 struct NifNodeInfo {
     std::string name;
+    std::int32_t parentIndex = -1; // Index in NifModel::nodes, -1 = keine erfasste Node-Parent.
+    NifVec3 localTranslation{};
+    std::array<float, 9> localRotation{1.0f, 0.0f, 0.0f,
+                                       0.0f, 1.0f, 0.0f,
+                                       0.0f, 0.0f, 1.0f};
+    float localScale = 1.0f;
     NifVec3 position;
     std::array<float, 9> rotation{};
 };
@@ -189,20 +464,54 @@ struct NifModel {
     bool partial = false;   // stopped before all declared blocks were consumed
     std::uint32_t decodedEmbeddedTextures = 0;
     std::uint32_t undecodedEmbeddedTextures = 0;
+    // Render-Diagnose für im NIF vorkommende Property-/Effect-Familien.
+    // NiTextureEffect wird strukturell erhalten und klassifiziert; Rendering bleibt bis zur
+    // verifizierten EnvironmentMap/SphereMap-Anbindung bewusst separat. NiVertexColorProperty
+    // und NiZBufferProperty werden bereits vollständig in den Mesh-Renderstate übernommen.
+    std::uint32_t textureEffectBlocks = 0;
+    std::uint32_t textureEffectEnvironmentSphereBlocks = 0;
+    std::uint32_t textureEffectUnsupportedBlocks = 0;
+    std::uint32_t textureEffectNodeBindings = 0;
+    std::uint32_t vertexColorPropertyBlocks = 0;
+    std::uint32_t zBufferPropertyBlocks = 0;
+    // NiParticleSystem/NiMeshParticleSystem werden derzeit strukturell gelesen, aber noch
+    // nicht als Partikel simuliert/gezeichnet. Der Zaehler macht diese sichtbare ResMap-
+    // Fidelity-Luecke im Korpus-Audit explizit statt sie hinter erfolgreichem Parsing zu verstecken.
+    std::uint32_t particleSystemBlocks = 0;
+    // Anzahl effektiver NiProperty-Refs, die nicht direkt am Mesh hängen, sondern über
+    // die NiNode-Parentkette geerbt und deshalb zusätzlich in den Renderstate übernommen werden.
+    std::uint32_t inheritedPropertyBindings = 0;
     std::string rootName;
     std::vector<NifMeshPart> parts;
-    std::vector<NifNodeInfo> nodes; // alle benannten NiNode-Knoten (Weltposition)
+    std::vector<NifParticleSystemInfo> particleSystems;
+    // Exact controller block types encountered in this NIF. Kept independently from
+    // modifier wiring so the ResMap renderer can prove controller coverage corpus-wide.
+    std::vector<std::string> particleControllerTypes;
+    std::vector<NifNodeInfo> nodes; // NiNode-Hierarchie inkl. lokaler Bind-Transforms; Namen können bei reinen Hierarchie-Knoten leer sein.
 };
 
 // Disable recovery for deterministic corpus validation of the standard parser.
 std::expected<NifModel, std::string> LoadNifMesh(const std::filesystem::path& file,
                                               bool allowRecovery = true);
 
-// Grundflaeche eines Modells fuer die 2D-Draufsicht: konvexe Huelle (x,z) der Vertices in der
-// UNTERSTEN Hoehenschicht (Band = 12 % der Modellhoehe, begrenzt auf 20..120 Einheiten) - so
-// bekommt ein Baum die Stammflaeche statt der Krone, ein Haus den Wandumriss statt des
-// Dachueberstands. Punkte in Modell-Koordinaten (Y-up, x/z = Grundebene), gegen den Uhrzeigersinn.
-// Leer, wenn das Modell keine Geometrie hat. Konvex: L-foermige Grundrisse werden ueberdeckt.
+struct NifGroundContactSegment {
+    float x0 = 0.0f;
+    float z0 = 0.0f;
+    float x1 = 0.0f;
+    float z1 = 0.0f;
+};
+
+// Exakte 2D-Kontaktkontur fuer den Editor: Schnitt der echten Mesh-Dreiecke mit der lokalen
+// Bodenebene des platzierten Modells. Wenn y=0 innerhalb der Modellhoehe liegt, wird diese
+// authored Pivot-/Placement-Ebene verwendet; andernfalls die tiefste Modellhoehe. Koplanare
+// Bodenflaechen werden auf ihre Randkanten reduziert, interne Triangulationskanten entfernt.
+// Dadurch bleiben konkave und getrennte Standflaechen erhalten statt zu einer konvexen Huelle
+// zusammengeschmolzen zu werden. Leer, wenn keine belastbare Kontaktlinie ableitbar ist.
+std::vector<NifGroundContactSegment> ComputeGroundContactSegments(const NifModel& model);
+
+// Legacy-/Walk-Fallback: konvexe Huelle (x,z) der Vertices in der untersten Hoehenschicht.
+// Fuer die sichtbare 2D-Objektkontur NICHT verwenden; konkave Grundrisse werden hier bewusst
+// ueberdeckt. Der Pfad bleibt vorerst fuer bestehende Walk/Block-Polygonoperationen erhalten.
 std::vector<std::pair<float, float>> ComputeFootprintHull(const NifModel& model);
 
 } // namespace theseed::mapeditor::core
