@@ -3641,7 +3641,7 @@ bool DrawEditorCard(const char* id, ImVec2 size, ImU32 bodyColor, ImU32 headerCo
 // Später definierte Aktionen, die auch aus der globalen Menüleiste erreichbar sein müssen.
 void SaveTownPortalFiles(EditorState& state);
 bool SaveRecallCoordFile(EditorState& state);
-void FocusCurrentSceneSelection(EditorState& state);
+bool FocusCurrentSceneSelection(EditorState& state);
 
 // Obere Navigationsleiste, auf allen Bildschirmen der neuen Oberfläche sichtbar - links die
 // Tabs, rechts Credits/Donate/? und die Sprachumschaltung (DE/EN, siehe Localization.hpp).
