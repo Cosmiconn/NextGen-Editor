@@ -15872,16 +15872,16 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
     if (genericShaderFallbackParts > 0 || model.textureEffectBlocks > 0) {
         ImGui::TextColored(
             ImVec4(1.0f,0.72f,0.30f,1.0f),
-            "%s",L("Materialdateien können vollständig gefunden sein, obwohl Shader-/Effect-Semantik noch nur generisch dargestellt wird.",
-                   "All material files can be resolved while shader/effect semantics are still rendered through a generic fallback."));
+            "%s",L("Materialdateien können vollständig gefunden sein, obwohl unbekannte Shader-/Effect-Semantik noch generisch bleibt. Verifiziertes Env/Sphere-TextureEffect wird gerendert.",
+                   "All material files can be resolved while unknown shader/effect semantics remain generic. Verified env/sphere TextureEffect is rendered."));
         ImGui::TextDisabled(
             L("%zu Mesh-Part(s) mit generischem Shader-Fallback · TextureEffect %u",
               "%zu mesh part(s) using generic shader fallback · TextureEffect %u"),
             genericShaderFallbackParts, model.textureEffectBlocks);
         if (model.textureEffectBlocks > 0) {
             ImGui::TextDisabled(
-                L("TextureEffect klassifiziert: Env/Sphere %u · andere/aus %u · Node-Bindings %u · Rendering noch deaktiviert",
-                  "TextureEffect classified: env/sphere %u · other/off %u · node bindings %u · rendering still disabled"),
+                L("TextureEffect klassifiziert: Env/Sphere %u · andere/aus %u · Node-Bindings %u · Env/Sphere-Rendering aktiv",
+                  "TextureEffect classified: env/sphere %u · other/off %u · node bindings %u · env/sphere rendering active"),
                 model.textureEffectEnvironmentSphereBlocks,
                 model.textureEffectUnsupportedBlocks,
                 model.textureEffectNodeBindings);
