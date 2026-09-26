@@ -1,7 +1,7 @@
 # NextGen Editor – Icon Inventory
 
 **Status:** verbindliche Inventar-/Mapping-Datei für `ui-upgrade`  
-**Geprüft am:** 2026-09-25
+**Geprüft am:** 2026-09-26
 
 ## Verbindliche Quelle – Final-Paket
 
@@ -118,19 +118,39 @@ Die älteren Pakete sind nur noch Provenienz. Die ursprünglichen 54 SVG-/Small-
 - `punkte` ist für allgemeine Punkte/Waypoints/Marker vorgesehen; `spawnpunkte` ausschließlich für Spawn-Systeme.
 - `verifizierung` bedeutet Validierung/Audit und darf nicht als generisches „OK/Apply“-Symbol missbraucht werden.
 
-## Nach Final-Inventar tatsächlich noch fehlende dedizierte Icons
+## Bewusst verbleibende DrawList-Fallbacks
 
 Die 14 neuen Final-Paket-Icons schließen 2D, 3D, KFM, AI, XP, Preise, Visibility, Lock/Unlock, Copy, Duplicate, Delete, Command Palette und Recent Projects.
 
-Weiterhin **nicht** als eigenes Final-Paket-Icon vorhanden sind:
+Es gibt zwei unterschiedliche Gründe für einen verbleibenden DrawList-Fallback:
+
+### A. Im Final-Paket fehlt eine dedizierte Semantik
+
+Weiterhin **nicht** als eigenes Final-Paket-Icon vorhanden sind unter anderem:
 - Focus Selection
 - Drop to Ground
 - Local / World
 - Snap
-- Portal als eigener Hauptmodus
+- Portal / Gate als eigener Hauptmodus
+- Dialog als eigener NPC-Untereditor
+- Shop / Inventar als eigener NPC-Untereditor
 - generisches Mob-Hauptsymbol außerhalb von Spawn/Custom Mob
+- feinere NPC-Rollen-Semantik wie Merchant / Quest / Guild / Dice / Weapon
+- eigene Dateityp-Glyphen zur Unterscheidung Lua-AIScript versus PineScript
 
-Bis zu einer expliziten Ergänzung bleiben hierfür die bestehenden funktionalen DrawList-Fallbacks. Es wird kein unpassendes Paketicon umgedeutet.
+Diese Bedeutungen dürfen nicht auf ähnlich aussehende Paketicons umgedeutet werden.
+
+### B. Semantische ID existiert, Runtime-Raster fehlt im aktuellen Checkout
+
+Der Git-Branch enthält derzeit nur einen gezielten Runtime-Subset des vollständigen Final-Pakets.
+`UiIconAssets` sucht für eine gemappte ID alle freigegebenen Größen und verwendet den
+nächstgelegenen **tatsächlich eingecheckten** Export. Ist für die ID noch gar kein Raster
+vorhanden, bleibt der bestehende DrawList-Fallback sichtbar.
+
+Beispiel: `gameplay.path` ist für Pfad / Route / MobRoam semantisch korrekt und wird vom
+UI-Code bereits verwendet; das zugehörige Raster ist im aktuellen Checkout aber noch nicht
+importiert. Es wird deshalb **nicht** ersatzweise als `nav.points`, `nav.spawns` oder ein
+anderes Paketicon dargestellt.
 
 ## Runtime-Strategie
 
@@ -149,10 +169,12 @@ Bis zu einer expliziten Ergänzung bleiben hierfür die bestehenden funktionalen
 - [x] 408 Small-Size-PNGs (68 × 6 Größen) verifiziert.
 - [x] 272 embedded-PNG-SVGs korrekt als Rastercontainer klassifiziert.
 - [x] semantische IDs inklusive 14 Additional-UI-Icons eingefroren.
-- [x] Runtime-Loader/Cache für semantische IDs vorhanden.
-- [x] Primary Map Toolbar nutzt bereits Paketassets, wenn das jeweilige Runtime-PNG im Repo liegt.
+- [x] Runtime-Loader/Cache für semantische IDs vorhanden; fehlende exakte Größen fallen auf den nächstgelegenen eingecheckten freigegebenen Export zurück.
+- [x] Primary Map Toolbar nutzt bereits Paketassets, wenn für die semantische ID ein Runtime-PNG im Repo liegt.
+- [x] aktueller Runtime-Subset ist bewusst klein und CI-paketiert; der Branch enthält derzeit vor allem 16-px Panel/Inline-, 24-px Toolbar/Modul- und 32-px NG-Assets.
 - [ ] alle 68 SVG-Master nach `assets/ui/icons/svg-master/` übernehmen.
-- [ ] alle Runtime-Raster nach `assets/ui/icons/png/` übernehmen (die aktuell verwendeten 16/24/32-px-Assets sind bereits eingecheckt; Rest folgt bedarfsweise/über Importer).
+- [ ] vollständige 68 × 6 Runtime-Rastermatrix nach `assets/ui/icons/png/` übernehmen; dafür ausschließlich `tools/ui/import_icon_pack.py` mit dem geprüften Final-ZIP verwenden.
+- [ ] generiertes `assets/ui/icons/manifest.json` zusammen mit dem Vollimport einchecken.
 - [x] NG Branding in der App-Topbar über das finale 32-px-Paketasset aktiviert.
 - [x] App-Shell-Aktionen Neu / Öffnen / Speichern nutzen die finalen Paketicons in einer kompakten Icon+Text-Darstellung.
 - [x] Primäre Navigation Karte / Spieldaten / Animationen / Projekt ist als kompakte Icon+Text-Navigation mit klarer Active-Linie umgesetzt.
@@ -162,8 +184,10 @@ Bis zu einer expliziten Ergänzung bleiben hierfür die bestehenden funktionalen
 - [x] 14 neue Additional-UI-Icons an reale Controls angebunden (2D/3D, KFM, AI, XP, Preise, Eye, Lock/Unlock, Copy, Duplicate, Delete, Command Palette, Recent Projects).
 - [x] zentrale Map-Panel-Header (Outliner, Layer, Asset Browser, Properties, Visibility, 2D, 3D) sowie KFM, Settings/Help auf Paketicons migriert und über einen gemeinsamen Panel-Header-Component vereinheitlicht.
 - [x] zentrale Modul-Header für Spieldaten, Multi SHN, Quest, AI, Custom NPC/Mob, Skill, Drop Table und Interface auf den gemeinsamen Header-Component + Final-Paketicons migriert; Portal bleibt bewusst auf dem dokumentierten Legacy-Fallback, da das Final-Paket kein dediziertes Portal-Haupticon enthält.
+- [x] UI-QA 26.09.: AI-Aktionen verwenden `module.ai`, Spawn-Einträge `nav.spawns`, Portal-Positionierung `transform.move`, Route/MobRoam `gameplay.path`; die Route-ID fällt bis zum Rasterimport funktional auf DrawList zurück.
+- [x] UI-QA 26.09.: gemeinsame Search-Chrome verwendet `panel.search` in Asset Browser, Szene-Outliner, AI Workspace, NIF Inspector und Interface; NIF-/Interface-Filter verwenden `panel.filter`.
 - [ ] verbleibende kleinere Spezial-/Unterpanel-Header vollständig migrieren.
-- [ ] Legacy-DrawList-Symbole nur für die sechs tatsächlich verbleibenden Paketlücken beibehalten.
+- [ ] DrawList-Fallbacks weiter auf die oben dokumentierten Semantik- oder Runtime-Import-Lücken reduzieren; keine Paketsemantik umdeuten.
 
 ## Runtime-QA-Hinweis
 
