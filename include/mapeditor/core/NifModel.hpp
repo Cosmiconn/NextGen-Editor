@@ -42,6 +42,19 @@ struct NifVec2 {
     float u = 0.0f, v = 0.0f;
 };
 
+// Diagnose fuer UV-Sets, die das harte Plausibilitaets-Sicherheitsnetz verworfen hat.
+// Die eigentlichen Rohwerte werden weiterhin nicht an den Renderer durchgereicht; wir
+// behalten nur genug Information, um Parser-/Layoutvarianten datenbasiert untersuchen zu
+// koennen, statt bei einer fehlenden Texturbelegung UVs zu raten.
+struct NifUvSetDiagnostic {
+    bool discarded = false;
+    std::uint32_t originalCount = 0;
+    std::uint32_t firstBadIndex = 0;
+    NifVec2 firstBadValue{};
+    bool nonFinite = false;
+    float maxFiniteAbs = 0.0f;
+};
+
 struct NifColor4 {
     float r = 1.0f, g = 1.0f, b = 1.0f, a = 1.0f;
 };
@@ -213,6 +226,7 @@ struct NifMeshPart {
     std::vector<NifColor4> vertexColors; // leer => weiss/alpha 1 im Renderer
     std::vector<NifVec2> uvs;          // fuer die Base-Textur ausgewaehltes UV-Set
     std::vector<std::vector<NifVec2>> uvSets; // alle im Geometrieblock vorhandenen UV-Sets
+    std::vector<NifUvSetDiagnostic> uvSetDiagnostics; // Roh-UV-Plausibilitaet je authored Set
     std::vector<std::uint32_t> triangleIndices; // 3 Indizes pro Dreieck, in `positions` indiziert
     NifMaterial material;
     // Vollstaendige klassische NiTexturingProperty-Slots. Die alten Base-Felder bleiben als
