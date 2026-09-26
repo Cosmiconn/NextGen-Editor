@@ -142,23 +142,50 @@ int main(int argc, char** argv) {
         Check(area > 0.0 && area / 2.0 <= boxArea * 1.0001, "Huelle liegt (gegen den Uhrzeigersinn) innerhalb der Bounding-Box");
     }
 
-    if (argc >= 3) {
-        std::printf("\n== Zweite Testdatei (texturiert oder mit weiteren Blocktypen) ==\n");
-        auto second = LoadNifMesh(argv[2]);
-        if (second) {
-            std::printf("     Erfolgreich geladen: %zu Teil(e)\n", second->parts.size());
-            bool allValid = !second->parts.empty();
-            for (const auto& part : second->parts) {
-                if (part.positions.empty() || part.triangleIndices.empty() ||
-                    part.triangleIndices.size() % 3 != 0) {
-                    allValid = false;
+    for (int arg = 2; arg < argc; ++arg) {
+        std::printf("\n== Zusätzliche NIF-Regression: %s ==\n", argv[arg]);
+        auto extra = LoadNifMesh(argv[arg]);
+        Check(extra.has_value(), "Zusätzliche NIF-Datei wird vollständig geladen");
+        if (!extra) {
+            std::fprintf(stderr, "     Fehler: %s\n", extra.error().c_str());
+            continue;
+        }
+
+        bool geometryValid = !extra->parts.empty();
+        bool uvSetsSane = true;
+        bool embeddedSlotsValid = true;
+        std::size_t embeddedSlots = 0;
+        for (const auto& part : extra->parts) {
+            if (part.positions.empty() || part.triangleIndices.empty() ||
+                part.triangleIndices.size() % 3 != 0) {
+                geometryValid = false;
+            }
+            for (const auto& uvSet : part.uvSets) {
+                for (const auto& uv : uvSet) {
+                    if (!std::isfinite(uv.u) || !std::isfinite(uv.v) ||
+                        std::abs(uv.u) > 1000.0f || std::abs(uv.v) > 1000.0f) {
+                        uvSetsSane = false;
+                    }
                 }
             }
-            Check(allValid, "Zweite Datei: falls erfolgreich geladen, liefert sie gültige Geometrie");
-        } else {
-            std::printf("     Fehlermeldung (sauberes Scheitern, kein Absturz): %s\n", second.error().c_str());
-            Check(true, "Zweite Datei: falls nicht unterstützt, schlägt sie sauber fehl (kein Absturz)");
+            for (const auto& slot : part.textureSlots) {
+                if (!slot.sourceUsesEmbeddedPixelData) continue;
+                if (slot.embeddedTexture) {
+                    ++embeddedSlots;
+                    const auto& tex = *slot.embeddedTexture;
+                    if (tex.width == 0 || tex.height == 0 ||
+                        tex.rgba.size() != static_cast<std::size_t>(tex.width) * tex.height * 4) {
+                        embeddedSlotsValid = false;
+                    }
+                }
+            }
         }
+        Check(geometryValid, "Zusätzliche NIF-Datei liefert gültige Geometrie");
+        Check(uvSetsSane, "Zusätzliche NIF-Datei enthält nur plausible erhaltene UV-Sets");
+        Check(embeddedSlotsValid, "Zusätzliche eingebettete Materialslots sind vollständig dekodiert");
+        std::printf("     Parts=%zu, Embedded-Slots=%zu, PixelData dekodiert/nicht dekodiert=%u/%u\n",
+                    extra->parts.size(), embeddedSlots,
+                    extra->decodedEmbeddedTextures, extra->undecodedEmbeddedTextures);
     }
 
     std::printf("\n%d Fehler.\n", g_failures);
