@@ -825,6 +825,13 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                     sub.depthTest = part.depthTest;
                     sub.depthWrite = part.depthWrite;
                     sub.depthFunction = part.depthFunction;
+                    sub.stencilEnabled = part.stencilEnabled;
+                    sub.stencilFunction = part.stencilFunction;
+                    sub.stencilReference = part.stencilReference;
+                    sub.stencilMask = part.stencilMask;
+                    sub.stencilFailAction = part.stencilFailAction;
+                    sub.stencilZFailAction = part.stencilZFailAction;
+                    sub.stencilPassAction = part.stencilPassAction;
                     sub.faceDrawMode = part.faceDrawMode;
                     sub.billboard = part.billboard;
                     sub.billboardMode = part.billboardMode;
@@ -1387,6 +1394,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     const GLboolean prevDepthTest = glIsEnabled(GL_DEPTH_TEST);
     const GLboolean prevBlend = glIsEnabled(GL_BLEND);
     const GLboolean prevCull = glIsEnabled(GL_CULL_FACE);
+    const GLboolean prevStencilTest = glIsEnabled(GL_STENCIL_TEST);
     GLboolean prevDepthMask = GL_TRUE;
     glGetBooleanv(GL_DEPTH_WRITEMASK, &prevDepthMask);
     GLint prevProgram = 0, prevVao = 0, prevActiveTexture = 0;
@@ -1394,6 +1402,12 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     GLint prevCullFace = GL_BACK, prevFrontFace = GL_CCW, prevDepthFunc = GL_LESS;
     GLint prevBlendSrcRgb = GL_ONE, prevBlendDstRgb = GL_ZERO;
     GLint prevBlendSrcAlpha = GL_ONE, prevBlendDstAlpha = GL_ZERO;
+    GLint prevStencilFunc = GL_ALWAYS, prevStencilRef = 0, prevStencilValueMask = -1;
+    GLint prevStencilWriteMask = -1, prevStencilFail = GL_KEEP;
+    GLint prevStencilZFail = GL_KEEP, prevStencilZPass = GL_KEEP;
+    GLint prevStencilBackFunc = GL_ALWAYS, prevStencilBackRef = 0, prevStencilBackValueMask = -1;
+    GLint prevStencilBackWriteMask = -1, prevStencilBackFail = GL_KEEP;
+    GLint prevStencilBackZFail = GL_KEEP, prevStencilBackZPass = GL_KEEP;
     glGetIntegerv(GL_CURRENT_PROGRAM, &prevProgram);
     glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &prevVao);
     glGetIntegerv(GL_ACTIVE_TEXTURE, &prevActiveTexture);
@@ -1404,6 +1418,20 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     glGetIntegerv(GL_BLEND_DST_RGB, &prevBlendDstRgb);
     glGetIntegerv(GL_BLEND_SRC_ALPHA, &prevBlendSrcAlpha);
     glGetIntegerv(GL_BLEND_DST_ALPHA, &prevBlendDstAlpha);
+    glGetIntegerv(GL_STENCIL_FUNC, &prevStencilFunc);
+    glGetIntegerv(GL_STENCIL_REF, &prevStencilRef);
+    glGetIntegerv(GL_STENCIL_VALUE_MASK, &prevStencilValueMask);
+    glGetIntegerv(GL_STENCIL_WRITEMASK, &prevStencilWriteMask);
+    glGetIntegerv(GL_STENCIL_FAIL, &prevStencilFail);
+    glGetIntegerv(GL_STENCIL_PASS_DEPTH_FAIL, &prevStencilZFail);
+    glGetIntegerv(GL_STENCIL_PASS_DEPTH_PASS, &prevStencilZPass);
+    glGetIntegerv(GL_STENCIL_BACK_FUNC, &prevStencilBackFunc);
+    glGetIntegerv(GL_STENCIL_BACK_REF, &prevStencilBackRef);
+    glGetIntegerv(GL_STENCIL_BACK_VALUE_MASK, &prevStencilBackValueMask);
+    glGetIntegerv(GL_STENCIL_BACK_WRITEMASK, &prevStencilBackWriteMask);
+    glGetIntegerv(GL_STENCIL_BACK_FAIL, &prevStencilBackFail);
+    glGetIntegerv(GL_STENCIL_BACK_PASS_DEPTH_FAIL, &prevStencilBackZFail);
+    glGetIntegerv(GL_STENCIL_BACK_PASS_DEPTH_PASS, &prevStencilBackZPass);
     for (std::size_t unit = 0; unit < prevTextures.size(); ++unit) {
         glActiveTexture(static_cast<GLenum>(GL_TEXTURE0 + unit));
         glGetIntegerv(GL_TEXTURE_BINDING_2D, &prevTextures[unit]);
@@ -1553,6 +1581,32 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
         }
     };
 
+    const auto stencilFunction = [](std::uint32_t f) -> GLenum {
+        switch (f) {
+            case 0: return GL_NEVER;
+            case 1: return GL_LESS;
+            case 2: return GL_EQUAL;
+            case 3: return GL_LEQUAL;
+            case 4: return GL_GREATER;
+            case 5: return GL_NOTEQUAL;
+            case 6: return GL_GEQUAL;
+            case 7: return GL_ALWAYS;
+            default: return GL_ALWAYS; // keep geometry visible; material audit reports the gap
+        }
+    };
+
+    const auto stencilAction = [](std::uint32_t action) -> GLenum {
+        switch (action) {
+            case 0: return GL_KEEP;
+            case 1: return GL_ZERO;
+            case 2: return GL_REPLACE;
+            case 3: return GL_INCR;
+            case 4: return GL_DECR;
+            case 5: return GL_INVERT;
+            default: return GL_KEEP; // conservative runtime fallback; audit remains explicit
+        }
+    };
+
     const auto applyFaceDrawMode = [](std::uint32_t mode) {
         // FaceDrawMode laut NIF-Spezifikation:
         // 0 DRAW_CCW_OR_BOTH (anwendungsabhaengig), 1 DRAW_CCW, 2 DRAW_CW, 3 DRAW_BOTH.
@@ -1601,6 +1655,20 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
         if (sub.depthTest) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
         glDepthMask(sub.depthWrite ? GL_TRUE : GL_FALSE);
         glDepthFunc(depthFunction(sub.depthFunction));
+        if (sub.stencilEnabled) {
+            glEnable(GL_STENCIL_TEST);
+            glStencilFunc(stencilFunction(sub.stencilFunction),
+                          static_cast<GLint>(sub.stencilReference),
+                          static_cast<GLuint>(sub.stencilMask));
+            // NiStencilProperty exposes one compare/value mask, not a separate write mask.
+            // Gamebryo-compatible loaders therefore leave stencil writes fully enabled.
+            glStencilMask(0xFFFFFFFFu);
+            glStencilOp(stencilAction(sub.stencilFailAction),
+                        stencilAction(sub.stencilZFailAction),
+                        stencilAction(sub.stencilPassAction));
+        } else {
+            glDisable(GL_STENCIL_TEST);
+        }
         if (blendedPass) glBlendFunc(blendFactor(sub.alphaSrcBlend), blendFactor(sub.alphaDstBlend));
 
         glUniform1i(locAlphaTest, sub.alphaTest ? 1 : 0);
@@ -1698,11 +1766,22 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     glDepthFunc(static_cast<GLenum>(prevDepthFunc));
     glBlendFuncSeparate(static_cast<GLenum>(prevBlendSrcRgb), static_cast<GLenum>(prevBlendDstRgb),
                         static_cast<GLenum>(prevBlendSrcAlpha), static_cast<GLenum>(prevBlendDstAlpha));
+    glStencilFuncSeparate(GL_FRONT, static_cast<GLenum>(prevStencilFunc), prevStencilRef,
+                          static_cast<GLuint>(prevStencilValueMask));
+    glStencilMaskSeparate(GL_FRONT, static_cast<GLuint>(prevStencilWriteMask));
+    glStencilOpSeparate(GL_FRONT, static_cast<GLenum>(prevStencilFail),
+                        static_cast<GLenum>(prevStencilZFail), static_cast<GLenum>(prevStencilZPass));
+    glStencilFuncSeparate(GL_BACK, static_cast<GLenum>(prevStencilBackFunc), prevStencilBackRef,
+                          static_cast<GLuint>(prevStencilBackValueMask));
+    glStencilMaskSeparate(GL_BACK, static_cast<GLuint>(prevStencilBackWriteMask));
+    glStencilOpSeparate(GL_BACK, static_cast<GLenum>(prevStencilBackFail),
+                        static_cast<GLenum>(prevStencilBackZFail), static_cast<GLenum>(prevStencilBackZPass));
     glCullFace(static_cast<GLenum>(prevCullFace));
     glFrontFace(static_cast<GLenum>(prevFrontFace));
     if (prevDepthTest) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
     if (prevBlend) glEnable(GL_BLEND); else glDisable(GL_BLEND);
     if (prevCull) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
+    if (prevStencilTest) glEnable(GL_STENCIL_TEST); else glDisable(GL_STENCIL_TEST);
 }
 
 } // namespace theseed::mapeditor::app

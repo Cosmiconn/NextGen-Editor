@@ -451,8 +451,8 @@ void HeightmapRenderer::EnsureFramebuffer(int width, int height) {
 
     glGenRenderbuffers(1, &fboDepthRbo_);
     glBindRenderbuffer(GL_RENDERBUFFER, fboDepthRbo_);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, fboDepthRbo_);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, fboDepthRbo_);
 
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         std::fprintf(stderr, "[Renderer] Framebuffer unvollständig!\n");
@@ -478,7 +478,8 @@ void HeightmapRenderer::BeginScene(const OrbitCamera& camera, int width, int hei
     glViewport(0, 0, width, height);
     glEnable(GL_DEPTH_TEST);
     glClearColor(0.10f, 0.11f, 0.13f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glClearStencil(0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
     if (indexCount_ > 0) {
         const Mat4 view = camera.ViewMatrix();
@@ -584,8 +585,8 @@ void HeightmapRenderer::EnsureFramebuffer2d(int width, int height) {
 
     glGenRenderbuffers(1, &fbo2dDepthRbo_);
     glBindRenderbuffer(GL_RENDERBUFFER, fbo2dDepthRbo_);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, fbo2dDepthRbo_);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, fbo2dDepthRbo_);
 
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         std::fprintf(stderr, "[Renderer] 2D-Framebuffer unvollständig!\n");
@@ -616,8 +617,8 @@ void HeightmapRenderer::EnsureFramebufferOverview(int width, int height) {
 
     glGenRenderbuffers(1, &fboOverviewDepthRbo_);
     glBindRenderbuffer(GL_RENDERBUFFER, fboOverviewDepthRbo_);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, fboOverviewDepthRbo_);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, fboOverviewDepthRbo_);
 
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
         std::fprintf(stderr, "[Renderer] Overview-Framebuffer unvollständig!\\n");
@@ -635,7 +636,8 @@ std::uint32_t HeightmapRenderer::RenderTopDownOverview(int width, int height) {
     glViewport(0, 0, width, height);
     glEnable(GL_DEPTH_TEST);
     glClearColor(0.10f, 0.11f, 0.13f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glClearStencil(0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
     if (indexCount_ > 0) {
         const float centerX = mapSpanX_ * 0.5f;
@@ -658,7 +660,8 @@ void HeightmapRenderer::BeginTopDownScene(int width, int height) {
     glViewport(0, 0, width, height);
     glEnable(GL_DEPTH_TEST);
     glClearColor(0.10f, 0.11f, 0.13f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glClearStencil(0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
     if (indexCount_ > 0) {
         const bool windowed = tdHalfW_ > 0.0f && tdHalfH_ > 0.0f;

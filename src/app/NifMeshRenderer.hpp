@@ -145,6 +145,13 @@ private:
         bool depthTest = true;
         bool depthWrite = true;
         std::uint32_t depthFunction = 3; // ZCOMP_LESS_EQUAL
+        bool stencilEnabled = false;
+        std::uint32_t stencilFunction = 7; // TEST_ALWAYS
+        std::uint32_t stencilReference = 0;
+        std::uint32_t stencilMask = 0xFFFFFFFFu;
+        std::uint32_t stencilFailAction = 0;
+        std::uint32_t stencilZFailAction = 0;
+        std::uint32_t stencilPassAction = 0;
         std::uint32_t faceDrawMode = 3;
 
         bool billboard = false;

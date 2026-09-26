@@ -126,6 +126,10 @@ int main(int argc, char** argv) {
     std::size_t alphaTestParts = 0;
     std::size_t depthTestDisabledParts = 0;
     std::size_t depthWriteDisabledParts = 0;
+    std::size_t stencilPropertyParts = 0;
+    std::size_t stencilEnabledParts = 0;
+    std::size_t unsupportedStencilParts = 0;
+    std::map<std::tuple<std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t>, std::size_t> stencilStates;
     std::size_t textureTransformTracks = 0;
     std::size_t textureFlipTracks = 0;
     std::vector<std::pair<std::string, std::string>> failures;
@@ -180,6 +184,18 @@ int main(int argc, char** argv) {
                 alphaTestParts += part.alphaTest ? 1u : 0u;
                 depthTestDisabledParts += part.depthTest ? 0u : 1u;
                 depthWriteDisabledParts += part.depthWrite ? 0u : 1u;
+                if (part.hasStencilProperty) {
+                    ++stencilPropertyParts;
+                    stencilEnabledParts += part.stencilEnabled ? 1u : 0u;
+                    ++stencilStates[{part.stencilFunction, part.stencilFailAction,
+                                     part.stencilZFailAction, part.stencilPassAction}];
+                    if (part.stencilEnabled &&
+                        (part.stencilFunction > 7u || part.stencilFailAction > 5u ||
+                         part.stencilZFailAction > 5u || part.stencilPassAction > 5u)) {
+                        ++unsupportedStencilParts;
+                        rendererGapFiles.insert(entry.path().string());
+                    }
+                }
                 textureTransformTracks += part.textureTransformAnimations.size();
                 textureFlipTracks += part.textureFlipAnimations.size();
 
@@ -493,6 +509,18 @@ int main(int argc, char** argv) {
         std::cout << "VERTEXCOLOR\tmode=" << mode << "\tparts=" << partCount << '\n';
     for (const auto& [mode, partCount] : faceDrawModes)
         std::cout << "FACEDRAW\tmode=" << mode << "\tparts=" << partCount << '\n';
+    for (const auto& [key, partCount] : stencilStates) {
+        const auto [function, failAction, zFailAction, passAction] = key;
+        std::cout << "STENCIL\tfunction=" << function
+                  << "\tfail=" << failAction
+                  << "\tzfail=" << zFailAction
+                  << "\tpass=" << passAction
+                  << "\tparts=" << partCount
+                  << "\trenderer="
+                  << ((function <= 7u && failAction <= 5u && zFailAction <= 5u && passAction <= 5u)
+                          ? "materialized" : "fallback")
+                  << '\n';
+    }
 
     for (const auto& [key, stat] : effects) {
         const auto [textureType, coordGenType, enabled] = key;
@@ -539,6 +567,9 @@ int main(int argc, char** argv) {
               << "\talphaTestParts=" << alphaTestParts
               << "\tdepthTestDisabledParts=" << depthTestDisabledParts
               << "\tdepthWriteDisabledParts=" << depthWriteDisabledParts
+              << "\tstencilPropertyParts=" << stencilPropertyParts
+              << "\tstencilEnabledParts=" << stencilEnabledParts
+              << "\tunsupportedStencilParts=" << unsupportedStencilParts
               << "\ttextureTransformTracks=" << textureTransformTracks
               << "\ttextureFlipTracks=" << textureFlipTracks << '\n';
 

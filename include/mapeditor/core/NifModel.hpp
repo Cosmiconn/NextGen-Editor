@@ -271,7 +271,18 @@ struct NifMeshPart {
     std::uint32_t baseUvSet = 0;
     std::uint32_t textureClampMode = 3;
     std::uint32_t textureFilterMode = 2;
-    // NiStencilProperty FaceDrawMode: 0=application default, 1=CCW, 2=CW, 3=both.
+    // NiStencilProperty. The compare/action enums follow the classic Gamebryo/NIF layout:
+    // compare 0..7 = NEVER..ALWAYS, action 0..5 = KEEP/ZERO/REPLACE/INCR/DECR/INVERT.
+    // hasStencilProperty distinguishes an authored disabled property from the no-property default.
+    bool hasStencilProperty = false;
+    bool stencilEnabled = false;
+    std::uint32_t stencilFunction = 7; // TEST_ALWAYS
+    std::uint32_t stencilReference = 0;
+    std::uint32_t stencilMask = 0xFFFFFFFFu;
+    std::uint32_t stencilFailAction = 0;  // ACTION_KEEP
+    std::uint32_t stencilZFailAction = 0; // ACTION_KEEP
+    std::uint32_t stencilPassAction = 0;  // ACTION_KEEP
+    // FaceDrawMode: 0=application default, 1=CCW, 2=CW, 3=both.
     std::uint32_t faceDrawMode = 3;
 
     // Skinning wird beim Laden in der aktuellen Bind-/Skeleton-Pose CPU-seitig ausgewertet.

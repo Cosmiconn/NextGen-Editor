@@ -3681,8 +3681,9 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         }
     }
 
-    // Resolve NiStencilProperty through the geometry property references.  For now the
-    // renderer consumes FaceDrawMode; stencil-buffer operations remain preserved for a later pass.
+    // Resolve the complete NiStencilProperty through the same effective child-first property
+    // chain as the other render states. Direct geometry state therefore wins over inherited
+    // parent state, while authored disabled properties remain distinguishable from no property.
     {
         std::unordered_map<std::int32_t, NifStencilState> stencilByData;
         for (const auto& g : geomNodes) {
@@ -3694,7 +3695,17 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         }
         for (std::size_t p = 0; p < model.parts.size() && p < partDataBlock.size(); ++p) {
             const auto it = stencilByData.find(partDataBlock[p]);
-            if (it != stencilByData.end()) model.parts[p].faceDrawMode = it->second.drawMode;
+            if (it == stencilByData.end()) continue;
+            auto& part = model.parts[p];
+            part.hasStencilProperty = true;
+            part.stencilEnabled = it->second.enabled;
+            part.stencilFunction = it->second.function;
+            part.stencilReference = it->second.reference;
+            part.stencilMask = it->second.mask;
+            part.stencilFailAction = it->second.failAction;
+            part.stencilZFailAction = it->second.zFailAction;
+            part.stencilPassAction = it->second.passAction;
+            part.faceDrawMode = it->second.drawMode;
         }
     }
 
