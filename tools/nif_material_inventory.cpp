@@ -188,6 +188,11 @@ int main(int argc, char** argv) {
                     const auto& diagnostic = part.uvSetDiagnostics[uvSet];
                     out << "\trawUvCount=" << diagnostic.originalCount
                         << "\tuvDiscarded=" << (diagnostic.discarded ? 1 : 0)
+                        << "\textremeCount=" << diagnostic.extremeCount
+                        << "\tminU=" << diagnostic.minFiniteU
+                        << "\tmaxU=" << diagnostic.maxFiniteU
+                        << "\tminV=" << diagnostic.minFiniteV
+                        << "\tmaxV=" << diagnostic.maxFiniteV
                         << "\tmaxFiniteAbs=" << diagnostic.maxFiniteAbs;
                     if (diagnostic.discarded) {
                         out << "\tfirstBadIndex=" << diagnostic.firstBadIndex
@@ -244,6 +249,8 @@ int main(int argc, char** argv) {
                                << "\tvertices=" << part.positions.size()
                                << "\ttriangles=" << (part.triangleIndices.size() / 3u)
                                << "\tfallback=" << (hasBaseFallbackUvs ? "uv0" : "none")
+                               << "\tclampMode=" << texture.clampMode
+                               << "\tfilterMode=" << texture.filterMode
                                << "\tshader=" << Clean(shader)
                                << "\tsource=" << Clean(texture.texture);
                         appendUvDiagnostic(detail, texture.uvSet);
@@ -299,6 +306,8 @@ int main(int argc, char** argv) {
                                    << "\tvertices=" << part.positions.size()
                                    << "\ttriangles=" << (part.triangleIndices.size() / 3u)
                                    << "\tfallback=" << (hasBaseFallbackUvs ? "uv0" : "none")
+                                   << "\tclampMode=" << shaderSlot.texture.clampMode
+                                   << "\tfilterMode=" << shaderSlot.texture.filterMode
                                    << "\tshader=" << Clean(shader)
                                    << "\tsource=" << Clean(shaderSlot.texture.texture);
                             appendUvDiagnostic(detail, shaderSlot.texture.uvSet);
