@@ -103,6 +103,7 @@ uniform bool uHasTexTransform[10];
 uniform vec2 uTexTranslation[10];
 uniform vec2 uTexScale[10];
 uniform float uTexRotation[10];
+uniform int uTexTransformType[10];
 uniform vec2 uTexCenter[10];
 uniform sampler2D uTex0;
 uniform sampler2D uTex1;
@@ -133,18 +134,40 @@ vec2 pickUv(int setIndex) {
     return vUv0;
 }
 
+vec2 rotateTextureUv(vec2 p, float angle) {
+    float c = cos(angle);
+    float s = sin(angle);
+    return vec2(c * p.x - s * p.y, s * p.x + c * p.y);
+}
+
 vec2 slotUv(int slot) {
     vec2 uv = pickUv(clamp(uUvSet[slot], 0, 7));
     if (!uHasTexTransform[slot]) return uv;
-    vec2 p = uv - uTexCenter[slot];
-    // NIF/NifSkope fixed-function order: center -> rotate -> scale -> translation -> -center
-    // appears as the following order when applied to the coordinate vector.
-    p += uTexTranslation[slot];
-    p *= uTexScale[slot];
-    float c = cos(uTexRotation[slot]);
-    float s = sin(uTexRotation[slot]);
-    p = mat2(c, s, -s, c) * p;
-    return p + uTexCenter[slot];
+
+    const int TM_MAYA_DEPRECATED = 0;
+    const int TM_MAX = 1;
+    const int TM_MAYA = 2;
+    int method = uTexTransformType[slot];
+
+    // nif.xml TransformMethod matrix order, applied right-to-left to the UV column vector:
+    // 0: Center * Rotation * Back * Translate * Scale
+    // 1: Center * Scale * Rotation * Translate * Back
+    // 2: Center * Rotation * Back * FromMaya * Translate * Scale
+    if (method == TM_MAX) {
+        vec2 p = uv - uTexCenter[slot];          // Back
+        p += uTexTranslation[slot];              // Translate
+        p = rotateTextureUv(p, uTexRotation[slot]);
+        p *= uTexScale[slot];                    // Scale
+        return p + uTexCenter[slot];             // Center
+    }
+
+    vec2 p = uv * uTexScale[slot];               // Scale
+    p += uTexTranslation[slot];                  // Translate
+    if (method == TM_MAYA) p.y = 1.0 - p.y;     // FromMaya
+    // Unknown values deliberately follow the format default (TM_MAYA_DEPRECATED).
+    p -= uTexCenter[slot];                        // Back
+    p = rotateTextureUv(p, uTexRotation[slot]);  // Rotation
+    return p + uTexCenter[slot];                 // Center
 }
 
 float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
@@ -506,6 +529,7 @@ void NifMeshRenderer::Init() {
         std::snprintf(name, sizeof(name), "uTexTranslation[%d]", slot); uniforms_.locTranslation[slot] = glGetUniformLocation(shaderProgram_, name);
         std::snprintf(name, sizeof(name), "uTexScale[%d]", slot); uniforms_.locScale[slot] = glGetUniformLocation(shaderProgram_, name);
         std::snprintf(name, sizeof(name), "uTexRotation[%d]", slot); uniforms_.locRotation[slot] = glGetUniformLocation(shaderProgram_, name);
+        std::snprintf(name, sizeof(name), "uTexTransformType[%d]", slot); uniforms_.locTransformType[slot] = glGetUniformLocation(shaderProgram_, name);
         std::snprintf(name, sizeof(name), "uTexCenter[%d]", slot); uniforms_.locCenter[slot] = glGetUniformLocation(shaderProgram_, name);
         std::snprintf(name, sizeof(name), "uTex%d", slot); uniforms_.locSampler[slot] = glGetUniformLocation(shaderProgram_, name);
     }
@@ -852,6 +876,7 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                         dst.translation = {src.translation.u, src.translation.v};
                         dst.scale = {src.scale.u, src.scale.v};
                         dst.rotation = src.rotation;
+                        dst.transformType = src.transformType;
                         dst.center = {src.center.u, src.center.v};
                         if (!src.present) continue;
                         if (src.sourceUsesEmbeddedPixelData && !src.embeddedTexture) {
@@ -1525,6 +1550,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
             glUniform2f(locTranslation[slot], tex.translation[0], tex.translation[1]);
             glUniform2f(locScale[slot], tex.scale[0], tex.scale[1]);
             glUniform1f(locRotation[slot], tex.rotation);
+            glUniform1i(locTransformType[slot], static_cast<int>(tex.transformType));
             glUniform2f(locCenter[slot], tex.center[0], tex.center[1]);
             glActiveTexture(static_cast<GLenum>(GL_TEXTURE0 + slot));
             glBindTexture(GL_TEXTURE_2D, present ? tex.texture : 0);
