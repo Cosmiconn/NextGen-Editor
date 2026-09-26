@@ -4115,6 +4115,36 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             for (int b = static_cast<int>(geomIt->second); b >= 0 && chain.size() < 64; b = parentOf[static_cast<std::size_t>(b)]) chain.push_back(b);
 
             NifMeshPart& part = model.parts[p];
+
+            // NiTextureEffect is attached through NiNode::effects rather than the property
+            // list. Resolve the effective child->parent chain for this geometry and preserve
+            // every distinct authored effect. Rendering may support only a verified subset,
+            // but unsupported combinations must remain visible to diagnostics instead of
+            // being silently discarded.
+            part.textureEffects.clear();
+            std::unordered_set<std::int32_t> seenTextureEffects;
+            for (const int b : chain) {
+                const SceneNode& effectNode = scene[static_cast<std::size_t>(b)];
+                for (const auto ref : effectNode.effects) {
+                    if (ref < 0 || !seenTextureEffects.insert(ref).second) continue;
+                    const auto effectIt = textureEffectByBlock.find(static_cast<std::uint32_t>(ref));
+                    if (effectIt == textureEffectByBlock.end()) continue;
+                    const auto& src = effectIt->second;
+                    NifTextureEffectBinding binding;
+                    binding.enabled = src.dynamic.switchState;
+                    binding.projectionRotation = src.projectionRotation;
+                    binding.projectionPosition = src.projectionPosition;
+                    binding.filterMode = src.filterMode;
+                    binding.clampMode = src.clampMode;
+                    binding.textureType = src.textureType;
+                    binding.coordGenType = src.coordGenType;
+                    binding.sourceTextureRef = src.sourceTextureRef;
+                    binding.clippingPlaneEnabled = src.enablePlane;
+                    binding.clippingPlane = src.clipPlane;
+                    part.textureEffects.push_back(std::move(binding));
+                }
+            }
+
             applySkinning(part, partDataBlock[p], p);
 
             if (part.skinBinding) {
@@ -4336,6 +4366,27 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         if (part.textureSlots[0].present) {
             part.diffuseTexture = part.textureSlots[0].texture;
             part.embeddedDiffuseTexture = part.textureSlots[0].embeddedTexture;
+        }
+    }
+
+    // NiTextureEffect sources are resolved only after every NiSourceTexture/NiPixelData
+    // block is known. Embedded effects deliberately never fall back to an external file when
+    // their PixelData cannot be decoded; doing so would change the authored NIF semantics.
+    for (auto& part : model.parts) {
+        for (auto& effect : part.textureEffects) {
+            if (effect.sourceTextureRef < 0) continue;
+            const auto st = sourceTextures.find(static_cast<std::uint32_t>(effect.sourceTextureRef));
+            if (st == sourceTextures.end()) continue;
+            effect.texture = st->second.filename;
+            effect.sourceUsesEmbeddedPixelData = st->second.useExternal == 0;
+            effect.sourcePixelDataRef = st->second.pixelDataRef;
+            if (st->second.useExternal == 0 && st->second.pixelDataRef >= 0) {
+                const auto pix = embeddedPixelTextures.find(static_cast<std::uint32_t>(st->second.pixelDataRef));
+                if (pix != embeddedPixelTextures.end()) effect.embeddedTexture = pix->second;
+                else std::fprintf(stderr,
+                                  "[NifModel] NiTextureEffect source '%s' verweist auf nicht dekodierte NiPixelData %d\n",
+                                  st->second.filename.c_str(), st->second.pixelDataRef);
+            }
         }
     }
 
