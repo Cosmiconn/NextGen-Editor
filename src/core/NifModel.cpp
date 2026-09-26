@@ -3041,6 +3041,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         } else if (type == "NiSkinPartition") {
             skinPartitionByBlock[blockIdx] = ParseNiSkinPartition(r);
         } else if (type == "NiTextureEffect") {
+            ++model.textureEffectBlocks;
             SkipNiTextureEffect(r);
         } else if (type == "NiDirectionalLight" || type == "NiAmbientLight") {
             // NiAmbientLight ist laut Referenz (PyFFI) ebenfalls reine NiLight-Basis ohne
@@ -3049,6 +3050,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         } else if (type == "NiPointLight") {
             SkipNiPointLight(r);
         } else if (type == "NiZBufferProperty") {
+            ++model.zBufferPropertyBlocks;
             SkipNiZBufferProperty(r);
             // Siehe SkipExtraBytesIfFollowedByTriData - hier bewusst weiterhin mit
             // Versions-Gate belassen (siehe Abschnitt 38: ein unbedingter Test verursachte
@@ -3058,6 +3060,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 SkipExtraBytesIfFollowedByTriData(r, hdr, blockIdx);
             }
         } else if (type == "NiVertexColorProperty") {
+            ++model.vertexColorPropertyBlocks;
             SkipNiVertexColorProperty(r);
             SkipExtraBytesIfFollowedByTriData(r, hdr, blockIdx);
         } else if (type == "NiAlphaProperty") {
