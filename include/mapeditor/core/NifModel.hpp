@@ -274,9 +274,13 @@ struct NifModel {
     std::uint32_t decodedEmbeddedTextures = 0;
     std::uint32_t undecodedEmbeddedTextures = 0;
     // Render-Diagnose für im NIF vorkommende Property-/Effect-Familien.
-    // TextureEffect und VertexColorProperty sind noch nicht vollständig materialisiert;
-    // NiZBufferProperty wird inzwischen vollständig in den Mesh-Renderstate übernommen.
+    // NiTextureEffect wird strukturell erhalten und klassifiziert; Rendering bleibt bis zur
+    // verifizierten EnvironmentMap/SphereMap-Anbindung bewusst separat. NiVertexColorProperty
+    // und NiZBufferProperty werden bereits vollständig in den Mesh-Renderstate übernommen.
     std::uint32_t textureEffectBlocks = 0;
+    std::uint32_t textureEffectEnvironmentSphereBlocks = 0;
+    std::uint32_t textureEffectUnsupportedBlocks = 0;
+    std::uint32_t textureEffectNodeBindings = 0;
     std::uint32_t vertexColorPropertyBlocks = 0;
     std::uint32_t zBufferPropertyBlocks = 0;
     // Anzahl effektiver NiProperty-Refs, die nicht direkt am Mesh hängen, sondern über
