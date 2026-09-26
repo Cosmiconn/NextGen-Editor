@@ -209,6 +209,13 @@ int main(int argc, char** argv) {
                   "every MapLinkGate2 particle system resolves its NiPSysData block");
             check(authoredParticles > 0u,
                   "MapLinkGate2 preserves authored particle positions/state for renderer bootstrap");
+            std::size_t texturedSystems = 0;
+            for (const auto& system : gate->particleSystems)
+                if (system.textureSlots[0].present &&
+                    (!system.textureSlots[0].texture.empty() || system.textureSlots[0].embeddedTexture))
+                    ++texturedSystems;
+            check(texturedSystems > 0u,
+                  "MapLinkGate2 particle materials resolve their authored base textures");
         }
     }
     // Strict standard loading must reject both missing and trailing footer bytes.

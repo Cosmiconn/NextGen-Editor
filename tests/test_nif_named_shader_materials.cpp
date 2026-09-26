@@ -160,6 +160,13 @@ void CheckParticleTextureIsolationFixture(const fs::path& root) {
           std::string(kFile) + ": 60-Vertex-Map-Mesh bleibt korrekt als authored untexturiert/ohne UVs erhalten");
     Check(!leakedParticleTexture,
           std::string(kFile) + ": fly01.dds bleibt am NiParticleSystem und wird keinem Map-Mesh zugeordnet");
+    bool particleOwnsFlyTexture = false;
+    for (const auto& system : model->particleSystems) {
+        for (const auto& slot : system.textureSlots)
+            if (slot.texture.find("fly01.dds") != std::string::npos) particleOwnsFlyTexture = true;
+    }
+    Check(particleOwnsFlyTexture,
+          std::string(kFile) + ": fly01.dds wird explizit am Particle-System-Material aufgeloest");
 }
 
 void CheckLargeWrappedUvFixture(const fs::path& root) {

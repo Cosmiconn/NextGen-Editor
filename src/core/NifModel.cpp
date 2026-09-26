@@ -3079,6 +3079,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 sn.name = psys.base.net.name;
             }
             NifParticleSystemInfo publicSystem;
+            publicSystem.blockIndex = blockIdx;
             publicSystem.name = psys.base.net.name;
             publicSystem.meshParticles = type == "NiMeshParticleSystem";
             publicSystem.worldSpace = psys.worldSpace;
@@ -3592,6 +3593,22 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 for (const auto ref : scene[parentIndex].properties) {
                     if (ref >= 0 && seen.insert(ref).second) {
                         g.properties.push_back(ref);
+                        ++model.inheritedPropertyBindings;
+                    }
+                }
+                parent = parentOf[parentIndex];
+            }
+        }
+
+        for (auto& system : model.particleSystems) {
+            std::unordered_set<std::int32_t> seen(system.propertyRefs.begin(), system.propertyRefs.end());
+            int parent = system.blockIndex < parentOf.size() ? parentOf[system.blockIndex] : -1;
+            for (int guard = 0; parent >= 0 && guard < 64; ++guard) {
+                const auto parentIndex = static_cast<std::size_t>(parent);
+                if (parentIndex >= scene.size()) break;
+                for (const auto ref : scene[parentIndex].properties) {
+                    if (ref >= 0 && seen.insert(ref).second) {
+                        system.propertyRefs.push_back(ref);
                         ++model.inheritedPropertyBindings;
                     }
                 }
@@ -4488,6 +4505,75 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             std::memcpy(b, row.data(), rowBytes);
         }
         embeddedPixelTextures[pixelBlock] = std::move(out);
+    }
+
+    // Resolve effective particle material/render state directly from the particle system's
+    // property references. This is deliberately independent of mesh-part adjacency: particle
+    // textures such as store.nif/fly01.dds must never leak onto a static map mesh.
+    for (auto& system : model.particleSystems) {
+        const NifTextureState* textureState = nullptr;
+        for (const auto ref : system.propertyRefs) {
+            if (ref < 0) continue;
+            const auto key = static_cast<std::uint32_t>(ref);
+            if (const auto it = materialByBlock.find(key); it != materialByBlock.end())
+                system.material = it->second;
+            if (textureState == nullptr) {
+                const auto it = texStateByBlock.find(key);
+                if (it != texStateByBlock.end()) textureState = &it->second;
+            }
+            if (const auto it = alphaByBlock.find(key); it != alphaByBlock.end()) {
+                system.alphaBlend = it->second.blend;
+                system.alphaTest = it->second.test;
+                system.alphaThreshold = it->second.threshold;
+                system.alphaSrcBlend = it->second.srcBlend;
+                system.alphaDstBlend = it->second.dstBlend;
+                system.alphaTestFunc = it->second.testFunc;
+            }
+            if (const auto it = zBufferByBlock.find(key); it != zBufferByBlock.end()) {
+                system.depthTest = it->second.test;
+                system.depthWrite = it->second.write;
+                system.depthFunction = it->second.function;
+            }
+            if (const auto it = stencilByBlock.find(key); it != stencilByBlock.end()) {
+                system.hasStencilProperty = true;
+                system.stencilEnabled = it->second.enabled;
+                system.stencilFunction = it->second.function;
+                system.stencilReference = it->second.reference;
+                system.stencilMask = it->second.mask;
+                system.stencilFailAction = it->second.failAction;
+                system.stencilZFailAction = it->second.zFailAction;
+                system.stencilPassAction = it->second.passAction;
+            }
+            if (const auto it = specularByBlock.find(key); it != specularByBlock.end())
+                system.specularEnabled = it->second;
+        }
+        if (textureState != nullptr) {
+            system.textureApplyMode = textureState->applyMode;
+            for (std::size_t slotIndex = 0; slotIndex < textureState->slots.size(); ++slotIndex) {
+                const auto& src = textureState->slots[slotIndex];
+                auto& dst = system.textureSlots[slotIndex];
+                dst.present = src.present;
+                dst.uvSet = src.uvSet;
+                dst.clampMode = src.clampMode;
+                dst.filterMode = src.filterMode;
+                dst.hasTransform = src.hasTransform;
+                dst.translation = src.translation;
+                dst.scale = src.scale;
+                dst.rotation = src.rotation;
+                dst.transformType = src.transformType;
+                dst.center = src.center;
+                if (!src.present || src.sourceRef < 0) continue;
+                const auto st = sourceTextures.find(static_cast<std::uint32_t>(src.sourceRef));
+                if (st == sourceTextures.end()) continue;
+                dst.texture = st->second.filename;
+                dst.sourceUsesEmbeddedPixelData = st->second.useExternal == 0;
+                dst.sourcePixelDataRef = st->second.pixelDataRef;
+                if (st->second.useExternal == 0 && st->second.pixelDataRef >= 0) {
+                    const auto pix = embeddedPixelTextures.find(static_cast<std::uint32_t>(st->second.pixelDataRef));
+                    if (pix != embeddedPixelTextures.end()) dst.embeddedTexture = pix->second;
+                }
+            }
+        }
     }
 
     // Resolve authored modifier refs to their parsed payloads in exactly the order stored by

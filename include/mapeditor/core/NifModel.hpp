@@ -302,6 +302,7 @@ struct NifParticleModifierInfo {
 // Authored NiParticleSystem/NiMeshParticleSystem scene wiring. Keeping this separate from
 // NifMeshPart is intentional: particle systems are dynamic scene objects, not triangle meshes.
 struct NifParticleSystemInfo {
+    std::uint32_t blockIndex = 0;
     std::string name;
     bool meshParticles = false;
     bool worldSpace = false;
@@ -316,6 +317,21 @@ struct NifParticleSystemInfo {
     std::vector<NifParticleModifierInfo> modifiers;
     bool hasParticleData = false;
     NifParticleDataInfo particleData;
+
+    // Effective particle render properties. These mirror the authored NiProperty state of the
+    // NiParticleSystem itself (including inherited parent-node properties), not a nearby mesh.
+    NifMaterial material;
+    std::array<NifTextureSlot, 10> textureSlots{};
+    std::uint32_t textureApplyMode = 2;
+    bool specularEnabled = true;
+    bool alphaBlend = false, alphaTest = false;
+    std::uint8_t alphaThreshold = 0, alphaSrcBlend = 6, alphaDstBlend = 7, alphaTestFunc = 4;
+    bool depthTest = true, depthWrite = true;
+    std::uint32_t depthFunction = 3;
+    bool hasStencilProperty = false, stencilEnabled = false;
+    std::uint32_t stencilFunction = 7, stencilReference = 0, stencilMask = 0xFFFFFFFFu;
+    std::uint32_t stencilFailAction = 0, stencilZFailAction = 0, stencilPassAction = 0;
+
     NifVec3 translation{};
     std::array<float, 9> rotation{1.0f, 0.0f, 0.0f,
                                   0.0f, 1.0f, 0.0f,
