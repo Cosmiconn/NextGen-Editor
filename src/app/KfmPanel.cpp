@@ -709,6 +709,50 @@ void KfmPanel::Draw(const std::function<std::optional<std::string>()>& browse) {
         ImGui::SliderFloat("##kfTime", &previewTime_, start, stop,
                            duration > 0.0f ? "%.3f s" : "%.3f");
 
+        // Echte Text-Key-Timeline der geladenen KF. Die Marker stammen direkt aus
+        // NiTextKeyExtraData; Klick/Drag scrubbt nur die Preview-Zeit und schreibt nichts.
+        {
+            const float timelineH = 38.0f;
+            const ImVec2 timelineSize(std::max(160.0f, ImGui::GetContentRegionAvail().x), timelineH);
+            const ImVec2 timelineMin = ImGui::GetCursorScreenPos();
+            ImGui::InvisibleButton("##kfTimelineCanvas", timelineSize,
+                                   ImGuiButtonFlags_MouseButtonLeft);
+            const ImVec2 timelineMax(timelineMin.x + timelineSize.x, timelineMin.y + timelineSize.y);
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+            dl->AddRectFilled(timelineMin, timelineMax, IM_COL32(8,23,35,255), 4.0f);
+            dl->AddRect(timelineMin, timelineMax, IM_COL32(31,82,116,210), 4.0f);
+
+            const auto normTime = [&](float value) {
+                return duration > 1.0e-8f ? std::clamp((value - start) / duration, 0.0f, 1.0f) : 0.0f;
+            };
+            for (const auto& key : kf.sequence.textKeys) {
+                const float x = timelineMin.x + normTime(key.time) * timelineSize.x;
+                dl->AddLine(ImVec2(x, timelineMin.y + 4.0f), ImVec2(x, timelineMax.y - 4.0f),
+                            IM_COL32(236,184,78,225), 1.0f);
+                if (!key.text.empty() && kf.sequence.textKeys.size() <= 12) {
+                    dl->AddText(ImVec2(std::min(x + 3.0f, timelineMax.x - 64.0f), timelineMin.y + 4.0f),
+                                IM_COL32(205,181,125,220), key.text.c_str());
+                }
+            }
+            const float cursorX = timelineMin.x + normTime(previewTime_) * timelineSize.x;
+            dl->AddLine(ImVec2(cursorX, timelineMin.y + 2.0f), ImVec2(cursorX, timelineMax.y - 2.0f),
+                        IM_COL32(32,221,242,255), 2.0f);
+
+            if (ImGui::IsItemHovered() &&
+                (ImGui::IsMouseClicked(ImGuiMouseButton_Left) ||
+                 ImGui::IsMouseDragging(ImGuiMouseButton_Left, 0.0f))) {
+                const float u = std::clamp((ImGui::GetMousePos().x - timelineMin.x) /
+                                           std::max(1.0f, timelineSize.x), 0.0f, 1.0f);
+                previewTime_ = start + u * duration;
+                previewPlaying_ = false;
+            }
+            if (ImGui::IsItemHovered()) {
+                const float u = std::clamp((ImGui::GetMousePos().x - timelineMin.x) /
+                                           std::max(1.0f, timelineSize.x), 0.0f, 1.0f);
+                ImGui::SetTooltip("%.3f s", start + u * duration);
+            }
+        }
+
         std::size_t supported = 0, unsupported = 0;
         for (const auto& track : kf.sequence.transformTracks) {
             auto sample = core::SampleKfTransformTrack(kf, track, previewTime_);
