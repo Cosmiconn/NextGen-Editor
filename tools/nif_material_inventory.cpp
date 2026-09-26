@@ -47,6 +47,9 @@ int main(int argc, char** argv) {
     std::map<std::string, std::size_t> shaderParts;
     std::map<std::string, std::set<std::string>> shaderFiles;
     std::array<SlotStats, 10> slots{};
+    std::map<std::pair<std::string, std::uint32_t>, SlotStats> shaderSlots;
+    std::map<std::pair<std::string, std::uint32_t>, std::set<std::uint32_t>> shaderSlotUvSets;
+    std::map<std::pair<std::string, std::uint32_t>, std::set<std::uint32_t>> shaderSlotTransformMethods;
     std::map<std::size_t, std::size_t> uvSetCounts;
     std::map<std::uint32_t, std::size_t> transformMethods;
     std::map<std::uint32_t, std::size_t> applyModes;
@@ -104,6 +107,23 @@ int main(int argc, char** argv) {
                 textureTransformTracks += part.textureTransformAnimations.size();
                 textureFlipTracks += part.textureFlipAnimations.size();
 
+                for (const auto& shaderSlot : part.shaderTextureSlots) {
+                    const auto key = std::make_pair(shader, shaderSlot.mapId);
+                    const auto& texture = shaderSlot.texture;
+                    if (!texture.present) continue;
+                    auto& stat = shaderSlots[key];
+                    ++stat.parts;
+                    shaderSlotUvSets[key].insert(texture.uvSet);
+                    if (texture.hasTransform)
+                        shaderSlotTransformMethods[key].insert(texture.transformType);
+                    if (texture.sourceUsesEmbeddedPixelData) {
+                        ++stat.embedded;
+                        if (!texture.embeddedTexture) ++stat.unresolvedEmbedded;
+                    } else if (!texture.texture.empty()) {
+                        ++stat.external;
+                    }
+                }
+
                 for (std::size_t slot = 0; slot < part.textureSlots.size(); ++slot) {
                     const auto& texture = part.textureSlots[slot];
                     if (!texture.present) continue;
@@ -153,6 +173,31 @@ int main(int argc, char** argv) {
                   << "\tembedded=" << stat.embedded
                   << "\texternal=" << stat.external
                   << "\tunresolvedEmbedded=" << stat.unresolvedEmbedded << '\n';
+    }
+
+    for (const auto& [key, stat] : shaderSlots) {
+        const auto& [shader, mapId] = key;
+        std::cout << "SHADERSLOT\tshader=" << Clean(shader)
+                  << "\tmapId=" << mapId
+                  << "\tparts=" << stat.parts
+                  << "\tembedded=" << stat.embedded
+                  << "\texternal=" << stat.external
+                  << "\tunresolvedEmbedded=" << stat.unresolvedEmbedded
+                  << "\tuvSets=";
+        bool first = true;
+        for (const auto uv : shaderSlotUvSets[key]) {
+            if (!first) std::cout << ',';
+            std::cout << uv;
+            first = false;
+        }
+        std::cout << "\ttransformMethods=";
+        first = true;
+        for (const auto method : shaderSlotTransformMethods[key]) {
+            if (!first) std::cout << ',';
+            std::cout << method;
+            first = false;
+        }
+        std::cout << '\n';
     }
 
     for (const auto& [count, partCount] : uvSetCounts)
