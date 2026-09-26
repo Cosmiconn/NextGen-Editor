@@ -43,4 +43,4 @@ Serie links, Stufe/Detail rechts. Animation/VFX nutzen datenbelegte Such-Picker 
 Assetliste + Transport + echte Text-Key-Timeline + Trackliste. Der Preview-Viewport zeigt die reale KFM-NIF-Hierarchie als animiertes Skelett und deformiert über bewahrte NiSkin-Weights/Bind-Matrizen die echten NIF-Dreiecke CPU-seitig synchron zur Timeline. Das Mesh wird als budgetiertes Wireframe hinter dem Skeleton dargestellt; Drag/Zoom/Reset gehören zum Viewport. Nicht verifizierte B-Splines/TBC/Quadratic sowie mehrdeutige Node-/Track-Namen bleiben sichtbar in Bind-Pose. Ein material-/texturierter Character-Preview ist separate Politur, kein Ersatz für die verifizierte Deformation.
 
 ## AI / Interface / Drops
-Gleiche Shell, Komponenten und Zustandslogik; keine optischen Mikrowelten.
+Gleiche Shell, Komponenten und Zustandslogik; keine optischen Mikrowelten. Haupt-Header laufen über denselben semantischen Icon-/Titel-/Kontext-Component wie Map/KFM/Quest/Skill; Dirty/Read-only-Zustände bleiben kontextuell und werden nicht als abweichendes Mini-Theme dargestellt.
