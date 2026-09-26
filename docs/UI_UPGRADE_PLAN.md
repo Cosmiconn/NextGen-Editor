@@ -353,6 +353,22 @@ Dieser Abschnitt ist der verbindliche Ausbau-Fahrplan für den laufenden Branch 
 
 ### Priorität 0 – NIF-Renderer-Fidelity
 
+#### Verbindliche ResMap-Abnahme vor ResChar
+
+`reschar` (NPCs/Mobs) bleibt Priorität 2 und wird erst begonnen, wenn der vollständige `resmap`-Bestand diese Kriterien erfüllt:
+- 100 % der ResMap-NIFs laden im Standardpfad; keine Recovery-/Partial-Fälle bei renderbaren Objekten.
+- 100 % der benötigten Texturen sind eindeutig aufgelöst und dekodiert; Embedded-PixelData vollständig korrekt.
+- 0 ungeklärte UV-Bindings und 0 UV0-Fallbacks, außer ein konkreter Fiesta-Fall belegt exakt diese Semantik.
+- 0 tatsächlich verwendete unbekannte ApplyModes.
+- 0 tatsächlich verwendete ShaderTexDesc-Mappings ohne verifizierte Shader-/Map-ID-Semantik.
+- 0 tatsächlich verwendete NiTextureEffects im Diagnose-only-Pfad.
+- Alpha/Blend/Test, Z, Stencil und FaceDraw/Culling sind für alle im ResMap-Korpus vorkommenden Enum-Werte materialisiert.
+- Billboard, LOD, Skinning, TextureTransform und FlipController sind für alle im ResMap-Korpus vorkommenden Varianten verifiziert.
+- Partikelsysteme zählen bis zu echter Simulation/Darstellung ausdrücklich als Renderer-Gap und dürfen nicht durch erfolgreiches Parsing als fertig gelten.
+- Der automatisierte Korpus-Audit endet mit `rendererGapFiles=0`; `nif_material_inventory --strict-renderer <resmap-root> [...]` dient als hartes finales Gate.
+- Danach erfolgen repräsentative visuelle Referenzvergleiche für Bäume, Gebäude, Alpha/Transparenz, Wasser/Environment, Glow, Bump, Billboard/LOD und animierte Texturen/Partikel.
+
+
 Vor weiterer UI-Politur hat die visuelle Übereinstimmung echter Fiesta-NIFs Vorrang:
 - alle streng belegten Geometrie-/Material-/Renderstate-Pfade müssen sichtbar werden, ohne still auf plausible Ersatzsemantik zu fallen;
 - Base/Dark/Detail/Gloss/Glow/Bump/Decal0..3, bis zu acht UV-Sets, Alpha/Z/Stencil/VertexColor/Specular, Skinning, LOD, Billboard sowie TextureTransform-/Flip-Controller sind bereits im Rendererpfad vorhanden;
