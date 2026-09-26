@@ -1,3 +1,11 @@
+## NIF rendering follow-up — shader texture descriptor audit
+- Preserve every NiTexturingProperty `ShaderTexDesc` on the public mesh part even when its shader semantics are not implemented: map ID, UV/sampler/texture-transform state, SourceTexture reference and resolved external/embedded source all remain available for diagnostics.
+- Keep renderer semantics strict: only the already verified `VCAlphaTextureBlender` maps 0/1/2 onto Texture1/Texture2/Detail. Unknown shader map IDs are not copied into plausible classic slots.
+- Extend `nif_material_inventory` with per-shader/map-ID descriptor counts, fixture paths, UV sets and transform methods. Fixture CI now fails on any NIF load regression or any embedded texture that was previously decodable but becomes undecoded.
+- Current fixture result remains 101/101 NIFs loaded, 413 embedded textures decoded and 0 undecoded. `FxSkinningBaseMap` and `NsPgToonNoAni` occur in five fixture files but expose no ShaderTexDesc entries in this corpus, so shader names alone do not justify new texture semantics.
+- The only non-default texture apply mode in the fixture corpus is three parts in `MapLinkGate2.nif` with mode 4 (`APPLY_HILIGHT2`). The material audit and NIF Inspector now expose that the current renderer intentionally uses its modulate fallback until Fiesta-specific visual behavior is verified.
+- Expand the read-only NIF Inspector to distinguish missing external textures, undecoded embedded PixelData, unresolved ShaderTexDesc sources, shader maps whose render semantics are still unverified, and non-materialized ApplyMode values.
+
 ## NIF rendering follow-up — inherited NiProperty resolution
 - Preserve each parsed NiAVObject/NiNode property list in the internal scene graph instead of keeping only the geometry node's direct property refs.
 - Build the effective geometry property chain child-first: properties authored directly on NiTriShape/NiTriStrips win, then nearest parent NiNode properties, then higher ancestors.
