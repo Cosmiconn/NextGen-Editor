@@ -79,6 +79,36 @@ int main(int argc, char** argv) {
     }
 
     if (simple) {
+        std::printf("\n== UV-Sets und eingebettete Materialtexturen ==\n");
+        bool uvSetsSane = true;
+        bool embeddedSlotsValid = true;
+        std::size_t embeddedSlotCount = 0;
+        for (const auto& part : simple->parts) {
+            for (const auto& uvSet : part.uvSets) {
+                for (const auto& uv : uvSet) {
+                    if (!std::isfinite(uv.u) || !std::isfinite(uv.v) ||
+                        std::abs(uv.u) > 1000.0f || std::abs(uv.v) > 1000.0f) {
+                        uvSetsSane = false;
+                    }
+                }
+            }
+            for (const auto& slot : part.textureSlots) {
+                if (!slot.embeddedTexture) continue;
+                ++embeddedSlotCount;
+                const auto& tex = *slot.embeddedTexture;
+                if (tex.width == 0 || tex.height == 0 ||
+                    tex.rgba.size() != static_cast<std::size_t>(tex.width) * tex.height * 4) {
+                    embeddedSlotsValid = false;
+                }
+            }
+        }
+        Check(uvSetsSane, "Alle erhaltenen UV-Sets sind endlich/plausibel oder wurden verworfen");
+        Check(embeddedSlotsValid, "Alle eingebetteten Materialslot-Texturen sind vollständig dekodiert");
+        std::printf("     Eingebettete Materialslots: %zu, PixelData dekodiert/nicht dekodiert: %u/%u\n",
+                    embeddedSlotCount, simple->decodedEmbeddedTextures, simple->undecodedEmbeddedTextures);
+    }
+
+    if (simple) {
         // Konsistenz (seit [0.44.30]): kein Dreiecksindex hinter dem letzten Vertex eines Parts
         // (vorher bei Modellen mit mehreren Detailstufen: Vertices eines Blocks + Indizes aller).
         bool consistent = true;
