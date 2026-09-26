@@ -2608,6 +2608,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         std::array<float, 9> rotation{};
         float scale = 1.0f;
         std::vector<std::int32_t> children;
+        std::vector<std::int32_t> properties;
         std::string name;
         bool billboard = false;
         std::uint16_t billboardMode = 0;
@@ -2663,6 +2664,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         sn.rotation = n.base.rotation;
         sn.scale = n.base.scale;
         sn.children = n.children;
+        sn.properties = n.base.properties;
         sn.name = n.base.net.name;
     };
 
@@ -3094,6 +3096,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 sn.translation = strips.base.translation;
                 sn.rotation = strips.base.rotation;
                 sn.scale = strips.base.scale;
+                sn.properties = strips.base.properties;
                 if (strips.dataRef >= 0) dataToGeometry[strips.dataRef] = blockIdx;
             }
             geomNodes.push_back({blockIdx, strips.dataRef, strips.skinInstanceRef, strips.base.properties, strips.shaderName});
@@ -3397,6 +3400,35 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
     // behandelt. model.parts bleibt einfach leer; NifMeshRenderer iteriert bereits sicher
     // über eine leere parts-Liste (kein Sonderfall nötig).
 
+    // NiAVObject-Properties sind im NIF-Szenengraph vererbbar. Bisher wurden nur die
+    // direkten Property-Refs von NiTriShape/NiTriStrips ausgewertet; dadurch gingen z.B.
+    // Texturing/Material/Alpha/Z-Properties verloren, wenn sie auf einem übergeordneten
+    // NiNode lagen. Die effektive Liste bleibt bewusst child-first: ein direkt am Mesh
+    // gesetzter Property-Typ überschreibt denselben Typ eines Elternknotens.
+    {
+        std::vector<int> parentOf(scene.size(), -1);
+        for (std::size_t i = 0; i < scene.size(); ++i) {
+            for (const auto child : scene[i].children) {
+                if (child < 0 || static_cast<std::size_t>(child) >= scene.size()) continue;
+                if (parentOf[static_cast<std::size_t>(child)] < 0)
+                    parentOf[static_cast<std::size_t>(child)] = static_cast<int>(i);
+            }
+        }
+
+        for (auto& g : geomNodes) {
+            std::unordered_set<std::int32_t> seen(g.properties.begin(), g.properties.end());
+            int parent = g.block < parentOf.size() ? parentOf[g.block] : -1;
+            for (int guard = 0; parent >= 0 && guard < 64; ++guard) {
+                const auto parentIndex = static_cast<std::size_t>(parent);
+                if (parentIndex >= scene.size()) break;
+                for (const auto ref : scene[parentIndex].properties) {
+                    if (ref >= 0 && seen.insert(ref).second) g.properties.push_back(ref);
+                }
+                parent = parentOf[parentIndex];
+            }
+        }
+    }
+
     // Konsistenzpruefung der Parts; bei Widerspruch aus den Geometrie-Knoten neu aufbauen.
     {
         bool consistent = rawByData.size() == model.parts.size();
@@ -3443,6 +3475,27 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 partBaseTextureRef = std::move(newTexRef);
                 partDataBlock = std::move(newPartData);
             }
+        }
+    }
+
+    // Material follows the same scene-graph inheritance as the other NiProperties.
+    // Resolve it authoritatively after any geometry-driven part rebuild, so shared or parent
+    // materials do not depend on block adjacency.
+    {
+        std::unordered_map<std::int32_t, NifMaterial> materialByData;
+        for (const auto& g : geomNodes) {
+            for (const auto ref : g.properties) {
+                if (ref < 0) continue;
+                const auto it = materialByBlock.find(static_cast<std::uint32_t>(ref));
+                if (it != materialByBlock.end()) {
+                    materialByData[g.dataRef] = it->second;
+                    break;
+                }
+            }
+        }
+        for (std::size_t p = 0; p < model.parts.size() && p < partDataBlock.size(); ++p) {
+            const auto it = materialByData.find(partDataBlock[p]);
+            if (it != materialByData.end()) model.parts[p].material = it->second;
         }
     }
 
