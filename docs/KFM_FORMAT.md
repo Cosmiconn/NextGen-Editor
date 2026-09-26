@@ -81,14 +81,21 @@ Der Katalog besitzt inzwischen eine echte KF-Playback-Stufe:
 - Live-Sampling der verifizierten Pose-/Linear-/Constant-/XYZ-Transformtracks;
 - Trackliste mit aktuell gesampelter Translation/Scale und klarer Kennzeichnung nicht
   unterstützter Interpolationen;
-- **Skeleton-Viewport**: die explizite KFM-NIF-Referenz wird über denselben sicheren
+- **NIF-/Skeleton-Viewport**: die explizite KFM-NIF-Referenz wird über denselben sicheren
   Referenzresolver geladen. Die im NIF gelesene Parent-/Local-Bind-Hierarchie wird mit den
   nach Knotennamen gematchten KF-Local-Transforms zusammengesetzt und als bewegtes Skelett
   gerendert. Drag dreht die Ansicht, Mausrad zoomt, Doppelklick setzt die Kamera zurück.
+- **echte Skinned-Mesh-Deformation**: der NIF-Parser bewahrt zusätzlich zu seiner bisherigen
+  Bind-Pose die originalen Source-Vertices, NiSkin-Weights, Bone-Refs, NiSkinData-Bind-Transforms
+  und die nachgelagerte Geometrie-/Parent-Matrix. Der Preview-Sampler wertet diese Daten mit
+  exakt derselben Transform-Reihenfolge wie der verifizierte Bind-Pose-Pfad erneut aus.
+  Samplebare KF-Tracks deformieren dadurch die echten NIF-Dreiecke synchron zur Timeline.
+- Der Preview-Viewport zeichnet die deformierte NIF-Geometrie bewusst als budgetiertes
+  Wireframe hinter dem Skelett. Das ist tatsächliche Vertex-/Skin-Deformation, aber noch kein
+  separater material-/texturierter Character-Renderer.
 
-Wichtig: Das ist bereits echtes Skelett-Playback, aber **noch keine animierte Mesh-Deformation**.
-Komprimierte Fiesta-B-Splines, TBC/Quadratic-Interpolation und animierte Skin-Matrizen werden
-weiterhin nicht geraten. Nicht samplebare Tracks bleiben im Skeleton-Viewport in Bind-Pose und
-werden sichtbar als offen markiert. Schreibende Transition-/KFM-Bearbeitung darf nur auf den
+Komprimierte Fiesta-B-Splines, TBC/Quadratic-Interpolation und mehrdeutige Node-/Track-Namen
+werden weiterhin nicht geraten. Betroffene Nodes/Einflüsse bleiben in Bind-Pose und werden
+sichtbar als offen bzw. mehrdeutig markiert. Schreibende Transition-/KFM-Bearbeitung darf nur auf den
 bereits verlustfrei belegten Codec-Feldern aufbauen; unbekannte Laufzeitsemantik bleibt
 uninterpretiert.
