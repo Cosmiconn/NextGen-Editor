@@ -15524,6 +15524,7 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
     std::size_t animatedTextureCount = 0;
     std::size_t flipbookFrameCount = 0;
     std::size_t missingFlipbookFrameCount = 0;
+    std::size_t unresolvedEmbeddedFlipbookFrameCount = 0;
     std::set<std::string> missingTextureRefs;
     for (const auto& part : model.parts) {
         triangleCount += part.triangleIndices.size() / 3;
@@ -15546,9 +15547,13 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
         for (const auto& animation : part.textureFlipAnimations) {
             for (const auto& frame : animation.frames) {
                 ++flipbookFrameCount;
-                if (!frame.embeddedTexture &&
-                    (frame.texture.empty() ||
-                     !ResolveNifInspectorTexturePathCached(state, root, frame.texture))) {
+                if (frame.sourceUsesEmbeddedPixelData) {
+                    if (!frame.embeddedTexture) {
+                        ++missingFlipbookFrameCount;
+                        ++unresolvedEmbeddedFlipbookFrameCount;
+                    }
+                } else if (frame.texture.empty() ||
+                           !ResolveNifInspectorTexturePathCached(state, root, frame.texture)) {
                     ++missingFlipbookFrameCount;
                     missingTextureRefs.insert(frame.texture.empty() ? "(leerer Flipbook-Frame)" : frame.texture);
                 }
@@ -15559,9 +15564,11 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
     ImGui::Text("Root: %s", model.rootName.empty() ? L("(unbenannt)","(unnamed)") : model.rootName.c_str());
     ImGui::TextDisabled("%zu Mesh-Teile · %zu Dreiecke · %zu Textur-Slots",
                         model.parts.size(), triangleCount, textureCount);
+    const std::size_t totalEmbeddedFailures =
+        unresolvedEmbeddedTextureCount + unresolvedEmbeddedFlipbookFrameCount;
     ImGui::TextDisabled(L("%zu extern · %zu eingebettet · %zu Embedded-Fehler · %zu Textur-Animationen",
                           "%zu external · %zu embedded · %zu embedded failures · %zu texture animations"),
-                        externalTextureCount, embeddedTextureCount, unresolvedEmbeddedTextureCount,
+                        externalTextureCount, embeddedTextureCount, totalEmbeddedFailures,
                         animatedTextureCount);
     if (flipbookFrameCount > 0)
         ImGui::TextDisabled(L("%zu Flipbook-Frames · %zu nicht auflösbar","%zu flipbook frames · %zu unresolved"),
@@ -15584,12 +15591,12 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
     } else if (externalTextureCount > 0 || flipbookFrameCount > 0) {
         ImGui::TextColored(ImVec4(0.42f,0.86f,0.62f,1.0f), "%s",L("Alle externen Textur-Referenzen gefunden","All external texture references found"));
     }
-    if (unresolvedEmbeddedTextureCount > 0 || model.undecodedEmbeddedTextures > 0) {
+    if (totalEmbeddedFailures > 0 || model.undecodedEmbeddedTextures > 0) {
         ImGui::TextColored(
             ImVec4(1.0f,0.48f,0.34f,1.0f),
-            L("%zu Materialslot(s) mit nicht dekodierter eingebetteter PixelData",
-              "%zu material slot(s) with undecoded embedded PixelData"),
-            unresolvedEmbeddedTextureCount);
+            L("%zu Material-/Flipbook-Slot(s) mit nicht dekodierter eingebetteter PixelData",
+              "%zu material/flipbook slot(s) with undecoded embedded PixelData"),
+            totalEmbeddedFailures);
     }
     ImGui::TextDisabled(
         L("%zu Nodes · Embedded PixelData dekodiert/nicht dekodiert: %u/%u",
@@ -15636,10 +15643,14 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
         for (const auto& animation : part.textureFlipAnimations) {
             for (const auto& frame : animation.frames) {
                 if (!frame.texture.empty()) partSearch += " " + LowerAscii(frame.texture);
-                if (!frame.embeddedTexture &&
-                    (frame.texture.empty() ||
-                     !ResolveNifInspectorTexturePathCached(state, root, frame.texture)))
+                if (frame.sourceUsesEmbeddedPixelData) partSearch += " embedded pixeldata";
+                if (frame.sourceUsesEmbeddedPixelData && !frame.embeddedTexture) {
                     partHasMissingTexture = true;
+                } else if (!frame.sourceUsesEmbeddedPixelData &&
+                           (frame.texture.empty() ||
+                            !ResolveNifInspectorTexturePathCached(state, root, frame.texture))) {
+                    partHasMissingTexture = true;
+                }
             }
         }
         if (!inspectorNeedle.empty() && partSearch.find(inspectorNeedle) == std::string::npos)
@@ -15771,13 +15782,22 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                     const auto& animation = part.textureFlipAnimations[ai];
                     ImGui::PushID(static_cast<int>(part.textureTransformAnimations.size() + ai));
                     std::size_t embeddedFrames = 0;
+                    std::size_t embeddedFailedFrames = 0;
+                    std::size_t externalFrames = 0;
                     std::size_t missingFrames = 0;
                     for (const auto& frame : animation.frames) {
-                        if (frame.embeddedTexture) {
-                            ++embeddedFrames;
-                        } else if (frame.texture.empty() ||
-                                   !ResolveNifInspectorTexturePathCached(state, root, frame.texture)) {
-                            ++missingFrames;
+                        if (frame.sourceUsesEmbeddedPixelData) {
+                            if (frame.embeddedTexture) ++embeddedFrames;
+                            else {
+                                ++embeddedFailedFrames;
+                                ++missingFrames;
+                            }
+                        } else {
+                            ++externalFrames;
+                            if (frame.texture.empty() ||
+                                !ResolveNifInspectorTexturePathCached(state, root, frame.texture)) {
+                                ++missingFrames;
+                            }
                         }
                     }
                     if (state.nifInspectorMissingOnly && missingFrames == 0) {
@@ -15793,10 +15813,12 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                                         track.startTime, track.stopTime, track.keys.size(),
                                         NifTextureInterpolationLabel(track.interpolation),
                                         NifTextureExtrapolationLabel(track.extrapolation));
-                    ImGui::TextDisabled(L("%zu eingebettet · %zu extern%s","%zu embedded · %zu external%s"),
-                                        embeddedFrames,
-                                        animation.frames.size() - embeddedFrames,
-                                        missingFrames ? L(" · fehlende Dateien vorhanden"," · missing files present") : "");
+                    ImGui::TextDisabled(
+                        L("%zu eingebettet · %zu Embedded-Fehler · %zu extern%s",
+                          "%zu embedded · %zu embedded failures · %zu external%s"),
+                        embeddedFrames, embeddedFailedFrames, externalFrames,
+                        missingFrames ? L(" · nicht auflösbare Frames vorhanden",
+                                          " · unresolved frames present") : "");
                     if (missingFrames)
                         ImGui::TextColored(ImVec4(1.0f,0.48f,0.34f,1.0f),
                                            L("%zu Flipbook-Frame(s) nicht auflösbar","%zu flipbook frame(s) unresolved"), missingFrames);
@@ -15804,10 +15826,17 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                     const std::size_t framePreviewCount = std::min<std::size_t>(animation.frames.size(), 6);
                     for (std::size_t fi = 0; fi < framePreviewCount; ++fi) {
                         const auto& frame = animation.frames[fi];
-                        const std::string frameLabel = frame.embeddedTexture
-                            ? (std::string("Frame ") + std::to_string(fi + 1) + L(" · eingebettet"," · embedded"))
-                            : ("Frame " + std::to_string(fi + 1) + " · " +
-                               (frame.texture.empty() ? std::string(L("(leer)","(empty)")) : frame.texture));
+                        std::string frameLabel = "Frame " + std::to_string(fi + 1);
+                        if (frame.sourceUsesEmbeddedPixelData) {
+                            frameLabel += frame.embeddedTexture
+                                ? L(" · eingebettet"," · embedded")
+                                : (std::string(L(" · Embedded PixelData #"," · embedded PixelData #")) +
+                                   std::to_string(frame.sourcePixelDataRef) +
+                                   L(" nicht dekodiert"," undecoded"));
+                        } else {
+                            frameLabel += " · " +
+                                (frame.texture.empty() ? std::string(L("(leer)","(empty)")) : frame.texture);
+                        }
                         ImGui::TextDisabled("%s", frameLabel.c_str());
                     }
                     if (animation.frames.size() > framePreviewCount)
