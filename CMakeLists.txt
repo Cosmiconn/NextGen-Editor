@@ -50,6 +50,7 @@ add_library(mapeditor_core
     src/core/NifModel.cpp
     src/core/KfmFile.cpp
     src/core/KfAnimation.cpp
+    src/core/NifAnimationPose.cpp
     src/core/TextureLayerStack.cpp
     src/core/TexturePaintOps.cpp
     src/core/TextureLayerIO.cpp
@@ -227,6 +228,10 @@ target_link_libraries(test_kf_animation PRIVATE mapeditor_core)
 add_test(NAME kf_animation COMMAND test_kf_animation
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/nif-extensions/BallCrush_Base_Stand.kf
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/nif-extensions/Arc-f_Bip01_Emotion_ChargdDance69.kf)
+
+add_executable(test_nif_animation_pose tests/test_nif_animation_pose.cpp)
+target_link_libraries(test_nif_animation_pose PRIVATE mapeditor_core)
+add_test(NAME nif_animation_pose COMMAND test_nif_animation_pose)
 
 add_executable(test_packed_images tests/test_packed_images.cpp)
 target_link_libraries(test_packed_images PRIVATE mapeditor_core)
