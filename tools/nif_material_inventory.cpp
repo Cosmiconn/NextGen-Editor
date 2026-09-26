@@ -107,6 +107,12 @@ int main(int argc, char** argv) {
     std::map<std::string, std::size_t> particleFiles;
     std::map<std::string, std::size_t> particleModifierTypes;
     std::size_t invalidParticleModifierRefs = 0;
+    std::size_t particleCapacity = 0;
+    std::size_t activeParticles = 0;
+    std::size_t texturedParticleSystems = 0;
+    std::size_t meshParticleSystems = 0;
+    std::size_t worldSpaceParticleSystems = 0;
+    std::vector<std::string> particleSystemDetails;
     std::size_t recoveredModels = 0;
     std::size_t partialModels = 0;
 
@@ -204,11 +210,38 @@ int main(int argc, char** argv) {
                 // Parsing a particle system is not visual parity: until simulation/draw exists,
                 // any such file is a renderer-fidelity gap.
                 rendererGapFiles.insert(entry.path().string());
-                for (const auto& system : model->particleSystems) {
+                for (std::size_t systemIndex = 0; systemIndex < model->particleSystems.size(); ++systemIndex) {
+                    const auto& system = model->particleSystems[systemIndex];
                     for (const auto& modifierType : system.modifierTypes) {
                         ++particleModifierTypes[modifierType];
                         if (modifierType == "<invalid>") ++invalidParticleModifierRefs;
                     }
+                    meshParticleSystems += system.meshParticles ? 1u : 0u;
+                    worldSpaceParticleSystems += system.worldSpace ? 1u : 0u;
+                    if (system.hasParticleData) {
+                        particleCapacity += system.particleData.capacity;
+                        activeParticles += system.particleData.activeCount;
+                    }
+                    const bool textured = system.textureSlots[0].present &&
+                        (!system.textureSlots[0].texture.empty() || system.textureSlots[0].embeddedTexture);
+                    texturedParticleSystems += textured ? 1u : 0u;
+                    std::ostringstream detail;
+                    detail << "PARTICLESYSTEM"
+                           << "\tpath=" << Clean(entry.path().string())
+                           << "\tindex=" << systemIndex
+                           << "\tname=" << Clean(system.name)
+                           << "\tmesh=" << (system.meshParticles ? 1 : 0)
+                           << "\tworldSpace=" << (system.worldSpace ? 1 : 0)
+                           << "\tdata=" << (system.hasParticleData ? 1 : 0)
+                           << "\tcapacity=" << (system.hasParticleData ? system.particleData.capacity : 0u)
+                           << "\tactive=" << (system.hasParticleData ? system.particleData.activeCount : 0u)
+                           << "\ttextured=" << (textured ? 1 : 0)
+                           << "\tmodifiers=";
+                    for (std::size_t mi = 0; mi < system.modifierTypes.size(); ++mi) {
+                        if (mi != 0) detail << ',';
+                        detail << Clean(system.modifierTypes[mi]);
+                    }
+                    particleSystemDetails.push_back(detail.str());
                 }
             }
 
@@ -541,6 +574,11 @@ int main(int argc, char** argv) {
               << "\tparticleSystems=" << particleSystems
               << "\tparticleFiles=" << particleFiles.size()
               << "\tinvalidParticleModifierRefs=" << invalidParticleModifierRefs
+              << "\tparticleCapacity=" << particleCapacity
+              << "\tactiveParticles=" << activeParticles
+              << "\ttexturedParticleSystems=" << texturedParticleSystems
+              << "\tmeshParticleSystems=" << meshParticleSystems
+              << "\tworldSpaceParticleSystems=" << worldSpaceParticleSystems
               << "\trecovered=" << recoveredModels
               << "\tpartial=" << partialModels
               << "\tuvOverflowParts=" << uvRendererOverflowParts
@@ -677,6 +715,8 @@ int main(int argc, char** argv) {
     for (const auto& [type, count] : particleModifierTypes)
         std::cout << "PARTICLEMODIFIER\ttype=" << Clean(type)
                   << "\tbindings=" << count << '\n';
+    for (const auto& detail : particleSystemDetails)
+        std::cout << detail << '\n';
     for (const auto& [path, count] : particleFiles)
         std::cout << "PARTICLEFILE\tsystems=" << count
                   << "\trenderer=unmaterialized"
