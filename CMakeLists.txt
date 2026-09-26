@@ -243,7 +243,10 @@ add_test(NAME nif_extensions COMMAND test_nif_extensions ${CMAKE_CURRENT_SOURCE_
 
 add_executable(test_nif_model tests/test_nif_model.cpp)
 target_link_libraries(test_nif_model PRIVATE mapeditor_core)
-add_test(NAME nif_model COMMAND test_nif_model ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/tree05.nif)
+add_test(NAME nif_model COMMAND test_nif_model
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/tree05.nif
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/wagon2.nif
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/ship_post.nif)
 
 add_executable(test_nif_particles tests/test_nif_particles.cpp)
 target_link_libraries(test_nif_particles PRIVATE mapeditor_core)
