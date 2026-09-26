@@ -10,6 +10,7 @@
 
 ## UI Upgrade QA – Icon consistency, section chrome and viewport input capture
 - Complete DE/EN coverage for the main entry flow: Project Hub cards/recent projects, project configuration help and Map Launcher creation/browse/rescan/error text now follow the global language switch.
+- Localize the Topbar unsaved-changes tooltip, including map/SHN/quest/portal/AI/drop-table dirty details.
 - Finish the semantic section-header pass: Quest Flow now uses the Quest package icon/header and the creature wizard preview switches between the approved Custom NPC / Custom Mob icons. Entity labels and specialist inline pickers remain intentionally compact.
 - Distinguish invalid semantic icon IDs from intentionally missing runtime rasters: `UiIconAssets` now exposes `IsKnownSemantic(...)` and logs each unknown ID once instead of silently treating a typo like a normal package-gap fallback.
 - Add `tools/ui/check_icon_consistency.py` and run it in Linux CI before the core build. It verifies the frozen 68 semantic IDs against `UiIconAssets.cpp`, approved size levels and every checked-in runtime PNG while explicitly allowing the intentional partial runtime subset.
