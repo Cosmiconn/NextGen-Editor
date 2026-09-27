@@ -237,13 +237,19 @@ void CheckHilite2Fixture(const fs::path& root) {
         return;
     }
 
-    std::size_t hilite2Parts = 0;
-    for (const auto& part : model->parts)
-        if (part.textureApplyMode == 4u) ++hilite2Parts;
+    std::size_t deprecatedModes = 0;
+    std::size_t modulateParts = 0;
+    for (const auto& part : model->parts) {
+        if (part.textureApplyMode == 3u || part.textureApplyMode == 4u) ++deprecatedModes;
+        if (part.textureApplyMode == 2u) ++modulateParts;
+    }
 
-    Check(hilite2Parts == 3u,
+    Check(deprecatedModes == 0u,
           std::string(kFile) +
-              ": genau drei Mesh-Parts behalten APPLY_HILIGHT2 (mode 4)");
+              ": Gamebryo 2.6 normalisiert pre-20.1.0.2 APPLY_HILIGHT/HILIGHT2 beim Laden");
+    Check(modulateParts == model->parts.size(),
+          std::string(kFile) +
+              ": alle MapLinkGate2-Mesh-Parts erreichen den Renderer als APPLY_MODULATE");
 }
 
 } // namespace
