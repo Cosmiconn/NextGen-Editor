@@ -71,8 +71,8 @@ const char* ApplyModeName(std::uint32_t mode) {
         case 0: return "APPLY_REPLACE";
         case 1: return "APPLY_DECAL";
         case 2: return "APPLY_MODULATE";
-        case 3: return "APPLY_HILIGHT";
-        case 4: return "APPLY_HILIGHT2";
+        case 3: return "APPLY_DEPRECATED";
+        case 4: return "APPLY_DEPRECATED2";
         default: return "UNKNOWN";
     }
 }

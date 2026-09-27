@@ -267,7 +267,7 @@ void main() {
         if (uHasTex[0]) {
             if (uApplyMode == 0) surface = base.rgb;                         // APPLY_REPLACE
             else if (uApplyMode == 1) surface = mix(surface, base.rgb, base.a); // APPLY_DECAL
-            else surface *= base.rgb;                                       // APPLY_MODULATE/HILIGHT fallback
+            else surface *= base.rgb;                                       // APPLY_MODULATE / unknown future fallback
         }
         if (uHasTex[1]) surface *= texture(uTex1, slotUv(1)).rgb; // Dark map
         if (uHasTex[2]) surface *= clamp(texture(uTex2, slotUv(2)).rgb * 2.0, 0.0, 2.0); // Detail map

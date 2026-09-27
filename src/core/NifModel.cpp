@@ -2025,6 +2025,15 @@ struct NifTextureSlotState {
     NifVec2 center{0.5f, 0.5f};
 };
 
+std::uint32_t NormalizeNiTexturingApplyMode(std::uint32_t version, std::uint32_t rawMode) {
+    // Gamebryo 2.6 NiTexturingProperty::LoadBinary explicitly upgrades the two
+    // legacy HILIGHT modes for files older than 20.1.0.2:
+    // APPLY_DEPRECATED / APPLY_DEPRECATED2 -> APPLY_MODULATE.
+    // Fiesta's 20.0.0.4 assets therefore never expose modes 3/4 to rendering.
+    if (version < 0x14010002u && (rawMode == 3u || rawMode == 4u)) return 2u;
+    return rawMode;
+}
+
 struct NifTextureState {
     std::int32_t controllerRef = -1;
     std::uint32_t applyMode = 2; // APPLY_MODULATE
@@ -2045,7 +2054,7 @@ NifTextureState ParseNiTexturingProperty(ByteReader& r, bool hasPS2Fields) {
 
     NifTextureState state;
     state.controllerRef = controllerRef;
-    state.applyMode = r.U32();
+    state.applyMode = NormalizeNiTexturingApplyMode(r.Version(), r.U32());
     std::uint32_t textureCount = r.CountU32(64);
     if (r.LegacyLayout() && !r.Ok()) {
         r.SetOk(true);
@@ -2053,7 +2062,7 @@ NifTextureState ParseNiTexturingProperty(ByteReader& r, bool hasPS2Fields) {
         r.SizedString();
         controllerRef = r.I32();
         state.controllerRef = controllerRef;
-        state.applyMode = r.U32();
+        state.applyMode = NormalizeNiTexturingApplyMode(r.Version(), r.U32());
         textureCount = r.CountU32(64);
     }
 

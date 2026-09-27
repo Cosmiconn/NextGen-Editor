@@ -73,6 +73,12 @@ void checkLayout(const Bytes& b, std::uint32_t version, bool system, bool mesh) 
 }
 
 int main(int argc, char** argv) {
+    check(NormalizeNiTexturingApplyMode(0x14000004u, 3u) == 2u &&
+          NormalizeNiTexturingApplyMode(0x14000004u, 4u) == 2u,
+          "Gamebryo pre-20.1.0.2 deprecated apply modes normalize to MODULATE");
+    check(NormalizeNiTexturingApplyMode(0x14010002u, 4u) == 4u,
+          "20.1.0.2+ apply-mode flags are not legacy enum-upgraded");
+
     // Material and SourceTexture own their fields; neither may consume bytes
     // from a following GeometryData or PixelData block.
     for (auto version : {0x0A010000u, 0x0A020000u, 0x14000004u}) {
