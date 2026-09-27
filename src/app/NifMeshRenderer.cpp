@@ -98,6 +98,7 @@ uniform bool uSpecularEnabled;
 uniform int uApplyMode;
 uniform bool uVcAlphaTextureBlender;
 uniform bool uAlphaTextureBlender11;
+uniform bool uPgTerrain;
 uniform int uVertexColorMode;
 uniform bool uParticleMode;
 uniform vec4 uParticleColor;
@@ -273,6 +274,11 @@ void main() {
         vec3 texture2 = texture(uTex1, slotUv(1)).rgb;
         float blendMask = clamp(texture(uTex2, slotUv(2)).a, 0.0, 1.0);
         surface = materialDiffuse * mix(texture1, texture2, blendMask);
+    } else if (uPgTerrain && uHasTex[0]) {
+        // Fiesta PgTerrain corpus contract: shader map 0 is the visible color map.
+        // Map 1 is a grayscale/alpha coverage map; it is intentionally not multiplied
+        // into RGB. NiAlphaProperty decides whether that coverage is blended/tested.
+        surface = materialDiffuse * texture(uTex0, slotUv(0)).rgb;
     } else {
         if (uHasTex[0]) {
             if (uApplyMode == 0) surface = base.rgb;                         // APPLY_REPLACE
@@ -291,7 +297,13 @@ void main() {
     if (uHasTex[9]) { vec4 d = texture(uTex9, slotUv(9)); surface = mix(surface, d.rgb, d.a); }
 
     float alpha = uMaterialAlpha;
-    if (!uVcAlphaTextureBlender && uHasTex[0] && uApplyMode != 1) alpha *= base.a;
+    if (uPgTerrain && uHasTex[1]) {
+        // PgTerrain's authored second map is coverage. Preserve the material alpha too:
+        // several real Fiesta water/terrain parts intentionally set it below 1.
+        alpha *= texture(uTex1, slotUv(1)).a;
+    } else if (!uVcAlphaTextureBlender && uHasTex[0] && uApplyMode != 1) {
+        alpha *= base.a;
+    }
     if (uParticleMode) alpha *= vertexColor.a;
     if (uAlphaTest) {
         bool passAlpha = true;
@@ -572,6 +584,7 @@ void NifMeshRenderer::Init() {
     uniforms_.locApplyMode = glGetUniformLocation(shaderProgram_, "uApplyMode");
     uniforms_.locVcAlphaTextureBlender = glGetUniformLocation(shaderProgram_, "uVcAlphaTextureBlender");
     uniforms_.locAlphaTextureBlender11 = glGetUniformLocation(shaderProgram_, "uAlphaTextureBlender11");
+    uniforms_.locPgTerrain = glGetUniformLocation(shaderProgram_, "uPgTerrain");
     uniforms_.locVertexColorMode = glGetUniformLocation(shaderProgram_, "uVertexColorMode");
     uniforms_.locBumpLumaScale = glGetUniformLocation(shaderProgram_, "uBumpLumaScale");
     uniforms_.locBumpLumaOffset = glGetUniformLocation(shaderProgram_, "uBumpLumaOffset");
@@ -886,6 +899,7 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                     sub.textureApplyMode = part.textureApplyMode;
                     sub.vcAlphaTextureBlender = part.shaderName == "VCAlphaTextureBlender";
                     sub.alphaTextureBlender11 = part.shaderName == "AlphaTextureBlender11";
+                    sub.pgTerrain = part.shaderName == "PgTerrain";
                     const bool hasVertexColors =
                         part.vertexColors.size() == part.positions.size();
                     if (hasVertexColors) {
@@ -1254,6 +1268,7 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                     sub.textureApplyMode = srcSystem.textureApplyMode;
                     sub.vcAlphaTextureBlender = srcSystem.shaderName == "VCAlphaTextureBlender";
                     sub.alphaTextureBlender11 = srcSystem.shaderName == "AlphaTextureBlender11";
+                    sub.pgTerrain = srcSystem.shaderName == "PgTerrain";
                     if (dstSystem.hasColors) {
                         if (!srcSystem.hasVertexColorProperty) sub.vertexColorMode = 2;
                         else if (srcSystem.vertexColorMode == 0u) sub.vertexColorMode = 0;
@@ -1829,6 +1844,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     const auto& locApplyMode = uniforms_.locApplyMode;
     const auto& locVcAlphaTextureBlender = uniforms_.locVcAlphaTextureBlender;
     const auto& locAlphaTextureBlender11 = uniforms_.locAlphaTextureBlender11;
+    const auto& locPgTerrain = uniforms_.locPgTerrain;
     const auto& locVertexColorMode = uniforms_.locVertexColorMode;
     const auto& locBumpLumaScale = uniforms_.locBumpLumaScale;
     const auto& locBumpLumaOffset = uniforms_.locBumpLumaOffset;
@@ -2305,6 +2321,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
         glUniform1i(locApplyMode, static_cast<int>(sub.textureApplyMode));
         glUniform1i(locVcAlphaTextureBlender, sub.vcAlphaTextureBlender ? 1 : 0);
         glUniform1i(locAlphaTextureBlender11, sub.alphaTextureBlender11 ? 1 : 0);
+        glUniform1i(locPgTerrain, sub.pgTerrain ? 1 : 0);
         glUniform1i(locVertexColorMode, static_cast<int>(sub.vertexColorMode));
         glUniform1f(locBumpLumaScale, sub.bumpMapLumaScale);
         glUniform1f(locBumpLumaOffset, sub.bumpMapLumaOffset);
