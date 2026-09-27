@@ -122,6 +122,7 @@ private:
         std::uint32_t textureApplyMode = 2;
         bool vcAlphaTextureBlender = false;
         bool alphaTextureBlender11 = false;
+        bool pgTerrain = false;
         // Effektiver klassischer NIF-Vertexfarbenmodus: 0 ignore, 1 emission,
         // 2 ambient+diffuse. Der dedizierte VCAlphaTextureBlender nutzt weiterhin
         // seinen eigenen Shadervertrag und wertet Vertex-RGB/Alpha separat aus.
@@ -214,7 +215,7 @@ private:
     // Particle state must be per placed object, never shared through modelCache_.
     std::vector<std::vector<ParticleRuntimeSystem>> perObjectParticleRuntime_;
     struct UniformLocations {
-        int locViewProj = -1, locView = -1, locModel = -1, locLightDir = -1, locCameraPos = -1, locAmbientColor = -1, locDiffuseColor = -1, locSpecularColor = -1, locEmissiveColor = -1, locGlossiness = -1, locSpecularEnabled = -1, locApplyMode = -1, locVcAlphaTextureBlender = -1, locAlphaTextureBlender11 = -1, locVertexColorMode = -1, locBumpLumaScale = -1, locBumpLumaOffset = -1, locBumpMatrix = -1, locAlphaTest = -1, locAlphaCutoff = -1, locAlphaTestFunc = -1, locMaterialAlpha = -1, locEnvironmentSphereCount = -1, locParticleMode = -1, locParticleColor = -1;
+        int locViewProj = -1, locView = -1, locModel = -1, locLightDir = -1, locCameraPos = -1, locAmbientColor = -1, locDiffuseColor = -1, locSpecularColor = -1, locEmissiveColor = -1, locGlossiness = -1, locSpecularEnabled = -1, locApplyMode = -1, locVcAlphaTextureBlender = -1, locAlphaTextureBlender11 = -1, locPgTerrain = -1, locVertexColorMode = -1, locBumpLumaScale = -1, locBumpLumaOffset = -1, locBumpMatrix = -1, locAlphaTest = -1, locAlphaCutoff = -1, locAlphaTestFunc = -1, locMaterialAlpha = -1, locEnvironmentSphereCount = -1, locParticleMode = -1, locParticleColor = -1;
         std::array<int, 10> locHasTex{}, locUvSet{}, locHasTransform{}, locTranslation{}, locScale{}, locRotation{}, locTransformType{}, locCenter{}, locSampler{};
         std::array<int, kMaxEnvironmentSphereEffects> locEnvironmentSampler{};
     } uniforms_;
