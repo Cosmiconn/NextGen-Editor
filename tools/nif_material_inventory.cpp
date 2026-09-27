@@ -142,6 +142,7 @@ int main(int argc, char** argv) {
     std::size_t particleTextureTransformTracks = 0;
     std::size_t particleTextureFlipTracks = 0;
     std::vector<std::string> particleSystemDetails;
+    std::vector<std::string> meshParticleDynamicDetails;
     std::size_t recoveredModels = 0;
     std::size_t partialModels = 0;
 
@@ -399,6 +400,21 @@ int main(int argc, char** argv) {
                                     !masterPart.textureFlipAnimations.empty()) {
                                     ++meshParticleMasterDynamicParts;
                                     rendererGapFiles.insert(entry.path().string());
+                                    std::ostringstream dynamicDetail;
+                                    dynamicDetail << "MESHPARTICLEDYNAMIC"
+                                                  << "\tpath=" << Clean(entry.path().string())
+                                                  << "\tsystem=" << systemIndex
+                                                  << "\tmasterBlock=" << master.blockRef
+                                                  << "\tpart=" << partIndex
+                                                  << "\tname=" << Clean(masterPart.name)
+                                                  << "\tskinned=" << (masterPart.skinned ? 1 : 0)
+                                                  << "\tbillboard=" << (masterPart.billboard ? 1 : 0)
+                                                  << "\tlod=" << (masterPart.lodControlled ? 1 : 0)
+                                                  << "\ttexTransformTracks="
+                                                  << masterPart.textureTransformAnimations.size()
+                                                  << "\tflipTracks="
+                                                  << masterPart.textureFlipAnimations.size();
+                                    meshParticleDynamicDetails.push_back(dynamicDetail.str());
                                 }
                             }
                         }
@@ -1017,6 +1033,8 @@ int main(int argc, char** argv) {
         (void)count;
     }
     for (const auto& detail : particleSystemDetails)
+        std::cout << detail << '\n';
+    for (const auto& detail : meshParticleDynamicDetails)
         std::cout << detail << '\n';
     for (const auto& [path, count] : particleFiles)
         std::cout << "PARTICLEFILE\tsystems=" << count
