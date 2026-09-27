@@ -42,6 +42,41 @@ int main() {
     const auto image = LoadDdsImage(file);
     check(image && image->rgba == std::vector<std::uint8_t>{0,0,255,255,255,0,0,255}, "DDS row pitch, masks and vertical origin");
     std::filesystem::remove(file);
+
+    // 24-bit BMP: 2x2, positive height (bottom-up), each 6-byte row padded to 8 bytes.
+    // DdsImage convention keeps the bottom row first for OpenGL V=0.
+    std::vector<std::uint8_t> bmp(54 + 16, 0);
+    auto putBmp16 = [&](int at, std::uint16_t n) {
+        bmp[at] = static_cast<std::uint8_t>(n);
+        bmp[at + 1] = static_cast<std::uint8_t>(n >> 8);
+    };
+    auto putBmp32 = [&](int at, std::uint32_t n) {
+        for (int b = 0; b < 4; ++b) bmp[at + b] = static_cast<std::uint8_t>(n >> (b * 8));
+    };
+    bmp[0] = 'B'; bmp[1] = 'M';
+    putBmp32(2, static_cast<std::uint32_t>(bmp.size()));
+    putBmp32(10, 54); putBmp32(14, 40); putBmp32(18, 2); putBmp32(22, 2);
+    putBmp16(26, 1); putBmp16(28, 24);
+    // bottom: red, green; top: blue, white (BGR byte order)
+    bmp[54] = 0; bmp[55] = 0; bmp[56] = 255;
+    bmp[57] = 0; bmp[58] = 255; bmp[59] = 0;
+    bmp[62] = 255; bmp[63] = 0; bmp[64] = 0;
+    bmp[65] = 255; bmp[66] = 255; bmp[67] = 255;
+    const auto bmpFile = std::filesystem::temp_directory_path() / "nextgen-packed-images.bmp";
+    { std::ofstream out(bmpFile, std::ios::binary);
+      out.write(reinterpret_cast<const char*>(bmp.data()), static_cast<std::streamsize>(bmp.size())); }
+    const auto bm = LoadBmpImage(bmpFile);
+    check(bm && bm->rgba == std::vector<std::uint8_t>{
+        255,0,0,255, 0,255,0,255,
+        0,0,255,255, 255,255,255,255},
+        "BMP24 row padding, BGR channels and bottom-up origin");
+    // Truncation must be a hard decode error for the strict NIF asset gate.
+    bmp.resize(bmp.size() - 1);
+    { std::ofstream out(bmpFile, std::ios::binary);
+      out.write(reinterpret_cast<const char*>(bmp.data()), static_cast<std::streamsize>(bmp.size())); }
+    check(!LoadBmpImage(bmpFile), "Truncated BMP rejected");
+    std::filesystem::remove(bmpFile);
+
     // 16-bit TGA, bottom/right origin, one-bit alpha. Source starts at the right pixel.
     std::vector<std::uint8_t> tga(22);
     tga[2] = 2; tga[12] = 2; tga[14] = 1; tga[16] = 16; tga[17] = 0x11;

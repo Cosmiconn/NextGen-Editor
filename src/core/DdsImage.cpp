@@ -324,6 +324,125 @@ std::expected<DdsImage, std::string> LoadDdsImage(const std::filesystem::path& f
 }
 
 
+std::expected<DdsImage, std::string> LoadBmpImage(const std::filesystem::path& file) {
+    std::ifstream in(file, std::ios::binary);
+    if (!in) return std::unexpected("Konnte BMP nicht oeffnen: " + file.string());
+
+    std::array<std::uint8_t, 54> header{};
+    in.read(reinterpret_cast<char*>(header.data()), static_cast<std::streamsize>(header.size()));
+    if (!in || header[0] != 'B' || header[1] != 'M')
+        return std::unexpected("Keine gueltige BMP-Datei: " + file.string());
+
+    auto u16 = [&](std::size_t at) {
+        return static_cast<std::uint16_t>(header[at] | (std::uint16_t(header[at + 1]) << 8));
+    };
+    auto u32 = [&](std::size_t at) {
+        return std::uint32_t(header[at]) |
+               (std::uint32_t(header[at + 1]) << 8) |
+               (std::uint32_t(header[at + 2]) << 16) |
+               (std::uint32_t(header[at + 3]) << 24);
+    };
+    const std::uint32_t pixelOffset = u32(10);
+    const std::uint32_t dibSize = u32(14);
+    if (dibSize < 40u)
+        return std::unexpected("Nicht unterstuetzter BMP-DIB-Header: " + file.string());
+
+    const std::int32_t signedWidth = static_cast<std::int32_t>(u32(18));
+    const std::int32_t signedHeight = static_cast<std::int32_t>(u32(22));
+    const std::uint16_t planes = u16(26);
+    const std::uint16_t bits = u16(28);
+    const std::uint32_t compression = u32(30);
+    const std::uint32_t colorsUsed = u32(46);
+    if (planes != 1u || signedWidth <= 0 || signedHeight == 0 || compression != 0u)
+        return std::unexpected("Nicht unterstuetzte BMP-Geometrie/Kompression: " + file.string());
+    if (bits != 8u && bits != 24u && bits != 32u)
+        return std::unexpected("Nicht unterstuetzte BMP-Bittiefe " + std::to_string(bits) +
+                               ": " + file.string());
+
+    const std::uint32_t width = static_cast<std::uint32_t>(signedWidth);
+    const std::uint64_t absHeight64 = signedHeight < 0
+        ? static_cast<std::uint64_t>(-static_cast<std::int64_t>(signedHeight))
+        : static_cast<std::uint64_t>(signedHeight);
+    if (absHeight64 == 0 || absHeight64 > std::numeric_limits<std::uint32_t>::max() ||
+        static_cast<std::uint64_t>(width) * absHeight64 > 64u * 1024u * 1024u)
+        return std::unexpected("Ungueltige BMP-Dimensionen: " + file.string());
+    const std::uint32_t height = static_cast<std::uint32_t>(absHeight64);
+    const bool topDown = signedHeight < 0;
+
+    std::vector<std::array<std::uint8_t, 4>> palette;
+    if (bits == 8u) {
+        const std::uint32_t paletteCount = colorsUsed != 0u ? colorsUsed : 256u;
+        if (paletteCount > 256u)
+            return std::unexpected("Ungueltige BMP-Palettengroesse: " + file.string());
+        const std::uint64_t paletteStart = 14ull + dibSize;
+        const std::uint64_t paletteBytes = static_cast<std::uint64_t>(paletteCount) * 4ull;
+        if (paletteStart + paletteBytes > pixelOffset)
+            return std::unexpected("BMP-Palette ueberlappt Pixeldaten: " + file.string());
+        palette.resize(paletteCount);
+        in.seekg(static_cast<std::streamoff>(paletteStart), std::ios::beg);
+        for (std::uint32_t i = 0; i < paletteCount; ++i) {
+            std::uint8_t bgra[4]{};
+            in.read(reinterpret_cast<char*>(bgra), 4);
+            if (!in) return std::unexpected("Abgeschnittene BMP-Palette: " + file.string());
+            palette[i] = {bgra[2], bgra[1], bgra[0], 255};
+        }
+    }
+
+    const std::uint64_t rowBits = static_cast<std::uint64_t>(width) * bits;
+    const std::uint64_t rowPitch64 = ((rowBits + 31u) / 32u) * 4u;
+    const std::uint64_t pixelBytes64 = rowPitch64 * height;
+    if (rowPitch64 > std::numeric_limits<std::size_t>::max() ||
+        pixelBytes64 > std::numeric_limits<std::size_t>::max())
+        return std::unexpected("BMP-Pixeldaten sind zu gross: " + file.string());
+
+    in.seekg(0, std::ios::end);
+    const auto fileSize = in.tellg();
+    if (fileSize < 0 ||
+        static_cast<std::uint64_t>(fileSize) < static_cast<std::uint64_t>(pixelOffset) + pixelBytes64)
+        return std::unexpected("BMP-Pixeldaten sind abgeschnitten: " + file.string());
+    in.seekg(static_cast<std::streamoff>(pixelOffset), std::ios::beg);
+
+    const std::size_t rowPitch = static_cast<std::size_t>(rowPitch64);
+    std::vector<std::uint8_t> row(rowPitch);
+    DdsImage image;
+    image.width = width;
+    image.height = height;
+    image.rgba.resize(static_cast<std::size_t>(width) * height * 4u);
+
+    for (std::uint32_t sourceRow = 0; sourceRow < height; ++sourceRow) {
+        in.read(reinterpret_cast<char*>(row.data()), static_cast<std::streamsize>(row.size()));
+        if (!in) return std::unexpected("BMP-Zeilenlesefehler: " + file.string());
+
+        // DdsImage stores OpenGL V=0 first (bottom row). Positive BMP height is already
+        // bottom-up; negative height is top-down and must therefore be inverted.
+        const std::uint32_t dstY = topDown ? (height - 1u - sourceRow) : sourceRow;
+        auto* dst = image.rgba.data() + static_cast<std::size_t>(dstY) * width * 4u;
+        for (std::uint32_t x = 0; x < width; ++x) {
+            if (bits == 8u) {
+                const auto index = row[x];
+                if (index >= palette.size())
+                    return std::unexpected("BMP-Palettenindex ausserhalb der Palette: " + file.string());
+                const auto& color = palette[index];
+                dst[x * 4u + 0u] = color[0];
+                dst[x * 4u + 1u] = color[1];
+                dst[x * 4u + 2u] = color[2];
+                dst[x * 4u + 3u] = 255;
+            } else {
+                const std::size_t stride = bits / 8u;
+                const auto* src = row.data() + static_cast<std::size_t>(x) * stride;
+                dst[x * 4u + 0u] = src[2];
+                dst[x * 4u + 1u] = src[1];
+                dst[x * 4u + 2u] = src[0];
+                // BI_RGB's fourth byte is reserved/undefined rather than a reliable alpha
+                // channel. Match normal Windows bitmap semantics and keep it opaque.
+                dst[x * 4u + 3u] = 255;
+            }
+        }
+    }
+    return image;
+}
+
+
 std::expected<DdsImage, std::string> LoadTgaImage(const std::filesystem::path& file) {
     std::ifstream in(file, std::ios::binary);
     if (!in) return std::unexpected("Konnte TGA nicht oeffnen: " + file.string());

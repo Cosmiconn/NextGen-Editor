@@ -682,8 +682,9 @@ std::uint32_t NifMeshRenderer::GetOrLoadTexture(const std::filesystem::path& res
     std::expected<core::DdsImage, std::string> imageResult = std::unexpected("Nicht unterstuetztes Rasterformat");
     if (lowerExt == ".tga") imageResult = core::LoadTgaImage(resolvedPath);
     else if (lowerExt == ".dds") imageResult = core::LoadDdsImage(resolvedPath);
+    else if (lowerExt == ".bmp") imageResult = core::LoadBmpImage(resolvedPath);
 #ifdef _WIN32
-    else if (lowerExt == ".jpg" || lowerExt == ".jpeg" || lowerExt == ".png" || lowerExt == ".bmp")
+    else if (lowerExt == ".jpg" || lowerExt == ".jpeg" || lowerExt == ".png")
         imageResult = LoadWicImage(resolvedPath);
 #endif
     if (imageResult) {

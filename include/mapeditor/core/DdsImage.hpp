@@ -21,6 +21,10 @@ struct DdsImage {
 
 std::expected<DdsImage, std::string> LoadDdsImage(const std::filesystem::path& file);
 
+// BMP-Loader fuer Legacy-Fiesta-Texturen. Unterstützt BI_RGB 8-bit Palette sowie
+// 24/32-bit BGR(A), inklusive 4-Byte-Zeilenpadding und top-down/bottom-up DIBs.
+std::expected<DdsImage, std::string> LoadBmpImage(const std::filesystem::path& file);
+
 // TGA-Loader fuer Legacy-NIF-Texturen (24/32-bit, unkomprimiert und RLE).
 std::expected<DdsImage, std::string> LoadTgaImage(const std::filesystem::path& file);
 

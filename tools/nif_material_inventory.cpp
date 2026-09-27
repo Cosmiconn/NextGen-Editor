@@ -399,6 +399,9 @@ int main(int argc, char** argv) {
                     } else if (ext == ".tga") {
                         const auto decoded = core::LoadTgaImage(*resolution.path);
                         if (!decoded) error = decoded.error();
+                    } else if (ext == ".bmp") {
+                        const auto decoded = core::LoadBmpImage(*resolution.path);
+                        if (!decoded) error = decoded.error();
                     } else {
                         error = "unsupported-core-decoder:" + ext;
                     }
