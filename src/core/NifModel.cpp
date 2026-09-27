@@ -2907,8 +2907,12 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
     std::uint32_t pixelIndex = 0;
     bool partialStop = false;
     std::vector<SceneNode> scene(hdr.numBlocks);
-    std::unordered_map<std::int32_t, std::uint32_t> dataToGeometry; // Datenblock -> Geometrieblock
+    std::unordered_map<std::int32_t, std::uint32_t> dataToGeometry; // Legacy fast path: Datenblock -> letzter Geometrieblock
     std::vector<std::int32_t> partDataBlock;                        // Part-Index -> Datenblock
+    // Authoritative scene owner of each rendered part. Multiple AVObjects may legally share
+    // one GeometryData block; dataRef alone is therefore not sufficient for transforms,
+    // inherited properties or mesh-particle master membership.
+    std::vector<std::int32_t> partGeometryBlock;                    // Part-Index -> Geometry AVObject block
     // Geometrie-getriebener Neuaufbau der Parts (CHANGELOG [0.44.30]): das urspruengliche Verfahren
     // legt EINEN Part je NiMaterialProperty an und fuellt ihn mit dem naechsten Datenblock - bei
     // Modellen mit mehreren Detailstufen (NiLODNode) oder geteilten Properties (Charakter-NIFs) gibt es
@@ -3842,6 +3846,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             std::vector<NifMeshPart> rebuilt;
             std::unordered_map<std::size_t, std::int32_t> newTexRef;
             std::vector<std::int32_t> newPartData;
+            std::vector<std::int32_t> newPartGeometry;
             for (const auto& g : geomNodes) {
                 const auto it = rawByData.find(g.dataRef);
                 if (it == rawByData.end()) continue;
@@ -3870,12 +3875,26 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 }
                 rebuilt.push_back(std::move(part));
                 newPartData.push_back(g.dataRef);
+                newPartGeometry.push_back(static_cast<std::int32_t>(g.block));
             }
             if (!rebuilt.empty()) {
                 model.parts = std::move(rebuilt);
                 partBaseTextureRef = std::move(newTexRef);
                 partDataBlock = std::move(newPartData);
+                partGeometryBlock = std::move(newPartGeometry);
             }
+        }
+    }
+
+    // Preserve an explicit AVObject owner even on the legacy-consistent path. Shared data
+    // necessarily triggered the geometry-driven rebuild above; therefore dataToGeometry is
+    // unambiguous here.
+    if (partGeometryBlock.size() != model.parts.size()) {
+        partGeometryBlock.assign(model.parts.size(), -1);
+        for (std::size_t p = 0; p < model.parts.size() && p < partDataBlock.size(); ++p) {
+            const auto it = dataToGeometry.find(partDataBlock[p]);
+            if (it != dataToGeometry.end())
+                partGeometryBlock[p] = static_cast<std::int32_t>(it->second);
         }
     }
 
@@ -4449,13 +4468,11 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 master.inverseSceneTransform = publicTransform(invertTransform(masterWorld));
 
                 for (std::size_t partIndex = 0;
-                     partIndex < model.parts.size() && partIndex < partDataBlock.size();
+                     partIndex < model.parts.size() && partIndex < partGeometryBlock.size();
                      ++partIndex) {
-                    const auto dataRef = partDataBlock[partIndex];
-                    const auto geometry = dataToGeometry.find(dataRef);
-                    if (geometry == dataToGeometry.end()) continue;
+                    if (partGeometryBlock[partIndex] < 0) continue;
 
-                    int node = static_cast<int>(geometry->second);
+                    int node = partGeometryBlock[partIndex];
                     int guard = 0;
                     bool belongs = false;
                     while (node >= 0 && guard++ < 128) {
@@ -4632,11 +4649,13 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         };
 
         for (std::size_t p = 0; p < model.parts.size(); ++p) {
-            if (p >= partDataBlock.size() || partDataBlock[p] < 0) continue;
-            const auto geomIt = dataToGeometry.find(partDataBlock[p]);
-            if (geomIt == dataToGeometry.end()) continue;
+            if (p >= partDataBlock.size() || partDataBlock[p] < 0 ||
+                p >= partGeometryBlock.size() || partGeometryBlock[p] < 0) continue;
             std::vector<int> chain;
-            for (int b = static_cast<int>(geomIt->second); b >= 0 && chain.size() < 64; b = parentOf[static_cast<std::size_t>(b)]) chain.push_back(b);
+            for (int b = partGeometryBlock[p]; b >= 0 && chain.size() < 64;
+                 b = parentOf[static_cast<std::size_t>(b)]) {
+                chain.push_back(b);
+            }
 
             NifMeshPart& part = model.parts[p];
 
