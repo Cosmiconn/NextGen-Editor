@@ -33,8 +33,18 @@ int main(int argc, char** argv) {
                           << "\tvertices=" << part.positions.size()
                           << "\ttriangles=" << (part.triangleIndices.size() / 3u)
                           << "\tuvSets=" << part.uvSets.size()
+                          << "\tuvDiagnostics=" << part.uvSetDiagnostics.size()
                           << "\tvertexColors=" << part.vertexColors.size()
                           << "\tapplyMode=" << part.textureApplyMode << '\n';
+                for (std::size_t uvIndex = 0; uvIndex < part.uvSetDiagnostics.size(); ++uvIndex) {
+                    const auto& diag = part.uvSetDiagnostics[uvIndex];
+                    std::cout << "UVDIAG\tpart=" << partIndex
+                              << "\tset=" << uvIndex
+                              << "\trawCount=" << diag.originalCount
+                              << "\tdiscarded=" << diag.discarded
+                              << "\tnonFinite=" << diag.nonFinite
+                              << "\textreme=" << diag.extremeCount << '\n';
+                }
                 for (std::size_t slot = 0; slot < part.textureSlots.size(); ++slot) {
                     const auto& tex = part.textureSlots[slot];
                     if (!tex.present) continue;
@@ -43,6 +53,30 @@ int main(int argc, char** argv) {
                               << "\tuv=" << tex.uvSet
                               << "\texternal=" << (!tex.sourceUsesEmbeddedPixelData)
                               << "\tsource=" << tex.texture << '\n';
+                    if (tex.embeddedTexture && !tex.embeddedTexture->rgba.empty()) {
+                        const auto& image = *tex.embeddedTexture;
+                        std::uint64_t sums[4]{0,0,0,0};
+                        std::uint32_t mins[4]{255,255,255,255};
+                        std::uint32_t maxs[4]{0,0,0,0};
+                        const std::size_t pixels = image.rgba.size() / 4u;
+                        for (std::size_t px = 0; px < pixels; ++px) {
+                            for (std::size_t ch = 0; ch < 4; ++ch) {
+                                const auto value = static_cast<std::uint32_t>(image.rgba[px*4u+ch]);
+                                sums[ch] += value;
+                                if (value < mins[ch]) mins[ch] = value;
+                                if (value > maxs[ch]) maxs[ch] = value;
+                            }
+                        }
+                        std::cout << "EMBEDSTAT\tpart=" << partIndex
+                                  << "\tkind=classic\tid=" << slot
+                                  << "\twidth=" << image.width
+                                  << "\theight=" << image.height
+                                  << "\trMean=" << (pixels ? static_cast<double>(sums[0])/pixels : 0.0)
+                                  << "\tgMean=" << (pixels ? static_cast<double>(sums[1])/pixels : 0.0)
+                                  << "\tbMean=" << (pixels ? static_cast<double>(sums[2])/pixels : 0.0)
+                                  << "\taMean=" << (pixels ? static_cast<double>(sums[3])/pixels : 0.0)
+                                  << "\taMin=" << mins[3] << "\taMax=" << maxs[3] << '\n';
+                    }
                 }
                 for (const auto& tex : part.shaderTextureSlots) {
                     std::cout << "SHADERTEX\tpart=" << partIndex
@@ -50,6 +84,30 @@ int main(int argc, char** argv) {
                               << "\tuv=" << tex.texture.uvSet
                               << "\texternal=" << (!tex.texture.sourceUsesEmbeddedPixelData)
                               << "\tsource=" << tex.texture.texture << '\n';
+                    if (tex.texture.embeddedTexture && !tex.texture.embeddedTexture->rgba.empty()) {
+                        const auto& image = *tex.texture.embeddedTexture;
+                        std::uint64_t sums[4]{0,0,0,0};
+                        std::uint32_t mins[4]{255,255,255,255};
+                        std::uint32_t maxs[4]{0,0,0,0};
+                        const std::size_t pixels = image.rgba.size() / 4u;
+                        for (std::size_t px = 0; px < pixels; ++px) {
+                            for (std::size_t ch = 0; ch < 4; ++ch) {
+                                const auto value = static_cast<std::uint32_t>(image.rgba[px*4u+ch]);
+                                sums[ch] += value;
+                                if (value < mins[ch]) mins[ch] = value;
+                                if (value > maxs[ch]) maxs[ch] = value;
+                            }
+                        }
+                        std::cout << "EMBEDSTAT\tpart=" << partIndex
+                                  << "\tkind=shader\tid=" << tex.mapId
+                                  << "\twidth=" << image.width
+                                  << "\theight=" << image.height
+                                  << "\trMean=" << (pixels ? static_cast<double>(sums[0])/pixels : 0.0)
+                                  << "\tgMean=" << (pixels ? static_cast<double>(sums[1])/pixels : 0.0)
+                                  << "\tbMean=" << (pixels ? static_cast<double>(sums[2])/pixels : 0.0)
+                                  << "\taMean=" << (pixels ? static_cast<double>(sums[3])/pixels : 0.0)
+                                  << "\taMin=" << mins[3] << "\taMax=" << maxs[3] << '\n';
+                    }
                 }
             }
             for (std::size_t systemIndex = 0; systemIndex < result->particleSystems.size(); ++systemIndex) {
