@@ -5983,11 +5983,151 @@ void AdvanceNifParticleState(
             }
         }
 
-        // Gamebryo NiPSSimulatorFinalKernel: position uses velocity over the same time delta,
+        // The deprecated ColliderManager becomes the simulator collision step before Final.
+        // Colliders are expressed in the same particle-system simulation space as emitters/forces.
+        // Resolve the earliest hit for each authored collider in modifier order, then integrate
+        // the remaining sub-frame with the reflected velocity.
+        bool diedOnCollision = false;
+        NifVec3 proposedPosition{
+            particle.position.x + particle.velocity.x * deltaTime,
+            particle.position.y + particle.velocity.y * deltaTime,
+            particle.position.z + particle.velocity.z * deltaTime,
+        };
+        for (const auto& modifier : modifiers) {
+            if (!modifier.active || modifier.type != "NiPSysColliderManager") continue;
+            for (const auto& collider : modifier.colliders) {
+                if (!collider.hasColliderToParticleSystemTransform) continue;
+
+                float hitT = 2.0f;
+                NifVec3 hitNormal{};
+                const NifVec3 start = particle.position;
+                const NifVec3 segment{
+                    proposedPosition.x - start.x,
+                    proposedPosition.y - start.y,
+                    proposedPosition.z - start.z,
+                };
+
+                if (collider.type == "NiPSysPlanarCollider") {
+                    const NifVec3 center =
+                        TransformParticleEditorPoint(collider.colliderToParticleSystem, {});
+                    NifVec3 axisX = NormalizeParticleVector(
+                        RotateParticleEditorVector(collider.colliderToParticleSystem, collider.xAxis));
+                    NifVec3 axisY = NormalizeParticleVector(
+                        RotateParticleEditorVector(collider.colliderToParticleSystem, collider.yAxis));
+                    NifVec3 normal{
+                        axisX.y * axisY.z - axisX.z * axisY.y,
+                        axisX.z * axisY.x - axisX.x * axisY.z,
+                        axisX.x * axisY.y - axisX.y * axisY.x,
+                    };
+                    normal = NormalizeParticleVector(normal);
+                    const auto dot = [](const NifVec3& a, const NifVec3& b) {
+                        return a.x*b.x + a.y*b.y + a.z*b.z;
+                    };
+                    const NifVec3 fromCenter{
+                        start.x-center.x, start.y-center.y, start.z-center.z};
+                    const float d0 = dot(fromCenter, normal);
+                    const float denom = dot(segment, normal);
+                    if (std::abs(denom) > 1.0e-8f) {
+                        const float t = -d0 / denom;
+                        if (t >= 0.0f && t <= 1.0f) {
+                            const NifVec3 hit{
+                                start.x + segment.x*t,
+                                start.y + segment.y*t,
+                                start.z + segment.z*t,
+                            };
+                            const NifVec3 rel{hit.x-center.x, hit.y-center.y, hit.z-center.z};
+                            const float sx = std::abs(collider.colliderToParticleSystem.scale);
+                            const float halfWidth = 0.5f * std::abs(collider.width) * sx;
+                            const float halfHeight = 0.5f * std::abs(collider.height) * sx;
+                            if (std::abs(dot(rel, axisX)) <= halfWidth + 1.0e-5f &&
+                                std::abs(dot(rel, axisY)) <= halfHeight + 1.0e-5f) {
+                                hitT = t;
+                                hitNormal = normal;
+                                if (denom > 0.0f) {
+                                    hitNormal.x = -hitNormal.x;
+                                    hitNormal.y = -hitNormal.y;
+                                    hitNormal.z = -hitNormal.z;
+                                }
+                            }
+                        }
+                    }
+                } else if (collider.type == "NiPSysSphericalCollider") {
+                    const NifVec3 center =
+                        TransformParticleEditorPoint(collider.colliderToParticleSystem, {});
+                    const float radius =
+                        std::abs(collider.radius * collider.colliderToParticleSystem.scale);
+                    if (radius > 1.0e-8f) {
+                        const NifVec3 rel{
+                            start.x-center.x, start.y-center.y, start.z-center.z};
+                        const float a = segment.x*segment.x + segment.y*segment.y + segment.z*segment.z;
+                        const float b = 2.0f * (rel.x*segment.x + rel.y*segment.y + rel.z*segment.z);
+                        const float cc = rel.x*rel.x + rel.y*rel.y + rel.z*rel.z - radius*radius;
+                        const float disc = b*b - 4.0f*a*cc;
+                        if (a > 1.0e-12f && disc >= 0.0f) {
+                            const float root = std::sqrt(disc);
+                            const float inv2a = 0.5f / a;
+                            const float t0 = (-b-root) * inv2a;
+                            const float t1 = (-b+root) * inv2a;
+                            float t = 2.0f;
+                            if (t0 >= 0.0f && t0 <= 1.0f) t = t0;
+                            else if (t1 >= 0.0f && t1 <= 1.0f) t = t1;
+                            if (t <= 1.0f) {
+                                const NifVec3 hit{
+                                    start.x + segment.x*t,
+                                    start.y + segment.y*t,
+                                    start.z + segment.z*t,
+                                };
+                                hitT = t;
+                                hitNormal = NormalizeParticleVector(
+                                    {hit.x-center.x, hit.y-center.y, hit.z-center.z});
+                                const float motionDot =
+                                    segment.x*hitNormal.x + segment.y*hitNormal.y + segment.z*hitNormal.z;
+                                if (motionDot > 0.0f) {
+                                    hitNormal.x = -hitNormal.x;
+                                    hitNormal.y = -hitNormal.y;
+                                    hitNormal.z = -hitNormal.z;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (hitT > 1.0f) continue;
+                if (collider.dieOnCollide) {
+                    diedOnCollision = true;
+                    break;
+                }
+
+                const NifVec3 hit{
+                    start.x + segment.x*hitT,
+                    start.y + segment.y*hitT,
+                    start.z + segment.z*hitT,
+                };
+                const float vn =
+                    particle.velocity.x*hitNormal.x +
+                    particle.velocity.y*hitNormal.y +
+                    particle.velocity.z*hitNormal.z;
+                const float restitution = std::max(0.0f, collider.bounce);
+                if (vn < 0.0f) {
+                    const float impulse = (1.0f + restitution) * vn;
+                    particle.velocity.x -= impulse * hitNormal.x;
+                    particle.velocity.y -= impulse * hitNormal.y;
+                    particle.velocity.z -= impulse * hitNormal.z;
+                }
+                const float remaining = std::max(0.0f, 1.0f-hitT) * deltaTime;
+                proposedPosition = {
+                    hit.x + particle.velocity.x*remaining + hitNormal.x*1.0e-4f,
+                    hit.y + particle.velocity.y*remaining + hitNormal.y*1.0e-4f,
+                    hit.z + particle.velocity.z*remaining + hitNormal.z*1.0e-4f,
+                };
+            }
+            if (diedOnCollision) break;
+        }
+        if (diedOnCollision) continue;
+
+        // Gamebryo NiPSSimulatorFinalKernel: position uses the post-force/collision result,
         // then age/death is updated and lastUpdate advances to the current simulation time.
-        particle.position.x += particle.velocity.x * deltaTime;
-        particle.position.y += particle.velocity.y * deltaTime;
-        particle.position.z += particle.velocity.z * deltaTime;
+        particle.position = proposedPosition;
         const float ageBeforeFinal = particle.age;
         const float lastUpdateBeforeFinal = particle.lastUpdate;
         particle.age += deltaTime;
