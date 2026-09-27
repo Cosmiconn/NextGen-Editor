@@ -1994,7 +1994,16 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
                 // NiMeshParticleSystem instances require authored mesh generation/selection and are
                 // deliberately not reinterpreted as sprites.
                 if (system.meshParticles || runtime.activeCount == 0) continue;
-                const Mat4 particleSpace = modelMat * NifTransformToEditorMat4(system.sceneTransform);
+                // Gamebryo world-space particle systems render with their
+                // world translation/rotation neutralized; only world scale
+                // remains on the particle system itself. Positions emitted
+                // into that space already contain the emitter's authored
+                // world translation/rotation. Keep the map placement as the
+                // editor instance transform, but do not apply the NIF particle
+                // node translation/rotation a second time.
+                const Mat4 particleSpace = system.worldSpace
+                    ? (modelMat * UniformScaleMatrix(system.sceneTransform.scale))
+                    : (modelMat * NifTransformToEditorMat4(system.sceneTransform));
                 const float worldScale = std::sqrt(particleSpace.m[0] * particleSpace.m[0] +
                                                    particleSpace.m[1] * particleSpace.m[1] +
                                                    particleSpace.m[2] * particleSpace.m[2]);

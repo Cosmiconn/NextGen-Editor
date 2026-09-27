@@ -4334,7 +4334,22 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             SkinTransform systemWorld{};
             if (!worldTransformForBlock(static_cast<int>(system.blockIndex), systemWorld)) continue;
             system.sceneTransform = publicTransform(systemWorld);
-            const SkinTransform inverseSystem = invertTransform(systemWorld);
+
+            // Gamebryo NiPSParticleSystem::UpdateWorldData preserves the
+            // unmodified world transform for bounds, but for world-space
+            // simulation it clears translation and rotation while retaining
+            // the complete world scale. Emitters/forces then use
+            // inverse(particleSystem->GetWorldTransform()) * objectWorld.
+            SkinTransform particleSystemWorld = systemWorld;
+            if (system.worldSpace) {
+                particleSystemWorld.rotation = {
+                    1.0f, 0.0f, 0.0f,
+                    0.0f, 1.0f, 0.0f,
+                    0.0f, 0.0f, 1.0f,
+                };
+                particleSystemWorld.translation = {};
+            }
+            const SkinTransform inverseSystem = invertTransform(particleSystemWorld);
 
             for (const auto modifierRef : system.modifierRefs) {
                 if (modifierRef < 0) continue;
