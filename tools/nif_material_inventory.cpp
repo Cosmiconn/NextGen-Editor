@@ -470,6 +470,7 @@ int main(int argc, char** argv) {
                     "NiPSysGrowFadeModifier",
                     "NiPSysMeshEmitter",
                     "NiPSysMeshUpdateModifier",
+                    "NiPSysColliderManager",
                     "NiPSysPositionModifier",
                     "NiPSysRotationModifier",
                     "NiPSysSpawnModifier",
@@ -915,10 +916,16 @@ int main(int argc, char** argv) {
                         ++uvRendererOverflowBindings;
                         rendererGapFiles.insert(entry.path().string());
                     }
+                    // A material can remain attached to a zero-geometry NiGeometry shell
+                    // (notably particle-only NIFs). No draw is issued for such a part, so the lack
+                    // of UVs is not a renderer gap. Keep inventorying its material, but only demand
+                    // usable UVs for actual triangle geometry.
+                    const bool renderableGeometry =
+                        !part.positions.empty() && part.triangleIndices.size() >= 3u;
                     const bool hasRequestedUvs =
                         texture.uvSet < part.uvSets.size() &&
                         part.uvSets[texture.uvSet].size() == part.positions.size();
-                    if (!hasRequestedUvs) {
+                    if (renderableGeometry && !hasRequestedUvs) {
                         ++missingRequestedUvBindings;
                         const bool hasBaseFallbackUvs =
                             part.uvs.size() == part.positions.size();
