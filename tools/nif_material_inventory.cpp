@@ -130,6 +130,8 @@ int main(int argc, char** argv) {
     std::size_t meshParticleMasterParts = 0;
     std::size_t worldSpaceParticleSystems = 0;
     std::size_t particleRotationSpeedSystems = 0;
+    std::size_t spawnOnDeathSystems = 0;
+    std::size_t spawnOnDeathWithoutSpawner = 0;
     std::size_t particleTextureBindings = 0;
     std::size_t particleShaderDescriptors = 0;
     std::size_t particleUnresolvedEmbedded = 0;
@@ -242,6 +244,19 @@ int main(int argc, char** argv) {
                         if (modifierType == "<invalid>") ++invalidParticleModifierRefs;
                     }
                     for (const auto& modifier : system.modifiers) {
+                        if (modifier.type == "NiPSysAgeDeathModifier" && modifier.spawnOnDeath) {
+                            ++spawnOnDeathSystems;
+                            const auto spawner = std::find_if(
+                                system.modifiers.begin(), system.modifiers.end(),
+                                [&](const auto& candidate) {
+                                    return candidate.type == "NiPSysSpawnModifier" &&
+                                           candidate.blockRef == modifier.spawnModifierRef;
+                                });
+                            if (spawner == system.modifiers.end()) {
+                                ++spawnOnDeathWithoutSpawner;
+                                rendererGapFiles.insert(entry.path().string());
+                            }
+                        }
                         if (modifier.type == "NiPSysColorModifier") {
                             if (modifier.colorDataRef >= 0 && !modifier.hasColorTrack) {
                                 ++colorModifiersWithoutTrack;
@@ -780,6 +795,8 @@ int main(int argc, char** argv) {
               << "\tskinnedMeshEmitterBindings=" << skinnedMeshEmitterBindings
               << "\tforceModifiersWithoutTransform=" << forceModifiersWithoutTransform
               << "\tparticleRotationSpeedSystems=" << particleRotationSpeedSystems
+              << "\tspawnOnDeathSystems=" << spawnOnDeathSystems
+              << "\tspawnOnDeathWithoutSpawner=" << spawnOnDeathWithoutSpawner
               << "\tparticleTextureBindings=" << particleTextureBindings
               << "\tparticleShaderDescriptors=" << particleShaderDescriptors
               << "\tparticleUnresolvedEmbedded=" << particleUnresolvedEmbedded

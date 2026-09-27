@@ -349,6 +349,7 @@ struct NifParticleEmitterMesh {
 };
 
 struct NifParticleModifierInfo {
+    std::int32_t blockRef = -1;
     std::string type;
     std::string name;
     std::uint32_t order = 0;
@@ -404,9 +405,9 @@ struct NifParticleModifierInfo {
 };
 
 // CPU equivalent of Gamebryo's deprecated-particle conversion into the
-// NiPSSimulatorGeneralStep + NiPSSimulatorFinalStep kernels. It advances only
-// already-authored active particles. Emitter creation, forces, colliders and
-// spawn-on-death are separate runtime stages and are intentionally not faked here.
+// NiPSSimulatorGeneralStep + Forces + Final kernels. It advances active particles,
+/// removes expired particles and reproduces the authored AgeDeath -> SpawnModifier
+// death-spawner path. Emitter creation remains a separate controller-driven stage.
 void AdvanceNifParticleState(
     std::vector<NifParticleState>& particles,
     std::uint16_t& activeCount,

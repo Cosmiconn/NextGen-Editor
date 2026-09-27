@@ -207,6 +207,77 @@ int main(int argc, char** argv) {
               "mesh face-center emitter uses averaged face position and normal");
     }
     {
+        NifParticleState parent;
+        parent.velocity = {1.0f, 0.0f, 0.0f};
+        parent.age = 0.9f;
+        parent.lifeSpan = 1.0f;
+        parent.lastUpdate = 0.0f;
+        parent.radius = 2.0f;
+        parent.color = {0.2f, 0.3f, 0.4f, 0.5f};
+        parent.rotationAngle = 0.4f;
+        parent.rotationSpeed = 0.7f;
+        parent.rotationAxis = {0.0f, 1.0f, 0.0f};
+
+        NifParticleModifierInfo ageDeath;
+        ageDeath.blockRef = 10;
+        ageDeath.type = "NiPSysAgeDeathModifier";
+        ageDeath.active = true;
+        ageDeath.spawnOnDeath = true;
+        ageDeath.spawnModifierRef = 11;
+
+        NifParticleModifierInfo spawner;
+        spawner.blockRef = 11;
+        spawner.type = "NiPSysSpawnModifier";
+        spawner.active = true;
+        spawner.numSpawnGenerations = 2;
+        spawner.percentageSpawned = 1.0f;
+        spawner.minNumToSpawn = 1;
+        spawner.maxNumToSpawn = 1;
+        spawner.spawnLifeSpan = 2.0f;
+
+        std::vector<NifParticleState> state(2);
+        state[0] = parent;
+        std::uint16_t active = 1;
+        std::uint32_t rng = 3;
+        AdvanceNifParticleState(state, active, {ageDeath, spawner}, 0.2f, &rng);
+        check(active == 1 && state[0].spawnGeneration == 1,
+              "AgeDeath death spawner replaces expired parent with next generation");
+        check(std::abs(state[0].position.x - 0.2f) < 1.0e-6f &&
+              std::abs(state[0].age - 0.1f) < 1.0e-5f &&
+              std::abs(state[0].lastUpdate - 0.1f) < 1.0e-5f &&
+              std::abs(state[0].lifeSpan - 2.0f) < 1.0e-6f,
+              "death spawner preserves Gamebryo sub-frame death timestamp and position");
+        check(std::abs(state[0].velocity.x - 1.0f) < 1.0e-6f &&
+              std::abs(state[0].radius - 2.0f) < 1.0e-6f &&
+              std::abs(state[0].color.g - 0.3f) < 1.0e-6f &&
+              std::abs(state[0].rotationAngle - (0.4f + 0.7f * 0.2f)) < 1.0e-6f,
+              "death spawner propagates speed radius color and rotation state");
+    }
+    {
+        // Match Gamebryo capacity semantics: dying particles still occupy their slots
+        // while death-spawn requests are resolved, so a full system cannot self-replace.
+        NifParticleState parent;
+        parent.age = 0.9f;
+        parent.lifeSpan = 1.0f;
+        NifParticleModifierInfo ageDeath;
+        ageDeath.type = "NiPSysAgeDeathModifier";
+        ageDeath.active = true;
+        ageDeath.spawnOnDeath = true;
+        ageDeath.spawnModifierRef = 2;
+        NifParticleModifierInfo spawner;
+        spawner.blockRef = 2;
+        spawner.type = "NiPSysSpawnModifier";
+        spawner.active = true;
+        spawner.numSpawnGenerations = 2;
+        spawner.percentageSpawned = 1.0f;
+        spawner.minNumToSpawn = spawner.maxNumToSpawn = 1;
+        spawner.spawnLifeSpan = 2.0f;
+        std::vector<NifParticleState> state(1, parent);
+        std::uint16_t active = 1;
+        AdvanceNifParticleState(state, active, {ageDeath, spawner}, 0.2f);
+        check(active == 0, "death spawn does not reuse a slot until after parent removal");
+    }
+    {
         NifParticleState particle;
         particle.velocity = {1.0f, 0.0f, 0.0f};
         particle.lifeSpan = 10.0f;

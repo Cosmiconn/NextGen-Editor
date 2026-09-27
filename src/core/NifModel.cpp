@@ -5185,6 +5185,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             const auto it = particleModifierByBlock.find(static_cast<std::uint32_t>(ref));
             if (it != particleModifierByBlock.end()) {
                 auto modifier = it->second;
+                modifier.blockRef = ref;
                 if (modifier.type == "NiPSysColorModifier" && modifier.colorDataRef >= 0) {
                     const auto colorIt = colorDataByBlock.find(static_cast<std::uint32_t>(modifier.colorDataRef));
                     if (colorIt != colorDataByBlock.end()) {
@@ -5389,6 +5390,36 @@ NifVec3 NormalizeParticleVector(NifVec3 v) {
         v.x /= length; v.y /= length; v.z /= length;
     }
     return v;
+}
+
+NifVec3 RotateEditorUpToDirection(NifVec3 local, NifVec3 direction) {
+    direction = NormalizeParticleVector(direction);
+    const NifVec3 up{0.0f, 1.0f, 0.0f};
+    const float dot = std::clamp(
+        up.x * direction.x + up.y * direction.y + up.z * direction.z,
+        -1.0f, 1.0f);
+    if (dot > 1.0f - 1.0e-7f) return local;
+    if (dot < -1.0f + 1.0e-7f) return {-local.x, -local.y, local.z};
+
+    NifVec3 axis{
+        up.y * direction.z - up.z * direction.y,
+        up.z * direction.x - up.x * direction.z,
+        up.x * direction.y - up.y * direction.x,
+    };
+    axis = NormalizeParticleVector(axis);
+    const float angle = std::acos(dot);
+    const float co = std::cos(angle), sn = std::sin(angle), oneMinus = 1.0f - co;
+    const float projection = axis.x * local.x + axis.y * local.y + axis.z * local.z;
+    const NifVec3 cross{
+        axis.y * local.z - axis.z * local.y,
+        axis.z * local.x - axis.x * local.z,
+        axis.x * local.y - axis.y * local.x,
+    };
+    return {
+        local.x * co + cross.x * sn + axis.x * projection * oneMinus,
+        local.y * co + cross.y * sn + axis.y * projection * oneMinus,
+        local.z * co + cross.z * sn + axis.z * projection * oneMinus,
+    };
 }
 
 NifVec3 TransformParticleEditorPoint(const NifTransform& t, const NifVec3& editorPoint) {
@@ -5726,13 +5757,30 @@ void AdvanceNifParticleState(
 
     const NifParticleModifierInfo* growFade = nullptr;
     const NifParticleModifierInfo* color = nullptr;
+    const NifParticleModifierInfo* ageDeath = nullptr;
+    const NifParticleModifierInfo* deathSpawner = nullptr;
     for (const auto& modifier : modifiers) {
         if (!modifier.active) continue;
         if (modifier.type == "NiPSysGrowFadeModifier") growFade = &modifier;
         else if (modifier.type == "NiPSysColorModifier" && modifier.hasColorTrack) color = &modifier;
+        else if (modifier.type == "NiPSysAgeDeathModifier") ageDeath = &modifier;
+    }
+    if (ageDeath != nullptr && ageDeath->spawnOnDeath && ageDeath->spawnModifierRef >= 0) {
+        const auto it = std::find_if(modifiers.begin(), modifiers.end(),
+            [&](const NifParticleModifierInfo& modifier) {
+                return modifier.active &&
+                       modifier.type == "NiPSysSpawnModifier" &&
+                       modifier.blockRef == ageDeath->spawnModifierRef;
+            });
+        if (it != modifiers.end()) deathSpawner = &*it;
     }
 
     const std::size_t active = std::min<std::size_t>(activeCount, particles.size());
+    const std::size_t originalActive = active;
+    const std::size_t spawnCapacity =
+        particles.size() > originalActive ? particles.size() - originalActive : 0u;
+    std::vector<NifParticleState> deathSpawnSources;
+    if (deathSpawner != nullptr && spawnCapacity != 0u) deathSpawnSources.reserve(active);
     std::size_t write = 0;
     for (std::size_t read = 0; read < active; ++read) {
         NifParticleState particle = particles[read];
@@ -5889,12 +5937,117 @@ void AdvanceNifParticleState(
         particle.position.x += particle.velocity.x * deltaTime;
         particle.position.y += particle.velocity.y * deltaTime;
         particle.position.z += particle.velocity.z * deltaTime;
+        const float ageBeforeFinal = particle.age;
+        const float lastUpdateBeforeFinal = particle.lastUpdate;
         particle.age += deltaTime;
         particle.lastUpdate += deltaTime;
 
         // FinalKernel marks death only when age is strictly greater than lifespan.
-        if (particle.age > particle.lifeSpan) continue;
+        if (particle.age > particle.lifeSpan) {
+            if (deathSpawner != nullptr && deathSpawnSources.size() < spawnCapacity) {
+                // When spawning on death, FinalKernel stores the exact death time in
+                // lastUpdate rather than currentTime. ResolveSpawnedAndRemovedParticles
+                // consumes that timestamp to give the child its sub-frame age.
+                particle.lastUpdate =
+                    lastUpdateBeforeFinal + std::max(0.0f, particle.lifeSpan - ageBeforeFinal);
+                deathSpawnSources.push_back(particle);
+            }
+            continue;
+        }
         particles[write++] = particle;
+    }
+
+    // Gamebryo processes spawn/death records backwards while the dying originals still
+    // occupy capacity. Therefore children may only use capacity that was free before
+    // removals; a dying parent does not immediately free a slot for its own child.
+    if (deathSpawner != nullptr && !deathSpawnSources.empty() && write < particles.size()) {
+        std::uint32_t localRandom = 0x8f3f73b5u;
+        std::uint32_t& spawnRandom = randomState != nullptr ? *randomState : localRandom;
+        const std::size_t maxChildren =
+            std::min(spawnCapacity, particles.size() - write);
+        std::size_t children = 0;
+        constexpr float kPi = 3.14159265358979323846f;
+        constexpr float kTwoPi = 2.0f * kPi;
+
+        for (auto sourceIt = deathSpawnSources.rbegin();
+             sourceIt != deathSpawnSources.rend() && children < maxChildren;
+             ++sourceIt) {
+            const auto& source = *sourceIt;
+            if (source.spawnGeneration >= deathSpawner->numSpawnGenerations) continue;
+            if (ParticleUnitRandom(spawnRandom) > deathSpawner->percentageSpawned) continue;
+
+            std::uint32_t spawnCount = deathSpawner->minNumToSpawn;
+            if (deathSpawner->maxNumToSpawn > deathSpawner->minNumToSpawn) {
+                const float variation = ParticleUnitRandom(spawnRandom) *
+                    static_cast<float>(deathSpawner->maxNumToSpawn - deathSpawner->minNumToSpawn);
+                std::uint32_t rounded = static_cast<std::uint32_t>(variation);
+                if (std::fmod(variation, 1.0f) > 0.5f) ++rounded;
+                spawnCount += rounded;
+            }
+            if (spawnCount == 0u) spawnCount = 1u;
+
+            for (std::uint32_t childIndex = 0;
+                 childIndex < spawnCount && children < maxChildren;
+                 ++childIndex) {
+                NifParticleState child = source;
+                child.spawnGeneration = static_cast<std::uint16_t>(source.spawnGeneration + 1u);
+                child.age = std::max(0.0f,
+                    (lastUpdateBeforeFinal + deltaTime) - source.lastUpdate);
+                child.lastUpdate = source.lastUpdate;
+                child.lifeSpan = deathSpawner->spawnLifeSpan;
+                if (deathSpawner->spawnLifeSpanVariation != 0.0f) {
+                    child.lifeSpan += deathSpawner->spawnLifeSpanVariation *
+                        (ParticleUnitRandom(spawnRandom) - 0.5f);
+                }
+
+                const float originalSpeed = std::sqrt(
+                    source.velocity.x * source.velocity.x +
+                    source.velocity.y * source.velocity.y +
+                    source.velocity.z * source.velocity.z);
+                float newSpeed = originalSpeed;
+                if (deathSpawner->spawnSpeedVariation != 0.0f) {
+                    newSpeed *= 1.0f +
+                        deathSpawner->spawnSpeedVariation * ParticleUnitRandom(spawnRandom);
+                }
+
+                if (originalSpeed > 1.0e-8f && newSpeed != 0.0f) {
+                    const NifVec3 originalDirection{
+                        source.velocity.x / originalSpeed,
+                        source.velocity.y / originalSpeed,
+                        source.velocity.z / originalSpeed,
+                    };
+                    NifVec3 localDirection{0.0f, 1.0f, 0.0f};
+                    if (deathSpawner->spawnDirVariation != 0.0f) {
+                        const float declination =
+                            ParticleUnitRandom(spawnRandom) *
+                            deathSpawner->spawnDirVariation * kPi;
+                        const float planar = ParticleUnitRandom(spawnRandom) * kTwoPi;
+                        const float sinDeclination = std::sin(declination);
+                        localDirection = {
+                            sinDeclination * std::cos(planar),
+                            std::cos(declination),
+                            sinDeclination * std::sin(planar),
+                        };
+                    }
+                    const auto direction =
+                        RotateEditorUpToDirection(localDirection, originalDirection);
+                    child.velocity = {
+                        direction.x * newSpeed,
+                        direction.y * newSpeed,
+                        direction.z * newSpeed,
+                    };
+                } else {
+                    child.velocity = {};
+                }
+
+                // Position/color/radius/rotation are propagated by NiPSSpawner. InitializeParticle
+                // then recomputes size from the new generation's grow/fade rules.
+                InitializeEmittedParticleSize(child, modifiers);
+                particles[write + children] = child;
+                ++children;
+            }
+        }
+        write += children;
     }
 
     activeCount = static_cast<std::uint16_t>(
