@@ -35,7 +35,12 @@ int main(int argc, char** argv) {
                           << "\tuvSets=" << part.uvSets.size()
                           << "\tuvDiagnostics=" << part.uvSetDiagnostics.size()
                           << "\tvertexColors=" << part.vertexColors.size()
-                          << "\tapplyMode=" << part.textureApplyMode << '\n';
+                          << "\tapplyMode=" << part.textureApplyMode
+                          << "\tmaterialAlpha=" << part.material.alpha
+                          << "\talphaBlend=" << part.alphaBlend
+                          << "\talphaTest=" << part.alphaTest
+                          << "\tdepthTest=" << part.depthTest
+                          << "\tdepthWrite=" << part.depthWrite << '\n';
                 if (!part.vertexColors.empty()) {
                     float minA = 1.0f, maxA = 0.0f, sumA = 0.0f;
                     for (const auto& color : part.vertexColors) {
