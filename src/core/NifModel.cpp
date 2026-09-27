@@ -2170,6 +2170,7 @@ struct NifTextureSource {
     std::string filename;
     std::uint8_t useExternal = 1;
     std::int32_t pixelDataRef = -1;
+    bool cubeMap = false;
 };
 
 NifTextureSource ParseNiSourceTexture(ByteReader& r) {
@@ -3255,7 +3256,10 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             // These deprecated arrays must be zero on disk (NifXML).
             if (r.U32() != 0 || r.U32() != 0) r.Invalidate();
         } else if (type == "NiSourceCubeMap") {
-            sourceTextureFilenames[blockIdx] = ParseNiSourceTexture(r).filename;
+            auto source = ParseNiSourceTexture(r);
+            source.cubeMap = true;
+            sourceTextureFilenames[blockIdx] = source.filename;
+            sourceTextures[blockIdx] = std::move(source);
         } else if (type == "NiPortal") {
             SkipNiPortal(r);
         } else if (type == "NiCollisionData") {
@@ -4996,6 +5000,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             if (st == sourceTextures.end()) return;
             dst.texture = st->second.filename;
             dst.sourceUsesEmbeddedPixelData = st->second.useExternal == 0;
+            dst.sourceIsCubeMap = st->second.cubeMap;
             dst.sourcePixelDataRef = st->second.pixelDataRef;
             if (st->second.useExternal == 0 && st->second.pixelDataRef >= 0) {
                 const auto pix = embeddedPixelTextures.find(static_cast<std::uint32_t>(st->second.pixelDataRef));
@@ -5282,6 +5287,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             auto& slot = part.textureSlots[slotIndex];
             slot.texture = it->second.filename;
             slot.sourceUsesEmbeddedPixelData = it->second.useExternal == 0;
+            slot.sourceIsCubeMap = it->second.cubeMap;
             slot.sourcePixelDataRef = it->second.pixelDataRef;
             if (it->second.useExternal == 0 && it->second.pixelDataRef >= 0) {
                 auto pix = embeddedPixelTextures.find(static_cast<std::uint32_t>(it->second.pixelDataRef));
@@ -5300,6 +5306,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             auto& slot = shaderSlot.texture;
             slot.texture = it->second.filename;
             slot.sourceUsesEmbeddedPixelData = it->second.useExternal == 0;
+            slot.sourceIsCubeMap = it->second.cubeMap;
             slot.sourcePixelDataRef = it->second.pixelDataRef;
             if (it->second.useExternal == 0 && it->second.pixelDataRef >= 0) {
                 const auto pix = embeddedPixelTextures.find(static_cast<std::uint32_t>(it->second.pixelDataRef));
@@ -5375,6 +5382,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         part.textureSlots[0].present = true;
         part.textureSlots[0].texture = it->second.filename;
         part.textureSlots[0].sourceUsesEmbeddedPixelData = it->second.useExternal == 0;
+        part.textureSlots[0].sourceIsCubeMap = it->second.cubeMap;
         part.textureSlots[0].sourcePixelDataRef = it->second.pixelDataRef;
         part.textureSlots[0].uvSet = part.baseUvSet;
         part.textureSlots[0].clampMode = part.textureClampMode;
