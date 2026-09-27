@@ -4125,9 +4125,11 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 part.shaderTextureSlots.push_back(std::move(shaderSlot));
             }
 
-            // Original Gamebryo VCAlphaTextureBlender shader: artist maps
-            // 0=Texture1, 1=Texture2, 2=Detail.
-            if (part.shaderName == "VCAlphaTextureBlender") {
+            // Verified named-shader map contracts from the real Fiesta ResMap corpus:
+            // - VCAlphaTextureBlender: 0=Texture1, 1=Texture2, 2=Detail.
+            // - AlphaTextureBlender11: 0/1 are opaque color layers, 2 is the alpha blend mask.
+            if (part.shaderName == "VCAlphaTextureBlender" ||
+                part.shaderName == "AlphaTextureBlender11") {
                 for (const auto& [mapId, src] : ts.shaderSlots) {
                     if (mapId > 2u) continue;
                     auto& dst = part.textureSlots[mapId];
@@ -5023,9 +5025,10 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             copyTexDesc(shaderSlot.texture, src);
             system.shaderTextureSlots.push_back(std::move(shaderSlot));
         }
-        // Same verified mapping as mesh materials: VCAlphaTextureBlender map IDs 0/1/2 are
-        // Texture1/Texture2/Detail. Other shader map IDs remain preserved but diagnostic-only.
-        if (system.shaderName == "VCAlphaTextureBlender") {
+        // Same verified mappings as mesh materials. Other shader map IDs remain
+        // preserved but diagnostic-only.
+        if (system.shaderName == "VCAlphaTextureBlender" ||
+            system.shaderName == "AlphaTextureBlender11") {
             for (const auto& [mapId, src] : textureState->shaderSlots) {
                 if (mapId <= 2u) copyTexDesc(system.textureSlots[mapId], src);
             }
