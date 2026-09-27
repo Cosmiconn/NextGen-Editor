@@ -390,6 +390,8 @@ struct NifParticleModifierInfo {
     bool randomRotationSpeedSign = false, randomInitialAxis = false;
     NifVec3 initialAxis{0.0f, 1.0f, 0.0f};
     std::int32_t forceObjectRef = -1;
+    bool hasForceToParticleSystemTransform = false;
+    NifTransform forceToParticleSystem{};
     NifVec3 forceAxis{};
     float forceDecay = 0.0f, forceStrength = 0.0f;
     std::uint32_t forceType = 0;
@@ -409,7 +411,8 @@ void AdvanceNifParticleState(
     std::vector<NifParticleState>& particles,
     std::uint16_t& activeCount,
     const std::vector<NifParticleModifierInfo>& modifiers,
-    float deltaTime);
+    float deltaTime,
+    std::uint32_t* randomState = nullptr);
 
 // Gamebryo-compatible particle construction for the deprecated NiPSys emitter family.
 // ages contains the authored sub-frame ages produced by the emission controller. randomState

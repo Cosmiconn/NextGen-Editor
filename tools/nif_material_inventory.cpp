@@ -118,6 +118,7 @@ int main(int argc, char** argv) {
     std::size_t volumeEmittersWithoutTransform = 0;
     std::size_t meshEmittersWithoutGeometry = 0;
     std::size_t skinnedMeshEmitterBindings = 0;
+    std::size_t forceModifiersWithoutTransform = 0;
     std::map<std::uint32_t, std::size_t> particleColorInterpolations;
     std::size_t invalidParticleModifierRefs = 0;
     std::size_t particleCapacity = 0;
@@ -254,6 +255,13 @@ int main(int argc, char** argv) {
                                 ++volumeEmittersWithoutTransform;
                                 rendererGapFiles.insert(entry.path().string());
                             }
+                        }
+                        if ((modifier.type == "NiPSysGravityModifier" ||
+                             modifier.type == "NiPSysDragModifier") &&
+                            modifier.forceObjectRef >= 0 &&
+                            !modifier.hasForceToParticleSystemTransform) {
+                            ++forceModifiersWithoutTransform;
+                            rendererGapFiles.insert(entry.path().string());
                         }
                         if (modifier.type == "NiPSysMeshEmitter") {
                             if (!modifier.emitterMeshRefs.empty() && modifier.emitterMeshes.empty()) {
@@ -752,6 +760,7 @@ int main(int argc, char** argv) {
               << "\tvolumeEmittersWithoutTransform=" << volumeEmittersWithoutTransform
               << "\tmeshEmittersWithoutGeometry=" << meshEmittersWithoutGeometry
               << "\tskinnedMeshEmitterBindings=" << skinnedMeshEmitterBindings
+              << "\tforceModifiersWithoutTransform=" << forceModifiersWithoutTransform
               << "\tparticleRotationSpeedSystems=" << particleRotationSpeedSystems
               << "\tparticleTextureBindings=" << particleTextureBindings
               << "\tparticleShaderDescriptors=" << particleShaderDescriptors

@@ -207,6 +207,50 @@ int main(int argc, char** argv) {
               "mesh face-center emitter uses averaged face position and normal");
     }
     {
+        NifParticleState particle;
+        particle.velocity = {1.0f, 0.0f, 0.0f};
+        particle.lifeSpan = 10.0f;
+
+        NifParticleModifierInfo gravity;
+        gravity.type = "NiPSysGravityModifier";
+        gravity.active = true;
+        gravity.hasForceToParticleSystemTransform = true;
+        gravity.forceAxis = {0.0f, 1.0f, 0.0f};
+        gravity.forceStrength = 2.0f;
+        gravity.forceType = 0;
+
+        std::vector<NifParticleState> state{particle};
+        std::uint16_t active = 1;
+        std::uint32_t rng = 1;
+        AdvanceNifParticleState(state, active, {gravity}, 0.5f, &rng);
+        check(active == 1 &&
+              std::abs(state[0].velocity.x - 1.0f) < 1.0e-6f &&
+              std::abs(state[0].velocity.y - 1.6f) < 1.0e-5f,
+              "planar gravity uses Gamebryo strength*1.6 and force-step delta");
+    }
+    {
+        NifParticleState particle;
+        particle.velocity = {2.0f, 3.0f, 0.0f};
+        particle.lifeSpan = 10.0f;
+
+        NifParticleModifierInfo drag;
+        drag.type = "NiPSysDragModifier";
+        drag.active = true;
+        drag.hasForceToParticleSystemTransform = true;
+        drag.forceAxis = {1.0f, 0.0f, 0.0f};
+        drag.dragPercentage = 0.5f;
+        drag.dragRange = 100.0f;
+        drag.dragRangeFalloff = 200.0f;
+
+        std::vector<NifParticleState> state{particle};
+        std::uint16_t active = 1;
+        AdvanceNifParticleState(state, active, {drag}, 0.0333333f);
+        check(active == 1 &&
+              std::abs(state[0].velocity.x - 1.0f) < 1.0e-5f &&
+              std::abs(state[0].velocity.y - 3.0f) < 1.0e-5f,
+              "drag removes only projected axis velocity with 30fps-normalized percentage");
+    }
+    {
         std::vector<NifParticleState> state(3);
         state[0].position = {1.0f, 2.0f, 3.0f};
         state[0].velocity = {2.0f, -1.0f, 0.5f};

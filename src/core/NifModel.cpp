@@ -4342,6 +4342,18 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                     particleModifierByBlock.find(static_cast<std::uint32_t>(modifierRef));
                 if (modifierIt == particleModifierByBlock.end()) continue;
                 auto& modifier = modifierIt->second;
+
+                if ((modifier.type == "NiPSysGravityModifier" ||
+                     modifier.type == "NiPSysDragModifier") &&
+                    modifier.forceObjectRef >= 0) {
+                    SkinTransform forceWorld{};
+                    if (worldTransformForBlock(modifier.forceObjectRef, forceWorld)) {
+                        modifier.forceToParticleSystem =
+                            publicTransform(multiplyTransform(inverseSystem, forceWorld));
+                        modifier.hasForceToParticleSystemTransform = true;
+                    }
+                }
+
                 if (!modifier.emitter) continue;
 
                 if (modifier.emitterObjectRef >= 0) {
@@ -5641,7 +5653,8 @@ void AdvanceNifParticleState(
     std::vector<NifParticleState>& particles,
     std::uint16_t& activeCount,
     const std::vector<NifParticleModifierInfo>& modifiers,
-    float deltaTime) {
+    float deltaTime,
+    std::uint32_t* randomState) {
     if (!std::isfinite(deltaTime) || deltaTime <= 0.0f || activeCount == 0) return;
 
     const NifParticleModifierInfo* growFade = nullptr;
@@ -5692,6 +5705,116 @@ void AdvanceNifParticleState(
         } else {
             while (particle.rotationAngle > kTwoPi) particle.rotationAngle -= kTwoPi;
             while (particle.rotationAngle < -kTwoPi) particle.rotationAngle += kTwoPi;
+        }
+
+        // Gamebryo NiPSSimulatorForcesKernel runs after General and before Final. Forces
+        // are applied in authored order and each force consumes the previous force's output
+        // velocity. The deprecated NiPSys modifiers convert directly to these force types.
+        std::uint32_t localRandom = 0x51f15e5du ^
+            static_cast<std::uint32_t>((read + 1u) * 0x9e3779b9u);
+        std::uint32_t& forceRandom = randomState != nullptr ? *randomState : localRandom;
+        for (const auto& modifier : modifiers) {
+            if (!modifier.active || !modifier.hasForceToParticleSystemTransform) continue;
+
+            if (modifier.type == "NiPSysGravityModifier") {
+                const NifVec3 forcePosition =
+                    TransformParticleEditorPoint(modifier.forceToParticleSystem, {});
+                NifVec3 forceDirection = NormalizeParticleVector(
+                    RotateParticleEditorVector(modifier.forceToParticleSystem, modifier.forceAxis));
+                const float strength = modifier.forceStrength * 1.6f;
+                const float turbulenceScale =
+                    modifier.turbulence * modifier.turbulenceScale * 500.0f;
+
+                NifVec3 acceleration{};
+                if (modifier.forceType == 0u) { // FORCE_PLANAR
+                    float decay = 1.0f;
+                    if (modifier.forceDecay != 0.0f) {
+                        const NifVec3 toForce{
+                            forcePosition.x - particle.position.x,
+                            forcePosition.y - particle.position.y,
+                            forcePosition.z - particle.position.z,
+                        };
+                        const float signedDistance =
+                            forceDirection.x * toForce.x +
+                            forceDirection.y * toForce.y +
+                            forceDirection.z * toForce.z;
+                        decay = std::exp(-modifier.forceDecay * std::fabs(signedDistance));
+                    }
+                    acceleration = {
+                        forceDirection.x * strength * decay,
+                        forceDirection.y * strength * decay,
+                        forceDirection.z * strength * decay,
+                    };
+                } else if (modifier.forceType == 1u) { // FORCE_SPHERICAL
+                    NifVec3 radial{
+                        forcePosition.x - particle.position.x,
+                        forcePosition.y - particle.position.y,
+                        forcePosition.z - particle.position.z,
+                    };
+                    const float distance = std::sqrt(
+                        radial.x * radial.x + radial.y * radial.y + radial.z * radial.z);
+                    radial = NormalizeParticleVector(radial);
+                    const float decay = modifier.forceDecay == 0.0f
+                        ? 1.0f : std::exp(-modifier.forceDecay * distance);
+                    // Match the 2.6 kernel, including its turbulence+decay branch using
+                    // the transformed gravity axis rather than the radial direction.
+                    const NifVec3 gravityDir =
+                        (modifier.turbulence != 0.0f && modifier.forceDecay != 0.0f)
+                            ? forceDirection : radial;
+                    acceleration = {
+                        gravityDir.x * strength * decay,
+                        gravityDir.y * strength * decay,
+                        gravityDir.z * strength * decay,
+                    };
+                } else {
+                    continue;
+                }
+
+                if (modifier.turbulence != 0.0f) {
+                    acceleration.x += ParticleSymmetricRandom(forceRandom) * turbulenceScale;
+                    acceleration.y += ParticleSymmetricRandom(forceRandom) * turbulenceScale;
+                    acceleration.z += ParticleSymmetricRandom(forceRandom) * turbulenceScale;
+                }
+                particle.velocity.x += acceleration.x * deltaTime;
+                particle.velocity.y += acceleration.y * deltaTime;
+                particle.velocity.z += acceleration.z * deltaTime;
+            } else if (modifier.type == "NiPSysDragModifier" &&
+                       modifier.dragPercentage > 0.0f) {
+                const NifVec3 dragPosition =
+                    TransformParticleEditorPoint(modifier.forceToParticleSystem, {});
+                const NifVec3 dragDirection = NormalizeParticleVector(
+                    RotateParticleEditorVector(modifier.forceToParticleSystem, modifier.forceAxis));
+                const float dx = particle.position.x - dragPosition.x;
+                const float dy = particle.position.y - dragPosition.y;
+                const float dz = particle.position.z - dragPosition.z;
+                const float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+
+                float percentage = modifier.dragPercentage;
+                if (distance > modifier.dragRange) {
+                    if (distance >= modifier.dragRangeFalloff) continue;
+                    const float rangeDifference = modifier.dragRangeFalloff - modifier.dragRange;
+                    if (std::abs(rangeDifference) <= 1.0e-8f) continue;
+                    percentage *= 1.0f - (distance - modifier.dragRange) / rangeDifference;
+                }
+
+                const float projection =
+                    particle.velocity.x * dragDirection.x +
+                    particle.velocity.y * dragDirection.y +
+                    particle.velocity.z * dragDirection.z;
+                const float directionLenSq =
+                    dragDirection.x * dragDirection.x +
+                    dragDirection.y * dragDirection.y +
+                    dragDirection.z * dragDirection.z;
+                if (directionLenSq <= 1.0e-8f) continue;
+
+                const float normalizedDelta = deltaTime / 0.0333333f;
+                const float factor = percentage * normalizedDelta > 1.0f
+                    ? 1.0f : percentage * normalizedDelta;
+                const float projectedScale = factor * projection / directionLenSq;
+                particle.velocity.x -= projectedScale * dragDirection.x;
+                particle.velocity.y -= projectedScale * dragDirection.y;
+                particle.velocity.z -= projectedScale * dragDirection.z;
+            }
         }
 
         // Gamebryo NiPSSimulatorFinalKernel: position uses velocity over the same time delta,
