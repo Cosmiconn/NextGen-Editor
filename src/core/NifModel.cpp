@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <limits>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -5286,6 +5287,354 @@ std::optional<NifColor4> EvaluateNifColorTrack(const NifColorTrack& track, float
         combine(k1.value.b, k2.value.b, k1.backwardTangent.b, k2.forwardTangent.b),
         combine(k1.value.a, k2.value.a, k1.backwardTangent.a, k2.forwardTangent.a),
     };
+}
+
+namespace {
+float ParticleUnitRandom(std::uint32_t& state) {
+    if (state == 0u) state = 0x6d2b79f5u;
+    std::uint32_t x = state;
+    x ^= x << 13u;
+    x ^= x >> 17u;
+    x ^= x << 5u;
+    state = x;
+    return static_cast<float>(x >> 8u) * (1.0f / 16777216.0f);
+}
+
+float ParticleSymmetricRandom(std::uint32_t& state) {
+    return ParticleUnitRandom(state) * 2.0f - 1.0f;
+}
+
+NifVec3 NormalizeParticleVector(NifVec3 v) {
+    const float length = std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+    if (length > 1.0e-8f) {
+        v.x /= length; v.y /= length; v.z /= length;
+    }
+    return v;
+}
+
+NifVec3 TransformParticleEditorPoint(const NifTransform& t, const NifVec3& editorPoint) {
+    const float x = editorPoint.x, y = editorPoint.z, z = editorPoint.y;
+    const float nx = t.translation.x + t.scale * (t.rotation[0] * x + t.rotation[1] * y + t.rotation[2] * z);
+    const float ny = t.translation.y + t.scale * (t.rotation[3] * x + t.rotation[4] * y + t.rotation[5] * z);
+    const float nz = t.translation.z + t.scale * (t.rotation[6] * x + t.rotation[7] * y + t.rotation[8] * z);
+    return {nx, nz, ny};
+}
+
+NifVec3 RotateParticleEditorVector(const NifTransform& t, const NifVec3& editorVector) {
+    const float x = editorVector.x, y = editorVector.z, z = editorVector.y;
+    const float nx = t.rotation[0] * x + t.rotation[1] * y + t.rotation[2] * z;
+    const float ny = t.rotation[3] * x + t.rotation[4] * y + t.rotation[5] * z;
+    const float nz = t.rotation[6] * x + t.rotation[7] * y + t.rotation[8] * z;
+    return {nx, nz, ny};
+}
+
+void InitializeEmittedParticleSize(
+    NifParticleState& particle,
+    const std::vector<NifParticleModifierInfo>& modifiers) {
+    const NifParticleModifierInfo* growFade = nullptr;
+    for (const auto& modifier : modifiers) {
+        if (modifier.active && modifier.type == "NiPSysGrowFadeModifier") growFade = &modifier;
+    }
+    if (growFade == nullptr) {
+        particle.size = 1.0f;
+        return;
+    }
+    float grow = 1.0f;
+    if (particle.spawnGeneration == growFade->growGeneration &&
+        particle.age < growFade->growTime && growFade->growTime > 0.0f) {
+        grow = particle.age / growFade->growTime;
+    }
+    float shrink = 1.0f;
+    const float timeLeft = particle.lifeSpan - particle.age;
+    if (particle.spawnGeneration == growFade->fadeGeneration &&
+        timeLeft < growFade->fadeTime && growFade->fadeTime > 0.0f) {
+        shrink = timeLeft / growFade->fadeTime;
+    }
+    particle.size = std::max(0.0001f, std::min(grow, shrink));
+}
+} // namespace
+
+std::size_t EmitNifParticles(
+    std::vector<NifParticleState>& particles,
+    std::uint16_t& activeCount,
+    std::uint32_t capacity,
+    const NifParticleModifierInfo& emitter,
+    const std::vector<NifParticleModifierInfo>& modifiers,
+    const std::vector<float>& ages,
+    float currentTime,
+    bool hasRotationAngles,
+    bool hasRotationAxes,
+    std::uint32_t& randomState) {
+    if (!emitter.emitter || !emitter.active || ages.empty()) return 0;
+
+    const std::size_t maxCapacity = std::min<std::size_t>(
+        capacity == 0 ? particles.size() : capacity,
+        std::numeric_limits<std::uint16_t>::max());
+    if (particles.size() < maxCapacity) particles.resize(maxCapacity);
+
+    const NifParticleModifierInfo* rotation = nullptr;
+    for (const auto& modifier : modifiers) {
+        if (modifier.active && modifier.type == "NiPSysRotationModifier") rotation = &modifier;
+    }
+
+    constexpr float kPi = 3.14159265358979323846f;
+    constexpr float kTwoPi = 2.0f * kPi;
+    std::size_t emitted = 0;
+
+    for (const float requestedAge : ages) {
+        if (activeCount >= maxCapacity) break;
+        const float age = std::max(0.0f, requestedAge);
+
+        float lifeSpan = emitter.lifeSpan;
+        if (emitter.lifeSpanVariation != 0.0f)
+            lifeSpan += emitter.lifeSpanVariation * (ParticleUnitRandom(randomState) - 0.5f);
+        if (age > lifeSpan) continue;
+
+        float speed = emitter.speed;
+        if (emitter.speedVariation != 0.0f)
+            speed += emitter.speedVariation * (ParticleUnitRandom(randomState) - 0.5f);
+
+        float declination = emitter.declination;
+        if (emitter.declinationVariation != 0.0f)
+            declination += emitter.declinationVariation * ParticleSymmetricRandom(randomState);
+
+        // Gamebryo constructs this in legacy Z-up space. Store it directly in editor Y-up.
+        NifVec3 velocity{0.0f, speed, 0.0f};
+        if (declination != 0.0f) {
+            float planar = emitter.planarAngle;
+            if (emitter.planarAngleVariation != 0.0f)
+                planar += emitter.planarAngleVariation * ParticleSymmetricRandom(randomState);
+            const float sinDec = std::sin(declination);
+            const float cosDec = std::cos(declination);
+            velocity = {
+                speed * sinDec * std::cos(planar),
+                speed * cosDec,
+                speed * sinDec * std::sin(planar),
+            };
+        }
+
+        NifVec3 position{};
+        bool validPosition = true;
+
+        if (emitter.type == "NiPSysBoxEmitter" ||
+            emitter.type == "NiPSysCylinderEmitter" ||
+            emitter.type == "NiPSysSphereEmitter") {
+            if (!emitter.hasEmitterToParticleSystemTransform) continue;
+
+            NifVec3 localEditor{};
+            if (emitter.type == "NiPSysBoxEmitter") {
+                const float legacyX = emitter.emitterWidth == 0.0f ? 0.0f :
+                    emitter.emitterWidth * (ParticleUnitRandom(randomState) - 0.5f);
+                const float legacyY = emitter.emitterHeight == 0.0f ? 0.0f :
+                    emitter.emitterHeight * (ParticleUnitRandom(randomState) - 0.5f);
+                const float legacyZ = emitter.emitterDepth == 0.0f ? 0.0f :
+                    emitter.emitterDepth * (ParticleUnitRandom(randomState) - 0.5f);
+                localEditor = {legacyX, legacyZ, legacyY};
+            } else if (emitter.type == "NiPSysCylinderEmitter") {
+                float legacyX = 0.0f, legacyY = 0.0f;
+                if (emitter.emitterRadius != 0.0f) {
+                    const float radius = emitter.emitterRadius * ParticleUnitRandom(randomState);
+                    const float phi = ParticleUnitRandom(randomState) * kTwoPi;
+                    legacyX = radius * std::cos(phi);
+                    legacyY = radius * std::sin(phi);
+                }
+                float legacyZ = emitter.emitterHeight;
+                if (legacyZ != 0.0f) legacyZ *= ParticleUnitRandom(randomState) - 0.5f;
+                localEditor = {legacyX, legacyZ, legacyY};
+            } else {
+                float legacyX = 0.0f, legacyY = 0.0f, legacyZ = 0.0f;
+                if (emitter.emitterRadius != 0.0f) {
+                    const float radius = emitter.emitterRadius * ParticleUnitRandom(randomState);
+                    const float phi = ParticleUnitRandom(randomState) * kTwoPi;
+                    const float theta = ParticleUnitRandom(randomState) * kTwoPi;
+                    const float sinTheta = std::sin(theta);
+                    legacyX = radius * sinTheta * std::cos(phi);
+                    legacyY = radius * sinTheta * std::sin(phi);
+                    legacyZ = radius * std::cos(theta);
+                }
+                localEditor = {legacyX, legacyZ, legacyY};
+            }
+
+            position = TransformParticleEditorPoint(emitter.emitterToParticleSystem, localEditor);
+            velocity = RotateParticleEditorVector(emitter.emitterToParticleSystem, velocity);
+        } else if (emitter.type == "NiPSysMeshEmitter") {
+            if (emitter.emitterMeshes.empty()) continue;
+            const std::size_t meshIndex = std::min<std::size_t>(
+                static_cast<std::size_t>(ParticleUnitRandom(randomState) * emitter.emitterMeshes.size()),
+                emitter.emitterMeshes.size() - 1);
+            const auto& mesh = emitter.emitterMeshes[meshIndex];
+            if (mesh.positions.empty() || mesh.skinned) continue;
+
+            NifVec3 localPosition{};
+            NifVec3 localVelocity = velocity;
+            bool normalVelocity = false;
+
+            const auto useVertexNormal = [&](std::size_t vertex, NifVec3& out) {
+                if (vertex >= mesh.normals.size()) return false;
+                out = NormalizeParticleVector(mesh.normals[vertex]);
+                return true;
+            };
+            const std::size_t triangleCount = mesh.triangleIndices.size() / 3u;
+
+            if (emitter.emissionType == 0u) {
+                const std::size_t vertex = std::min<std::size_t>(
+                    static_cast<std::size_t>(ParticleUnitRandom(randomState) * mesh.positions.size()),
+                    mesh.positions.size() - 1);
+                localPosition = mesh.positions[vertex];
+                if (emitter.initialVelocityType == 0u) {
+                    NifVec3 normal;
+                    if (useVertexNormal(vertex, normal)) {
+                        localVelocity = {normal.x * speed, normal.y * speed, normal.z * speed};
+                        normalVelocity = true;
+                    }
+                }
+            } else {
+                if (triangleCount == 0) continue;
+                const std::size_t triangle = std::min<std::size_t>(
+                    static_cast<std::size_t>(ParticleUnitRandom(randomState) * triangleCount),
+                    triangleCount - 1);
+                const std::size_t base = triangle * 3u;
+                const std::uint32_t i0 = mesh.triangleIndices[base];
+                const std::uint32_t i1 = mesh.triangleIndices[base + 1u];
+                const std::uint32_t i2 = mesh.triangleIndices[base + 2u];
+                if (i0 >= mesh.positions.size() || i1 >= mesh.positions.size() || i2 >= mesh.positions.size())
+                    continue;
+
+                if (emitter.emissionType == 1u || emitter.emissionType == 3u) {
+                    const auto& v0 = mesh.positions[i0];
+                    const auto& v1 = mesh.positions[i1];
+                    const auto& v2 = mesh.positions[i2];
+                    localPosition = {
+                        (v0.x + v1.x + v2.x) / 3.0f,
+                        (v0.y + v1.y + v2.y) / 3.0f,
+                        (v0.z + v1.z + v2.z) / 3.0f,
+                    };
+                    if (emitter.emissionType == 3u) {
+                        const float root = std::sqrt(ParticleUnitRandom(randomState));
+                        const float along = ParticleUnitRandom(randomState);
+                        const NifVec3 d1{v1.x-v0.x, v1.y-v0.y, v1.z-v0.z};
+                        const NifVec3 d2{v2.x-v0.x, v2.y-v0.y, v2.z-v0.z};
+                        localPosition = {
+                            v0.x + root * (along * d2.x - d1.x) + d1.x,
+                            v0.y + root * (along * d2.y - d1.y) + d1.y,
+                            v0.z + root * (along * d2.z - d1.z) + d1.z,
+                        };
+                    }
+                    if (emitter.initialVelocityType == 0u &&
+                        i0 < mesh.normals.size() && i1 < mesh.normals.size() && i2 < mesh.normals.size()) {
+                        NifVec3 normal{
+                            mesh.normals[i0].x + mesh.normals[i1].x + mesh.normals[i2].x,
+                            mesh.normals[i0].y + mesh.normals[i1].y + mesh.normals[i2].y,
+                            mesh.normals[i0].z + mesh.normals[i1].z + mesh.normals[i2].z,
+                        };
+                        normal = NormalizeParticleVector(normal);
+                        localVelocity = {normal.x * speed, normal.y * speed, normal.z * speed};
+                        normalVelocity = true;
+                    }
+                } else if (emitter.emissionType == 2u || emitter.emissionType == 4u) {
+                    const std::uint32_t edge = std::min<std::uint32_t>(
+                        static_cast<std::uint32_t>(ParticleUnitRandom(randomState) * 3.0f), 2u);
+                    const std::uint32_t edgeIndices[3] = {i0, i1, i2};
+                    const std::uint32_t a = edgeIndices[edge];
+                    const std::uint32_t b = edgeIndices[(edge + 1u) % 3u];
+                    const auto& v0 = mesh.positions[a];
+                    const auto& v1 = mesh.positions[b];
+                    const float t = emitter.emissionType == 4u ? ParticleUnitRandom(randomState) : 0.5f;
+                    localPosition = {
+                        v0.x + (v1.x-v0.x) * t,
+                        v0.y + (v1.y-v0.y) * t,
+                        v0.z + (v1.z-v0.z) * t,
+                    };
+                    if (emitter.initialVelocityType == 0u &&
+                        a < mesh.normals.size() && b < mesh.normals.size()) {
+                        NifVec3 normal{
+                            mesh.normals[a].x + mesh.normals[b].x,
+                            mesh.normals[a].y + mesh.normals[b].y,
+                            mesh.normals[a].z + mesh.normals[b].z,
+                        };
+                        normal = NormalizeParticleVector(normal);
+                        localVelocity = {normal.x * speed, normal.y * speed, normal.z * speed};
+                        normalVelocity = true;
+                    }
+                } else {
+                    validPosition = false;
+                }
+            }
+            if (!validPosition) continue;
+
+            position = TransformParticleEditorPoint(mesh.emitterToParticleSystem, localPosition);
+            if (emitter.initialVelocityType == 1u) {
+                NifVec3 direction{
+                    ParticleSymmetricRandom(randomState),
+                    ParticleSymmetricRandom(randomState),
+                    ParticleSymmetricRandom(randomState),
+                };
+                direction = NormalizeParticleVector(direction);
+                float meshSpeed = emitter.speed;
+                if (emitter.speedVariation != 0.0f)
+                    meshSpeed += emitter.speedVariation * (ParticleUnitRandom(randomState) - 0.5f);
+                velocity = {direction.x * meshSpeed, direction.y * meshSpeed, direction.z * meshSpeed};
+            } else if (emitter.initialVelocityType == 2u) {
+                NifVec3 direction = RotateParticleEditorVector(
+                    mesh.emitterToParticleSystem, emitter.emissionAxis);
+                direction = NormalizeParticleVector(direction);
+                float meshSpeed = emitter.speed;
+                if (emitter.speedVariation != 0.0f)
+                    meshSpeed += emitter.speedVariation * (ParticleUnitRandom(randomState) - 0.5f);
+                velocity = {direction.x * meshSpeed, direction.y * meshSpeed, direction.z * meshSpeed};
+            } else {
+                (void)normalVelocity;
+                velocity = RotateParticleEditorVector(mesh.emitterToParticleSystem, localVelocity);
+            }
+        } else {
+            continue;
+        }
+
+        NifParticleState particle;
+        particle.age = age;
+        particle.lifeSpan = lifeSpan;
+        particle.lastUpdate = currentTime - age;
+        particle.spawnGeneration = 0;
+        particle.position = position;
+        particle.velocity = velocity;
+        particle.color = emitter.initialColor;
+        particle.radius = emitter.initialRadius;
+        if (emitter.radiusVariation != 0.0f)
+            particle.radius += emitter.radiusVariation * ParticleSymmetricRandom(randomState);
+
+        if (rotation != nullptr && hasRotationAngles) {
+            particle.rotationAngle = rotation->initialRotationAngle;
+            if (rotation->initialRotationAngleVariation != 0.0f)
+                particle.rotationAngle +=
+                    rotation->initialRotationAngleVariation * ParticleSymmetricRandom(randomState);
+            particle.rotationSpeed = rotation->initialRotationSpeed;
+            if (rotation->initialRotationSpeedVariation != 0.0f)
+                particle.rotationSpeed +=
+                    rotation->initialRotationSpeedVariation * ParticleSymmetricRandom(randomState);
+            if (rotation->randomRotationSpeedSign)
+                particle.rotationSpeed =
+                    ParticleUnitRandom(randomState) > 0.5f ? particle.rotationSpeed : -particle.rotationSpeed;
+        }
+        if (rotation != nullptr && hasRotationAxes) {
+            particle.rotationAxis = rotation->initialAxis;
+            if (rotation->randomInitialAxis) {
+                const float phi = ParticleUnitRandom(randomState) * kPi;
+                const float legacyZ = std::cos(phi);
+                const float hypot = std::sqrt(std::max(0.0f, 1.0f - legacyZ * legacyZ));
+                const float theta = ParticleUnitRandom(randomState) * kTwoPi;
+                particle.rotationAxis = {
+                    hypot * std::cos(theta),
+                    legacyZ,
+                    hypot * std::sin(theta),
+                };
+            }
+        }
+
+        InitializeEmittedParticleSize(particle, modifiers);
+        particles[activeCount++] = particle;
+        ++emitted;
+    }
+    return emitted;
 }
 
 void AdvanceNifParticleState(

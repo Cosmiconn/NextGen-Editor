@@ -135,6 +135,78 @@ int main(int argc, char** argv) {
               "20.0 NiBlendFloatInterpolator payload preserved");
     }
     {
+        NifParticleModifierInfo emitter;
+        emitter.type = "NiPSysBoxEmitter";
+        emitter.name = "Emitter";
+        emitter.active = true;
+        emitter.emitter = true;
+        emitter.hasEmitterToParticleSystemTransform = true;
+        emitter.speed = 2.0f;
+        emitter.initialColor = {0.25f, 0.5f, 0.75f, 0.8f};
+        emitter.initialRadius = 3.0f;
+        emitter.lifeSpan = 4.0f;
+
+        NifParticleModifierInfo grow;
+        grow.type = "NiPSysGrowFadeModifier";
+        grow.active = true;
+        grow.growTime = 1.0f;
+        grow.growGeneration = 0;
+
+        NifParticleModifierInfo rotation;
+        rotation.type = "NiPSysRotationModifier";
+        rotation.active = true;
+        rotation.initialRotationAngle = 0.25f;
+        rotation.initialRotationSpeed = 0.5f;
+        rotation.randomInitialAxis = false;
+        rotation.initialAxis = {1.0f, 0.0f, 0.0f};
+
+        std::vector<NifParticleState> emittedState(4);
+        std::uint16_t active = 0;
+        std::uint32_t rng = 1;
+        const auto count = EmitNifParticles(
+            emittedState, active, 4, emitter, {grow, rotation}, {0.25f}, 10.0f, true, true, rng);
+        check(count == 1 && active == 1, "Gamebryo box emitter creates requested particle");
+        check(std::abs(emittedState[0].position.x) < 1.0e-6f &&
+              std::abs(emittedState[0].position.y) < 1.0e-6f &&
+              std::abs(emittedState[0].position.z) < 1.0e-6f &&
+              std::abs(emittedState[0].velocity.y - 2.0f) < 1.0e-6f,
+              "zero-volume emitter uses legacy +Z/editor +Y velocity");
+        check(std::abs(emittedState[0].age - 0.25f) < 1.0e-6f &&
+              std::abs(emittedState[0].lifeSpan - 4.0f) < 1.0e-6f &&
+              std::abs(emittedState[0].lastUpdate - 9.75f) < 1.0e-6f &&
+              std::abs(emittedState[0].size - 0.25f) < 1.0e-6f,
+              "emitter age lifespan lastUpdate and InitializeParticle grow semantics");
+        check(std::abs(emittedState[0].rotationAngle - 0.25f) < 1.0e-6f &&
+              std::abs(emittedState[0].rotationSpeed - 0.5f) < 1.0e-6f &&
+              std::abs(emittedState[0].rotationAxis.x - 1.0f) < 1.0e-6f,
+              "rotation modifier initializes emitted particles");
+    }
+    {
+        NifParticleModifierInfo emitter;
+        emitter.type = "NiPSysMeshEmitter";
+        emitter.active = true;
+        emitter.emitter = true;
+        emitter.speed = 3.0f;
+        emitter.lifeSpan = 2.0f;
+        emitter.initialRadius = 1.0f;
+        emitter.initialVelocityType = 0;
+        emitter.emissionType = 1;
+        NifParticleEmitterMesh mesh;
+        mesh.positions = {{0,0,0},{3,0,0},{0,3,0}};
+        mesh.normals = {{0,1,0},{0,1,0},{0,1,0}};
+        mesh.triangleIndices = {0,1,2};
+        emitter.emitterMeshes.push_back(mesh);
+        std::vector<NifParticleState> emittedState(1);
+        std::uint16_t active = 0;
+        std::uint32_t rng = 7;
+        const auto count = EmitNifParticles(
+            emittedState, active, 1, emitter, {}, {0.0f}, 1.0f, false, false, rng);
+        check(count == 1 && std::abs(emittedState[0].position.x - 1.0f) < 1.0e-6f &&
+              std::abs(emittedState[0].position.y - 1.0f) < 1.0e-6f &&
+              std::abs(emittedState[0].velocity.y - 3.0f) < 1.0e-6f,
+              "mesh face-center emitter uses averaged face position and normal");
+    }
+    {
         std::vector<NifParticleState> state(3);
         state[0].position = {1.0f, 2.0f, 3.0f};
         state[0].velocity = {2.0f, -1.0f, 0.5f};

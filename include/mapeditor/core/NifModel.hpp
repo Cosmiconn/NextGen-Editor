@@ -411,6 +411,21 @@ void AdvanceNifParticleState(
     const std::vector<NifParticleModifierInfo>& modifiers,
     float deltaTime);
 
+// Gamebryo-compatible particle construction for the deprecated NiPSys emitter family.
+// ages contains the authored sub-frame ages produced by the emission controller. randomState
+// is deliberately caller-owned so every placed object can have an independent simulation stream.
+[[nodiscard]] std::size_t EmitNifParticles(
+    std::vector<NifParticleState>& particles,
+    std::uint16_t& activeCount,
+    std::uint32_t capacity,
+    const NifParticleModifierInfo& emitter,
+    const std::vector<NifParticleModifierInfo>& modifiers,
+    const std::vector<float>& ages,
+    float currentTime,
+    bool hasRotationAngles,
+    bool hasRotationAxes,
+    std::uint32_t& randomState);
+
 // Authored NiParticleSystem/NiMeshParticleSystem scene wiring. Keeping this separate from
 // NifMeshPart is intentional: particle systems are dynamic scene objects, not triangle meshes.
 struct NifParticleSystemInfo {
