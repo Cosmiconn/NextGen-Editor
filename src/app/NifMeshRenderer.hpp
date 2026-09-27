@@ -201,6 +201,7 @@ private:
         float lastSimulationTime = 0.0f;
         std::vector<float> emitterAccumulators;
         std::vector<std::uint32_t> emitterRandomStates;
+        std::uint32_t forceRandomState = 1u;
         bool initialized = false;
     };
     // Particle state must be per placed object, never shared through modelCache_.

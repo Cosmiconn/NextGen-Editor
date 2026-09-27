@@ -1313,6 +1313,10 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                 runtime.activeCount = source.activeCount;
                 runtime.emitterAccumulators.assign(source.modifiers.size(), 0.0f);
                 runtime.emitterRandomStates.resize(source.modifiers.size());
+                runtime.forceRandomState = 0x51f15e5du ^
+                    static_cast<std::uint32_t>((i + 1u) * 0x9e3779b9u) ^
+                    static_cast<std::uint32_t>((systemIndex + 1u) * 0x85ebca6bu);
+                if (runtime.forceRandomState == 0u) runtime.forceRandomState = 1u;
                 for (std::size_t modifierIndex = 0; modifierIndex < source.modifiers.size(); ++modifierIndex) {
                     std::uint32_t seed = 0x9e3779b9u;
                     seed ^= static_cast<std::uint32_t>((i + 1u) * 0x85ebca6bu);
@@ -1823,15 +1827,37 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
                 } else {
                     const float deltaTime = animationTime - runtime.lastSimulationTime;
                     if (deltaTime > 0.0f) {
+                        const float sampleTime = runtime.lastSimulationTime + deltaTime * 0.5f;
+
+                        // NiPSysModifierActiveCtlr targets a modifier by name. Apply it to a
+                        // per-frame copy so cached authored data remains immutable and each
+                        // placed object evaluates its own controller time independently.
+                        auto effectiveModifiers = system.modifiers;
+                        for (const auto& controller : system.controllers) {
+                            if (controller.type != "NiPSysModifierActiveCtlr" ||
+                                !controller.hasBoolTrack || controller.modifierName.empty()) {
+                                continue;
+                            }
+                            const auto activeValue = EvaluateBoolTrack(controller.boolTrack, sampleTime);
+                            if (!activeValue) continue;
+                            const auto modifier = std::find_if(
+                                effectiveModifiers.begin(), effectiveModifiers.end(),
+                                [&](const core::NifParticleModifierInfo& candidate) {
+                                    return candidate.name == controller.modifierName;
+                                });
+                            if (modifier != effectiveModifiers.end()) modifier->active = *activeValue;
+                        }
+
                         core::AdvanceNifParticleState(
-                            runtime.particles, runtime.activeCount, system.modifiers, deltaTime);
+                            runtime.particles, runtime.activeCount, effectiveModifiers, deltaTime,
+                            &runtime.forceRandomState);
 
                         for (std::size_t modifierIndex = 0;
-                             modifierIndex < system.modifiers.size() &&
+                             modifierIndex < effectiveModifiers.size() &&
                              modifierIndex < runtime.emitterAccumulators.size() &&
                              modifierIndex < runtime.emitterRandomStates.size();
                              ++modifierIndex) {
-                            const auto& emitter = system.modifiers[modifierIndex];
+                            const auto& emitter = effectiveModifiers[modifierIndex];
                             if (!emitter.emitter || !emitter.active) continue;
 
                             const auto controller = std::find_if(
@@ -1842,7 +1868,6 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
                                 });
                             if (controller == system.controllers.end() || !controller->hasFloatTrack) continue;
 
-                            const float sampleTime = runtime.lastSimulationTime + deltaTime * 0.5f;
                             const auto rateValue = EvaluateFloatTrack(controller->floatTrack, sampleTime);
                             bool emitterActive = true;
                             if (controller->hasVisibilityTrack) {
@@ -1878,8 +1903,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
 
                             std::vector<float> ages;
                             ages.reserve(count);
-                            const float firstEvent =
-                                (1.0f - previousFraction) / rate;
+                            const float firstEvent = (1.0f - previousFraction) / rate;
                             const float eventStep = 1.0f / rate;
                             for (std::uint32_t birth = 0; birth < count; ++birth) {
                                 const float eventTime = firstEvent + eventStep * static_cast<float>(birth);
@@ -1891,7 +1915,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
                                 runtime.activeCount,
                                 system.capacity,
                                 emitter,
-                                system.modifiers,
+                                effectiveModifiers,
                                 ages,
                                 animationTime,
                                 system.hasRotationAngles,
