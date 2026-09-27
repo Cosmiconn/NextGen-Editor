@@ -30,7 +30,9 @@ jobs:
       - run: cmake --build build --config Release --parallel 2
       - name: Inventory fixture NIF materials
         if: runner.os == 'Linux'
-        run: ./build/nif_material_inventory tests/fixtures
+        run: |
+          ./build/nif_material_inventory tests/fixtures
+          ./build/nif_material_inventory --asset-root tests/fixtures tests/fixtures
       - run: ctest --test-dir build -C Release --output-on-failure
 
   windows-gui:

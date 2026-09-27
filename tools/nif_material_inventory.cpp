@@ -3,6 +3,7 @@
 #include "mapeditor/core/legacy/LegacyPathResolve.hpp"
 
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <filesystem>
 #include <iostream>
