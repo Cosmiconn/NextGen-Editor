@@ -328,6 +328,56 @@ int main(int argc, char** argv) {
               "drag removes only projected axis velocity with 30fps-normalized percentage");
     }
     {
+        NifParticleState particle;
+        particle.position = {0.0f, 1.0f, 0.0f};
+        particle.velocity = {0.0f, -2.0f, 0.0f};
+        particle.lifeSpan = 10.0f;
+
+        NifParticleColliderInfo plane;
+        plane.type = "NiPSysPlanarCollider";
+        plane.bounce = 1.0f;
+        plane.width = 10.0f;
+        plane.height = 10.0f;
+        plane.xAxis = {1.0f, 0.0f, 0.0f};
+        plane.yAxis = {0.0f, 0.0f, 1.0f};
+        plane.hasColliderToParticleSystemTransform = true;
+
+        NifParticleModifierInfo manager;
+        manager.type = "NiPSysColliderManager";
+        manager.active = true;
+        manager.colliders.push_back(plane);
+
+        std::vector<NifParticleState> state{particle};
+        std::uint16_t active = 1;
+        AdvanceNifParticleState(state, active, {manager}, 1.0f);
+        check(active == 1 &&
+              std::abs(state[0].velocity.y - 2.0f) < 1.0e-5f &&
+              std::abs(state[0].position.y - 1.0f) < 2.0e-4f,
+              "planar collider reflects velocity and integrates remaining sub-frame");
+    }
+    {
+        NifParticleState particle;
+        particle.position = {-2.0f, 0.0f, 0.0f};
+        particle.velocity = {4.0f, 0.0f, 0.0f};
+        particle.lifeSpan = 10.0f;
+
+        NifParticleColliderInfo sphere;
+        sphere.type = "NiPSysSphericalCollider";
+        sphere.radius = 1.0f;
+        sphere.dieOnCollide = true;
+        sphere.hasColliderToParticleSystemTransform = true;
+
+        NifParticleModifierInfo manager;
+        manager.type = "NiPSysColliderManager";
+        manager.active = true;
+        manager.colliders.push_back(sphere);
+
+        std::vector<NifParticleState> state{particle};
+        std::uint16_t active = 1;
+        AdvanceNifParticleState(state, active, {manager}, 1.0f);
+        check(active == 0, "spherical die-on-collide removes the particle at the hit");
+    }
+    {
         std::vector<NifParticleState> state(3);
         state[0].position = {1.0f, 2.0f, 3.0f};
         state[0].velocity = {2.0f, -1.0f, 0.5f};
