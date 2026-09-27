@@ -521,6 +521,26 @@ int main(int argc, char** argv) {
                             if (modifier.hasColorTrack)
                                 ++particleColorInterpolations[modifier.colorTrack.interpolation];
                         }
+                        if (modifier.type == "NiPSysColliderManager") {
+                            if (modifier.linkedRef >= 0 && modifier.colliders.empty()) {
+                                ++unsupportedParticleModifierBindings;
+                                rendererGapFiles.insert(entry.path().string());
+                            }
+                            for (const auto& collider : modifier.colliders) {
+                                if (collider.colliderObjectRef >= 0 &&
+                                    !collider.hasColliderToParticleSystemTransform) {
+                                    ++unsupportedParticleModifierBindings;
+                                    rendererGapFiles.insert(entry.path().string());
+                                }
+                                // Bounce and die-on-collide are simulated. Collision-spawn needs
+                                // the authored NiPSysSpawnModifier sub-frame path and remains a hard
+                                // gap until that path is materialized too.
+                                if (collider.spawnOnCollide) {
+                                    ++unsupportedParticleModifierBindings;
+                                    rendererGapFiles.insert(entry.path().string());
+                                }
+                            }
+                        }
                         if (modifier.type == "NiPSysBoxEmitter" ||
                             modifier.type == "NiPSysCylinderEmitter" ||
                             modifier.type == "NiPSysSphereEmitter") {
