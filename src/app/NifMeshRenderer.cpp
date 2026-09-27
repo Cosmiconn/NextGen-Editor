@@ -97,6 +97,7 @@ uniform float uGlossiness;
 uniform bool uSpecularEnabled;
 uniform int uApplyMode;
 uniform bool uVcAlphaTextureBlender;
+uniform bool uAlphaTextureBlender11;
 uniform int uVertexColorMode;
 uniform bool uParticleMode;
 uniform vec4 uParticleColor;
@@ -263,6 +264,15 @@ void main() {
         vec3 blended = mix(texture2, texture1, clamp(vertexColor.a, 0.0, 1.0));
         vec3 detail = texture(uTex2, slotUv(2)).rgb * 2.0;
         surface = uDiffuseColor * vertexColor.rgb * blended * detail;
+    } else if (uAlphaTextureBlender11 && uHasTex[0] && uHasTex[1] && uHasTex[2]) {
+        // Fiesta AlphaTextureBlender11 corpus contract:
+        // maps 0/1 are the two color layers; map 2 is a dedicated alpha mask.
+        // Real BFGate assets have opaque color layers and either no vertex colors or
+        // constant vertex alpha=1, so the authored varying blend signal is map2.a.
+        vec3 texture1 = texture(uTex0, slotUv(0)).rgb;
+        vec3 texture2 = texture(uTex1, slotUv(1)).rgb;
+        float blendMask = clamp(texture(uTex2, slotUv(2)).a, 0.0, 1.0);
+        surface = materialDiffuse * mix(texture1, texture2, blendMask);
     } else {
         if (uHasTex[0]) {
             if (uApplyMode == 0) surface = base.rgb;                         // APPLY_REPLACE
@@ -561,6 +571,7 @@ void NifMeshRenderer::Init() {
     uniforms_.locSpecularEnabled = glGetUniformLocation(shaderProgram_, "uSpecularEnabled");
     uniforms_.locApplyMode = glGetUniformLocation(shaderProgram_, "uApplyMode");
     uniforms_.locVcAlphaTextureBlender = glGetUniformLocation(shaderProgram_, "uVcAlphaTextureBlender");
+    uniforms_.locAlphaTextureBlender11 = glGetUniformLocation(shaderProgram_, "uAlphaTextureBlender11");
     uniforms_.locVertexColorMode = glGetUniformLocation(shaderProgram_, "uVertexColorMode");
     uniforms_.locBumpLumaScale = glGetUniformLocation(shaderProgram_, "uBumpLumaScale");
     uniforms_.locBumpLumaOffset = glGetUniformLocation(shaderProgram_, "uBumpLumaOffset");
@@ -874,6 +885,7 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                     sub.specularEnabled = part.specularEnabled;
                     sub.textureApplyMode = part.textureApplyMode;
                     sub.vcAlphaTextureBlender = part.shaderName == "VCAlphaTextureBlender";
+                    sub.alphaTextureBlender11 = part.shaderName == "AlphaTextureBlender11";
                     const bool hasVertexColors =
                         part.vertexColors.size() == part.positions.size();
                     if (hasVertexColors) {
@@ -1241,6 +1253,7 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                     sub.specularEnabled = srcSystem.specularEnabled;
                     sub.textureApplyMode = srcSystem.textureApplyMode;
                     sub.vcAlphaTextureBlender = srcSystem.shaderName == "VCAlphaTextureBlender";
+                    sub.alphaTextureBlender11 = srcSystem.shaderName == "AlphaTextureBlender11";
                     if (dstSystem.hasColors) {
                         if (!srcSystem.hasVertexColorProperty) sub.vertexColorMode = 2;
                         else if (srcSystem.vertexColorMode == 0u) sub.vertexColorMode = 0;
@@ -1815,6 +1828,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     const auto& locSpecularEnabled = uniforms_.locSpecularEnabled;
     const auto& locApplyMode = uniforms_.locApplyMode;
     const auto& locVcAlphaTextureBlender = uniforms_.locVcAlphaTextureBlender;
+    const auto& locAlphaTextureBlender11 = uniforms_.locAlphaTextureBlender11;
     const auto& locVertexColorMode = uniforms_.locVertexColorMode;
     const auto& locBumpLumaScale = uniforms_.locBumpLumaScale;
     const auto& locBumpLumaOffset = uniforms_.locBumpLumaOffset;
@@ -2290,6 +2304,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
         glUniform1i(locSpecularEnabled, sub.specularEnabled ? 1 : 0);
         glUniform1i(locApplyMode, static_cast<int>(sub.textureApplyMode));
         glUniform1i(locVcAlphaTextureBlender, sub.vcAlphaTextureBlender ? 1 : 0);
+        glUniform1i(locAlphaTextureBlender11, sub.alphaTextureBlender11 ? 1 : 0);
         glUniform1i(locVertexColorMode, static_cast<int>(sub.vertexColorMode));
         glUniform1f(locBumpLumaScale, sub.bumpMapLumaScale);
         glUniform1f(locBumpLumaOffset, sub.bumpMapLumaOffset);
