@@ -4408,6 +4408,58 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             }
         }
 
+        // Resolve NiMeshParticleSystem master generations from NiPSysMeshUpdateModifier.
+        // Gamebryo's converter takes these refs in order, recursively converts each AVObject
+        // subtree and calls SetMasterParticle(generation, object). Reuse the already-built
+        // model parts by recording which geometry blocks live under each master root.
+        for (auto& system : model.particleSystems) {
+            if (!system.meshParticles) continue;
+            system.meshParticleMasters.clear();
+
+            const NifParticleModifierInfo* meshUpdate = nullptr;
+            for (const auto modifierRef : system.modifierRefs) {
+                if (modifierRef < 0) continue;
+                const auto it = particleModifierByBlock.find(static_cast<std::uint32_t>(modifierRef));
+                if (it != particleModifierByBlock.end() &&
+                    it->second.type == "NiPSysMeshUpdateModifier") {
+                    meshUpdate = &it->second;
+                    break;
+                }
+            }
+            if (meshUpdate == nullptr) continue;
+
+            system.meshParticleMasters.reserve(meshUpdate->meshRefs.size());
+            for (const auto masterRef : meshUpdate->meshRefs) {
+                if (masterRef < 0 || static_cast<std::size_t>(masterRef) >= scene.size()) continue;
+
+                SkinTransform masterWorld{};
+                if (!worldTransformForBlock(masterRef, masterWorld)) continue;
+
+                NifMeshParticleMasterInfo master;
+                master.blockRef = masterRef;
+                master.inverseSceneTransform = publicTransform(invertTransform(masterWorld));
+
+                for (std::size_t partIndex = 0;
+                     partIndex < model.parts.size() && partIndex < partDataBlock.size();
+                     ++partIndex) {
+                    const auto dataRef = partDataBlock[partIndex];
+                    const auto geometry = dataToGeometry.find(dataRef);
+                    if (geometry == dataToGeometry.end()) continue;
+
+                    int node = static_cast<int>(geometry->second);
+                    int guard = 0;
+                    bool belongs = false;
+                    while (node >= 0 && guard++ < 128) {
+                        if (node == masterRef) { belongs = true; break; }
+                        if (static_cast<std::size_t>(node) >= parentOf.size()) break;
+                        node = parentOf[static_cast<std::size_t>(node)];
+                    }
+                    if (belongs) master.partIndices.push_back(partIndex);
+                }
+                system.meshParticleMasters.push_back(std::move(master));
+            }
+        }
+
         auto relativeBoneTransform = [&](int boneBlock, int skeletonRoot, SkinTransform& out) {
             out = SkinTransform{};
             if (boneBlock < 0 || static_cast<std::size_t>(boneBlock) >= scene.size()) return false;

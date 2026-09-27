@@ -160,6 +160,7 @@ private:
         std::array<float, 9> billboardInverseRotation{1.0f, 0.0f, 0.0f,
                                                      0.0f, 1.0f, 0.0f,
                                                      0.0f, 0.0f, 1.0f};
+        bool meshParticleTemplate = false;
         bool lodControlled = false;
         float lodNear = 0.0f;
         float lodFar = 0.0f;
@@ -177,6 +178,11 @@ private:
         bool hasRotationAngles = false;
         bool hasRotationAxes = false;
         std::uint32_t capacity = 0;
+        struct MeshMaster {
+            core::NifTransform inverseSceneTransform{};
+            std::vector<std::size_t> subMeshIndices;
+        };
+        std::vector<MeshMaster> meshMasters;
         std::vector<core::NifParticleModifierInfo> modifiers;
         std::vector<core::NifParticleControllerInfo> controllers;
         core::NifTransform sceneTransform{};

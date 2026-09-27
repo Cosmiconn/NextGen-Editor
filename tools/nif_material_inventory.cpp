@@ -125,6 +125,9 @@ int main(int argc, char** argv) {
     std::size_t activeParticles = 0;
     std::size_t texturedParticleSystems = 0;
     std::size_t meshParticleSystems = 0;
+    std::size_t meshParticleSystemsWithoutMasters = 0;
+    std::size_t meshParticleMasterGenerations = 0;
+    std::size_t meshParticleMasterParts = 0;
     std::size_t worldSpaceParticleSystems = 0;
     std::size_t particleRotationSpeedSystems = 0;
     std::size_t particleTextureBindings = 0;
@@ -308,6 +311,18 @@ int main(int argc, char** argv) {
                         }
                     }
                     meshParticleSystems += system.meshParticles ? 1u : 0u;
+                    if (system.meshParticles) {
+                        if (system.meshParticleMasters.empty()) {
+                            ++meshParticleSystemsWithoutMasters;
+                            rendererGapFiles.insert(entry.path().string());
+                        }
+                        meshParticleMasterGenerations += system.meshParticleMasters.size();
+                        for (const auto& master : system.meshParticleMasters) {
+                            meshParticleMasterParts += master.partIndices.size();
+                            if (master.partIndices.empty())
+                                rendererGapFiles.insert(entry.path().string());
+                        }
+                    }
                     worldSpaceParticleSystems += system.worldSpace ? 1u : 0u;
                     if (system.hasParticleData) {
                         particleCapacity += system.particleData.capacity;
@@ -748,6 +763,9 @@ int main(int argc, char** argv) {
               << "\tactiveParticles=" << activeParticles
               << "\ttexturedParticleSystems=" << texturedParticleSystems
               << "\tmeshParticleSystems=" << meshParticleSystems
+              << "\tmeshParticleSystemsWithoutMasters=" << meshParticleSystemsWithoutMasters
+              << "\tmeshParticleMasterGenerations=" << meshParticleMasterGenerations
+              << "\tmeshParticleMasterParts=" << meshParticleMasterParts
               << "\tworldSpaceParticleSystems=" << worldSpaceParticleSystems
               << "\tresolvedParticleControllers=" << resolvedParticleControllers
               << "\temitterControllersWithoutRate=" << emitterControllersWithoutRate

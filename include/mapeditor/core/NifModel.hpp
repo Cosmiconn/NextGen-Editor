@@ -429,6 +429,15 @@ void AdvanceNifParticleState(
     bool hasRotationAxes,
     std::uint32_t& randomState);
 
+struct NifMeshParticleMasterInfo {
+    std::int32_t blockRef = -1;
+    // Existing model.parts vertices are baked to the NIF root. Gamebryo clones the
+    // master AVObject and replaces the master's own transform with the particle transform,
+    // so this inverse removes the original root->master transform before instancing.
+    NifTransform inverseSceneTransform{};
+    std::vector<std::size_t> partIndices;
+};
+
 // Authored NiParticleSystem/NiMeshParticleSystem scene wiring. Keeping this separate from
 // NifMeshPart is intentional: particle systems are dynamic scene objects, not triangle meshes.
 struct NifParticleSystemInfo {
@@ -447,6 +456,7 @@ struct NifParticleSystemInfo {
     std::vector<std::string> modifierTypes;
     std::vector<NifParticleModifierInfo> modifiers;
     std::vector<NifParticleControllerInfo> controllers;
+    std::vector<NifMeshParticleMasterInfo> meshParticleMasters;
     bool hasParticleData = false;
     NifParticleDataInfo particleData;
 

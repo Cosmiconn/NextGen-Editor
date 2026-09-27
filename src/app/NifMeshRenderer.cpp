@@ -820,7 +820,18 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                 };
 
                 model.subMeshes.reserve(nifResult->parts.size());
-                for (const auto& part : nifResult->parts) {
+                std::vector<std::size_t> corePartToSubMesh(
+                    nifResult->parts.size(), std::numeric_limits<std::size_t>::max());
+                std::unordered_set<std::size_t> meshParticleTemplateParts;
+                for (const auto& particleSystem : nifResult->particleSystems) {
+                    for (const auto& master : particleSystem.meshParticleMasters) {
+                        meshParticleTemplateParts.insert(
+                            master.partIndices.begin(), master.partIndices.end());
+                    }
+                }
+                for (std::size_t corePartIndex = 0;
+                     corePartIndex < nifResult->parts.size(); ++corePartIndex) {
+                    const auto& part = nifResult->parts[corePartIndex];
                     if (part.positions.empty() || part.triangleIndices.empty()) continue;
 
                     const std::vector<core::NifVec3>& normals =
@@ -929,6 +940,8 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                     sub.billboardMode = part.billboardMode;
                     sub.billboardPivot = {part.billboardPivot.x, part.billboardPivot.y, part.billboardPivot.z};
                     sub.billboardInverseRotation = part.billboardInverseRotation;
+                    sub.meshParticleTemplate =
+                        meshParticleTemplateParts.contains(corePartIndex);
                     sub.lodControlled = part.lodControlled;
                     sub.lodNear = part.lodNear;
                     sub.lodFar = part.lodFar;
@@ -1170,6 +1183,7 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                                  validIndices.data(), GL_STATIC_DRAW);
 
                     glBindVertexArray(0);
+                    corePartToSubMesh[corePartIndex] = model.subMeshes.size();
                     model.subMeshes.push_back(sub);
                 }
 
@@ -1194,6 +1208,18 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                     dstSystem.modifiers = srcSystem.modifiers;
                     dstSystem.controllers = srcSystem.controllers;
                     dstSystem.sceneTransform = srcSystem.sceneTransform;
+                    dstSystem.meshMasters.reserve(srcSystem.meshParticleMasters.size());
+                    for (const auto& sourceMaster : srcSystem.meshParticleMasters) {
+                        ParticleSystem::MeshMaster master;
+                        master.inverseSceneTransform = sourceMaster.inverseSceneTransform;
+                        for (const auto partIndex : sourceMaster.partIndices) {
+                            if (partIndex >= corePartToSubMesh.size()) continue;
+                            const auto subMeshIndex = corePartToSubMesh[partIndex];
+                            if (subMeshIndex != std::numeric_limits<std::size_t>::max())
+                                master.subMeshIndices.push_back(subMeshIndex);
+                        }
+                        dstSystem.meshMasters.push_back(std::move(master));
+                    }
 
                     auto& sub = dstSystem.material;
                     sub.vao = particleVao_;
@@ -1481,6 +1507,18 @@ Mat4 ParticleScreenRotation(float angle) {
     m.m[1] = s;
     m.m[4] = -s;
     m.m[5] = co;
+    return m;
+}
+
+Mat4 ParticleAxisAngleRotation(const core::NifVec3& axis, float angle) {
+    const float length = std::sqrt(axis.x * axis.x + axis.y * axis.y + axis.z * axis.z);
+    if (!(length > 1.0e-8f) || !std::isfinite(angle)) return Mat4::Identity();
+    const float x = axis.x / length, y = axis.y / length, z = axis.z / length;
+    const float co = std::cos(angle), s = std::sin(angle), t = 1.0f - co;
+    Mat4 m = Mat4::Identity();
+    m.m[0] = t*x*x + co;   m.m[4] = t*x*y - s*z; m.m[8]  = t*x*z + s*y;
+    m.m[1] = t*x*y + s*z; m.m[5] = t*y*y + co;   m.m[9]  = t*y*z - s*x;
+    m.m[2] = t*x*z - s*y; m.m[6] = t*y*z + s*x; m.m[10] = t*z*z + co;
     return m;
 }
 
@@ -1960,6 +1998,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
         modelMat.m[14] = obj.posZ;
 
         for (const auto& sub : model->subMeshes) {
+            if (sub.meshParticleTemplate) continue;
             // NifSkope wertet NiLODNode ueber die Entfernung des LOD-Centers im Viewraum aus:
             // near <= distance < far. Die Bereiche bleiben dadurch auch bei mehreren platzierten
             // Instanzen desselben NIF unabhaengig und kameraabhaengig.
@@ -1991,9 +2030,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
                  ++systemIndex) {
                 const auto& system = model->particleSystems[systemIndex];
                 const auto& runtime = (*runtimeSystems)[systemIndex];
-                // NiMeshParticleSystem instances require authored mesh generation/selection and are
-                // deliberately not reinterpreted as sprites.
-                if (system.meshParticles || runtime.activeCount == 0) continue;
+                if (runtime.activeCount == 0) continue;
                 // Gamebryo world-space particle systems render with their
                 // world translation/rotation neutralized; only world scale
                 // remains on the particle system itself. Positions emitted
@@ -2009,6 +2046,38 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
                                                    particleSpace.m[2] * particleSpace.m[2]);
                 const std::size_t active =
                     std::min<std::size_t>(runtime.activeCount, runtime.particles.size());
+
+                if (system.meshParticles) {
+                    if (system.meshMasters.empty()) continue;
+                    for (std::size_t p = 0; p < active; ++p) {
+                        const auto& particle = runtime.particles[p];
+                        std::size_t generation = particle.spawnGeneration;
+                        if (generation >= system.meshMasters.size())
+                            generation = system.meshMasters.size() - 1u;
+                        const auto& master = system.meshMasters[generation];
+                        if (master.subMeshIndices.empty()) continue;
+
+                        // NiPSMeshParticleSystem::PostUpdate sets the cloned master root to
+                        // particle position, axis-angle rotation and size*radius scale.
+                        const Mat4 particleModel =
+                            particleSpace *
+                            TranslationMatrix(particle.position.x, particle.position.y, particle.position.z) *
+                            ParticleAxisAngleRotation(particle.rotationAxis, particle.rotationAngle) *
+                            UniformScaleMatrix(particle.radius * particle.size) *
+                            NifTransformToEditorMat4(master.inverseSceneTransform);
+
+                        for (const auto subMeshIndex : master.subMeshIndices) {
+                            if (subMeshIndex >= model->subMeshes.size()) continue;
+                            const auto& sub = model->subMeshes[subMeshIndex];
+                            const auto worldCenter = TransformPoint(particleModel, sub.localCenter);
+                            const auto centerView = TransformPoint(view, worldCenter);
+                            DrawItem item{&sub, particleModel, -centerView[2]};
+                            (sub.alphaBlend ? blendedItems : opaqueItems).push_back(item);
+                        }
+                    }
+                    continue;
+                }
+
                 for (std::size_t p = 0; p < active; ++p) {
                     const auto& particle = runtime.particles[p];
                     const auto center = TransformPoint(particleSpace,
