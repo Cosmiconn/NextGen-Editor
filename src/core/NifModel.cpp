@@ -1119,12 +1119,44 @@ NifParticleModifierInfo ParseColliderManager(ByteReader& r) {
     auto out=ParseNiPSysModifierBase(r,"NiPSysColliderManager"); out.linkedRef=r.I32(); return out;
 }
 
+NifParticleColliderInfo ParseNiPSysColliderBase(ByteReader& r, const char* type) {
+    NifParticleColliderInfo out;
+    out.type = type;
+    out.bounce = r.F32();
+    out.spawnOnCollide = r.U8() != 0;
+    out.dieOnCollide = r.U8() != 0;
+    out.spawnModifierRef = r.I32();
+    out.parentRef = r.I32();
+    out.nextColliderRef = r.I32();
+    out.colliderObjectRef = r.I32();
+    return out;
+}
+
+NifParticleColliderInfo ParseNiPSysPlanarCollider(ByteReader& r) {
+    auto out = ParseNiPSysColliderBase(r, "NiPSysPlanarCollider");
+    out.width = r.F32();
+    out.height = r.F32();
+    {
+        const float x = r.F32(), y = r.F32(), z = r.F32();
+        out.xAxis = {x, z, y};
+    }
+    {
+        const float x = r.F32(), y = r.F32(), z = r.F32();
+        out.yAxis = {x, z, y};
+    }
+    return out;
+}
+
+NifParticleColliderInfo ParseNiPSysSphericalCollider(ByteReader& r) {
+    auto out = ParseNiPSysColliderBase(r, "NiPSysSphericalCollider");
+    out.radius = r.F32();
+    return out;
+}
+
 void SkipNiPSysModifierBase(ByteReader& r) { (void)ParseNiPSysModifierBase(r,"NiPSysModifier"); }
 void SkipNiPSysColliderManager(ByteReader& r) { (void)ParseColliderManager(r); }
-void SkipNiPSysColliderBase(ByteReader& r) {
-    r.F32(); r.U8(); r.U8(); r.I32(); r.I32(); r.I32(); r.I32();
-}
-void SkipNiPSysPlanarCollider(ByteReader& r) { SkipNiPSysColliderBase(r); r.Skip(4+4+12+12); }
+void SkipNiPSysColliderBase(ByteReader& r) { (void)ParseNiPSysColliderBase(r, "NiPSysCollider"); }
+void SkipNiPSysPlanarCollider(ByteReader& r) { (void)ParseNiPSysPlanarCollider(r); }
 void SkipNiPSysEmitterBase(ByteReader& r) { auto out=ParseNiPSysModifierBase(r,"NiPSysEmitter"); ParseEmitterBase(r,out); }
 void SkipNiPSysVolumeEmitterBase(ByteReader& r) { auto out=ParseVolumeEmitter(r,"NiPSysVolumeEmitter"); (void)out; }
 void SkipNiPSysBoxEmitter(ByteReader& r) { (void)ParseBoxEmitter(r); }
@@ -2949,6 +2981,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
     std::unordered_map<std::uint32_t, SkinPartitionBlock> skinPartitionByBlock;
     std::unordered_map<std::uint32_t, NifParticleDataInfo> particleDataByBlock;
     std::unordered_map<std::uint32_t, NifParticleModifierInfo> particleModifierByBlock;
+    std::unordered_map<std::uint32_t, NifParticleColliderInfo> particleColliderByBlock;
     struct LodRangeData {
         NifVec3 center{};
         std::vector<std::pair<float, float>> ranges;
@@ -3341,10 +3374,13 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             // Ebenfalls NiPSysModifierFloatCtlr - dieselbe Struktur.
             SkipNiPSysModifierActiveCtlr(r);
         } else if (type == "NiPSysPlanarCollider") {
-            SkipNiPSysPlanarCollider(r);
+            auto collider = ParseNiPSysPlanarCollider(r);
+            collider.blockRef = static_cast<std::int32_t>(blockIdx);
+            particleColliderByBlock[blockIdx] = std::move(collider);
         } else if (type == "NiPSysSphericalCollider") {
-            SkipNiPSysColliderBase(r);
-            r.F32(); // radius
+            auto collider = ParseNiPSysSphericalCollider(r);
+            collider.blockRef = static_cast<std::int32_t>(blockIdx);
+            particleColliderByBlock[blockIdx] = std::move(collider);
         } else if (type == "NiFlipController") {
             flipControllersByBlock[blockIdx] = ParseNiFlipController(r);
         } else if (type == "NiPSysUpdateCtlr" || type == "NiPSysResetOnLoopCtlr") {
@@ -4360,6 +4396,29 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                         modifier.forceToParticleSystem =
                             publicTransform(multiplyTransform(inverseSystem, forceWorld));
                         modifier.hasForceToParticleSystemTransform = true;
+                    }
+                }
+
+                if (modifier.type == "NiPSysColliderManager") {
+                    modifier.colliders.clear();
+                    std::int32_t colliderRef = modifier.linkedRef;
+                    std::unordered_set<std::int32_t> seenColliders;
+                    for (int guard = 0; colliderRef >= 0 && guard < 128; ++guard) {
+                        if (!seenColliders.insert(colliderRef).second) break;
+                        const auto colliderIt =
+                            particleColliderByBlock.find(static_cast<std::uint32_t>(colliderRef));
+                        if (colliderIt == particleColliderByBlock.end()) break;
+                        auto collider = colliderIt->second;
+                        if (collider.colliderObjectRef >= 0) {
+                            SkinTransform colliderWorld{};
+                            if (worldTransformForBlock(collider.colliderObjectRef, colliderWorld)) {
+                                collider.colliderToParticleSystem =
+                                    publicTransform(multiplyTransform(inverseSystem, colliderWorld));
+                                collider.hasColliderToParticleSystemTransform = true;
+                            }
+                        }
+                        modifier.colliders.push_back(std::move(collider));
+                        colliderRef = colliderIt->second.nextColliderRef;
                     }
                 }
 
