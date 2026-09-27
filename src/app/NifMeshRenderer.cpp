@@ -1058,6 +1058,14 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                             // though UV0 is valid. Dropping the complete texture made whole material
                             // layers disappear; render with UV0 as a deterministic fallback.
                             dst.uvSet = 0;
+                        } else if (!hasSlotUvs && src.uvSet == 0u &&
+                                   part.uvSets.empty() && part.uvs.empty()) {
+                            // A handful of authored Fiesta meshes bind a base texture while the
+                            // geometry carries no texture-coordinate array at all. The vertex buffer
+                            // is already initialized with (0,0) for absent UV attributes, matching
+                            // the constant default coordinate used by the legacy pipeline rather
+                            // than dropping the authored texture stage completely.
+                            dst.uvSet = 0;
                         } else if (!hasSlotUvs) {
                             std::fprintf(stderr,
                                 "[NifMeshRenderer] Textur-Slot %zu ohne brauchbares UV-Set (%u): %s\n",
