@@ -1471,6 +1471,19 @@ Mat4 UniformScaleMatrix(float scale) {
     return m;
 }
 
+Mat4 ParticleScreenRotation(float angle) {
+    // NiPSFacingQuadGeneratorKernel: positive particle angles rotate clockwise
+    // around the screen-facing normal. OpenGL's local +Z rotation is CCW, so negate.
+    const float s = std::sin(-angle);
+    const float co = std::cos(-angle);
+    Mat4 m = Mat4::Identity();
+    m.m[0] = co;
+    m.m[1] = s;
+    m.m[4] = -s;
+    m.m[5] = co;
+    return m;
+}
+
 Mat4 Mat3ToMat4(const std::array<float, 9>& r) {
     Mat4 m = Mat4::Identity();
     // r ist column-major.
@@ -1998,8 +2011,11 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
                         !std::isfinite(halfSize) || halfSize <= 1.0e-6f) continue;
 
                     const Mat4 face = BillboardFacingRotation(center, camera, 0u);
+                    const Mat4 inPlaneRotation = system.hasRotationAngles
+                        ? ParticleScreenRotation(particle.rotationAngle)
+                        : Mat4::Identity();
                     const Mat4 particleModel = TranslationMatrix(center[0], center[1], center[2]) *
-                                               face * UniformScaleMatrix(halfSize);
+                                               face * inPlaneRotation * UniformScaleMatrix(halfSize);
                     const auto centerView = TransformPoint(view, center);
                     DrawItem item{&system.material, particleModel, -centerView[2]};
                     item.particle = true;
