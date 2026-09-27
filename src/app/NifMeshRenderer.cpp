@@ -2069,9 +2069,28 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
                         for (const auto subMeshIndex : master.subMeshIndices) {
                             if (subMeshIndex >= model->subMeshes.size()) continue;
                             const auto& sub = model->subMeshes[subMeshIndex];
-                            const auto worldCenter = TransformPoint(particleModel, sub.localCenter);
+
+                            // Gamebryo clones the complete master AVObject subtree, starts its
+                            // controllers at t=0 and updates that clone at particle.age. Billboard
+                            // children therefore face the camera per clone, while Flip/Texture
+                            // controllers sample particle age rather than the editor's global time.
+                            Mat4 effectiveParticleModel = particleModel;
+                            if (sub.billboard) {
+                                const float cloneScale = std::sqrt(
+                                    particleModel.m[0] * particleModel.m[0] +
+                                    particleModel.m[1] * particleModel.m[1] +
+                                    particleModel.m[2] * particleModel.m[2]);
+                                effectiveParticleModel = ApplyBillboard(
+                                    particleModel, cloneScale, sub.billboardPivot,
+                                    sub.billboardMode, sub.billboardInverseRotation, camera);
+                            }
+
+                            const auto worldCenter =
+                                TransformPoint(effectiveParticleModel, sub.localCenter);
                             const auto centerView = TransformPoint(view, worldCenter);
-                            DrawItem item{&sub, particleModel, -centerView[2]};
+                            DrawItem item{&sub, effectiveParticleModel, -centerView[2]};
+                            item.ageLocalControllers = true;
+                            item.controllerTime = particle.age;
                             (sub.alphaBlend ? blendedItems : opaqueItems).push_back(item);
                         }
                     }
@@ -2253,10 +2272,12 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
         glUniform1f(locBumpLumaOffset, sub.bumpMapLumaOffset);
         glUniformMatrix2fv(locBumpMatrix, 1, GL_FALSE, sub.bumpMapMatrix.data());
 
+        const float controllerTime =
+            item.ageLocalControllers ? item.controllerTime : animationTime;
         std::array<TextureBinding, 10> animatedTextures = sub.textures;
         for (const auto& anim : sub.textureTransformAnimations) {
             if (anim.slot >= animatedTextures.size()) continue;
-            const auto value = EvaluateFloatTrack(anim.track, animationTime);
+            const auto value = EvaluateFloatTrack(anim.track, controllerTime);
             if (!value) continue;
             auto& tex = animatedTextures[anim.slot];
             switch (anim.operation) {
@@ -2270,7 +2291,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
         }
         for (const auto& anim : sub.textureFlipAnimations) {
             if (anim.slot >= animatedTextures.size() || anim.frameTextures.empty()) continue;
-            const auto value = EvaluateFloatTrack(anim.track, animationTime);
+            const auto value = EvaluateFloatTrack(anim.track, controllerTime);
             if (!value) continue;
             long long frame = static_cast<long long>(*value); // NifSkope castet ebenfalls auf int
             frame = std::clamp<long long>(frame, 0, static_cast<long long>(anim.frameTextures.size() - 1));

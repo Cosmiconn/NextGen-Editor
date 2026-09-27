@@ -223,6 +223,10 @@ private:
         float depth = 0.0f;
         bool particle = false;
         std::array<float, 4> particleColor{1.0f, 1.0f, 1.0f, 1.0f};
+        // NiPSMeshParticleSystem clones each master and calls UpdateDownwardPass
+        // with the individual particle age. Normal map meshes keep global scene time.
+        bool ageLocalControllers = false;
+        float controllerTime = 0.0f;
     };
     std::vector<DrawItem> opaqueItems_, blendedItems_;
     std::uint32_t shaderProgram_ = 0;

@@ -391,13 +391,11 @@ int main(int argc, char** argv) {
                                     continue;
                                 }
                                 const auto& masterPart = model->parts[partIndex];
-                                // Mesh-particle clones in Gamebryo update their own master
-                                // scene at particle age. These features need age-local handling
-                                // rather than the normal map-object/global-time path.
-                                if (masterPart.skinned || masterPart.billboard ||
-                                    masterPart.lodControlled ||
-                                    !masterPart.textureTransformAnimations.empty() ||
-                                    !masterPart.textureFlipAnimations.empty()) {
+                                // Mesh-particle masters are cloned and updated at particle age.
+                                // Billboard, TextureTransform and FlipController are now handled
+                                // per clone by the renderer. Skinning and LOD still need their own
+                                // age-local clone semantics and remain explicit fidelity gaps.
+                                if (masterPart.skinned || masterPart.lodControlled) {
                                     ++meshParticleMasterDynamicParts;
                                     rendererGapFiles.insert(entry.path().string());
                                     std::ostringstream dynamicDetail;
