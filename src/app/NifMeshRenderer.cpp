@@ -1889,6 +1889,12 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
                                 !controller.hasBoolTrack || controller.modifierName.empty()) {
                                 continue;
                             }
+                            // Gamebryo NiBlendInterpolator::LoadBinary deliberately streams no
+                            // InterpArrayItems for manager-controlled blends. ControllerManager
+                            // only adds them when a sequence is explicitly activated; loading the
+                            // NIF merely registers SequenceData. Do not invent an activation.
+                            if (controller.boolBlend && controller.boolBlend->managerControlled)
+                                continue;
                             const auto activeValue = EvaluateBoolTrack(controller.boolTrack, sampleTime);
                             if (!activeValue) continue;
                             const auto modifier = std::find_if(
@@ -1919,9 +1925,17 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
                                 });
                             if (controller == system.controllers.end() || !controller->hasFloatTrack) continue;
 
+                            // Manager-controlled NiBlendFloatInterpolator has no standalone
+                            // runtime value before ControllerManager activates a sequence.
+                            // Gamebryo's blend Update returns false while interpCount == 0.
+                            if (controller->floatBlend && controller->floatBlend->managerControlled)
+                                continue;
+
                             const auto rateValue = EvaluateFloatTrack(controller->floatTrack, sampleTime);
                             bool emitterActive = true;
-                            if (controller->hasVisibilityTrack) {
+                            if (controller->hasVisibilityTrack &&
+                                !(controller->visibilityBlend &&
+                                  controller->visibilityBlend->managerControlled)) {
                                 const auto activeValue =
                                     EvaluateBoolTrack(controller->visibilityTrack, sampleTime);
                                 emitterActive = activeValue.value_or(false);

@@ -117,6 +117,7 @@ int main(int argc, char** argv) {
     std::size_t activeControllersWithoutBoolTrack = 0;
     std::size_t blendParticleControllerTracks = 0;
     std::size_t managerControlledParticleBlendTracks = 0;
+    std::size_t dormantManagerControlledParticleBlendTracks = 0;
     std::size_t weightedParticleBlendTracks = 0;
     std::size_t colorModifiersWithoutTrack = 0;
     std::size_t volumeEmittersWithoutTransform = 0;
@@ -347,7 +348,15 @@ int main(int argc, char** argv) {
                             ++blendParticleControllerTracks;
                             if (blend->managerControlled) {
                                 ++managerControlledParticleBlendTracks;
-                                rendererGapFiles.insert(entry.path().string());
+                                // Gamebryo 2.6: manager-controlled blend arrays are populated
+                                // only by explicit NiControllerManager sequence activation.
+                                // A streamed NIF registers its sequence data but does not
+                                // activate it, so zero serialized items is a fully-defined
+                                // dormant state for standalone map rendering.
+                                if (blend->items.empty())
+                                    ++dormantManagerControlledParticleBlendTracks;
+                                else
+                                    rendererGapFiles.insert(entry.path().string());
                             }
                             if (!blend->items.empty()) {
                                 ++weightedParticleBlendTracks;
@@ -871,6 +880,8 @@ int main(int argc, char** argv) {
               << "\tactiveControllersWithoutBoolTrack=" << activeControllersWithoutBoolTrack
               << "\tblendParticleControllerTracks=" << blendParticleControllerTracks
               << "\tmanagerControlledParticleBlendTracks=" << managerControlledParticleBlendTracks
+              << "\tdormantManagerControlledParticleBlendTracks="
+              << dormantManagerControlledParticleBlendTracks
               << "\tweightedParticleBlendTracks=" << weightedParticleBlendTracks
               << "\tcolorModifiersWithoutTrack=" << colorModifiersWithoutTrack
               << "\tvolumeEmittersWithoutTransform=" << volumeEmittersWithoutTransform
