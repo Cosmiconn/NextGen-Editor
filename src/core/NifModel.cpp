@@ -4129,9 +4129,12 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             // - VCAlphaTextureBlender: 0=Texture1, 1=Texture2, 2=Detail.
             // - AlphaTextureBlender11: 0/1 are opaque color layers, 2 is the alpha blend mask.
             if (part.shaderName == "VCAlphaTextureBlender" ||
-                part.shaderName == "AlphaTextureBlender11") {
+                part.shaderName == "AlphaTextureBlender11" ||
+                part.shaderName == "PgTerrain") {
                 for (const auto& [mapId, src] : ts.shaderSlots) {
-                    if (mapId > 2u) continue;
+                    const std::uint32_t maxMapId =
+                        part.shaderName == "PgTerrain" ? 1u : 2u;
+                    if (mapId > maxMapId) continue;
                     auto& dst = part.textureSlots[mapId];
                     dst.present = src.present;
                     dst.uvSet = src.uvSet;
@@ -5028,9 +5031,12 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         // Same verified mappings as mesh materials. Other shader map IDs remain
         // preserved but diagnostic-only.
         if (system.shaderName == "VCAlphaTextureBlender" ||
-            system.shaderName == "AlphaTextureBlender11") {
+            system.shaderName == "AlphaTextureBlender11" ||
+            system.shaderName == "PgTerrain") {
+            const std::uint32_t maxMapId =
+                system.shaderName == "PgTerrain" ? 1u : 2u;
             for (const auto& [mapId, src] : textureState->shaderSlots) {
-                if (mapId <= 2u) copyTexDesc(system.textureSlots[mapId], src);
+                if (mapId <= maxMapId) copyTexDesc(system.textureSlots[mapId], src);
             }
         }
 
