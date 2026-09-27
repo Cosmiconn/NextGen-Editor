@@ -3898,114 +3898,88 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         }
     }
 
+    std::unordered_map<std::uint32_t, const GeomNode*> geometryByBlock;
+    geometryByBlock.reserve(geomNodes.size());
+    for (const auto& g : geomNodes) geometryByBlock[g.block] = &g;
+    const auto geometryForPart = [&](std::size_t partIndex) -> const GeomNode* {
+        if (partIndex >= partGeometryBlock.size() || partGeometryBlock[partIndex] < 0)
+            return nullptr;
+        const auto it = geometryByBlock.find(
+            static_cast<std::uint32_t>(partGeometryBlock[partIndex]));
+        return it == geometryByBlock.end() ? nullptr : it->second;
+    };
+
     // Material follows the same scene-graph inheritance as the other NiProperties.
-    // Resolve it authoritatively after any geometry-driven part rebuild, so shared or parent
-    // materials do not depend on block adjacency.
-    {
-        std::unordered_map<std::int32_t, NifMaterial> materialByData;
-        for (const auto& g : geomNodes) {
-            for (const auto ref : g.properties) {
-                if (ref < 0) continue;
-                const auto it = materialByBlock.find(static_cast<std::uint32_t>(ref));
-                if (it != materialByBlock.end()) {
-                    materialByData[g.dataRef] = it->second;
-                    break;
-                }
+    // Resolve per exact geometry AVObject; shared GeometryData may have different properties.
+    for (std::size_t p = 0; p < model.parts.size(); ++p) {
+        const auto* g = geometryForPart(p);
+        if (g == nullptr) continue;
+        for (const auto ref : g->properties) {
+            if (ref < 0) continue;
+            const auto it = materialByBlock.find(static_cast<std::uint32_t>(ref));
+            if (it != materialByBlock.end()) {
+                model.parts[p].material = it->second;
+                break;
             }
-        }
-        for (std::size_t p = 0; p < model.parts.size() && p < partDataBlock.size(); ++p) {
-            const auto it = materialByData.find(partDataBlock[p]);
-            if (it != materialByData.end()) model.parts[p].material = it->second;
         }
     }
 
     // Resolve NiVertexColorProperty through the same effective child-first property chain.
-    // Direct geometry state wins over inherited parent state because g.properties keeps that order.
-    {
-        std::unordered_map<std::int32_t, NifVertexColorState> vertexColorByData;
-        for (const auto& g : geomNodes) {
-            for (const auto ref : g.properties) {
-                if (ref < 0) continue;
-                const auto it = vertexColorByBlock.find(static_cast<std::uint32_t>(ref));
-                if (it != vertexColorByBlock.end()) {
-                    vertexColorByData[g.dataRef] = it->second;
-                    break;
-                }
-            }
-        }
-        for (std::size_t p = 0; p < model.parts.size() && p < partDataBlock.size(); ++p) {
-            const auto it = vertexColorByData.find(partDataBlock[p]);
-            if (it == vertexColorByData.end()) continue;
+    for (std::size_t p = 0; p < model.parts.size(); ++p) {
+        const auto* g = geometryForPart(p);
+        if (g == nullptr) continue;
+        for (const auto ref : g->properties) {
+            if (ref < 0) continue;
+            const auto it = vertexColorByBlock.find(static_cast<std::uint32_t>(ref));
+            if (it == vertexColorByBlock.end()) continue;
             model.parts[p].hasVertexColorProperty = true;
             model.parts[p].vertexColorMode = it->second.vertexMode;
             model.parts[p].vertexLightingMode = it->second.lightingMode;
+            break;
         }
     }
 
-    // NiAlphaProperty belongs to geometry through the geometry node's property references,
-    // not through block adjacency. Resolve it after all blocks are known so both normal and
-    // rebuilt part paths get identical alpha semantics.
-    {
-        std::unordered_map<std::int32_t, NifAlphaState> alphaByData;
-        for (const auto& g : geomNodes) {
-            for (const auto ref : g.properties) {
-                if (ref < 0) continue;
-                const auto ait = alphaByBlock.find(static_cast<std::uint32_t>(ref));
-                if (ait != alphaByBlock.end()) { alphaByData[g.dataRef] = ait->second; break; }
-            }
-        }
-        for (std::size_t p = 0; p < model.parts.size() && p < partDataBlock.size(); ++p) {
-            const auto ait = alphaByData.find(partDataBlock[p]);
-            if (ait == alphaByData.end()) continue;
-            model.parts[p].alphaBlend = ait->second.blend;
-            model.parts[p].alphaTest = ait->second.test;
-            model.parts[p].alphaThreshold = ait->second.threshold;
-            model.parts[p].alphaSrcBlend = ait->second.srcBlend;
-            model.parts[p].alphaDstBlend = ait->second.dstBlend;
-            model.parts[p].alphaTestFunc = ait->second.testFunc;
+    // NiAlphaProperty belongs to the exact geometry AVObject property chain.
+    for (std::size_t p = 0; p < model.parts.size(); ++p) {
+        const auto* g = geometryForPart(p);
+        if (g == nullptr) continue;
+        for (const auto ref : g->properties) {
+            if (ref < 0) continue;
+            const auto it = alphaByBlock.find(static_cast<std::uint32_t>(ref));
+            if (it == alphaByBlock.end()) continue;
+            model.parts[p].alphaBlend = it->second.blend;
+            model.parts[p].alphaTest = it->second.test;
+            model.parts[p].alphaThreshold = it->second.threshold;
+            model.parts[p].alphaSrcBlend = it->second.srcBlend;
+            model.parts[p].alphaDstBlend = it->second.dstBlend;
+            model.parts[p].alphaTestFunc = it->second.testFunc;
+            break;
         }
     }
 
-    // Resolve NiZBufferProperty through the geometry property references. This is not
-    // cosmetic state: sky/water/effect meshes frequently rely on read-only depth or a
-    // disabled Z test. Applying it per mesh prevents otherwise correctly resolved textures
-    // from disappearing behind depth writes that the original NIF explicitly disabled.
-    {
-        std::unordered_map<std::int32_t, NifZBufferState> zBufferByData;
-        for (const auto& g : geomNodes) {
-            for (const auto ref : g.properties) {
-                if (ref < 0) continue;
-                const auto it = zBufferByBlock.find(static_cast<std::uint32_t>(ref));
-                if (it != zBufferByBlock.end()) {
-                    zBufferByData[g.dataRef] = it->second;
-                    break;
-                }
-            }
-        }
-        for (std::size_t p = 0; p < model.parts.size() && p < partDataBlock.size(); ++p) {
-            const auto it = zBufferByData.find(partDataBlock[p]);
-            if (it == zBufferByData.end()) continue;
+    // Resolve NiZBufferProperty through the exact geometry property references.
+    for (std::size_t p = 0; p < model.parts.size(); ++p) {
+        const auto* g = geometryForPart(p);
+        if (g == nullptr) continue;
+        for (const auto ref : g->properties) {
+            if (ref < 0) continue;
+            const auto it = zBufferByBlock.find(static_cast<std::uint32_t>(ref));
+            if (it == zBufferByBlock.end()) continue;
             model.parts[p].depthTest = it->second.test;
             model.parts[p].depthWrite = it->second.write;
             model.parts[p].depthFunction = it->second.function;
+            break;
         }
     }
 
-    // Resolve the complete NiStencilProperty through the same effective child-first property
-    // chain as the other render states. Direct geometry state therefore wins over inherited
-    // parent state, while authored disabled properties remain distinguishable from no property.
-    {
-        std::unordered_map<std::int32_t, NifStencilState> stencilByData;
-        for (const auto& g : geomNodes) {
-            for (const auto ref : g.properties) {
-                if (ref < 0) continue;
-                const auto it = stencilByBlock.find(static_cast<std::uint32_t>(ref));
-                if (it != stencilByBlock.end()) { stencilByData[g.dataRef] = it->second; break; }
-            }
-        }
-        for (std::size_t p = 0; p < model.parts.size() && p < partDataBlock.size(); ++p) {
-            const auto it = stencilByData.find(partDataBlock[p]);
-            if (it == stencilByData.end()) continue;
+    // Resolve the complete NiStencilProperty through the exact geometry property chain.
+    for (std::size_t p = 0; p < model.parts.size(); ++p) {
+        const auto* g = geometryForPart(p);
+        if (g == nullptr) continue;
+        for (const auto ref : g->properties) {
+            if (ref < 0) continue;
+            const auto it = stencilByBlock.find(static_cast<std::uint32_t>(ref));
+            if (it == stencilByBlock.end()) continue;
             auto& part = model.parts[p];
             part.hasStencilProperty = true;
             part.stencilEnabled = it->second.enabled;
@@ -4016,33 +3990,18 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             part.stencilZFailAction = it->second.zFailAction;
             part.stencilPassAction = it->second.passAction;
             part.faceDrawMode = it->second.drawMode;
+            break;
         }
     }
 
-    {
-        std::unordered_map<std::int32_t, std::string> shaderByData;
-        for (const auto& g : geomNodes) shaderByData[g.dataRef] = g.shaderName;
-        for (std::size_t p = 0; p < model.parts.size() && p < partDataBlock.size(); ++p) {
-            const auto it = shaderByData.find(partDataBlock[p]);
-            if (it != shaderByData.end()) model.parts[p].shaderName = it->second;
-        }
+    for (std::size_t p = 0; p < model.parts.size(); ++p) {
+        const auto* g = geometryForPart(p);
+        if (g != nullptr) model.parts[p].shaderName = g->shaderName;
     }
 
-    // Resolve NiTexturingProperty over the geometry property references. This is the authoritative
-    // mapping; adjacency is insufficient for shared properties, LOD and character meshes.
+    // Resolve NiTexturingProperty over the exact geometry property references.
     {
         struct TexBindingState { std::uint32_t block = 0; const NifTextureState* state = nullptr; };
-        std::unordered_map<std::int32_t, TexBindingState> texByData;
-        for (const auto& g : geomNodes) {
-            for (const auto ref : g.properties) {
-                if (ref < 0) continue;
-                const auto it = texStateByBlock.find(static_cast<std::uint32_t>(ref));
-                if (it != texStateByBlock.end()) {
-                    texByData[g.dataRef] = {static_cast<std::uint32_t>(ref), &it->second};
-                    break;
-                }
-            }
-        }
 
         const auto makeTrack = [&](const NifSingleControllerState& c) {
             NifFloatTrack t;
@@ -4068,11 +4027,21 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             return t;
         };
 
-        for (std::size_t p = 0; p < model.parts.size() && p < partDataBlock.size(); ++p) {
-            const auto it = texByData.find(partDataBlock[p]);
-            if (it == texByData.end() || it->second.state == nullptr) continue;
-            const auto& ts = *it->second.state;
-            const std::uint32_t texPropertyBlock = it->second.block;
+        for (std::size_t p = 0; p < model.parts.size(); ++p) {
+            const auto* g = geometryForPart(p);
+            if (g == nullptr) continue;
+            TexBindingState binding{};
+            for (const auto ref : g->properties) {
+                if (ref < 0) continue;
+                const auto it = texStateByBlock.find(static_cast<std::uint32_t>(ref));
+                if (it != texStateByBlock.end()) {
+                    binding = {static_cast<std::uint32_t>(ref), &it->second};
+                    break;
+                }
+            }
+            if (binding.state == nullptr) continue;
+            const auto& ts = *binding.state;
+            const std::uint32_t texPropertyBlock = binding.block;
             auto& part = model.parts[p];
             part.textureApplyMode = ts.applyMode;
             part.bumpMapLumaScale = ts.bumpMapLumaScale;
@@ -4189,20 +4158,17 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         }
     }
 
-    // NiSpecularProperty gates the material's specular term. Missing property means enabled,
-    // matching NifSkope's fixed-function material behavior.
-    {
-        std::unordered_map<std::int32_t, bool> specByData;
-        for (const auto& g : geomNodes) {
-            for (const auto ref : g.properties) {
-                if (ref < 0) continue;
-                const auto it = specularByBlock.find(static_cast<std::uint32_t>(ref));
-                if (it != specularByBlock.end()) { specByData[g.dataRef] = it->second; break; }
+    // NiSpecularProperty gates the material's specular term. Resolve from exact AVObject.
+    for (std::size_t p = 0; p < model.parts.size(); ++p) {
+        const auto* g = geometryForPart(p);
+        if (g == nullptr) continue;
+        for (const auto ref : g->properties) {
+            if (ref < 0) continue;
+            const auto it = specularByBlock.find(static_cast<std::uint32_t>(ref));
+            if (it != specularByBlock.end()) {
+                model.parts[p].specularEnabled = it->second;
+                break;
             }
-        }
-        for (std::size_t p = 0; p < model.parts.size() && p < partDataBlock.size(); ++p) {
-            const auto it = specByData.find(partDataBlock[p]);
-            if (it != specByData.end()) model.parts[p].specularEnabled = it->second;
         }
     }
 
@@ -4519,13 +4485,11 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             if (len > 1.0e-8f) { v.x /= len; v.y /= len; v.z /= len; }
         };
 
-        std::unordered_map<std::int32_t, std::int32_t> skinRefByData;
-        for (const auto& g : geomNodes) if (g.dataRef >= 0 && g.skinInstanceRef >= 0) skinRefByData[g.dataRef] = g.skinInstanceRef;
-
-        auto applySkinning = [&](NifMeshPart& part, std::int32_t dataRef, std::size_t partIndex) {
-            const auto sr = skinRefByData.find(dataRef);
-            if (sr == skinRefByData.end() || sr->second < 0) return;
-            const auto siIt = skinInstanceByBlock.find(static_cast<std::uint32_t>(sr->second));
+        auto applySkinning = [&](NifMeshPart& part, std::size_t partIndex) {
+            const auto* geometry = geometryForPart(partIndex);
+            if (geometry == nullptr || geometry->skinInstanceRef < 0) return;
+            const auto siIt = skinInstanceByBlock.find(
+                static_cast<std::uint32_t>(geometry->skinInstanceRef));
             if (siIt == skinInstanceByBlock.end()) return;
             const SkinInstanceBlock& inst = siIt->second;
             if (inst.dataRef < 0) return;
@@ -4688,7 +4652,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 }
             }
 
-            applySkinning(part, partDataBlock[p], p);
+            applySkinning(part, p);
 
             if (part.skinBinding) {
                 SkinTransform meshToModel;
