@@ -33,6 +33,13 @@ jobs:
         run: |
           ./build/nif_material_inventory tests/fixtures
           ./build/nif_material_inventory --strict-renderer --asset-root tests/fixtures tests/fixtures
+      - name: Upload Linux NIF auditor
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: NextGen-NIF-Auditor-linux
+          path: build/nif_material_inventory
+          if-no-files-found: error
       - name: Smoke-test strict ResMap audit runner
         if: runner.os == 'Windows'
         shell: pwsh
