@@ -87,6 +87,23 @@ bool IsTextureExtension(const fs::path& path) {
            ext == ".png" || ext == ".jpg" || ext == ".jpeg";
 }
 
+bool IsNifAssetPath(const fs::path& path) {
+    std::string ext = path.extension().string();
+    for (char& ch : ext) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    if (ext != ".nif") return false;
+
+    const std::string fileName = path.filename().string();
+    if (fileName.rfind("._", 0) == 0) return false;
+
+    for (const auto& component : path) {
+        std::string value = component.string();
+        for (char& ch : value)
+            ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        if (value == "__macosx") return false;
+    }
+    return true;
+}
+
 struct ExternalTextureResolution {
     std::optional<fs::path> path;
     bool ambiguous = false;
@@ -340,7 +357,7 @@ int main(int argc, char** argv) {
 
         for (const auto& entry : fs::recursive_directory_iterator(
                  root, fs::directory_options::skip_permission_denied)) {
-            if (!entry.is_regular_file() || entry.path().extension() != ".nif") continue;
+            if (!entry.is_regular_file() || !IsNifAssetPath(entry.path())) continue;
             ++files;
 
             const auto model = core::LoadNifMesh(entry.path(), false);
