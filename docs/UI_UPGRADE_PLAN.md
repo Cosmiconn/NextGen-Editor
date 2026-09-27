@@ -366,6 +366,7 @@ Dieser Abschnitt ist der verbindliche Ausbau-Fahrplan für den laufenden Branch 
 - Billboard, LOD, Skinning, TextureTransform und FlipController sind für alle im ResMap-Korpus vorkommenden Varianten verifiziert.
 - Partikelsysteme zählen bis zu echter Simulation/Darstellung ausdrücklich als Renderer-Gap und dürfen nicht durch erfolgreiches Parsing als fertig gelten.
 - Der automatisierte Korpus-Audit endet mit `rendererGapFiles=0`; das harte finale Gate lautet `nif_material_inventory --strict-renderer --asset-root <asset-root> <resmap-root> [...]`. Nur dieser Asset-Root-Lauf zählt als finale ResMap-Abnahme, weil er externe NIF-Texturen zusätzlich case-insensitiv/Legacy-kompatibel auflöst und DDS/TGA über denselben Core-Decoder wie der Renderer validiert.
+- Reproduzierbarer Vollbestandlauf: Der Windows-CI-Artefakt enthält `nif_material_inventory.exe` und `audit_resmap.ps1`. Der Runner akzeptiert mehrere ResMap-Verzeichnisse und/oder ZIP-Archive, entpackt ZIPs temporär, reicht erkannte `resmap`-Wurzeln als Asset-Roots an den Strict-Auditor durch, speichert den vollständigen Report und gilt nur bei Exit-Code 0 plus `rendererGapFiles=0` als bestanden. Beispiel: `./audit_resmap.ps1 -AuditExe ./nif_material_inventory.exe -InputPath @('resmap.zip','resmap__2_.zip') -ReportPath ./resmap-strict-audit.txt`.
 - Danach erfolgen repräsentative visuelle Referenzvergleiche für Bäume, Gebäude, Alpha/Transparenz, Wasser/Environment, Glow, Bump, Billboard/LOD und animierte Texturen/Partikel.
 
 
