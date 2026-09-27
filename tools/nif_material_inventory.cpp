@@ -999,7 +999,8 @@ int main(int argc, char** argv) {
                     auto& stat = shaderSlots[{shader, shaderSlot.mapId}];
                     const bool materializedShaderMap =
                         (shader == "VCAlphaTextureBlender" && shaderSlot.mapId <= 2u) ||
-                        (shader == "AlphaTextureBlender11" && shaderSlot.mapId <= 2u);
+                        (shader == "AlphaTextureBlender11" && shaderSlot.mapId <= 2u) ||
+                        (shader == "PgTerrain" && shaderSlot.mapId <= 1u);
                     if (!materializedShaderMap) {
                         ++unmaterializedShaderDescriptors;
                         rendererGapFiles.insert(entry.path().string());
