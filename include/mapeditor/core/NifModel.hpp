@@ -623,9 +623,9 @@ struct NifModel {
     std::uint32_t textureEffectNodeBindings = 0;
     std::uint32_t vertexColorPropertyBlocks = 0;
     std::uint32_t zBufferPropertyBlocks = 0;
-    // NiParticleSystem/NiMeshParticleSystem werden derzeit strukturell gelesen, aber noch
-    // nicht als Partikel simuliert/gezeichnet. Der Zaehler macht diese sichtbare ResMap-
-    // Fidelity-Luecke im Korpus-Audit explizit statt sie hinter erfolgreichem Parsing zu verstecken.
+    // Anzahl geladener NiParticleSystem/NiMeshParticleSystem-Blöcke. Der Renderer besitzt
+    // dafür einen CPU-Simulationspfad; das Korpus-Audit bewertet verbleibende Fidelity-Lücken
+    // deshalb semantikbezogen (Modifier/Controller/Emitter/Mesh-Master) statt pauschal pro Datei.
     std::uint32_t particleSystemBlocks = 0;
     // Anzahl effektiver NiProperty-Refs, die nicht direkt am Mesh hängen, sondern über
     // die NiNode-Parentkette geerbt und deshalb zusätzlich in den Renderstate übernommen werden.

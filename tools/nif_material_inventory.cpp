@@ -108,6 +108,10 @@ int main(int argc, char** argv) {
     std::map<std::string, std::size_t> particleModifierTypes;
     std::map<std::string, std::size_t> particleControllerTypes;
     std::size_t resolvedParticleControllers = 0;
+    std::size_t particleSystemsWithoutData = 0;
+    std::size_t unsupportedParticleModifierBindings = 0;
+    std::size_t unsupportedParticleControllerBindings = 0;
+    std::size_t meshParticleMasterDynamicParts = 0;
     std::size_t emitterControllersWithoutRate = 0;
     std::size_t emitterControllersWithoutVisibility = 0;
     std::size_t activeControllersWithoutBoolTrack = 0;
@@ -234,14 +238,51 @@ int main(int argc, char** argv) {
             if (model->particleSystemBlocks > 0u) {
                 particleSystems += model->particleSystemBlocks;
                 particleFiles[entry.path().string()] += model->particleSystemBlocks;
-                // Parsing a particle system is not visual parity: until simulation/draw exists,
-                // any such file is a renderer-fidelity gap.
-                rendererGapFiles.insert(entry.path().string());
+
+                // Gamebryo 2.6 conversion semantics for the old Fiesta particle stack:
+                // - PositionModifier is absorbed by the simulator position/final step.
+                // - BoundUpdateModifier becomes culling/bounds maintenance only.
+                // - UpdateCtlr is deliberately discarded by NiPSConverter because the new
+                //   particle system updates itself.
+                // Everything else listed here has an explicit renderer/runtime implementation.
+                static const std::set<std::string> kMaterializedParticleModifiers{
+                    "NiPSysAgeDeathModifier",
+                    "NiPSysBoundUpdateModifier",
+                    "NiPSysBoxEmitter",
+                    "NiPSysColorModifier",
+                    "NiPSysCylinderEmitter",
+                    "NiPSysDragModifier",
+                    "NiPSysGravityModifier",
+                    "NiPSysGrowFadeModifier",
+                    "NiPSysMeshEmitter",
+                    "NiPSysMeshUpdateModifier",
+                    "NiPSysPositionModifier",
+                    "NiPSysRotationModifier",
+                    "NiPSysSpawnModifier",
+                    "NiPSysSphereEmitter",
+                };
+                static const std::set<std::string> kMaterializedParticleControllers{
+                    "NiPSysEmitterCtlr",
+                    "NiPSysModifierActiveCtlr",
+                    "NiPSysUpdateCtlr",
+                };
+
                 for (std::size_t systemIndex = 0; systemIndex < model->particleSystems.size(); ++systemIndex) {
                     const auto& system = model->particleSystems[systemIndex];
+                    if (!system.hasParticleData) {
+                        ++particleSystemsWithoutData;
+                        rendererGapFiles.insert(entry.path().string());
+                    }
                     for (const auto& modifierType : system.modifierTypes) {
                         ++particleModifierTypes[modifierType];
-                        if (modifierType == "<invalid>") ++invalidParticleModifierRefs;
+                        if (modifierType == "<invalid>") {
+                            ++invalidParticleModifierRefs;
+                            ++unsupportedParticleModifierBindings;
+                            rendererGapFiles.insert(entry.path().string());
+                        } else if (!kMaterializedParticleModifiers.contains(modifierType)) {
+                            ++unsupportedParticleModifierBindings;
+                            rendererGapFiles.insert(entry.path().string());
+                        }
                     }
                     for (const auto& modifier : system.modifiers) {
                         if (modifier.type == "NiPSysAgeDeathModifier" && modifier.spawnOnDeath) {
@@ -296,6 +337,10 @@ int main(int argc, char** argv) {
                     }
                     resolvedParticleControllers += system.controllers.size();
                     for (const auto& controller : system.controllers) {
+                        if (!kMaterializedParticleControllers.contains(controller.type)) {
+                            ++unsupportedParticleControllerBindings;
+                            rendererGapFiles.insert(entry.path().string());
+                        }
                         const auto auditBlend = [&](const auto& blend) {
                             if (!blend) return;
                             ++blendParticleControllerTracks;
@@ -334,8 +379,28 @@ int main(int argc, char** argv) {
                         meshParticleMasterGenerations += system.meshParticleMasters.size();
                         for (const auto& master : system.meshParticleMasters) {
                             meshParticleMasterParts += master.partIndices.size();
-                            if (master.partIndices.empty())
+                            if (master.partIndices.empty()) {
                                 rendererGapFiles.insert(entry.path().string());
+                                continue;
+                            }
+                            for (const auto partIndex : master.partIndices) {
+                                if (partIndex >= model->parts.size()) {
+                                    ++meshParticleMasterDynamicParts;
+                                    rendererGapFiles.insert(entry.path().string());
+                                    continue;
+                                }
+                                const auto& masterPart = model->parts[partIndex];
+                                // Mesh-particle clones in Gamebryo update their own master
+                                // scene at particle age. These features need age-local handling
+                                // rather than the normal map-object/global-time path.
+                                if (masterPart.skinned || masterPart.billboard ||
+                                    masterPart.lodControlled ||
+                                    !masterPart.textureTransformAnimations.empty() ||
+                                    !masterPart.textureFlipAnimations.empty()) {
+                                    ++meshParticleMasterDynamicParts;
+                                    rendererGapFiles.insert(entry.path().string());
+                                }
+                            }
                         }
                     }
                     worldSpaceParticleSystems += system.worldSpace ? 1u : 0u;
@@ -783,6 +848,10 @@ int main(int argc, char** argv) {
               << "\tmeshParticleMasterParts=" << meshParticleMasterParts
               << "\tworldSpaceParticleSystems=" << worldSpaceParticleSystems
               << "\tresolvedParticleControllers=" << resolvedParticleControllers
+              << "\tparticleSystemsWithoutData=" << particleSystemsWithoutData
+              << "\tunsupportedParticleModifierBindings=" << unsupportedParticleModifierBindings
+              << "\tunsupportedParticleControllerBindings=" << unsupportedParticleControllerBindings
+              << "\tmeshParticleMasterDynamicParts=" << meshParticleMasterDynamicParts
               << "\temitterControllersWithoutRate=" << emitterControllersWithoutRate
               << "\temitterControllersWithoutVisibility=" << emitterControllersWithoutVisibility
               << "\tactiveControllersWithoutBoolTrack=" << activeControllersWithoutBoolTrack
@@ -951,7 +1020,8 @@ int main(int argc, char** argv) {
         std::cout << detail << '\n';
     for (const auto& [path, count] : particleFiles)
         std::cout << "PARTICLEFILE\tsystems=" << count
-                  << "\trenderer=unmaterialized"
+                  << "\trenderer="
+                  << (rendererGapFiles.contains(path) ? "gap" : "materialized")
                   << "\tpath=" << Clean(path) << '\n';
     for (const auto& [mode, partCount] : vertexColorModes)
         std::cout << "VERTEXCOLOR\tmode=" << mode << "\tparts=" << partCount << '\n';
