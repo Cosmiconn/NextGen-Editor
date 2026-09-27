@@ -96,6 +96,7 @@ struct NifTextureSlot {
     // Dateiname normal; wenn die referenzierte NiPixelData nicht dekodiert werden konnte,
     // darf dieser Fall nicht als "keine Textur" oder fehlender externer Pfad verschwinden.
     bool sourceUsesEmbeddedPixelData = false;
+    bool sourceIsCubeMap = false;
     std::int32_t sourcePixelDataRef = -1;
     std::shared_ptr<const NifEmbeddedTexture> embeddedTexture;
     std::uint32_t uvSet = 0;
