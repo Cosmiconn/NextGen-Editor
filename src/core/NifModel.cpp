@@ -5944,7 +5944,7 @@ void AdvanceNifParticleState(
 
         // FinalKernel marks death only when age is strictly greater than lifespan.
         if (particle.age > particle.lifeSpan) {
-            if (deathSpawner != nullptr && deathSpawnSources.size() < spawnCapacity) {
+            if (deathSpawner != nullptr && spawnCapacity != 0u) {
                 // When spawning on death, FinalKernel stores the exact death time in
                 // lastUpdate rather than currentTime. ResolveSpawnedAndRemovedParticles
                 // consumes that timestamp to give the child its sub-frame age.
@@ -5991,8 +5991,7 @@ void AdvanceNifParticleState(
                  ++childIndex) {
                 NifParticleState child = source;
                 child.spawnGeneration = static_cast<std::uint16_t>(source.spawnGeneration + 1u);
-                child.age = std::max(0.0f,
-                    (lastUpdateBeforeFinal + deltaTime) - source.lastUpdate);
+                child.age = std::max(0.0f, source.age - source.lifeSpan);
                 child.lastUpdate = source.lastUpdate;
                 child.lifeSpan = deathSpawner->spawnLifeSpan;
                 if (deathSpawner->spawnLifeSpanVariation != 0.0f) {
