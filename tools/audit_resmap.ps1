@@ -20,6 +20,7 @@ function Resolve-ExistingPath {
 function Add-UniquePath {
     param(
         [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
         [System.Collections.Generic.List[string]]$List,
         [Parameter(Mandatory = $true)]
         [string]$Path
