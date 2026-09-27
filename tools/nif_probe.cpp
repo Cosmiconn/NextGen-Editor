@@ -65,6 +65,20 @@ int main(int argc, char** argv) {
                               << "\ttype=" << modifier.type
                               << "\tname=" << modifier.name
                               << "\tactive=" << modifier.active << '\n';
+                    for (const auto& collider : modifier.colliders) {
+                        std::cout << "COLLIDER\tsystem=" << systemIndex
+                                  << "\tblock=" << collider.blockRef
+                                  << "\ttype=" << collider.type
+                                  << "\tbounce=" << collider.bounce
+                                  << "\tspawn=" << collider.spawnOnCollide
+                                  << "\tdie=" << collider.dieOnCollide
+                                  << "\tspawnModifier=" << collider.spawnModifierRef
+                                  << "\tobject=" << collider.colliderObjectRef
+                                  << "\ttransform=" << collider.hasColliderToParticleSystemTransform
+                                  << "\twidth=" << collider.width
+                                  << "\theight=" << collider.height
+                                  << "\tradius=" << collider.radius << '\n';
+                    }
                 }
             }
         }
