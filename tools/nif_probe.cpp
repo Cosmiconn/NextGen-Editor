@@ -69,6 +69,7 @@ int main(int argc, char** argv) {
                               << "\tslot=" << slot
                               << "\tuv=" << tex.uvSet
                               << "\texternal=" << (!tex.sourceUsesEmbeddedPixelData)
+                              << "\tcube=" << tex.sourceIsCubeMap
                               << "\tsource=" << tex.texture << '\n';
                     if (tex.embeddedTexture && !tex.embeddedTexture->rgba.empty()) {
                         const auto& image = *tex.embeddedTexture;
@@ -100,6 +101,7 @@ int main(int argc, char** argv) {
                               << "\tmapId=" << tex.mapId
                               << "\tuv=" << tex.texture.uvSet
                               << "\texternal=" << (!tex.texture.sourceUsesEmbeddedPixelData)
+                              << "\tcube=" << tex.texture.sourceIsCubeMap
                               << "\tsource=" << tex.texture.texture << '\n';
                     if (tex.texture.embeddedTexture && !tex.texture.embeddedTexture->rgba.empty()) {
                         const auto& image = *tex.texture.embeddedTexture;
