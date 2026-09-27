@@ -36,6 +36,18 @@ int main(int argc, char** argv) {
                           << "\tuvDiagnostics=" << part.uvSetDiagnostics.size()
                           << "\tvertexColors=" << part.vertexColors.size()
                           << "\tapplyMode=" << part.textureApplyMode << '\n';
+                if (!part.vertexColors.empty()) {
+                    float minA = 1.0f, maxA = 0.0f, sumA = 0.0f;
+                    for (const auto& color : part.vertexColors) {
+                        minA = std::min(minA, color.a);
+                        maxA = std::max(maxA, color.a);
+                        sumA += color.a;
+                    }
+                    std::cout << "VCSTAT\tpart=" << partIndex
+                              << "\taMin=" << minA
+                              << "\taMax=" << maxA
+                              << "\taMean=" << (sumA / part.vertexColors.size()) << '\n';
+                }
                 for (std::size_t uvIndex = 0; uvIndex < part.uvSetDiagnostics.size(); ++uvIndex) {
                     const auto& diag = part.uvSetDiagnostics[uvIndex];
                     std::cout << "UVDIAG\tpart=" << partIndex
