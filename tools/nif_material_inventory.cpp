@@ -312,6 +312,7 @@ int main(int argc, char** argv) {
     std::size_t uvRendererOverflowBindings = 0;
     std::size_t missingRequestedUvBindings = 0;
     std::size_t uv0FallbackBindings = 0;
+    std::size_t constantUv0Bindings = 0;
     std::size_t noUsableUvBindings = 0;
     std::map<std::string, std::size_t> uvFallbackFiles;
     std::map<std::string, std::size_t> noUvFiles;
@@ -946,34 +947,40 @@ int main(int argc, char** argv) {
                         texture.uvSet < part.uvSets.size() &&
                         part.uvSets[texture.uvSet].size() == part.positions.size();
                     if (renderableGeometry && !hasRequestedUvs) {
-                        ++missingRequestedUvBindings;
                         const bool hasBaseFallbackUvs =
                             part.uvs.size() == part.positions.size();
-                        if (hasBaseFallbackUvs) {
-                            ++uv0FallbackBindings;
-                            ++uvFallbackFiles[entry.path().string()];
+                        const bool usesConstantUv0 =
+                            texture.uvSet == 0u && part.uvSets.empty() && part.uvs.empty();
+                        if (usesConstantUv0) {
+                            ++constantUv0Bindings;
                         } else {
-                            ++noUsableUvBindings;
-                            ++noUvFiles[entry.path().string()];
+                            ++missingRequestedUvBindings;
+                            if (hasBaseFallbackUvs) {
+                                ++uv0FallbackBindings;
+                                ++uvFallbackFiles[entry.path().string()];
+                            } else {
+                                ++noUsableUvBindings;
+                                ++noUvFiles[entry.path().string()];
+                            }
+                            rendererGapFiles.insert(entry.path().string());
+                            std::ostringstream detail;
+                            detail << "UVGAP"
+                                   << "\tpath=" << Clean(entry.path().string())
+                                   << "\tpart=" << partIndex
+                                   << "\tslot=" << slot
+                                   << "\trequestedUv=" << texture.uvSet
+                                   << "\tbaseUv=" << part.baseUvSet
+                                   << "\tuvSets=" << part.uvSets.size()
+                                   << "\tvertices=" << part.positions.size()
+                                   << "\ttriangles=" << (part.triangleIndices.size() / 3u)
+                                   << "\tfallback=" << (hasBaseFallbackUvs ? "uv0" : "none")
+                                   << "\tclampMode=" << texture.clampMode
+                                   << "\tfilterMode=" << texture.filterMode
+                                   << "\tshader=" << Clean(shader)
+                                   << "\tsource=" << Clean(texture.texture);
+                            appendUvDiagnostic(detail, texture.uvSet);
+                            uvGapDetails.push_back(detail.str());
                         }
-                        rendererGapFiles.insert(entry.path().string());
-                        std::ostringstream detail;
-                        detail << "UVGAP"
-                               << "\tpath=" << Clean(entry.path().string())
-                               << "\tpart=" << partIndex
-                               << "\tslot=" << slot
-                               << "\trequestedUv=" << texture.uvSet
-                               << "\tbaseUv=" << part.baseUvSet
-                               << "\tuvSets=" << part.uvSets.size()
-                               << "\tvertices=" << part.positions.size()
-                               << "\ttriangles=" << (part.triangleIndices.size() / 3u)
-                               << "\tfallback=" << (hasBaseFallbackUvs ? "uv0" : "none")
-                               << "\tclampMode=" << texture.clampMode
-                               << "\tfilterMode=" << texture.filterMode
-                               << "\tshader=" << Clean(shader)
-                               << "\tsource=" << Clean(texture.texture);
-                        appendUvDiagnostic(detail, texture.uvSet);
-                        uvGapDetails.push_back(detail.str());
                     }
                     if (shader != "<fixed-function>") {
                         auto& shaderStat = shaderClassicSlots[{shader, slot}];
@@ -1017,34 +1024,41 @@ int main(int argc, char** argv) {
                             shaderSlot.texture.uvSet < part.uvSets.size() &&
                             part.uvSets[shaderSlot.texture.uvSet].size() == part.positions.size();
                         if (!hasRequestedUvs) {
-                            ++missingRequestedUvBindings;
                             const bool hasBaseFallbackUvs =
                                 part.uvs.size() == part.positions.size();
-                            if (hasBaseFallbackUvs) {
-                                ++uv0FallbackBindings;
-                                ++uvFallbackFiles[entry.path().string()];
+                            const bool usesConstantUv0 =
+                                shaderSlot.texture.uvSet == 0u &&
+                                part.uvSets.empty() && part.uvs.empty();
+                            if (usesConstantUv0) {
+                                ++constantUv0Bindings;
                             } else {
-                                ++noUsableUvBindings;
-                                ++noUvFiles[entry.path().string()];
+                                ++missingRequestedUvBindings;
+                                if (hasBaseFallbackUvs) {
+                                    ++uv0FallbackBindings;
+                                    ++uvFallbackFiles[entry.path().string()];
+                                } else {
+                                    ++noUsableUvBindings;
+                                    ++noUvFiles[entry.path().string()];
+                                }
+                                rendererGapFiles.insert(entry.path().string());
+                                std::ostringstream detail;
+                                detail << "UVGAP"
+                                       << "\tpath=" << Clean(entry.path().string())
+                                       << "\tpart=" << partIndex
+                                       << "\tshaderMap=" << shaderSlot.mapId
+                                       << "\trequestedUv=" << shaderSlot.texture.uvSet
+                                       << "\tbaseUv=" << part.baseUvSet
+                                       << "\tuvSets=" << part.uvSets.size()
+                                       << "\tvertices=" << part.positions.size()
+                                       << "\ttriangles=" << (part.triangleIndices.size() / 3u)
+                                       << "\tfallback=" << (hasBaseFallbackUvs ? "uv0" : "none")
+                                       << "\tclampMode=" << shaderSlot.texture.clampMode
+                                       << "\tfilterMode=" << shaderSlot.texture.filterMode
+                                       << "\tshader=" << Clean(shader)
+                                       << "\tsource=" << Clean(shaderSlot.texture.texture);
+                                appendUvDiagnostic(detail, shaderSlot.texture.uvSet);
+                                uvGapDetails.push_back(detail.str());
                             }
-                            rendererGapFiles.insert(entry.path().string());
-                            std::ostringstream detail;
-                            detail << "UVGAP"
-                                   << "\tpath=" << Clean(entry.path().string())
-                                   << "\tpart=" << partIndex
-                                   << "\tshaderMap=" << shaderSlot.mapId
-                                   << "\trequestedUv=" << shaderSlot.texture.uvSet
-                                   << "\tbaseUv=" << part.baseUvSet
-                                   << "\tuvSets=" << part.uvSets.size()
-                                   << "\tvertices=" << part.positions.size()
-                                   << "\ttriangles=" << (part.triangleIndices.size() / 3u)
-                                   << "\tfallback=" << (hasBaseFallbackUvs ? "uv0" : "none")
-                                   << "\tclampMode=" << shaderSlot.texture.clampMode
-                                   << "\tfilterMode=" << shaderSlot.texture.filterMode
-                                   << "\tshader=" << Clean(shader)
-                                   << "\tsource=" << Clean(shaderSlot.texture.texture);
-                            appendUvDiagnostic(detail, shaderSlot.texture.uvSet);
-                            uvGapDetails.push_back(detail.str());
                         }
                     }
                     ++stat.descriptors;
@@ -1157,6 +1171,7 @@ int main(int argc, char** argv) {
               << "\tuvOverflowBindings=" << uvRendererOverflowBindings
               << "\tmissingRequestedUvBindings=" << missingRequestedUvBindings
               << "\tuv0FallbackBindings=" << uv0FallbackBindings
+              << "\tconstantUv0Bindings=" << constantUv0Bindings
               << "\tnoUsableUvBindings=" << noUsableUvBindings
               << "\tunmaterializedShaderDescriptors=" << unmaterializedShaderDescriptors
               << "\tunmaterializedApplyModes=" << unmaterializedApplyModeParts
