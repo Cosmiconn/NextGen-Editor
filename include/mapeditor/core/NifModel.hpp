@@ -348,6 +348,31 @@ struct NifParticleEmitterMesh {
     std::vector<std::uint32_t> triangleIndices;
 };
 
+struct NifParticleColliderInfo {
+    std::int32_t blockRef = -1;
+    std::string type;
+    float bounce = 0.0f;
+    bool spawnOnCollide = false;
+    bool dieOnCollide = false;
+    std::int32_t spawnModifierRef = -1;
+    std::int32_t parentRef = -1;
+    std::int32_t nextColliderRef = -1;
+    std::int32_t colliderObjectRef = -1;
+
+    // NiPSysPlanarCollider.
+    float width = 0.0f;
+    float height = 0.0f;
+    NifVec3 xAxis{1.0f, 0.0f, 0.0f};
+    NifVec3 yAxis{0.0f, 0.0f, 1.0f};
+
+    // NiPSysSphericalCollider.
+    float radius = 0.0f;
+
+    // colliderObject world transform expressed in particle-system simulation space.
+    bool hasColliderToParticleSystemTransform = false;
+    NifTransform colliderToParticleSystem{};
+};
+
 struct NifParticleModifierInfo {
     std::int32_t blockRef = -1;
     std::string type;
@@ -401,7 +426,9 @@ struct NifParticleModifierInfo {
 
     std::uint16_t updateSkip = 0;
     std::vector<std::int32_t> meshRefs;
+    // NiPSysColliderManager::collider. The resolved linked collider chain is retained below.
     std::int32_t linkedRef = -1;
+    std::vector<NifParticleColliderInfo> colliders;
 };
 
 // CPU equivalent of Gamebryo's deprecated-particle conversion into the
