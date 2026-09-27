@@ -1188,6 +1188,8 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                     dstSystem.hasColors = srcSystem.particleData.hasColors;
                     dstSystem.hasRadii = srcSystem.particleData.hasRadii;
                     dstSystem.hasSizes = srcSystem.particleData.hasSizes;
+                    dstSystem.hasRotationAngles = srcSystem.particleData.hasRotationAngles;
+                    dstSystem.hasRotationAxes = srcSystem.particleData.hasRotationAxes;
                     dstSystem.capacity = srcSystem.particleData.capacity;
                     dstSystem.modifiers = srcSystem.modifiers;
                     dstSystem.controllers = srcSystem.controllers;
@@ -1309,6 +1311,15 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                 auto& runtime = runtimeSystems[systemIndex];
                 runtime.particles = source.particles;
                 runtime.activeCount = source.activeCount;
+                runtime.emitterAccumulators.assign(source.modifiers.size(), 0.0f);
+                runtime.emitterRandomStates.resize(source.modifiers.size());
+                for (std::size_t modifierIndex = 0; modifierIndex < source.modifiers.size(); ++modifierIndex) {
+                    std::uint32_t seed = 0x9e3779b9u;
+                    seed ^= static_cast<std::uint32_t>((i + 1u) * 0x85ebca6bu);
+                    seed ^= static_cast<std::uint32_t>((systemIndex + 1u) * 0xc2b2ae35u);
+                    seed ^= static_cast<std::uint32_t>((modifierIndex + 1u) * 0x27d4eb2du);
+                    runtime.emitterRandomStates[modifierIndex] = seed != 0u ? seed : 1u;
+                }
             }
         }
     }
@@ -1384,6 +1395,49 @@ std::optional<float> EvaluateFloatTrack(const core::NifFloatTrack& track, float 
     if (track.interpolation == 5u) return x < 0.5f ? k1.value : k2.value;
     // LINEAR sowie TBC: entspricht dem aktuellen NifSkope-Rendererpfad.
     return k1.value + (k2.value - k1.value) * x;
+}
+
+std::optional<bool> EvaluateBoolTrack(const core::NifBoolTrack& track, float sceneTime) {
+    if (!track.active) return std::nullopt;
+
+    float time = track.frequency * sceneTime + track.phase;
+    if (!(time >= track.startTime && time <= track.stopTime)) {
+        const float delta = track.stopTime - track.startTime;
+        switch (track.extrapolation) {
+            case 0: {
+                if (delta <= 0.0f) time = track.startTime;
+                else {
+                    const float x = (time - track.startTime) / delta;
+                    time = track.startTime + (x - std::floor(x)) * delta;
+                }
+                break;
+            }
+            case 1: {
+                if (delta <= 0.0f) time = track.startTime;
+                else {
+                    const float x = (time - track.startTime) / delta;
+                    const float y = (x - std::floor(x)) * delta;
+                    const auto cycle = static_cast<long long>(std::fabs(std::floor(x)));
+                    time = ((cycle & 1LL) == 0LL) ? (track.startTime + y) : (track.stopTime - y);
+                }
+                break;
+            }
+            case 2:
+            default:
+                time = std::clamp(time, track.startTime, track.stopTime);
+                break;
+        }
+    }
+
+    if (track.keys.empty()) return track.currentValue;
+    if (time <= track.keys.front().time) return track.keys.front().value;
+    if (time >= track.keys.back().time) return track.keys.back().value;
+    const auto upper = std::upper_bound(
+        track.keys.begin(), track.keys.end(), time,
+        [](float t, const core::NifBoolKey& key) { return t < key.time; });
+    if (upper == track.keys.begin()) return upper->value;
+    // Fiesta emitter-active data uses step/discrete bool keys. At a key time the new key wins.
+    return (upper - 1)->value;
 }
 
 Mat4 QuatToMat4Local(float x, float y, float z, float w) {
@@ -1768,9 +1822,83 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
                     runtime.initialized = true;
                 } else {
                     const float deltaTime = animationTime - runtime.lastSimulationTime;
-                    if (deltaTime > 0.0f)
+                    if (deltaTime > 0.0f) {
                         core::AdvanceNifParticleState(
                             runtime.particles, runtime.activeCount, system.modifiers, deltaTime);
+
+                        for (std::size_t modifierIndex = 0;
+                             modifierIndex < system.modifiers.size() &&
+                             modifierIndex < runtime.emitterAccumulators.size() &&
+                             modifierIndex < runtime.emitterRandomStates.size();
+                             ++modifierIndex) {
+                            const auto& emitter = system.modifiers[modifierIndex];
+                            if (!emitter.emitter || !emitter.active) continue;
+
+                            const auto controller = std::find_if(
+                                system.controllers.begin(), system.controllers.end(),
+                                [&](const core::NifParticleControllerInfo& candidate) {
+                                    return candidate.type == "NiPSysEmitterCtlr" &&
+                                           candidate.modifierName == emitter.name;
+                                });
+                            if (controller == system.controllers.end() || !controller->hasFloatTrack) continue;
+
+                            const float sampleTime = runtime.lastSimulationTime + deltaTime * 0.5f;
+                            const auto rateValue = EvaluateFloatTrack(controller->floatTrack, sampleTime);
+                            bool emitterActive = true;
+                            if (controller->hasVisibilityTrack) {
+                                const auto activeValue =
+                                    EvaluateBoolTrack(controller->visibilityTrack, sampleTime);
+                                emitterActive = activeValue.value_or(false);
+                            }
+
+                            const float rate = rateValue.value_or(0.0f);
+                            auto& accumulator = runtime.emitterAccumulators[modifierIndex];
+                            if (!emitterActive || !(rate > 0.0f) || !std::isfinite(rate)) {
+                                accumulator = 0.0f;
+                                continue;
+                            }
+
+                            // NiPSEmitParticlesCtlr works in controller-scaled time. With a
+                            // continuous active segment this fractional-event accumulator is
+                            // equivalent to floor(rate*t) differencing while preserving the
+                            // exact sub-frame ages used by NiPSEmitter::EmitParticles.
+                            const float scaledDelta =
+                                deltaTime * std::max(0.0f, std::fabs(controller->frequency));
+                            const float previousFraction = accumulator;
+                            const float totalBirths = previousFraction + rate * scaledDelta;
+                            const auto requestedCount = static_cast<std::uint32_t>(
+                                std::max(0.0f, std::floor(totalBirths)));
+                            accumulator = totalBirths - static_cast<float>(requestedCount);
+                            if (requestedCount == 0u) continue;
+
+                            const std::uint32_t room = system.capacity > runtime.activeCount
+                                ? system.capacity - runtime.activeCount : 0u;
+                            const std::uint32_t count = std::min(requestedCount, room);
+                            if (count == 0u) continue;
+
+                            std::vector<float> ages;
+                            ages.reserve(count);
+                            const float firstEvent =
+                                (1.0f - previousFraction) / rate;
+                            const float eventStep = 1.0f / rate;
+                            for (std::uint32_t birth = 0; birth < count; ++birth) {
+                                const float eventTime = firstEvent + eventStep * static_cast<float>(birth);
+                                ages.push_back(std::max(0.0f, scaledDelta - eventTime));
+                            }
+
+                            (void)core::EmitNifParticles(
+                                runtime.particles,
+                                runtime.activeCount,
+                                system.capacity,
+                                emitter,
+                                system.modifiers,
+                                ages,
+                                animationTime,
+                                system.hasRotationAngles,
+                                system.hasRotationAxes,
+                                runtime.emitterRandomStates[modifierIndex]);
+                        }
+                    }
                     runtime.lastSimulationTime = animationTime;
                 }
             }

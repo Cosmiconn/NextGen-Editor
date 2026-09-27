@@ -174,6 +174,8 @@ private:
         bool hasColors = false;
         bool hasRadii = false;
         bool hasSizes = false;
+        bool hasRotationAngles = false;
+        bool hasRotationAxes = false;
         std::uint32_t capacity = 0;
         std::vector<core::NifParticleModifierInfo> modifiers;
         std::vector<core::NifParticleControllerInfo> controllers;
@@ -197,7 +199,8 @@ private:
         std::vector<core::NifParticleState> particles;
         std::uint16_t activeCount = 0;
         float lastSimulationTime = 0.0f;
-        float emissionAccumulator = 0.0f;
+        std::vector<float> emitterAccumulators;
+        std::vector<std::uint32_t> emitterRandomStates;
         bool initialized = false;
     };
     // Particle state must be per placed object, never shared through modelCache_.
