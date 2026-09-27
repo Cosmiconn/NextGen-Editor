@@ -1,10 +1,13 @@
 #include "mapeditor/core/NifModel.hpp"
+#include "mapeditor/core/DdsImage.hpp"
+#include "mapeditor/core/legacy/LegacyPathResolve.hpp"
 
 #include <array>
 #include <cmath>
 #include <filesystem>
 #include <iostream>
 #include <map>
+#include <optional>
 #include <set>
 #include <sstream>
 #include <string>
@@ -66,6 +69,100 @@ std::string Clean(std::string value) {
     return value;
 }
 
+std::string TextureLookupKey(std::string value) {
+    std::string out;
+    out.reserve(value.size());
+    for (unsigned char ch : value) {
+        if (std::isspace(ch)) continue;
+        out.push_back(static_cast<char>(std::tolower(ch)));
+    }
+    return out;
+}
+
+bool IsTextureExtension(const fs::path& path) {
+    std::string ext = path.extension().string();
+    for (char& ch : ext) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    return ext == ".dds" || ext == ".tga" || ext == ".bmp" ||
+           ext == ".png" || ext == ".jpg" || ext == ".jpeg";
+}
+
+struct ExternalTextureResolution {
+    std::optional<fs::path> path;
+    bool ambiguous = false;
+};
+
+class ExternalTextureIndex {
+public:
+    void Build(const std::vector<fs::path>& roots) {
+        if (built_) return;
+        built_ = true;
+        for (const auto& root : roots) {
+            if (!fs::is_directory(root)) continue;
+            std::error_code ec;
+            fs::recursive_directory_iterator it(
+                root, fs::directory_options::skip_permission_denied, ec);
+            const fs::recursive_directory_iterator end;
+            for (; it != end; it.increment(ec)) {
+                if (ec) { ec.clear(); continue; }
+                if (!it->is_regular_file(ec) || ec || !IsTextureExtension(it->path())) {
+                    ec.clear();
+                    continue;
+                }
+                const std::string key = TextureLookupKey(it->path().filename().string());
+                if (key.empty() || ambiguous_.contains(key)) continue;
+                const auto [found, inserted] = unique_.emplace(key, it->path());
+                if (!inserted && found->second != it->path()) {
+                    unique_.erase(found);
+                    ambiguous_.insert(key);
+                }
+            }
+        }
+    }
+
+    ExternalTextureResolution Resolve(
+        const fs::path& nifPath,
+        const std::string& legacyPath,
+        const std::vector<fs::path>& roots) {
+        if (legacyPath.empty()) return {};
+        const auto native = core::legacy::LegacyPathToNative(legacyPath);
+        const auto stripped = core::legacy::StripResmapPrefix(native);
+        const auto modelDir = nifPath.parent_path();
+
+        if (!modelDir.empty()) {
+            if (auto local = core::legacy::ResolveCaseInsensitivePath(modelDir, native))
+                return {*local, false};
+            if (stripped != native) {
+                if (auto local = core::legacy::ResolveCaseInsensitivePath(modelDir, stripped))
+                    return {*local, false};
+            }
+        }
+        for (const auto& root : roots) {
+            if (auto rooted = core::legacy::ResolveCaseInsensitivePath(root, native))
+                return {*rooted, false};
+            if (stripped != native) {
+                if (auto rooted = core::legacy::ResolveCaseInsensitivePath(root, stripped))
+                    return {*rooted, false};
+            }
+        }
+
+        Build(roots);
+        std::string filename = legacyPath;
+        if (const auto slash = filename.find_last_of("\\/"); slash != std::string::npos)
+            filename = filename.substr(slash + 1);
+        const std::string key = TextureLookupKey(filename);
+        if (key.empty()) return {};
+        if (ambiguous_.contains(key)) return {std::nullopt, true};
+        const auto found = unique_.find(key);
+        if (found == unique_.end()) return {};
+        return {found->second, false};
+    }
+
+private:
+    bool built_ = false;
+    std::map<std::string, fs::path> unique_;
+    std::set<std::string> ambiguous_;
+};
+
 const char* ApplyModeName(std::uint32_t mode) {
     switch (mode) {
         case 0: return "APPLY_REPLACE";
@@ -82,18 +179,33 @@ const char* ApplyModeName(std::uint32_t mode) {
 int main(int argc, char** argv) {
     bool strictRenderer = false;
     std::vector<fs::path> roots;
+    std::vector<fs::path> assetRoots;
     for (int arg = 1; arg < argc; ++arg) {
         const std::string value = argv[arg];
         if (value == "--strict-renderer") {
             strictRenderer = true;
+        } else if (value == "--asset-root") {
+            if (arg + 1 >= argc) {
+                std::cerr << "--asset-root requires a directory argument.\n";
+                return 2;
+            }
+            assetRoots.emplace_back(argv[++arg]);
         } else {
             roots.emplace_back(value);
         }
     }
     if (roots.empty()) {
-        std::cerr << "Usage: nif_material_inventory [--strict-renderer] <root> [root ...]\n";
+        std::cerr << "Usage: nif_material_inventory [--strict-renderer] "
+                     "[--asset-root <dir> ...] <root> [root ...]\n";
         return 2;
     }
+    for (const auto& assetRoot : assetRoots) {
+        if (!fs::is_directory(assetRoot)) {
+            std::cerr << "Asset root is not a directory: " << assetRoot << '\n';
+            return 2;
+        }
+    }
+    const bool verifyExternalTextures = !assetRoots.empty();
 
     std::size_t files = 0;
     std::size_t loaded = 0;
@@ -146,6 +258,21 @@ int main(int argc, char** argv) {
     std::vector<std::string> meshParticleDynamicDetails;
     std::size_t recoveredModels = 0;
     std::size_t partialModels = 0;
+
+    // External texture verification is deliberately opt-in because the compact fixture corpus
+    // does not ship a complete client asset tree. The final ResMap gate passes --asset-root.
+    std::size_t externalTextureBindings = 0;
+    std::size_t resolvedExternalTextureBindings = 0;
+    std::size_t decodedExternalTextureBindings = 0;
+    std::size_t missingExternalTextureBindings = 0;
+    std::size_t ambiguousExternalTextureBindings = 0;
+    std::size_t failedExternalTextureDecodeBindings = 0;
+    std::size_t unsupportedExternalTextureDecodeBindings = 0;
+    std::set<std::string> resolvedExternalTextureFiles;
+    std::set<std::string> decodedExternalTextureFiles;
+    std::vector<std::string> externalTextureGapDetails;
+    ExternalTextureIndex externalTextureIndex;
+    std::map<std::string, std::optional<std::string>> externalDecodeCache;
 
     std::map<std::string, std::size_t> shaderParts;
     std::map<std::string, std::set<std::string>> shaderFiles;
@@ -233,6 +360,70 @@ int main(int argc, char** argv) {
             }
             decodedEmbedded += model->decodedEmbeddedTextures;
             undecodedEmbedded += model->undecodedEmbeddedTextures;
+
+            const auto auditExternalTexture = [&](const std::string& textureName,
+                                                  const char* bindingKind) {
+                if (textureName.empty()) return;
+                ++externalTextureBindings;
+                if (!verifyExternalTextures) return;
+
+                const auto resolution =
+                    externalTextureIndex.Resolve(entry.path(), textureName, assetRoots);
+                if (!resolution.path) {
+                    if (resolution.ambiguous) ++ambiguousExternalTextureBindings;
+                    else ++missingExternalTextureBindings;
+                    rendererGapFiles.insert(entry.path().string());
+                    std::ostringstream detail;
+                    detail << "TEXTUREGAP"
+                           << "\tpath=" << Clean(entry.path().string())
+                           << "\tbinding=" << bindingKind
+                           << "\tsource=" << Clean(textureName)
+                           << "\treason=" << (resolution.ambiguous ? "ambiguous" : "missing");
+                    externalTextureGapDetails.push_back(detail.str());
+                    return;
+                }
+
+                ++resolvedExternalTextureBindings;
+                resolvedExternalTextureFiles.insert(resolution.path->string());
+                const std::string decodeKey = resolution.path->string();
+                auto cache = externalDecodeCache.find(decodeKey);
+                if (cache == externalDecodeCache.end()) {
+                    std::string ext = resolution.path->extension().string();
+                    for (char& ch : ext)
+                        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+                    std::optional<std::string> error;
+                    if (ext == ".dds") {
+                        const auto decoded = core::LoadDdsImage(*resolution.path);
+                        if (!decoded) error = decoded.error();
+                    } else if (ext == ".tga") {
+                        const auto decoded = core::LoadTgaImage(*resolution.path);
+                        if (!decoded) error = decoded.error();
+                    } else {
+                        error = "unsupported-core-decoder:" + ext;
+                    }
+                    cache = externalDecodeCache.emplace(decodeKey, std::move(error)).first;
+                }
+
+                if (!cache->second) {
+                    ++decodedExternalTextureBindings;
+                    decodedExternalTextureFiles.insert(decodeKey);
+                    return;
+                }
+
+                rendererGapFiles.insert(entry.path().string());
+                if (cache->second->rfind("unsupported-core-decoder:", 0) == 0)
+                    ++unsupportedExternalTextureDecodeBindings;
+                else
+                    ++failedExternalTextureDecodeBindings;
+                std::ostringstream detail;
+                detail << "TEXTUREGAP"
+                       << "\tpath=" << Clean(entry.path().string())
+                       << "\tbinding=" << bindingKind
+                       << "\tsource=" << Clean(textureName)
+                       << "\tresolved=" << Clean(decodeKey)
+                       << "\treason=" << Clean(*cache->second);
+                externalTextureGapDetails.push_back(detail.str());
+            };
             unsupportedEffects += model->textureEffectUnsupportedBlocks;
             inheritedProperties += model->inheritedPropertyBindings;
             for (const auto& controllerType : model->particleControllerTypes)
@@ -441,6 +632,8 @@ int main(int argc, char** argv) {
                         if (texture.sourceUsesEmbeddedPixelData && !texture.embeddedTexture) {
                             ++particleUnresolvedEmbedded;
                             rendererGapFiles.insert(entry.path().string());
+                        } else if (!texture.sourceUsesEmbeddedPixelData && !texture.texture.empty()) {
+                            auditExternalTexture(texture.texture, "particle-slot");
                         }
                         if (texture.clampMode > 3u) { ++unsupportedClampBindings; rendererGapFiles.insert(entry.path().string()); }
                         if (texture.filterMode > 6u) { ++unsupportedFilterBindings; rendererGapFiles.insert(entry.path().string()); }
@@ -458,6 +651,9 @@ int main(int argc, char** argv) {
                         if (shaderSlot.texture.sourceUsesEmbeddedPixelData && !shaderSlot.texture.embeddedTexture) {
                             ++particleUnresolvedEmbedded;
                             rendererGapFiles.insert(entry.path().string());
+                        } else if (!shaderSlot.texture.sourceUsesEmbeddedPixelData &&
+                                   !shaderSlot.texture.texture.empty()) {
+                            auditExternalTexture(shaderSlot.texture.texture, "particle-shader-slot");
                         }
                     }
                     particleTextureTransformTracks += system.textureTransformAnimations.size();
@@ -472,6 +668,10 @@ int main(int argc, char** argv) {
                         if (animation.slot >= system.textureSlots.size() || animation.frames.empty()) {
                             ++unsupportedFlipAnimations;
                             rendererGapFiles.insert(entry.path().string());
+                        }
+                        for (const auto& frame : animation.frames) {
+                            if (!frame.sourceUsesEmbeddedPixelData && !frame.texture.empty())
+                                auditExternalTexture(frame.texture, "particle-flip-frame");
                         }
                     }
                     if (system.textureApplyMode > 2u) {
@@ -638,6 +838,10 @@ int main(int argc, char** argv) {
                         ++unsupportedFlipAnimations;
                         rendererGapFiles.insert(entry.path().string());
                     }
+                    for (const auto& frame : anim.frames) {
+                        if (!frame.sourceUsesEmbeddedPixelData && !frame.texture.empty())
+                            auditExternalTexture(frame.texture, "flip-frame");
+                    }
                 }
 
                 const auto appendUvDiagnostic = [&](std::ostringstream& out, std::uint32_t uvSet) {
@@ -669,6 +873,7 @@ int main(int argc, char** argv) {
                         if (!texture.embeddedTexture) ++stat.unresolvedEmbedded;
                     } else if (!texture.texture.empty()) {
                         ++stat.external;
+                        auditExternalTexture(texture.texture, "classic-slot");
                     }
                     ++classicClampModes[texture.clampMode];
                     ++classicFilterModes[texture.filterMode];
@@ -805,6 +1010,7 @@ int main(int argc, char** argv) {
                         if (!texture.embeddedTexture) ++stat.unresolvedEmbedded;
                     } else if (!texture.texture.empty()) {
                         ++stat.external;
+                        auditExternalTexture(texture.texture, "shader-slot");
                     }
                 }
 
@@ -828,6 +1034,7 @@ int main(int argc, char** argv) {
                         if (!effect.embeddedTexture) ++stat.unresolvedEmbedded;
                     } else if (!effect.texture.empty()) {
                         ++stat.external;
+                        auditExternalTexture(effect.texture, "texture-effect");
                     }
                     if (effect.clippingPlaneEnabled) {
                         ++stat.clippingPlane;
@@ -918,6 +1125,16 @@ int main(int argc, char** argv) {
               << "\tunsupportedDepthParts=" << unsupportedDepthParts
               << "\tunsupportedFaceDrawParts=" << unsupportedFaceDrawParts
               << "\tunsupportedVertexColorParts=" << unsupportedVertexColorParts
+              << "\texternalTextureBindings=" << externalTextureBindings
+              << "\tresolvedExternalTextureBindings=" << resolvedExternalTextureBindings
+              << "\tdecodedExternalTextureBindings=" << decodedExternalTextureBindings
+              << "\tresolvedExternalTextureFiles=" << resolvedExternalTextureFiles.size()
+              << "\tdecodedExternalTextureFiles=" << decodedExternalTextureFiles.size()
+              << "\tmissingExternalTextureBindings=" << missingExternalTextureBindings
+              << "\tambiguousExternalTextureBindings=" << ambiguousExternalTextureBindings
+              << "\tfailedExternalTextureDecodeBindings=" << failedExternalTextureDecodeBindings
+              << "\tunsupportedExternalTextureDecodeBindings="
+              << unsupportedExternalTextureDecodeBindings
               << "\trendererGapFiles=" << rendererGapFiles.size() << '\n';
 
     for (const auto& [name, count] : shaderParts) {
@@ -1108,6 +1325,8 @@ int main(int argc, char** argv) {
         }
     }
 
+    for (const auto& detail : externalTextureGapDetails)
+        std::cout << detail << '\n';
     for (const auto& path : rendererGapFiles)
         std::cout << "RENDERGAPFILE\tpath=" << Clean(path) << '\n';
 
