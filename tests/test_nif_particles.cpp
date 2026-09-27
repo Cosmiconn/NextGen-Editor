@@ -189,6 +189,15 @@ int main(int argc, char** argv) {
         check(state[1].spawnGeneration == 1 && std::abs(state[1].size - 1.0f) < 1.0e-6f,
               "grow fade applies only to matching particle generation");
     }
+    {
+        Bytes b = particles(0x14000004u, true, true, -1);
+        ByteReader r(b.data);
+        const auto parsed = ParseNiPSysData(r, 0x14000004u, false);
+        check(r.Ok() && parsed.info.hasRotationSpeeds &&
+              parsed.info.particles.size() == 2 &&
+              parsed.info.particles[0].rotationSpeed == 0.0f,
+              "NiPSysData rotation-speed array is preserved");
+    }
     // Modifier base with nonempty name, plus independently specified suffix sizes.
     for (const auto& [parser, suffix] : std::vector<std::pair<void(*)(ByteReader&), int>>{
              {SkipNiPSysCylinderEmitter, 68}, {SkipNiPSysSphereEmitter, 64}, {SkipNiPSysBombModifier, 32}}) {

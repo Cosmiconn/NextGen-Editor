@@ -944,8 +944,11 @@ ParsedParticleData ParseNiPSysData(ByteReader& r, std::uint32_t version, bool is
         particle.spawnGeneration = r.U16();
         particle.code = r.U16();
     }
-    if (version >= 0x14000004u && r.U8())
-        r.Skip(static_cast<std::size_t>(numVerts) * 4u); // unknown_floats3
+    if (version >= 0x14000002u) {
+        info.hasRotationSpeeds = r.U8() != 0;
+        if (info.hasRotationSpeeds)
+            for (auto& particle : info.particles) particle.rotationSpeed = r.F32();
+    }
     r.U16(); r.U16(); // unknown_short_1, unknown_short_2
     if (isMeshVariant) {
         if (version >= 0x0A020000u) {
@@ -5327,6 +5330,19 @@ void AdvanceNifParticleState(
             const float scaledAge = particle.age / particle.lifeSpan;
             if (const auto evaluated = EvaluateNifColorTrack(color->colorTrack, scaledAge))
                 particle.color = *evaluated;
+        }
+
+        // Gamebryo NiPSSimulatorGeneralKernel updates rotation using the same
+        // currentTime-lastUpdate delta. Keep angles bounded exactly like the SDK helper.
+        particle.rotationAngle += particle.rotationSpeed * deltaTime;
+        constexpr float kPi = 3.14159265358979323846f;
+        constexpr float kTwoPi = 2.0f * kPi;
+        constexpr float kTenPi = 10.0f * kPi;
+        if (particle.rotationAngle > kTenPi || particle.rotationAngle < -kTenPi) {
+            particle.rotationAngle = 0.0f;
+        } else {
+            while (particle.rotationAngle > kTwoPi) particle.rotationAngle -= kTwoPi;
+            while (particle.rotationAngle < -kTwoPi) particle.rotationAngle += kTwoPi;
         }
 
         // Gamebryo NiPSSimulatorFinalKernel: position uses velocity over the same time delta,

@@ -265,6 +265,7 @@ struct NifParticleState {
     float size = 1.0f;
     std::array<float, 4> rotationQuaternion{0.0f, 0.0f, 0.0f, 1.0f};
     float rotationAngle = 0.0f;
+    float rotationSpeed = 0.0f;
     NifVec3 rotationAxis{0.0f, 1.0f, 0.0f};
     NifVec3 velocity{};
     float age = 0.0f;
@@ -283,6 +284,7 @@ struct NifParticleDataInfo {
     bool hasSizes = false;
     bool hasRotations = false;
     bool hasRotationAngles = false;
+    bool hasRotationSpeeds = false;
     bool hasRotationAxes = false;
     std::vector<NifParticleState> particles;
 };

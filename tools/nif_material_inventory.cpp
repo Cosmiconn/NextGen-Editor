@@ -125,6 +125,7 @@ int main(int argc, char** argv) {
     std::size_t texturedParticleSystems = 0;
     std::size_t meshParticleSystems = 0;
     std::size_t worldSpaceParticleSystems = 0;
+    std::size_t particleRotationSpeedSystems = 0;
     std::size_t particleTextureBindings = 0;
     std::size_t particleShaderDescriptors = 0;
     std::size_t particleUnresolvedEmbedded = 0;
@@ -303,6 +304,7 @@ int main(int argc, char** argv) {
                     if (system.hasParticleData) {
                         particleCapacity += system.particleData.capacity;
                         activeParticles += system.particleData.activeCount;
+                        if (system.particleData.hasRotationSpeeds) ++particleRotationSpeedSystems;
                     }
                     const bool textured = system.textureSlots[0].present &&
                         (!system.textureSlots[0].texture.empty() || system.textureSlots[0].embeddedTexture);
@@ -750,6 +752,7 @@ int main(int argc, char** argv) {
               << "\tvolumeEmittersWithoutTransform=" << volumeEmittersWithoutTransform
               << "\tmeshEmittersWithoutGeometry=" << meshEmittersWithoutGeometry
               << "\tskinnedMeshEmitterBindings=" << skinnedMeshEmitterBindings
+              << "\tparticleRotationSpeedSystems=" << particleRotationSpeedSystems
               << "\tparticleTextureBindings=" << particleTextureBindings
               << "\tparticleShaderDescriptors=" << particleShaderDescriptors
               << "\tparticleUnresolvedEmbedded=" << particleUnresolvedEmbedded
