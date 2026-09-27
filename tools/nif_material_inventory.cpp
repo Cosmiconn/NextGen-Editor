@@ -997,7 +997,10 @@ int main(int argc, char** argv) {
 
                 for (const auto& shaderSlot : part.shaderTextureSlots) {
                     auto& stat = shaderSlots[{shader, shaderSlot.mapId}];
-                    if (shader != "VCAlphaTextureBlender" || shaderSlot.mapId > 2u) {
+                    const bool materializedShaderMap =
+                        (shader == "VCAlphaTextureBlender" && shaderSlot.mapId <= 2u) ||
+                        (shader == "AlphaTextureBlender11" && shaderSlot.mapId <= 2u);
+                    if (!materializedShaderMap) {
                         ++unmaterializedShaderDescriptors;
                         rendererGapFiles.insert(entry.path().string());
                     }
