@@ -6600,6 +6600,47 @@ NifSiblingEmbeddedTextureResolution ResolveSiblingEmbeddedTexture(
         const std::string key = textureKey(source);
         return std::find(candidates.begin(), candidates.end(), key) != candidates.end();
     };
+    const auto textureVariants = [&](const std::string& source) {
+        std::vector<std::string> out;
+        const std::string key = textureKey(source);
+        if (key.empty()) return out;
+        out.push_back(key);
+        if (key.size() > 4u && key.ends_with(".nif")) {
+            std::string dds = key;
+            dds.replace(dds.size() - 4u, 4u, ".dds");
+            out.push_back(std::move(dds));
+        }
+        return out;
+    };
+
+    // When a requesting mesh family externalizes several textures into sibling NIFs,
+    // those independent references form a stronger disambiguation signal than filename
+    // similarity. Keep this mesh-only so particle-effect families cannot bias object materials.
+    std::set<std::string> requestingMeshTextureKeys;
+    if (requestingPart != nullptr) {
+        const auto requestingModel = LoadNifMesh(requestingNif, false);
+        if (requestingModel) {
+            const auto addExternal = [&](const NifTextureSlot& slot) {
+                if (!slot.present || slot.sourceUsesEmbeddedPixelData || slot.texture.empty()) return;
+                for (const auto& key : textureVariants(slot.texture))
+                    requestingMeshTextureKeys.insert(key);
+            };
+            for (const auto& part : requestingModel->parts) {
+                for (const auto& slot : part.textureSlots) addExternal(slot);
+                for (const auto& shaderSlot : part.shaderTextureSlots)
+                    addExternal(shaderSlot.texture);
+                for (const auto& anim : part.textureFlipAnimations)
+                    for (const auto& frame : anim.frames) {
+                        NifTextureSlot slot;
+                        slot.present = true;
+                        slot.sourceUsesEmbeddedPixelData = frame.sourceUsesEmbeddedPixelData;
+                        slot.texture = frame.texture;
+                        addExternal(slot);
+                    }
+            }
+        }
+    }
+
     const auto equivalent = [](const NifEmbeddedTexture& a, const NifEmbeddedTexture& b) {
         if (a.width != b.width || a.height != b.height || a.faces != b.faces ||
             a.rgba != b.rgba)
@@ -6635,6 +6676,7 @@ NifSiblingEmbeddedTextureResolution ResolveSiblingEmbeddedTexture(
         std::filesystem::path sourceNif;
         std::string matchedTextureName;
         bool exactGeometryMatch = false;
+        std::size_t familyCoverage = 0;
     };
     std::vector<Candidate> matches;
 
@@ -6656,7 +6698,8 @@ NifSiblingEmbeddedTextureResolution ResolveSiblingEmbeddedTexture(
 
     const auto consider = [&](const NifTextureSlot& slot,
                               const std::filesystem::path& sourceNif,
-                              const NifMeshPart* ownerPart) {
+                              const NifMeshPart* ownerPart,
+                              std::size_t familyCoverage) {
         if (!slot.sourceUsesEmbeddedPixelData || !slot.embeddedTexture ||
             !matchesCandidate(slot.texture))
             return;
@@ -6667,6 +6710,7 @@ NifSiblingEmbeddedTextureResolution ResolveSiblingEmbeddedTexture(
         candidate.exactGeometryMatch =
             requestingPart != nullptr && ownerPart != nullptr &&
             geometryEquivalent(*requestingPart, *ownerPart);
+        candidate.familyCoverage = familyCoverage;
         matches.push_back(std::move(candidate));
     };
 
@@ -6675,10 +6719,36 @@ NifSiblingEmbeddedTextureResolution ResolveSiblingEmbeddedTexture(
         // and another embedded binding carrying the corrected metadata name.
         const auto model = LoadNifMesh(sibling, false);
         if (!model) continue;
+
+        std::set<std::string> coveredFamilyKeys;
+        if (!requestingMeshTextureKeys.empty()) {
+            const auto noteEmbedded = [&](const NifTextureSlot& slot) {
+                if (!slot.sourceUsesEmbeddedPixelData || !slot.embeddedTexture) return;
+                const std::string key = textureKey(slot.texture);
+                if (requestingMeshTextureKeys.contains(key))
+                    coveredFamilyKeys.insert(key);
+            };
+            for (const auto& part : model->parts) {
+                for (const auto& slot : part.textureSlots) noteEmbedded(slot);
+                for (const auto& shaderSlot : part.shaderTextureSlots)
+                    noteEmbedded(shaderSlot.texture);
+                for (const auto& anim : part.textureFlipAnimations)
+                    for (const auto& frame : anim.frames) {
+                        NifTextureSlot slot;
+                        slot.sourceUsesEmbeddedPixelData = frame.sourceUsesEmbeddedPixelData;
+                        slot.embeddedTexture = frame.embeddedTexture;
+                        slot.texture = frame.texture;
+                        noteEmbedded(slot);
+                    }
+            }
+        }
+        const std::size_t familyCoverage = coveredFamilyKeys.size();
+
         for (const auto& part : model->parts) {
-            for (const auto& slot : part.textureSlots) consider(slot, sibling, &part);
+            for (const auto& slot : part.textureSlots)
+                consider(slot, sibling, &part, familyCoverage);
             for (const auto& shaderSlot : part.shaderTextureSlots)
-                consider(shaderSlot.texture, sibling, &part);
+                consider(shaderSlot.texture, sibling, &part, familyCoverage);
             for (const auto& anim : part.textureFlipAnimations)
                 for (const auto& frame : anim.frames) {
                     NifTextureSlot slot;
@@ -6686,13 +6756,14 @@ NifSiblingEmbeddedTextureResolution ResolveSiblingEmbeddedTexture(
                     slot.sourcePixelDataRef = frame.sourcePixelDataRef;
                     slot.embeddedTexture = frame.embeddedTexture;
                     slot.texture = frame.texture;
-                    consider(slot, sibling, &part);
+                    consider(slot, sibling, &part, familyCoverage);
                 }
         }
         for (const auto& system : model->particleSystems) {
-            for (const auto& slot : system.textureSlots) consider(slot, sibling, nullptr);
+            for (const auto& slot : system.textureSlots)
+                consider(slot, sibling, nullptr, familyCoverage);
             for (const auto& shaderSlot : system.shaderTextureSlots)
-                consider(shaderSlot.texture, sibling, nullptr);
+                consider(shaderSlot.texture, sibling, nullptr, familyCoverage);
             for (const auto& anim : system.textureFlipAnimations)
                 for (const auto& frame : anim.frames) {
                     NifTextureSlot slot;
@@ -6700,7 +6771,7 @@ NifSiblingEmbeddedTextureResolution ResolveSiblingEmbeddedTexture(
                     slot.sourcePixelDataRef = frame.sourcePixelDataRef;
                     slot.embeddedTexture = frame.embeddedTexture;
                     slot.texture = frame.texture;
-                    consider(slot, sibling, nullptr);
+                    consider(slot, sibling, nullptr, familyCoverage);
                 }
         }
     }
@@ -6727,6 +6798,25 @@ NifSiblingEmbeddedTextureResolution ResolveSiblingEmbeddedTexture(
             if (chooseEquivalent(exactGeometry)) return result;
             result.ambiguous = true;
             return result;
+        }
+
+        std::size_t bestCoverage = 0;
+        for (const auto& match : matches)
+            bestCoverage = std::max(bestCoverage, match.familyCoverage);
+        if (bestCoverage >= 2u) {
+            std::set<std::filesystem::path> bestSources;
+            for (const auto& match : matches)
+                if (match.familyCoverage == bestCoverage)
+                    bestSources.insert(match.sourceNif);
+            if (bestSources.size() == 1u) {
+                std::vector<std::size_t> familyMatches;
+                for (std::size_t i = 0; i < matches.size(); ++i)
+                    if (matches[i].sourceNif == *bestSources.begin())
+                        familyMatches.push_back(i);
+                if (chooseEquivalent(familyMatches)) return result;
+                result.ambiguous = true;
+                return result;
+            }
         }
     }
 
