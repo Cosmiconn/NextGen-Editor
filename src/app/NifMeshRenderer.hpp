@@ -203,6 +203,8 @@ private:
     // Mesh-Teile/Modelle teilen sich häufig dieselbe Textur (z.B. "grass.dds").
     std::uint32_t GetOrLoadTexture(const std::filesystem::path& resolvedPath);
     std::uint32_t GetOrLoadCubeTexture(const std::filesystem::path& resolvedPath);
+    std::uint32_t GetOrLoadEmbeddedCubeTexture(const core::NifEmbeddedTexture& image,
+                                                const std::string& cacheKey);
     std::uint32_t GetOrLoadEmbeddedTexture(const core::NifEmbeddedTexture& image, const std::string& cacheKey);
 
     std::unordered_map<std::string, LoadedModel> modelCache_;   // Schlüssel: aufgelöster Pfad
