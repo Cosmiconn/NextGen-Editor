@@ -6565,6 +6565,122 @@ std::expected<NifModel, std::string> LoadNifMesh(const std::filesystem::path& fi
 }
 
 
+NifSiblingEmbeddedTextureResolution ResolveSiblingEmbeddedTexture(
+    const std::filesystem::path& requestingNif,
+    const std::string& requestedTextureName) {
+    NifSiblingEmbeddedTextureResolution result;
+    const auto directory = requestingNif.parent_path();
+    if (directory.empty() || requestedTextureName.empty() ||
+        !std::filesystem::is_directory(directory))
+        return result;
+
+    const auto textureKey = [](std::string value) {
+        if (const auto slash = value.find_last_of("\\/"); slash != std::string::npos)
+            value = value.substr(slash + 1);
+        std::string out;
+        out.reserve(value.size());
+        for (unsigned char ch : value) {
+            if (std::isspace(ch)) continue;
+            out.push_back(static_cast<char>(std::tolower(ch)));
+        }
+        return out;
+    };
+
+    std::vector<std::string> candidates;
+    const std::string exact = textureKey(requestedTextureName);
+    if (exact.empty()) return result;
+    candidates.push_back(exact);
+    if (exact.size() > 4u && exact.ends_with(".nif")) {
+        std::string dds = exact;
+        dds.replace(dds.size() - 4u, 4u, ".dds");
+        candidates.push_back(std::move(dds));
+    }
+    const auto matchesCandidate = [&](const std::string& source) {
+        const std::string key = textureKey(source);
+        return std::find(candidates.begin(), candidates.end(), key) != candidates.end();
+    };
+    const auto equivalent = [](const NifEmbeddedTexture& a, const NifEmbeddedTexture& b) {
+        if (a.width != b.width || a.height != b.height || a.faces != b.faces ||
+            a.rgba != b.rgba)
+            return false;
+        for (std::size_t face = 0; face < a.cubeFaceRgba.size(); ++face)
+            if (a.cubeFaceRgba[face] != b.cubeFaceRgba[face]) return false;
+        return true;
+    };
+
+    std::vector<std::filesystem::path> siblings;
+    std::error_code ec;
+    for (std::filesystem::directory_iterator it(
+             directory, std::filesystem::directory_options::skip_permission_denied, ec), end;
+         it != end; it.increment(ec)) {
+        if (ec) { ec.clear(); continue; }
+        if (!it->is_regular_file(ec) || ec) { ec.clear(); continue; }
+        std::string ext = it->path().extension().string();
+        for (char& ch : ext)
+            ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        if (ext != ".nif" || it->path().filename().string().rfind("._", 0) == 0)
+            continue;
+        siblings.push_back(it->path());
+    }
+    std::sort(siblings.begin(), siblings.end());
+
+    const auto consider = [&](const NifTextureSlot& slot,
+                              const std::filesystem::path& sourceNif) {
+        if (!slot.sourceUsesEmbeddedPixelData || !slot.embeddedTexture ||
+            !matchesCandidate(slot.texture) || result.ambiguous)
+            return;
+        if (!result.texture) {
+            result.texture = slot.embeddedTexture;
+            result.sourceNif = sourceNif;
+            result.matchedTextureName = slot.texture;
+            return;
+        }
+        if (!equivalent(*result.texture, *slot.embeddedTexture)) {
+            result.texture.reset();
+            result.sourceNif.clear();
+            result.matchedTextureName.clear();
+            result.ambiguous = true;
+        }
+    };
+
+    for (const auto& sibling : siblings) {
+        // The requesting NIF itself is allowed: a file may contain both an external typo
+        // and another embedded binding carrying the corrected metadata name.
+        const auto model = LoadNifMesh(sibling, false);
+        if (!model) continue;
+        for (const auto& part : model->parts) {
+            for (const auto& slot : part.textureSlots) consider(slot, sibling);
+            for (const auto& shaderSlot : part.shaderTextureSlots)
+                consider(shaderSlot.texture, sibling);
+            for (const auto& anim : part.textureFlipAnimations)
+                for (const auto& frame : anim.frames) {
+                    NifTextureSlot slot;
+                    slot.sourceUsesEmbeddedPixelData = frame.sourceUsesEmbeddedPixelData;
+                    slot.sourcePixelDataRef = frame.sourcePixelDataRef;
+                    slot.embeddedTexture = frame.embeddedTexture;
+                    slot.texture = frame.texture;
+                    consider(slot, sibling);
+                }
+        }
+        for (const auto& system : model->particleSystems) {
+            for (const auto& slot : system.textureSlots) consider(slot, sibling);
+            for (const auto& shaderSlot : system.shaderTextureSlots)
+                consider(shaderSlot.texture, sibling);
+            for (const auto& anim : system.textureFlipAnimations)
+                for (const auto& frame : anim.frames) {
+                    NifTextureSlot slot;
+                    slot.sourceUsesEmbeddedPixelData = frame.sourceUsesEmbeddedPixelData;
+                    slot.sourcePixelDataRef = frame.sourcePixelDataRef;
+                    slot.embeddedTexture = frame.embeddedTexture;
+                    slot.texture = frame.texture;
+                    consider(slot, sibling);
+                }
+        }
+        if (result.ambiguous) break;
+    }
+    return result;
+}
+
 std::vector<NifGroundContactSegment> ComputeGroundContactSegments(const NifModel& model) {
     float minY = 0.0f, maxY = 0.0f;
     bool any = false;
