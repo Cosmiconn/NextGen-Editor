@@ -522,9 +522,24 @@ struct NifParticleSystemInfo {
     float scale = 1.0f;
 };
 
+struct NifGlassShaderParameters {
+    NifColor4 baseColor{0.722019f, 0.704711f, 0.760274f, 1.0f};
+    float refractionScale = 1.0f;
+    float reflectionScale = 1.0f;
+    float indexOfRefractionRatio = 1.14f;
+    float ambient = 0.2f;
+    float rainbowSpread = 0.18f;
+    float rainbowScale = 0.2f;
+    bool authoredOverride = false;
+};
+
 struct NifMeshPart {
     std::string name;
     std::string shaderName;            // z.B. VCAlphaTextureBlender
+    // MaterialData::shader_extra_data selects a non-default shader implementation;
+    // -1 means the NSF default implementation.
+    std::int32_t shaderExtraData = -1;
+    std::optional<NifGlassShaderParameters> glassShader;
     std::vector<NifVec3> positions;
     std::vector<NifVec3> normals;      // leer, falls keine Normalen vorhanden
     std::vector<NifColor4> vertexColors; // leer => weiss/alpha 1 im Renderer
