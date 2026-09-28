@@ -697,7 +697,12 @@ int main(int argc, char** argv) {
                     }
                     for (const auto& shaderSlot : system.shaderTextureSlots) {
                         ++particleShaderDescriptors;
-                        if (system.shaderName != "VCAlphaTextureBlender" || shaderSlot.mapId > 2u) {
+                        const bool materializedParticleShaderMap =
+                            (system.shaderName == "VCAlphaTextureBlender" && shaderSlot.mapId <= 2u) ||
+                            (system.shaderName == "AlphaTextureBlender11" && shaderSlot.mapId <= 2u) ||
+                            (system.shaderName == "AlphaTextureBlender" && shaderSlot.mapId <= 2u) ||
+                            (system.shaderName == "PgTerrain" && shaderSlot.mapId <= 1u);
+                        if (!materializedParticleShaderMap) {
                             ++unmaterializedShaderDescriptors;
                             rendererGapFiles.insert(entry.path().string());
                         }
