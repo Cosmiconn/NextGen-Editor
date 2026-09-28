@@ -2,6 +2,13 @@ name: NextGen-Editor Build
 
 on: [push, pull_request, workflow_dispatch]
 
+# Renderer work lands in small, evidence-driven commits. Only the newest commit on the
+# same ref is useful; cancelling superseded runs prevents stale Windows builds from
+# delaying the current full audit artifact.
+concurrency:
+  group: nextgen-editor-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
