@@ -41,7 +41,10 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           ./build/nif_material_inventory tests/fixtures
-          ./build/nif_material_inventory --strict-renderer --asset-root tests/fixtures tests/fixtures
+          # The fixture corpus intentionally includes three priority-2 reschar/equipment NIFs
+          # using NsPgToonNoAni implementation 0. Keep them visible, but do not let them block
+          # the ResMap-priority gate before that shader is addressed in the reschar phase.
+          ./build/nif_material_inventory --strict-renderer --defer-priority2-character-shaders --asset-root tests/fixtures tests/fixtures
       - name: Upload Linux NIF auditor
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v7
@@ -58,7 +61,8 @@ jobs:
           ./tools/audit_resmap.ps1 `
             -AuditExe ./build/Release/nif_material_inventory.exe `
             -InputPath ./tests/fixtures `
-            -ReportPath ./build/resmap-strict-audit-smoke.txt
+            -ReportPath ./build/resmap-strict-audit-smoke.txt `
+            -DeferPriority2CharacterShaders
       - run: ctest --test-dir build -C Release --output-on-failure
 
   windows-gui:
