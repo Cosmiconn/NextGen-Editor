@@ -691,6 +691,21 @@ struct NifModel {
 std::expected<NifModel, std::string> LoadNifMesh(const std::filesystem::path& file,
                                               bool allowRecovery = true);
 
+// Fiesta corpus compatibility: a few NIFs reference a texture that is absent as a standalone
+// file but is embedded in a sibling NIF in the same directory. Some of those authored paths
+// accidentally use ".nif" where sibling metadata proves the intended ".dds" stem.
+// The resolver is deliberately directory-local and ambiguity-safe.
+struct NifSiblingEmbeddedTextureResolution {
+    std::shared_ptr<const NifEmbeddedTexture> texture;
+    std::filesystem::path sourceNif;
+    std::string matchedTextureName;
+    bool ambiguous = false;
+};
+
+NifSiblingEmbeddedTextureResolution ResolveSiblingEmbeddedTexture(
+    const std::filesystem::path& requestingNif,
+    const std::string& requestedTextureName);
+
 struct NifGroundContactSegment {
     float x0 = 0.0f;
     float z0 = 0.0f;
