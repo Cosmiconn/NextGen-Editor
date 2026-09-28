@@ -476,7 +476,13 @@ int main(int argc, char** argv) {
                 const bool unsupportedDecoder =
                     cache->second->rfind("unsupported-core-decoder:", 0) == 0 ||
                     cache->second->rfind("unsupported-cube-decoder:", 0) == 0;
-                if (unsupportedDecoder && useSiblingEmbeddedFallback()) return;
+
+                // Keep the strict audit aligned with NifMeshRenderer: an authored external
+                // reference may resolve to a corrupt/legacy file while a sibling NIF carries the
+                // actual embedded PixelData used by the Fiesta asset family. This remains strict:
+                // the fallback must be unique, decoded and have the exact required face count.
+                // If no such sibling PixelData exists, the external decode error stays a hard gap.
+                if (useSiblingEmbeddedFallback()) return;
 
                 rendererGapFiles.insert(entry.path().string());
                 if (unsupportedDecoder)
