@@ -358,6 +358,81 @@ void main() {
 }
 )";
 
+const char* kGlassVertexShaderSrc = R"(
+#version 330 core
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aNormal;
+
+uniform mat4 uViewProj;
+uniform mat4 uModel;
+uniform vec3 uCameraPos;
+
+out vec3 gNormal;
+out vec3 gViewVec;
+
+void main() {
+    vec4 worldPos = uModel * vec4(aPos, 1.0);
+    gNormal = mat3(uModel) * aNormal;
+    gViewVec = uCameraPos - worldPos.xyz;
+    gl_Position = uViewProj * worldPos;
+}
+)";
+
+const char* kGlassFragmentShaderSrc = R"(
+#version 330 core
+in vec3 gNormal;
+in vec3 gViewVec;
+out vec4 FragColor;
+
+uniform samplerCube uGlassEnvironment;
+uniform sampler2D uGlassRainbow;
+uniform vec4 uGlassBaseColor;
+uniform float uGlassRefractionScale;
+uniform float uGlassReflectionScale;
+uniform float uGlassIorRatio;
+uniform float uGlassAmbient;
+uniform float uGlassRainbowSpread;
+uniform float uGlassRainbowScale;
+
+void main() {
+    vec3 normal = normalize(gNormal);
+    vec3 viewVec = normalize(gViewVec);
+
+    // Gamebryo's stock Glass.hlsl swizzles .xzy before cube lookup because authored
+    // Gamebryo space is right-handed while Direct3D cube lookup is left-handed.
+    // NifModel already performs that same x/z-y remap when importing positions/normals,
+    // so these editor-space vectors are already in the lookup space expected by the
+    // legacy DDS cube map. Do not swizzle a second time here.
+    vec3 reflVec = reflect(-viewVec, normal);
+    vec4 reflection = texture(uGlassEnvironment, reflVec);
+
+    float cosine = clamp(dot(viewVec, normal), -1.0, 1.0);
+    float sine = sqrt(max(0.0, 1.0 - cosine * cosine));
+    float sine2 = clamp(uGlassIorRatio * sine, 0.0, 1.0);
+    float cosine2 = sqrt(max(0.0, 1.0 - sine2 * sine2));
+
+    vec3 tangent = cross(cross(viewVec, normal), normal);
+    float tangentLen2 = dot(tangent, tangent);
+    vec3 y = tangentLen2 > 1.0e-12
+        ? tangent * inversesqrt(tangentLen2)
+        : vec3(0.0);
+    vec3 refrVec = -normal * cosine2 + y * sine2;
+    vec4 refraction = texture(uGlassEnvironment, refrVec);
+
+    float rainbowU = uGlassRainbowSpread == 0.0
+        ? 1.0
+        : pow(max(cosine, 0.0), uGlassRainbowSpread);
+    vec4 rainbow = texture(uGlassRainbow, vec2(clamp(rainbowU, 0.0, 1.0), 0.5));
+
+    vec4 rain = uGlassRainbowScale * rainbow * uGlassBaseColor;
+    vec4 refl = uGlassReflectionScale * reflection;
+    vec4 refr = uGlassRefractionScale * refraction * uGlassBaseColor;
+
+    // Exact stock Gamebryo 2.6 ComplexGlassPS composition.
+    FragColor = sine * refl + (1.0 - sine2) * refr + sine2 * rain + vec4(uGlassAmbient);
+}
+)";
+
 std::uint32_t CompileShader(std::uint32_t type, const char* src) {
     const std::uint32_t shader = glCreateShader(type);
     glShaderSource(shader, 1, &src, nullptr);
