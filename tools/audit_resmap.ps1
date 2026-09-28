@@ -7,7 +7,9 @@ param(
     [Parameter(Mandatory = $true)]
     [string[]]$InputPath,
 
-    [string]$ReportPath = "resmap-strict-audit.txt"
+    [string]$ReportPath = "resmap-strict-audit.txt",
+
+    [switch]$DeferPriority2CharacterShaders
 )
 
 $ErrorActionPreference = "Stop"
@@ -92,6 +94,9 @@ try {
 
     $arguments = [System.Collections.Generic.List[string]]::new()
     $arguments.Add("--strict-renderer")
+    if ($DeferPriority2CharacterShaders) {
+        $arguments.Add("--defer-priority2-character-shaders")
+    }
     foreach ($root in $assetRoots) {
         $arguments.Add("--asset-root")
         $arguments.Add($root)
