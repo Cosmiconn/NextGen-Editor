@@ -84,6 +84,7 @@ int main(int argc, char** argv) {
                               << "\tuv=" << tex.uvSet
                               << "\texternal=" << (!tex.sourceUsesEmbeddedPixelData)
                               << "\tcube=" << tex.sourceIsCubeMap
+                              << "\tembeddedFaces=" << (tex.embeddedTexture ? tex.embeddedTexture->faces : 0u)
                               << "\tsource=" << tex.texture << '\n';
                     if (tex.embeddedTexture && !tex.embeddedTexture->rgba.empty()) {
                         const auto& image = *tex.embeddedTexture;
@@ -116,6 +117,7 @@ int main(int argc, char** argv) {
                               << "\tuv=" << tex.texture.uvSet
                               << "\texternal=" << (!tex.texture.sourceUsesEmbeddedPixelData)
                               << "\tcube=" << tex.texture.sourceIsCubeMap
+                              << "\tembeddedFaces=" << (tex.texture.embeddedTexture ? tex.texture.embeddedTexture->faces : 0u)
                               << "\tsource=" << tex.texture.texture << '\n';
                     if (tex.texture.embeddedTexture && !tex.texture.embeddedTexture->rgba.empty()) {
                         const auto& image = *tex.texture.embeddedTexture;
