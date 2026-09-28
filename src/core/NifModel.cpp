@@ -6567,7 +6567,8 @@ std::expected<NifModel, std::string> LoadNifMesh(const std::filesystem::path& fi
 
 NifSiblingEmbeddedTextureResolution ResolveSiblingEmbeddedTexture(
     const std::filesystem::path& requestingNif,
-    const std::string& requestedTextureName) {
+    const std::string& requestedTextureName,
+    const NifMeshPart* requestingPart) {
     NifSiblingEmbeddedTextureResolution result;
     const auto directory = requestingNif.parent_path();
     if (directory.empty() || requestedTextureName.empty() ||
@@ -6607,6 +6608,35 @@ NifSiblingEmbeddedTextureResolution ResolveSiblingEmbeddedTexture(
             if (a.cubeFaceRgba[face] != b.cubeFaceRgba[face]) return false;
         return true;
     };
+    const auto geometryEquivalent = [](const NifMeshPart& a, const NifMeshPart& b) {
+        if (a.positions.size() != b.positions.size() ||
+            a.triangleIndices != b.triangleIndices ||
+            a.uvSets.size() != b.uvSets.size())
+            return false;
+        for (std::size_t i = 0; i < a.positions.size(); ++i) {
+            if (a.positions[i].x != b.positions[i].x ||
+                a.positions[i].y != b.positions[i].y ||
+                a.positions[i].z != b.positions[i].z)
+                return false;
+        }
+        for (std::size_t set = 0; set < a.uvSets.size(); ++set) {
+            if (a.uvSets[set].size() != b.uvSets[set].size()) return false;
+            for (std::size_t i = 0; i < a.uvSets[set].size(); ++i) {
+                if (a.uvSets[set][i].u != b.uvSets[set][i].u ||
+                    a.uvSets[set][i].v != b.uvSets[set][i].v)
+                    return false;
+            }
+        }
+        return true;
+    };
+
+    struct Candidate {
+        std::shared_ptr<const NifEmbeddedTexture> texture;
+        std::filesystem::path sourceNif;
+        std::string matchedTextureName;
+        bool exactGeometryMatch = false;
+    };
+    std::vector<Candidate> matches;
 
     std::vector<std::filesystem::path> siblings;
     std::error_code ec;
@@ -6625,22 +6655,19 @@ NifSiblingEmbeddedTextureResolution ResolveSiblingEmbeddedTexture(
     std::sort(siblings.begin(), siblings.end());
 
     const auto consider = [&](const NifTextureSlot& slot,
-                              const std::filesystem::path& sourceNif) {
+                              const std::filesystem::path& sourceNif,
+                              const NifMeshPart* ownerPart) {
         if (!slot.sourceUsesEmbeddedPixelData || !slot.embeddedTexture ||
-            !matchesCandidate(slot.texture) || result.ambiguous)
+            !matchesCandidate(slot.texture))
             return;
-        if (!result.texture) {
-            result.texture = slot.embeddedTexture;
-            result.sourceNif = sourceNif;
-            result.matchedTextureName = slot.texture;
-            return;
-        }
-        if (!equivalent(*result.texture, *slot.embeddedTexture)) {
-            result.texture.reset();
-            result.sourceNif.clear();
-            result.matchedTextureName.clear();
-            result.ambiguous = true;
-        }
+        Candidate candidate;
+        candidate.texture = slot.embeddedTexture;
+        candidate.sourceNif = sourceNif;
+        candidate.matchedTextureName = slot.texture;
+        candidate.exactGeometryMatch =
+            requestingPart != nullptr && ownerPart != nullptr &&
+            geometryEquivalent(*requestingPart, *ownerPart);
+        matches.push_back(std::move(candidate));
     };
 
     for (const auto& sibling : siblings) {
@@ -6649,9 +6676,9 @@ NifSiblingEmbeddedTextureResolution ResolveSiblingEmbeddedTexture(
         const auto model = LoadNifMesh(sibling, false);
         if (!model) continue;
         for (const auto& part : model->parts) {
-            for (const auto& slot : part.textureSlots) consider(slot, sibling);
+            for (const auto& slot : part.textureSlots) consider(slot, sibling, &part);
             for (const auto& shaderSlot : part.shaderTextureSlots)
-                consider(shaderSlot.texture, sibling);
+                consider(shaderSlot.texture, sibling, &part);
             for (const auto& anim : part.textureFlipAnimations)
                 for (const auto& frame : anim.frames) {
                     NifTextureSlot slot;
@@ -6659,13 +6686,13 @@ NifSiblingEmbeddedTextureResolution ResolveSiblingEmbeddedTexture(
                     slot.sourcePixelDataRef = frame.sourcePixelDataRef;
                     slot.embeddedTexture = frame.embeddedTexture;
                     slot.texture = frame.texture;
-                    consider(slot, sibling);
+                    consider(slot, sibling, &part);
                 }
         }
         for (const auto& system : model->particleSystems) {
-            for (const auto& slot : system.textureSlots) consider(slot, sibling);
+            for (const auto& slot : system.textureSlots) consider(slot, sibling, nullptr);
             for (const auto& shaderSlot : system.shaderTextureSlots)
-                consider(shaderSlot.texture, sibling);
+                consider(shaderSlot.texture, sibling, nullptr);
             for (const auto& anim : system.textureFlipAnimations)
                 for (const auto& frame : anim.frames) {
                     NifTextureSlot slot;
@@ -6673,11 +6700,41 @@ NifSiblingEmbeddedTextureResolution ResolveSiblingEmbeddedTexture(
                     slot.sourcePixelDataRef = frame.sourcePixelDataRef;
                     slot.embeddedTexture = frame.embeddedTexture;
                     slot.texture = frame.texture;
-                    consider(slot, sibling);
+                    consider(slot, sibling, nullptr);
                 }
         }
-        if (result.ambiguous) break;
     }
+
+    if (matches.empty()) return result;
+
+    const auto chooseEquivalent = [&](const std::vector<std::size_t>& indices) {
+        if (indices.empty()) return false;
+        const Candidate& first = matches[indices.front()];
+        for (const auto index : indices) {
+            if (!equivalent(*first.texture, *matches[index].texture)) return false;
+        }
+        result.texture = first.texture;
+        result.sourceNif = first.sourceNif;
+        result.matchedTextureName = first.matchedTextureName;
+        return true;
+    };
+
+    if (requestingPart != nullptr) {
+        std::vector<std::size_t> exactGeometry;
+        for (std::size_t i = 0; i < matches.size(); ++i)
+            if (matches[i].exactGeometryMatch) exactGeometry.push_back(i);
+        if (!exactGeometry.empty()) {
+            if (chooseEquivalent(exactGeometry)) return result;
+            result.ambiguous = true;
+            return result;
+        }
+    }
+
+    std::vector<std::size_t> all(matches.size());
+    for (std::size_t i = 0; i < all.size(); ++i) all[i] = i;
+    if (chooseEquivalent(all)) return result;
+
+    result.ambiguous = true;
     return result;
 }
 
