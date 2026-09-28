@@ -6,7 +6,9 @@ on: [push, pull_request, workflow_dispatch]
 # same ref is useful; cancelling superseded runs prevents stale Windows builds from
 # delaying the current full audit artifact.
 concurrency:
-  group: nextgen-editor-${{ github.workflow }}-${{ github.ref }}
+  # pull_request uses refs/pull/... while push uses refs/heads/.... head_ref collapses
+  # both events onto the actual working branch so only one build survives per commit.
+  group: nextgen-editor-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 permissions:
