@@ -320,6 +320,7 @@ int main(int argc, char** argv) {
     std::vector<std::string> applyModeDetails;
     std::size_t unmaterializedShaderDescriptors = 0;
     std::size_t nonDefaultShaderImplementations = 0;
+    std::size_t invalidGlassShaderParameters = 0;
     std::size_t unmaterializedApplyModeParts = 0;
     std::size_t unsupportedEffectBindings = 0;
     std::size_t clippingEffectBindings = 0;
@@ -807,6 +808,23 @@ int main(int argc, char** argv) {
                               << "\tshader=" << Clean(part.shaderName)
                               << "\textraData=" << part.shaderExtraData << '\n';
                 }
+                if (part.shaderName == "Glass") {
+                    bool validGlass = part.glassShader.has_value();
+                    if (part.glassShader) {
+                        const auto& g = *part.glassShader;
+                        validGlass =
+                            std::isfinite(g.baseColor.r) && std::isfinite(g.baseColor.g) &&
+                            std::isfinite(g.baseColor.b) && std::isfinite(g.baseColor.a) &&
+                            std::isfinite(g.refractionScale) && std::isfinite(g.reflectionScale) &&
+                            std::isfinite(g.indexOfRefractionRatio) && g.indexOfRefractionRatio >= 0.0f &&
+                            std::isfinite(g.ambient) && std::isfinite(g.rainbowSpread) &&
+                            g.rainbowSpread >= 0.0f && std::isfinite(g.rainbowScale);
+                    }
+                    if (!validGlass) {
+                        ++invalidGlassShaderParameters;
+                        rendererGapFiles.insert(entry.path().string());
+                    }
+                }
                 ++uvSetCounts[part.uvSets.size()];
                 if (part.uvSets.size() > 8u) {
                     ++uvRendererOverflowParts;
@@ -1225,6 +1243,7 @@ int main(int argc, char** argv) {
               << "\tnoUsableUvBindings=" << noUsableUvBindings
               << "\tunmaterializedShaderDescriptors=" << unmaterializedShaderDescriptors
               << "\tnonDefaultShaderImplementations=" << nonDefaultShaderImplementations
+              << "\tinvalidGlassShaderParameters=" << invalidGlassShaderParameters
               << "\tunmaterializedApplyModes=" << unmaterializedApplyModeParts
               << "\tunsupportedEffectBindings=" << unsupportedEffectBindings
               << "\tclippingEffects=" << clippingEffectBindings
