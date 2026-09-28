@@ -1413,7 +1413,8 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                             if (auto texPath = resolveTexturePath(src.texture))
                                 dst.texture = GetOrLoadTexture(*texPath);
                             if (dst.texture == 0) {
-                                if (auto sibling = resolveSiblingEmbeddedTexture(src.texture);
+                                if (auto sibling =
+                                        resolveSiblingEmbeddedTexture(src.texture, &part, corePartIndex);
                                     sibling && sibling->faces == 1u) {
                                     const std::string fallbackKey =
                                         key + "#sibling-slot:" + std::to_string(slotIndex) + ":" + src.texture;
