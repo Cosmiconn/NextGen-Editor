@@ -77,8 +77,13 @@ struct NifMaterial {
 struct NifEmbeddedTexture {
     std::uint32_t width = 0;
     std::uint32_t height = 0;
-    // Top-Mip als RGBA8; vor dem Upload wird die gleiche V-Ausrichtung wie bei DDS hergestellt.
+    std::uint32_t faces = 1;
+    // 2D compatibility payload. For ordinary textures this is the vertically adjusted
+    // OpenGL image used by the existing renderer path. For cube maps it mirrors face 0.
     std::vector<std::uint8_t> rgba;
+    // Cube faces in authored top-down order (+X,-X,+Y,-Y,+Z,-Z). OpenGL cube-map
+    // sampling uses this face row convention directly, unlike ordinary GL_TEXTURE_2D.
+    std::array<std::vector<std::uint8_t>, 6> cubeFaceRgba;
 };
 
 // Ein Slot aus NiTexturingProperty. Die klassischen Slots sind:
