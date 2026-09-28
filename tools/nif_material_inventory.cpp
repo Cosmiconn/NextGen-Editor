@@ -196,12 +196,15 @@ const char* ApplyModeName(std::uint32_t mode) {
 
 int main(int argc, char** argv) {
     bool strictRenderer = false;
+    bool deferPriority2CharacterShaders = false;
     std::vector<fs::path> roots;
     std::vector<fs::path> assetRoots;
     for (int arg = 1; arg < argc; ++arg) {
         const std::string value = argv[arg];
         if (value == "--strict-renderer") {
             strictRenderer = true;
+        } else if (value == "--defer-priority2-character-shaders") {
+            deferPriority2CharacterShaders = true;
         } else if (value == "--asset-root") {
             if (arg + 1 >= argc) {
                 std::cerr << "--asset-root requires a directory argument.\n";
@@ -214,6 +217,7 @@ int main(int argc, char** argv) {
     }
     if (roots.empty()) {
         std::cerr << "Usage: nif_material_inventory [--strict-renderer] "
+                     "[--defer-priority2-character-shaders] "
                      "[--asset-root <dir> ...] <root> [root ...]\n";
         return 2;
     }
@@ -320,6 +324,7 @@ int main(int argc, char** argv) {
     std::vector<std::string> applyModeDetails;
     std::size_t unmaterializedShaderDescriptors = 0;
     std::size_t nonDefaultShaderImplementations = 0;
+    std::size_t deferredPriority2ShaderImplementations = 0;
     std::size_t invalidGlassShaderParameters = 0;
     std::size_t unmaterializedApplyModeParts = 0;
     std::size_t unsupportedEffectBindings = 0;
@@ -801,12 +806,32 @@ int main(int argc, char** argv) {
                 shaderFiles[shader].insert(entry.path().string());
                 if (!part.shaderName.empty() && part.shaderExtraData != -1) {
                     ++nonDefaultShaderImplementations;
-                    rendererGapFiles.insert(entry.path().string());
-                    std::cout << "SHADERIMPLEMENTATIONGAP"
-                              << "\tpath=" << Clean(entry.path().string())
-                              << "\tpart=" << partIndex
-                              << "\tshader=" << Clean(part.shaderName)
-                              << "\textraData=" << part.shaderExtraData << '\n';
+                    // ResMap is the explicit project priority gate. NsPgToonNoAni implementation 0
+                    // occurs only in the current NPC/equipment fixture corpus and its shader source
+                    // is not present in the available client/project assets. Do not invent toon
+                    // semantics just to turn CI green. The optional defer flag keeps these cases
+                    // visible while allowing the ResMap gate to proceed; the default strict mode
+                    // still treats them as hard renderer gaps.
+                    const bool deferredPriority2 =
+                        deferPriority2CharacterShaders &&
+                        part.shaderName == "NsPgToonNoAni" &&
+                        part.shaderExtraData == 0;
+                    if (deferredPriority2) {
+                        ++deferredPriority2ShaderImplementations;
+                        std::cout << "SHADERIMPLEMENTATIONDEFERRED"
+                                  << "\tpath=" << Clean(entry.path().string())
+                                  << "\tpart=" << partIndex
+                                  << "\tshader=" << Clean(part.shaderName)
+                                  << "\textraData=" << part.shaderExtraData
+                                  << "\tpriority=reschar" << '\n';
+                    } else {
+                        rendererGapFiles.insert(entry.path().string());
+                        std::cout << "SHADERIMPLEMENTATIONGAP"
+                                  << "\tpath=" << Clean(entry.path().string())
+                                  << "\tpart=" << partIndex
+                                  << "\tshader=" << Clean(part.shaderName)
+                                  << "\textraData=" << part.shaderExtraData << '\n';
+                    }
                 }
                 if (part.shaderName == "Glass") {
                     bool validGlass = part.glassShader.has_value();
@@ -1243,6 +1268,7 @@ int main(int argc, char** argv) {
               << "\tnoUsableUvBindings=" << noUsableUvBindings
               << "\tunmaterializedShaderDescriptors=" << unmaterializedShaderDescriptors
               << "\tnonDefaultShaderImplementations=" << nonDefaultShaderImplementations
+              << "\tdeferredPriority2ShaderImplementations=" << deferredPriority2ShaderImplementations
               << "\tinvalidGlassShaderParameters=" << invalidGlassShaderParameters
               << "\tunmaterializedApplyModes=" << unmaterializedApplyModeParts
               << "\tunsupportedEffectBindings=" << unsupportedEffectBindings
