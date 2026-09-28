@@ -238,6 +238,9 @@ private:
         int locAmbient = -1;
         int locRainbowSpread = -1;
         int locRainbowScale = -1;
+        int locAlphaTest = -1;
+        int locAlphaCutoff = -1;
+        int locAlphaTestFunc = -1;
     } glassUniforms_;
     struct DrawItem {
         const SubMesh* sub = nullptr;
