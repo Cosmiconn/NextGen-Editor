@@ -319,6 +319,7 @@ int main(int argc, char** argv) {
     std::vector<std::string> uvGapDetails;
     std::vector<std::string> applyModeDetails;
     std::size_t unmaterializedShaderDescriptors = 0;
+    std::size_t nonDefaultShaderImplementations = 0;
     std::size_t unmaterializedApplyModeParts = 0;
     std::size_t unsupportedEffectBindings = 0;
     std::size_t clippingEffectBindings = 0;
@@ -792,6 +793,15 @@ int main(int argc, char** argv) {
                 const std::string shader = part.shaderName.empty() ? "<fixed-function>" : part.shaderName;
                 ++shaderParts[shader];
                 shaderFiles[shader].insert(entry.path().string());
+                if (!part.shaderName.empty() && part.shaderExtraData != -1) {
+                    ++nonDefaultShaderImplementations;
+                    rendererGapFiles.insert(entry.path().string());
+                    std::cout << "SHADERIMPLEMENTATIONGAP"
+                              << "\tpath=" << Clean(entry.path().string())
+                              << "\tpart=" << partIndex
+                              << "\tshader=" << Clean(part.shaderName)
+                              << "\textraData=" << part.shaderExtraData << '\n';
+                }
                 ++uvSetCounts[part.uvSets.size()];
                 if (part.uvSets.size() > 8u) {
                     ++uvRendererOverflowParts;
@@ -1209,6 +1219,7 @@ int main(int argc, char** argv) {
               << "\tconstantUv0Bindings=" << constantUv0Bindings
               << "\tnoUsableUvBindings=" << noUsableUvBindings
               << "\tunmaterializedShaderDescriptors=" << unmaterializedShaderDescriptors
+              << "\tnonDefaultShaderImplementations=" << nonDefaultShaderImplementations
               << "\tunmaterializedApplyModes=" << unmaterializedApplyModeParts
               << "\tunsupportedEffectBindings=" << unsupportedEffectBindings
               << "\tclippingEffects=" << clippingEffectBindings
