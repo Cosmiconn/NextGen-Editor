@@ -1640,11 +1640,18 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                                 dst.texture = GetOrLoadEmbeddedTexture(*src.embeddedTexture, cacheKey);
                             }
                         } else if (!src.texture.empty()) {
-                            if (auto texPath = resolveParticleTexturePath(src.texture))
+                            if (auto texPath = resolveParticleTexturePath(src.texture)) {
                                 dst.texture = GetOrLoadTexture(*texPath);
-                            else
+                            } else if (auto sibling = resolveSiblingEmbeddedTexture(src.texture);
+                                       sibling && sibling->faces == 1u) {
+                                const std::string fallbackKey =
+                                    key + "#sibling-particle:" + std::to_string(systemIndex) +
+                                    ":slot:" + std::to_string(slotIndex) + ":" + src.texture;
+                                dst.texture = GetOrLoadEmbeddedTexture(*sibling, fallbackKey);
+                            } else {
                                 std::fprintf(stderr, "[NifMeshRenderer] Particle-Textur-Slot %zu nicht gefunden: %s\n",
                                              slotIndex, src.texture.c_str());
+                            }
                         }
                     }
 
@@ -1665,8 +1672,16 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                                     textureId = GetOrLoadEmbeddedTexture(*frame.embeddedTexture, cacheKey);
                                 }
                             } else if (!frame.texture.empty()) {
-                                if (auto texPath = resolveParticleTexturePath(frame.texture))
+                                if (auto texPath = resolveParticleTexturePath(frame.texture)) {
                                     textureId = GetOrLoadTexture(*texPath);
+                                } else if (auto sibling = resolveSiblingEmbeddedTexture(frame.texture);
+                                           sibling && sibling->faces == 1u) {
+                                    const std::string fallbackKey =
+                                        key + "#sibling-particle-flip:" + std::to_string(systemIndex) +
+                                        ":" + std::to_string(ai) + ":" + std::to_string(fi) +
+                                        ":" + frame.texture;
+                                    textureId = GetOrLoadEmbeddedTexture(*sibling, fallbackKey);
+                                }
                             }
                             if (textureId != 0) dstAnim.frameTextures.push_back(textureId);
                         }
