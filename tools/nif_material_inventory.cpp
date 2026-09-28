@@ -290,6 +290,8 @@ int main(int argc, char** argv) {
     std::size_t ambiguousExternalTextureBindings = 0;
     std::size_t failedExternalTextureDecodeBindings = 0;
     std::size_t unsupportedExternalTextureDecodeBindings = 0;
+    std::size_t siblingEmbeddedFallbackBindings = 0;
+    std::size_t ambiguousSiblingEmbeddedFallbackBindings = 0;
     std::set<std::string> resolvedExternalTextureFiles;
     std::set<std::string> decodedExternalTextureFiles;
     std::vector<std::string> externalTextureGapDetails;
@@ -394,9 +396,32 @@ int main(int argc, char** argv) {
                 ++externalTextureBindings;
                 if (!verifyExternalTextures) return;
 
+                const auto useSiblingEmbeddedFallback = [&]() {
+                    const auto fallback =
+                        core::ResolveSiblingEmbeddedTexture(entry.path(), textureName);
+                    if (fallback.ambiguous) {
+                        ++ambiguousSiblingEmbeddedFallbackBindings;
+                        return false;
+                    }
+                    if (!fallback.texture) return false;
+                    const auto& image = *fallback.texture;
+                    const bool usable = cubeMap ? image.faces == 6u : image.faces == 1u;
+                    if (!usable) return false;
+                    ++siblingEmbeddedFallbackBindings;
+                    std::cout << "TEXTUREFALLBACK"
+                              << "\tpath=" << Clean(entry.path().string())
+                              << "\tbinding=" << bindingKind
+                              << "\tsource=" << Clean(textureName)
+                              << "\tembeddedSource=" << Clean(fallback.matchedTextureName)
+                              << "\tsibling=" << Clean(fallback.sourceNif.string())
+                              << "\tfaces=" << image.faces << '\n';
+                    return true;
+                };
+
                 const auto resolution =
                     externalTextureIndex.Resolve(entry.path(), textureName, assetRoots);
                 if (!resolution.path) {
+                    if (!resolution.ambiguous && useSiblingEmbeddedFallback()) return;
                     if (resolution.ambiguous) ++ambiguousExternalTextureBindings;
                     else ++missingExternalTextureBindings;
                     rendererGapFiles.insert(entry.path().string());
@@ -448,8 +473,13 @@ int main(int argc, char** argv) {
                     return;
                 }
 
+                const bool unsupportedDecoder =
+                    cache->second->rfind("unsupported-core-decoder:", 0) == 0 ||
+                    cache->second->rfind("unsupported-cube-decoder:", 0) == 0;
+                if (unsupportedDecoder && useSiblingEmbeddedFallback()) return;
+
                 rendererGapFiles.insert(entry.path().string());
-                if (cache->second->rfind("unsupported-core-decoder:", 0) == 0)
+                if (unsupportedDecoder)
                     ++unsupportedExternalTextureDecodeBindings;
                 else
                     ++failedExternalTextureDecodeBindings;
@@ -1307,6 +1337,9 @@ int main(int argc, char** argv) {
               << "\tfailedExternalTextureDecodeBindings=" << failedExternalTextureDecodeBindings
               << "\tunsupportedExternalTextureDecodeBindings="
               << unsupportedExternalTextureDecodeBindings
+              << "\tsiblingEmbeddedFallbackBindings=" << siblingEmbeddedFallbackBindings
+              << "\tambiguousSiblingEmbeddedFallbackBindings="
+              << ambiguousSiblingEmbeddedFallbackBindings
               << "\trendererGapFiles=" << rendererGapFiles.size() << '\n';
 
     for (const auto& [name, count] : shaderParts) {
