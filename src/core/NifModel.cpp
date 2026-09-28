@@ -4212,10 +4212,11 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             if (part.shaderName == "VCAlphaTextureBlender" ||
                 part.shaderName == "AlphaTextureBlender11" ||
                 part.shaderName == "AlphaTextureBlender" ||
-                part.shaderName == "PgTerrain") {
+                part.shaderName == "PgTerrain" ||
+                part.shaderName == "Glass") {
                 for (const auto& [mapId, src] : ts.shaderSlots) {
                     const std::uint32_t maxMapId =
-                        part.shaderName == "PgTerrain" ? 1u : 2u;
+                        (part.shaderName == "PgTerrain" || part.shaderName == "Glass") ? 1u : 2u;
                     if (mapId > maxMapId) continue;
                     auto& dst = part.textureSlots[mapId];
                     dst.present = src.present;
@@ -5116,9 +5117,10 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         if (system.shaderName == "VCAlphaTextureBlender" ||
             system.shaderName == "AlphaTextureBlender11" ||
             system.shaderName == "AlphaTextureBlender" ||
-            system.shaderName == "PgTerrain") {
+            system.shaderName == "PgTerrain" ||
+            system.shaderName == "Glass") {
             const std::uint32_t maxMapId =
-                system.shaderName == "PgTerrain" ? 1u : 2u;
+                (system.shaderName == "PgTerrain" || system.shaderName == "Glass") ? 1u : 2u;
             for (const auto& [mapId, src] : textureState->shaderSlots) {
                 if (mapId <= maxMapId) copyTexDesc(system.textureSlots[mapId], src);
             }
