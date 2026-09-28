@@ -19,7 +19,15 @@ struct DdsImage {
     std::vector<std::uint8_t> rgba; // width*height*4 Byte, bereits in OpenGL-V-Ausrichtung
 };
 
+struct DdsCubeImage {
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    // DDS legacy cube order: +X, -X, +Y, -Y, +Z, -Z.
+    std::array<DdsImage, 6> faces;
+};
+
 std::expected<DdsImage, std::string> LoadDdsImage(const std::filesystem::path& file);
+std::expected<DdsCubeImage, std::string> LoadDdsCubeImage(const std::filesystem::path& file);
 
 // BMP-Loader fuer Legacy-Fiesta-Texturen. Unterstützt BI_RGB 8-bit Palette sowie
 // 24/32-bit BGR(A), inklusive 4-Byte-Zeilenpadding und top-down/bottom-up DIBs.
