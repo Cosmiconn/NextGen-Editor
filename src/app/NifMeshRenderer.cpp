@@ -909,6 +909,51 @@ std::uint32_t NifMeshRenderer::GetOrLoadCubeTexture(
     return tex;
 }
 
+std::uint32_t NifMeshRenderer::GetOrLoadEmbeddedCubeTexture(
+    const core::NifEmbeddedTexture& image, const std::string& cacheKey) {
+    if (const auto it = cubeTextureCache_.find(cacheKey); it != cubeTextureCache_.end())
+        return it->second;
+
+    std::uint32_t tex = 0;
+    const std::size_t faceBytes =
+        static_cast<std::size_t>(image.width) * image.height * 4u;
+    if (image.faces != 6u || image.width == 0 || image.height == 0) {
+        std::fprintf(stderr,
+            "[NifMeshRenderer] Eingebettete Cube-Map braucht exakt 6 Faces: %s (faces=%u)\n",
+            cacheKey.c_str(), image.faces);
+        cubeTextureCache_.emplace(cacheKey, 0);
+        return 0;
+    }
+    for (std::size_t face = 0; face < image.cubeFaceRgba.size(); ++face) {
+        if (image.cubeFaceRgba[face].size() != faceBytes) {
+            std::fprintf(stderr,
+                "[NifMeshRenderer] Eingebettete Cube-Map-Flaeche %zu unvollstaendig: %s\n",
+                face, cacheKey.c_str());
+            cubeTextureCache_.emplace(cacheKey, 0);
+            return 0;
+        }
+    }
+
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, tex);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    for (std::size_t face = 0; face < image.cubeFaceRgba.size(); ++face) {
+        glTexImage2D(static_cast<GLenum>(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face),
+                     0, GL_RGBA8, static_cast<GLsizei>(image.width),
+                     static_cast<GLsizei>(image.height), 0,
+                     GL_RGBA, GL_UNSIGNED_BYTE, image.cubeFaceRgba[face].data());
+    }
+    glGenerateMipmap(GL_TEXTURE_CUBE_MAP);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+    cubeTextureCache_.emplace(cacheKey, tex);
+    return tex;
+}
+
 std::uint32_t NifMeshRenderer::GetOrLoadEmbeddedTexture(const core::NifEmbeddedTexture& image,
                                                              const std::string& cacheKey) {
     auto it = textureCache_.find(cacheKey);
@@ -1270,9 +1315,17 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                         // shader texture consumes mesh UVs.
                         if (sub.glass && slotIndex == 0u && src.sourceIsCubeMap) {
                             if (src.sourceUsesEmbeddedPixelData) {
-                                std::fprintf(stderr,
-                                    "[NifMeshRenderer] Eingebettete Glass-Cube-Map wird nicht unterstuetzt: %s\n",
-                                    obj.modelPath.c_str());
+                                if (src.embeddedTexture) {
+                                    const std::string cubeKey =
+                                        key + "#glass-cube:pixel:" +
+                                        std::to_string(src.sourcePixelDataRef);
+                                    sub.glassEnvironmentCube =
+                                        GetOrLoadEmbeddedCubeTexture(*src.embeddedTexture, cubeKey);
+                                } else {
+                                    std::fprintf(stderr,
+                                        "[NifMeshRenderer] Glass-Cube-Map ohne dekodierte PixelData #%d: %s\n",
+                                        src.sourcePixelDataRef, obj.modelPath.c_str());
+                                }
                             } else if (auto texPath = resolveTexturePath(src.texture)) {
                                 sub.glassEnvironmentCube = GetOrLoadCubeTexture(*texPath);
                             } else {
