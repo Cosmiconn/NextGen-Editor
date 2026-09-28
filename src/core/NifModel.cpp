@@ -2444,7 +2444,7 @@ std::shared_ptr<const NifEmbeddedTexture> ParseNiPixelData(
     return out;
 }
 
-// NiPixelData: enthält eingebettete Rohpixel-Daten// NiPixelData: enthält eingebettete Rohpixel-Daten (vermutlich ein Asset-Browser-Thumbnail,
+// NiPixelData: enthält eingebettete Rohpixel-Daten (vermutlich ein Asset-Browser-Thumbnail,
 // BC1/DXT1-komprimiert in den geprüften Beispielen - die eigentliche Textur liegt separat als
 // .dds vor und wird darüber geladen, siehe DdsImage.hpp). Wird hier nur korrekt ÜBERSPRUNGEN,
 // nicht inhaltlich verwendet. Struktur vollständig verifiziert: die aus Mipmap-Anzahl und
