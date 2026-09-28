@@ -1000,6 +1000,7 @@ int main(int argc, char** argv) {
                     const bool materializedShaderMap =
                         (shader == "VCAlphaTextureBlender" && shaderSlot.mapId <= 2u) ||
                         (shader == "AlphaTextureBlender11" && shaderSlot.mapId <= 2u) ||
+                        (shader == "AlphaTextureBlender" && shaderSlot.mapId <= 2u) ||
                         (shader == "PgTerrain" && shaderSlot.mapId <= 1u);
                     if (!materializedShaderMap) {
                         ++unmaterializedShaderDescriptors;
