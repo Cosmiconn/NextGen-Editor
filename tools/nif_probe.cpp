@@ -30,6 +30,7 @@ int main(int argc, char** argv) {
                 const auto& part = result->parts[partIndex];
                 std::cout << "PART\tindex=" << partIndex
                           << "\tshader=" << part.shaderName
+                          << "\tshaderExtraData=" << part.shaderExtraData
                           << "\tvertices=" << part.positions.size()
                           << "\ttriangles=" << (part.triangleIndices.size() / 3u)
                           << "\tuvSets=" << part.uvSets.size()
@@ -52,6 +53,19 @@ int main(int argc, char** argv) {
                               << "\taMin=" << minA
                               << "\taMax=" << maxA
                               << "\taMean=" << (sumA / part.vertexColors.size()) << '\n';
+                }
+                if (part.glassShader) {
+                    const auto& glass = *part.glassShader;
+                    std::cout << "GLASS\tpart=" << partIndex
+                              << "\tauthored=" << glass.authoredOverride
+                              << "\tbaseColor=" << glass.baseColor.r << "," << glass.baseColor.g << ","
+                              << glass.baseColor.b << "," << glass.baseColor.a
+                              << "\trefractionScale=" << glass.refractionScale
+                              << "\treflectionScale=" << glass.reflectionScale
+                              << "\tiorRatio=" << glass.indexOfRefractionRatio
+                              << "\tambient=" << glass.ambient
+                              << "\trainbowSpread=" << glass.rainbowSpread
+                              << "\trainbowScale=" << glass.rainbowScale << '\n';
                 }
                 for (std::size_t uvIndex = 0; uvIndex < part.uvSetDiagnostics.size(); ++uvIndex) {
                     const auto& diag = part.uvSetDiagnostics[uvIndex];
