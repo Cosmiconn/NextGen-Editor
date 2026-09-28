@@ -1070,16 +1070,20 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                     return entry->second;
                 };
                 const auto resolveSiblingEmbeddedTexture =
-                    [&](const std::string& textureName)
+                    [&](const std::string& textureName,
+                        const core::NifMeshPart* geometryHint = nullptr,
+                        std::size_t geometryHintIndex = std::numeric_limits<std::size_t>::max())
                     -> std::shared_ptr<const core::NifEmbeddedTexture> {
                     if (!resolved || textureName.empty()) return {};
-                    const std::string cacheKey =
+                    std::string cacheKey =
                         std::string("sibling:") + resolved->string() + "\n" + textureName;
+                    if (geometryHint != nullptr)
+                        cacheKey += "\npart:" + std::to_string(geometryHintIndex);
                     auto [entry, inserted] =
                         siblingEmbeddedTextures.try_emplace(cacheKey);
                     if (inserted) {
                         entry->second =
-                            core::ResolveSiblingEmbeddedTexture(*resolved, textureName);
+                            core::ResolveSiblingEmbeddedTexture(*resolved, textureName, geometryHint);
                         if (entry->second.texture) {
                             std::fprintf(stderr,
                                 "[NifMeshRenderer] Fiesta sibling-embedded fallback: %s -> %s (%s)\n",
@@ -1357,7 +1361,7 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                                 if (auto texPath = resolveTexturePath(src.texture))
                                     sub.glassEnvironmentCube = GetOrLoadCubeTexture(*texPath);
                                 if (sub.glassEnvironmentCube == 0) {
-                                    if (auto sibling = resolveSiblingEmbeddedTexture(src.texture);
+                                    if (auto sibling = resolveSiblingEmbeddedTexture(src.texture, &part, corePartIndex);
                                         sibling && sibling->faces == 6u) {
                                         const std::string cubeKey =
                                             key + "#sibling-glass-cube:" + src.texture;
@@ -1451,7 +1455,7 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                             if (auto texPath = resolveTexturePath(effect.texture))
                                 textureId = GetOrLoadTexture(*texPath);
                             if (textureId == 0) {
-                                if (auto sibling = resolveSiblingEmbeddedTexture(effect.texture);
+                                if (auto sibling = resolveSiblingEmbeddedTexture(effect.texture, &part, corePartIndex);
                                     sibling && sibling->faces == 1u) {
                                     const std::string fallbackKey =
                                         key + "#sibling-effect:" + std::to_string(effectIndex) +
@@ -1506,7 +1510,7 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                                 if (auto texPath = resolveTexturePath(frame.texture))
                                     textureId = GetOrLoadTexture(*texPath);
                                 if (textureId == 0) {
-                                    if (auto sibling = resolveSiblingEmbeddedTexture(frame.texture);
+                                    if (auto sibling = resolveSiblingEmbeddedTexture(frame.texture, &part, corePartIndex);
                                         sibling && sibling->faces == 1u) {
                                         const std::string fallbackKey =
                                             key + "#sibling-flip:" + std::to_string(ai) + ":" +
