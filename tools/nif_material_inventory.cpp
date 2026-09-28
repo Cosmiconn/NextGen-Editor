@@ -413,7 +413,9 @@ int main(int argc, char** argv) {
                     for (char& ch : ext)
                         ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
                     std::optional<std::string> error;
-                    if (ext == ".dds") {
+                    if (cubeMap && ext != ".dds") {
+                        error = "unsupported-cube-decoder:" + ext;
+                    } else if (ext == ".dds") {
                         if (cubeMap) {
                             const auto decoded = core::LoadDdsCubeImage(*resolution.path);
                             if (!decoded) error = decoded.error();
@@ -1021,6 +1023,13 @@ int main(int argc, char** argv) {
                         const bool expectedCube = shaderSlot.mapId == 0u;
                         if (shaderSlot.mapId <= 1u &&
                             shaderSlot.texture.sourceIsCubeMap != expectedCube) {
+                            ++unmaterializedShaderDescriptors;
+                            rendererGapFiles.insert(entry.path().string());
+                        }
+                        if (shaderSlot.mapId == 0u &&
+                            shaderSlot.texture.sourceUsesEmbeddedPixelData) {
+                            // NifEmbeddedTexture currently represents one 2D surface, not the
+                            // six faces required by the stock Glass environment sampler.
                             ++unmaterializedShaderDescriptors;
                             rendererGapFiles.insert(entry.path().string());
                         }
