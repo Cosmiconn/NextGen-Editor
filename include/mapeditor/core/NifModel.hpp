@@ -704,7 +704,8 @@ struct NifSiblingEmbeddedTextureResolution {
 
 NifSiblingEmbeddedTextureResolution ResolveSiblingEmbeddedTexture(
     const std::filesystem::path& requestingNif,
-    const std::string& requestedTextureName);
+    const std::string& requestedTextureName,
+    const NifMeshPart* requestingPart = nullptr);
 
 struct NifGroundContactSegment {
     float x0 = 0.0f;
