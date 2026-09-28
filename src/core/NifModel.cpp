@@ -242,6 +242,7 @@ std::expected<NifHeader, std::string> ParseHeader(ByteReader& r, const std::vect
 
 struct ObjectNetBase {
     std::string name;
+    std::vector<std::int32_t> extraDataRefs;
     std::int32_t controller = -1;
 };
 
@@ -250,7 +251,8 @@ ObjectNetBase ParseObjectNetBase(ByteReader& r) {
     base.name = r.SizedString();
     if (!r.LegacyLayout()) {
         const auto count = r.CountU32();
-        r.Skip(static_cast<std::size_t>(count) * 4u);
+        base.extraDataRefs.reserve(count);
+        for (std::uint32_t i = 0; i < count; ++i) base.extraDataRefs.push_back(r.I32());
         base.controller = r.I32();
         return base;
     }
@@ -287,8 +289,9 @@ ObjectNetBase ParseObjectNetBase(ByteReader& r) {
     }
     if (!numExtraAbsent) {
         const std::uint32_t numExtra = r.CountU32(1000u);
+        base.extraDataRefs.reserve(numExtra);
         for (std::uint32_t i = 0; i < numExtra; ++i) {
-            r.I32();
+            base.extraDataRefs.push_back(r.I32());
         }
     }
     base.controller = r.I32();
@@ -530,11 +533,15 @@ void SkipNiFogProperty(ByteReader& r) {
 // fehlt). 0xFFFFFFFF ist als String-Länge ohnehin nie plausibel (SizedString bricht sonst mit
 // "Unerwartetes Dateiende" ab), daher hier sicher per Peek erkennbar und übersprungen, statt
 // die Datei unnötig scheitern zu lassen.
-void SkipNiExtraDataBase(ByteReader& r) {
+std::string ParseNiExtraDataName(ByteReader& r) {
     if (r.LegacyLayout() && r.PeekU32(0) == 0xFFFFFFFFu) {
         r.I32(); // seltenes führendes Ketten-/Controller-Feld, siehe oben
     }
-    r.SizedString(); // name
+    return r.SizedString();
+}
+
+void SkipNiExtraDataBase(ByteReader& r) {
+    (void)ParseNiExtraDataName(r);
 }
 
 // NiPalette: KEINE NiObjectNET-Basis (reines NiObject, kein Name/ExtraData/Controller!) -
@@ -609,18 +616,33 @@ void SkipNiTextKeyExtraData(ByteReader& r) {
 // NiFloatExtraData: NiExtraData-Basis + ein float-Feld. Byte-exakt verifiziert an
 // UrgSwa_swamp.nif (Name "ambient", Wert 0.0) - landet exakt auf den Namen der nächsten
 // NiExtraData ("baseColor").
-void SkipNiFloatExtraData(ByteReader& r) {
-    SkipNiExtraDataBase(r);
-    r.F32();
+struct NifFloatExtraDataState {
+    std::string name;
+    float value = 0.0f;
+};
+struct NifColorExtraDataState {
+    std::string name;
+    NifColor4 value;
+};
+
+NifFloatExtraDataState ParseNiFloatExtraData(ByteReader& r) {
+    NifFloatExtraDataState out;
+    out.name = ParseNiExtraDataName(r);
+    out.value = r.F32();
+    return out;
 }
+void SkipNiFloatExtraData(ByteReader& r) { (void)ParseNiFloatExtraData(r); }
 
 // NiColorExtraData: NiExtraData-Basis + Color4(4 Floats, 16 Byte). Byte-exakt verifiziert an
 // NewDesign.nif (Name "paramedgecolor", Wert (1,1,1,1) - plausibles Weiß) - landet exakt auf
 // den Namen der nächsten NiExtraData.
-void SkipNiColorExtraData(ByteReader& r) {
-    SkipNiExtraDataBase(r);
-    r.Skip(16);
+NifColorExtraDataState ParseNiColorExtraData(ByteReader& r) {
+    NifColorExtraDataState out;
+    out.name = ParseNiExtraDataName(r);
+    out.value = {r.F32(), r.F32(), r.F32(), r.F32()};
+    return out;
 }
+void SkipNiColorExtraData(ByteReader& r) { (void)ParseNiColorExtraData(r); }
 
 // NiBooleanExtraData: NiExtraData-Basis + ein Byte (bool_data). Laut Referenz die einfachste
 // aller Extra-Data-Varianten - nicht unabhängig byte-exakt verifiziert (die einzige
@@ -1899,6 +1921,7 @@ struct NiTriStripsBlock {
     std::int32_t dataRef = -1;
     std::int32_t skinInstanceRef = -1;
     std::string shaderName;
+    std::int32_t shaderExtraData = -1;
 };
 
 // Gemeinsame Kopf-Struktur für NiTriShape UND NiTriStrips ("NiTriBasedGeom"): AVObjectBase +
@@ -1922,7 +1945,10 @@ NiTriStripsBlock ParseNiTriStripsHeader(ByteReader& r) {
     block.skinInstanceRef = r.I32();
     const std::uint8_t hasShader = r.U8();
     if (!r.LegacyLayout()) {
-        if (hasShader) { block.shaderName = r.SizedString(); r.I32(); }
+        if (hasShader) {
+            block.shaderName = r.SizedString();
+            block.shaderExtraData = r.I32();
+        }
         return block;
     }
     if (hasShader == 1) {
@@ -1930,7 +1956,7 @@ NiTriStripsBlock ParseNiTriStripsHeader(ByteReader& r) {
         // "Shader Extra Data" (i32, -1) laut nif.xml (CHANGELOG [0.44.30]).
         // Bei LEEREM Namen (z.B. Cypian/Bark02.nif, Teva/Pillar_B.nif) fehlt das Extra-Data-Feld.
         block.shaderName = r.SizedString();
-        if (!block.shaderName.empty()) r.I32();
+        if (!block.shaderName.empty()) block.shaderExtraData = r.I32();
     } else {
         // has_shader=0: es folgt in vielen Dateien ein ECHTER String (Laenge > 0, z.B. Gruppe der
         // AdlF-Tore) und in den meisten der leere String (Laenge 0). Steht dort aber 0xFFFFFFFF
@@ -2965,7 +2991,9 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         std::int32_t dataRef = -1;
         std::int32_t skinInstanceRef = -1;
         std::vector<std::int32_t> properties;
+        std::vector<std::int32_t> extraDataRefs;
         std::string shaderName;
+        std::int32_t shaderExtraData = -1;
     };
     std::unordered_map<std::int32_t, RawGeom> rawByData;
     std::vector<GeomNode> geomNodes;
@@ -2983,6 +3011,8 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
     std::unordered_map<std::uint32_t, NifParticleDataInfo> particleDataByBlock;
     std::unordered_map<std::uint32_t, NifParticleModifierInfo> particleModifierByBlock;
     std::unordered_map<std::uint32_t, NifParticleColliderInfo> particleColliderByBlock;
+    std::unordered_map<std::uint32_t, NifFloatExtraDataState> floatExtraDataByBlock;
+    std::unordered_map<std::uint32_t, NifColorExtraDataState> colorExtraDataByBlock;
     struct LodRangeData {
         NifVec3 center{};
         std::vector<std::pair<float, float>> ranges;
@@ -3169,9 +3199,9 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         } else if (type == "NiTextKeyExtraData") {
             SkipNiTextKeyExtraData(r);
         } else if (type == "NiFloatExtraData") {
-            SkipNiFloatExtraData(r);
+            floatExtraDataByBlock[blockIdx] = ParseNiFloatExtraData(r);
         } else if (type == "NiColorExtraData") {
-            SkipNiColorExtraData(r);
+            colorExtraDataByBlock[blockIdx] = ParseNiColorExtraData(r);
         } else if (type == "NiBooleanExtraData") {
             SkipNiBooleanExtraData(r);
         } else if (type == "NiIntegersExtraData") {
@@ -3488,7 +3518,9 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 sn.properties = strips.base.properties;
                 if (strips.dataRef >= 0) dataToGeometry[strips.dataRef] = blockIdx;
             }
-            geomNodes.push_back({blockIdx, strips.dataRef, strips.skinInstanceRef, strips.base.properties, strips.shaderName});
+            geomNodes.push_back({blockIdx, strips.dataRef, strips.skinInstanceRef,
+                                 strips.base.properties, strips.base.net.extraDataRefs,
+                                 strips.shaderName, strips.shaderExtraData});
             currentMeshHasTexturing = false;
             for (const auto propRef : strips.base.properties) {
                 if (propRef < 0 || static_cast<std::uint32_t>(propRef) >= hdr.blockTypeIndex.size()) continue;
@@ -4034,9 +4066,51 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         }
     }
 
+    const auto normalizedExtraName = [](std::string value) {
+        std::string out;
+        out.reserve(value.size());
+        for (unsigned char ch : value) {
+            if (std::isspace(ch) || ch == '_' || ch == '-') continue;
+            out.push_back(static_cast<char>(std::tolower(ch)));
+        }
+        return out;
+    };
+
     for (std::size_t p = 0; p < model.parts.size(); ++p) {
         const auto* g = geometryForPart(p);
-        if (g != nullptr) model.parts[p].shaderName = g->shaderName;
+        if (g == nullptr) continue;
+        auto& part = model.parts[p];
+        part.shaderName = g->shaderName;
+        part.shaderExtraData = g->shaderExtraData;
+
+        if (part.shaderName != "Glass") continue;
+        NifGlassShaderParameters params;
+        for (const auto ref : g->extraDataRefs) {
+            if (ref < 0) continue;
+            const auto key = static_cast<std::uint32_t>(ref);
+            if (const auto it = floatExtraDataByBlock.find(key);
+                it != floatExtraDataByBlock.end()) {
+                const std::string name = normalizedExtraName(it->second.name);
+                float* target = nullptr;
+                if (name == "refractionscale") target = &params.refractionScale;
+                else if (name == "reflectionscale") target = &params.reflectionScale;
+                else if (name == "indexofrefractionratio") target = &params.indexOfRefractionRatio;
+                else if (name == "ambient") target = &params.ambient;
+                else if (name == "rainbowspread") target = &params.rainbowSpread;
+                else if (name == "rainbowscale") target = &params.rainbowScale;
+                if (target != nullptr) {
+                    *target = it->second.value;
+                    params.authoredOverride = true;
+                }
+            }
+            if (const auto it = colorExtraDataByBlock.find(key);
+                it != colorExtraDataByBlock.end() &&
+                normalizedExtraName(it->second.name) == "basecolor") {
+                params.baseColor = it->second.value;
+                params.authoredOverride = true;
+            }
+        }
+        part.glassShader = params;
     }
 
     // Resolve NiTexturingProperty over the exact geometry property references.
