@@ -841,7 +841,7 @@ int main(int argc, char** argv) {
                             std::isfinite(g.baseColor.r) && std::isfinite(g.baseColor.g) &&
                             std::isfinite(g.baseColor.b) && std::isfinite(g.baseColor.a) &&
                             std::isfinite(g.refractionScale) && std::isfinite(g.reflectionScale) &&
-                            std::isfinite(g.indexOfRefractionRatio) && g.indexOfRefractionRatio >= 0.0f &&
+                            std::isfinite(g.indexOfRefractionRatio) &&
                             std::isfinite(g.ambient) && std::isfinite(g.rainbowSpread) &&
                             g.rainbowSpread >= 0.0f && std::isfinite(g.rainbowScale);
                     }
@@ -852,8 +852,10 @@ int main(int argc, char** argv) {
                 }
                 ++uvSetCounts[part.uvSets.size()];
                 if (part.uvSets.size() > 8u) {
+                    // Extra authored UV sets are harmless when no material binding references
+                    // them. Keep the diagnostic count; actual bindings above GPU UV7 remain
+                    // hard gaps in the per-slot checks below.
                     ++uvRendererOverflowParts;
-                    rendererGapFiles.insert(entry.path().string());
                 }
                 ++applyModes[part.textureApplyMode];
                 if (part.textureApplyMode > 2u) {
