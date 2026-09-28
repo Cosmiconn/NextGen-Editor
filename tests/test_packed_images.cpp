@@ -1,5 +1,6 @@
 #include "mapeditor/core/DdsImage.hpp"
 #include <array>
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
