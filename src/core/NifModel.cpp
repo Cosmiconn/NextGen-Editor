@@ -2288,80 +2288,102 @@ std::shared_ptr<const NifEmbeddedTexture> ParseNiPixelData(
     }
     const std::uint32_t dataSize = r.CountU32(64u * 1024u * 1024u);
     const auto faces = !r.LegacyLayout() && !isOlderVersion ? r.CountU32(6) : 1u;
-    if (faces == 0) r.Invalidate();
-    auto allPixels = r.BytesView(dataSize);
-    if (faces > 1) r.Skip(static_cast<std::size_t>(faces - 1) * dataSize);
+    if (faces == 0 || faces > 6) r.Invalidate();
+
+    // Gamebryo streams one equally-sized mip chain per face. Preserve every authored
+    // surface instead of skipping faces 1..5: stock Glass uses an embedded NiSourceCubeMap
+    // in real Fiesta ResMap assets.
+    std::array<std::span<const std::uint8_t>, 6> facePixels{};
+    facePixels[0] = r.BytesView(dataSize);
+    for (std::uint32_t face = 1; face < faces; ++face)
+        facePixels[face] = r.BytesView(dataSize);
     if (!r.Ok() || mips.empty()) return {};
-    // KORREKTUR (CHANGELOG [0.44.27], nif.xml-Referenz): Ab NIF 10.4.0.2 folgt auf "Num Pixels"
-    // das Feld "Num Faces" (u32, hier immer 1), ERST DANACH beginnen die Pixeldaten. Die
-    // Leseposition bleibt bewusst UNVERAENDERT (der Block-Parser darum herum ist heikel, siehe
-    // HANDOFF) - stattdessen werden die 4 Bytes "Num Faces" am Anfang des gelesenen Puffers
-    // uebersprungen und die 4 am Ende fehlenden Bytes (die noch zu den Pixeldaten gehoeren) per
-    // Peek angehaengt. Vorher lag jede DXT-Textur 4 Byte verschoben und wurde als bunter Rauschteppich
-    // dekodiert ("Objekt-Texturen nicht bunt"). Empirisch belegt: nur bei Versatz 4 sind die
-    // DXT-Endpunkte benachbarter Bloecke glatt (Differenz ~10 statt ~80).
+
+    // KORREKTUR (CHANGELOG [0.44.27]): the legacy/recovery layout historically consumed
+    // Num Faces as the first four bytes of the pixel payload. Keep that compatibility path
+    // byte-for-byte for recovery files; normal Fiesta 20.0.0.4 files use the explicit face
+    // field above and therefore need no shift.
     std::size_t faceShift = 0;
     std::vector<std::uint8_t> compatibilityPixels;
     if (r.LegacyLayout() && !isOlderVersion) {
         faceShift = 4;
         const std::uint32_t tail = r.PeekU32(0);
-        compatibilityPixels.assign(allPixels.begin(), allPixels.end());
-        for (int i = 0; i < 4; ++i) compatibilityPixels.push_back(static_cast<std::uint8_t>((tail >> (8 * i)) & 0xFFu));
-        allPixels = compatibilityPixels;
+        compatibilityPixels.assign(facePixels[0].begin(), facePixels[0].end());
+        for (int i = 0; i < 4; ++i)
+            compatibilityPixels.push_back(static_cast<std::uint8_t>((tail >> (8 * i)) & 0xFFu));
+        facePixels[0] = compatibilityPixels;
     }
+
     const auto& top = mips.front();
-    if (top.width == 0 || top.height == 0 || top.offset + faceShift >= allPixels.size()) return {};
-    std::size_t topSize = allPixels.size() - (top.offset + faceShift);
-    if (mips.size() > 1 && mips[1].offset > top.offset)
-        topSize = std::min(topSize, static_cast<std::size_t>(mips[1].offset - top.offset));
-    const auto topData = allPixels.subspan(top.offset + faceShift, topSize);
+    if (top.width == 0 || top.height == 0) return {};
+    const auto topDataForFace = [&](std::span<const std::uint8_t> pixels,
+                                    std::size_t shift) -> std::span<const std::uint8_t> {
+        if (top.offset + shift >= pixels.size()) return {};
+        std::size_t topSize = pixels.size() - (top.offset + shift);
+        if (mips.size() > 1 && mips[1].offset > top.offset)
+            topSize = std::min(topSize, static_cast<std::size_t>(mips[1].offset - top.offset));
+        return pixels.subspan(top.offset + shift, topSize);
+    };
+    const auto firstTopData = topDataForFace(facePixels[0], faceShift);
+    if (firstTopData.empty()) return {};
     if (g_probeNoDecode) return nullptr;
-    std::expected<DdsImage, std::string> decoded = std::unexpected(std::string("nicht gesetzt"));
-    if (bytesPerPixel == 1 && paletteRef >= 0) {
-        // Fiesta-Sonderfall: echte Dateien (z.B. filddoll.nif) deklarieren PixelFormat=6
-        // (normalerweise DXT5_ALT), speichern aber 1 Byte Palettenindex pro Pixel und zeigen
-        // auf einen NiPalette-Block. Deshalb entscheidet hier die reale Struktur
-        // (bpp=1 + gueltige Palette-Ref), nicht allein die PixelFormat-Enum.
+
+    // Resolve a pending palette exactly as before. Once face 0 can be decoded, all other
+    // faces necessarily use the same NiPixelFormat/palette contract.
+    if (bytesPerPixel == 1 && paletteRef >= 0 &&
+        !palettes.contains(static_cast<std::uint32_t>(paletteRef))) {
         const std::size_t pixelCount = static_cast<std::size_t>(top.width) * top.height;
-        if (topData.size() < pixelCount) {
-            decoded = std::unexpected(std::string("Palettenindizes kuerzer als das angegebene Top-Mip"));
-        } else {
-            const auto pit = palettes.find(static_cast<std::uint32_t>(paletteRef));
-            if (pit == palettes.end()) {
-                if (pendingPalette != nullptr) {
-                    pendingPalette->paletteRef = paletteRef;
-                    pendingPalette->width = top.width;
-                    pendingPalette->height = top.height;
-                    pendingPalette->indices.assign(topData.begin(), topData.begin() + static_cast<std::ptrdiff_t>(pixelCount));
-                    return {};
-                }
-                decoded = std::unexpected(std::string("referenzierte NiPalette wurde noch nicht gelesen"));
-            } else {
-                DdsImage img;
-                img.width = top.width;
-                img.height = top.height;
-                img.rgba.resize(pixelCount * 4);
-                for (std::size_t px = 0; px < pixelCount; ++px) {
-                    const std::size_t pi = static_cast<std::size_t>(topData[px]) * 4u;
-                    img.rgba[px * 4 + 0] = pit->second.rgba[pi + 0];
-                    img.rgba[px * 4 + 1] = pit->second.rgba[pi + 1];
-                    img.rgba[px * 4 + 2] = pit->second.rgba[pi + 2];
-                    img.rgba[px * 4 + 3] = pit->second.rgba[pi + 3];
-                }
-                decoded = std::move(img);
-            }
+        if (firstTopData.size() < pixelCount) {
+            std::fprintf(stderr,
+                "[NifModel] Eingebettete NiPixelData nicht dekodierbar (Format=%u, %ux%u): Palettenindizes kuerzer als das Top-Mip\n",
+                pixelFormat, top.width, top.height);
+            return {};
         }
-    } else if (!r.LegacyLayout() && bytesPerPixel >= 1 && bytesPerPixel <= 4) {
-        if (!packedFormatSupported || bitsPerPixel != bytesPerPixel * 8)
-            decoded = std::unexpected(std::string("Nicht unterstuetzte Rohpixel-Kanalbeschreibung"));
-        else decoded = DecodePackedImage(top.width, top.height, bitsPerPixel, colorMasks, topData);
-    } else if (bytesPerPixel == 3 || bytesPerPixel == 4) {
-        // Unkomprimierte Pixel (Reihenfolge R,G,B[,A]). Fuer diese steht in "pixelFormat" NICHT
-        // 4/5/6 - die Groesse des Top-Mips entscheidet (siehe CHANGELOG [0.44.27]).
-        const std::size_t pixelCount = static_cast<std::size_t>(top.width) * top.height;
-        if (topData.size() < pixelCount * bytesPerPixel) {
-            decoded = std::unexpected(std::string("Rohpixel kuerzer als das angegebene Top-Mip"));
-        } else {
+        if (pendingPalette != nullptr) {
+            pendingPalette->paletteRef = paletteRef;
+            pendingPalette->width = top.width;
+            pendingPalette->height = top.height;
+            pendingPalette->indices.assign(
+                firstTopData.begin(),
+                firstTopData.begin() + static_cast<std::ptrdiff_t>(pixelCount));
+        }
+        return {};
+    }
+
+    const auto decodeFace = [&](std::span<const std::uint8_t> topData)
+        -> std::expected<DdsImage, std::string> {
+        if (topData.empty())
+            return std::unexpected(std::string("Top-Mip ist leer"));
+
+        if (bytesPerPixel == 1 && paletteRef >= 0) {
+            const std::size_t pixelCount = static_cast<std::size_t>(top.width) * top.height;
+            if (topData.size() < pixelCount)
+                return std::unexpected(std::string("Palettenindizes kuerzer als das angegebene Top-Mip"));
+            const auto pit = palettes.find(static_cast<std::uint32_t>(paletteRef));
+            if (pit == palettes.end())
+                return std::unexpected(std::string("referenzierte NiPalette wurde noch nicht gelesen"));
+            DdsImage img;
+            img.width = top.width;
+            img.height = top.height;
+            img.rgba.resize(pixelCount * 4);
+            for (std::size_t px = 0; px < pixelCount; ++px) {
+                const std::size_t pi = static_cast<std::size_t>(topData[px]) * 4u;
+                img.rgba[px * 4 + 0] = pit->second.rgba[pi + 0];
+                img.rgba[px * 4 + 1] = pit->second.rgba[pi + 1];
+                img.rgba[px * 4 + 2] = pit->second.rgba[pi + 2];
+                img.rgba[px * 4 + 3] = pit->second.rgba[pi + 3];
+            }
+            return img;
+        }
+        if (!r.LegacyLayout() && bytesPerPixel >= 1 && bytesPerPixel <= 4) {
+            if (!packedFormatSupported || bitsPerPixel != bytesPerPixel * 8)
+                return std::unexpected(std::string("Nicht unterstuetzte Rohpixel-Kanalbeschreibung"));
+            return DecodePackedImage(top.width, top.height, bitsPerPixel, colorMasks, topData);
+        }
+        if (bytesPerPixel == 3 || bytesPerPixel == 4) {
+            const std::size_t pixelCount = static_cast<std::size_t>(top.width) * top.height;
+            if (topData.size() < pixelCount * bytesPerPixel)
+                return std::unexpected(std::string("Rohpixel kuerzer als das angegebene Top-Mip"));
             DdsImage img;
             img.width = top.width;
             img.height = top.height;
@@ -2373,29 +2395,56 @@ std::shared_ptr<const NifEmbeddedTexture> ParseNiPixelData(
                 img.rgba[px * 4 + 2] = src[2];
                 img.rgba[px * 4 + 3] = bytesPerPixel == 4 ? src[3] : 255;
             }
-            decoded = std::move(img);
+            return img;
         }
-    } else {
-        decoded = DecodeBcImage(top.width, top.height, pixelFormat, topData);
+        return DecodeBcImage(top.width, top.height, pixelFormat, topData);
+    };
+
+    std::array<DdsImage, 6> decodedFaces{};
+    for (std::uint32_t face = 0; face < faces; ++face) {
+        const auto topData = topDataForFace(facePixels[face], face == 0 ? faceShift : 0u);
+        auto decoded = decodeFace(topData);
+        if (!decoded) {
+            std::fprintf(stderr,
+                "[NifModel] Eingebettete NiPixelData Face %u/%u nicht dekodierbar (Format=%u, %ux%u): %s\n",
+                face + 1u, faces, pixelFormat, top.width, top.height, decoded.error().c_str());
+            return {};
+        }
+        decodedFaces[face] = std::move(*decoded);
     }
-    if (!decoded) {
-        std::fprintf(stderr, "[NifModel] Eingebettete NiPixelData nicht dekodierbar (Format=%u, %ux%u): %s\n",
-                     pixelFormat, top.width, top.height, decoded.error().c_str());
-        return {};
-    }
-    const std::size_t rowBytes = static_cast<std::size_t>(decoded->width) * 4;
-    std::vector<std::uint8_t> row(rowBytes);
-    for (std::uint32_t y = 0; y < decoded->height / 2; ++y) {
-        auto* a = decoded->rgba.data() + static_cast<std::size_t>(y) * rowBytes;
-        auto* b = decoded->rgba.data() + static_cast<std::size_t>(decoded->height - 1 - y) * rowBytes;
-        std::memcpy(row.data(), a, rowBytes); std::memcpy(a, b, rowBytes); std::memcpy(b, row.data(), rowBytes);
-    }
+
+    const auto flipVertical = [](DdsImage& image) {
+        const std::size_t rowBytes = static_cast<std::size_t>(image.width) * 4;
+        std::vector<std::uint8_t> row(rowBytes);
+        for (std::uint32_t y = 0; y < image.height / 2; ++y) {
+            auto* a = image.rgba.data() + static_cast<std::size_t>(y) * rowBytes;
+            auto* b = image.rgba.data() +
+                static_cast<std::size_t>(image.height - 1 - y) * rowBytes;
+            std::memcpy(row.data(), a, rowBytes);
+            std::memcpy(a, b, rowBytes);
+            std::memcpy(b, row.data(), rowBytes);
+        }
+    };
+
     auto out = std::make_shared<NifEmbeddedTexture>();
-    out->width = decoded->width; out->height = decoded->height; out->rgba = std::move(decoded->rgba);
+    out->width = top.width;
+    out->height = top.height;
+    out->faces = faces;
+    if (faces == 1u) {
+        // Ordinary GL_TEXTURE_2D keeps the established OpenGL-V convention.
+        flipVertical(decodedFaces[0]);
+        out->rgba = std::move(decodedFaces[0].rgba);
+    } else {
+        // Cube-map faces intentionally remain in authored top-down row order, matching the
+        // external DDS cube loader and OpenGL cube sampling convention.
+        for (std::uint32_t face = 0; face < faces; ++face)
+            out->cubeFaceRgba[face] = std::move(decodedFaces[face].rgba);
+        out->rgba = out->cubeFaceRgba[0];
+    }
     return out;
 }
 
-// NiPixelData: enthält eingebettete Rohpixel-Daten (vermutlich ein Asset-Browser-Thumbnail,
+// NiPixelData: enthält eingebettete Rohpixel-Daten// NiPixelData: enthält eingebettete Rohpixel-Daten (vermutlich ein Asset-Browser-Thumbnail,
 // BC1/DXT1-komprimiert in den geprüften Beispielen - die eigentliche Textur liegt separat als
 // .dds vor und wird darüber geladen, siehe DdsImage.hpp). Wird hier nur korrekt ÜBERSPRUNGEN,
 // nicht inhaltlich verwendet. Struktur vollständig verifiziert: die aus Mipmap-Anzahl und
