@@ -1353,18 +1353,23 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                                         "[NifMeshRenderer] Glass-Cube-Map ohne dekodierte PixelData #%d: %s\n",
                                         src.sourcePixelDataRef, obj.modelPath.c_str());
                                 }
-                            } else if (auto texPath = resolveTexturePath(src.texture)) {
-                                sub.glassEnvironmentCube = GetOrLoadCubeTexture(*texPath);
-                            } else if (auto sibling = resolveSiblingEmbeddedTexture(src.texture);
-                                       sibling && sibling->faces == 6u) {
-                                const std::string cubeKey =
-                                    key + "#sibling-glass-cube:" + src.texture;
-                                sub.glassEnvironmentCube =
-                                    GetOrLoadEmbeddedCubeTexture(*sibling, cubeKey);
                             } else {
-                                std::fprintf(stderr,
-                                    "[NifMeshRenderer] Glass-Cube-Map nicht gefunden: %s (%s)\n",
-                                    src.texture.c_str(), obj.modelPath.c_str());
+                                if (auto texPath = resolveTexturePath(src.texture))
+                                    sub.glassEnvironmentCube = GetOrLoadCubeTexture(*texPath);
+                                if (sub.glassEnvironmentCube == 0) {
+                                    if (auto sibling = resolveSiblingEmbeddedTexture(src.texture);
+                                        sibling && sibling->faces == 6u) {
+                                        const std::string cubeKey =
+                                            key + "#sibling-glass-cube:" + src.texture;
+                                        sub.glassEnvironmentCube =
+                                            GetOrLoadEmbeddedCubeTexture(*sibling, cubeKey);
+                                    }
+                                }
+                                if (sub.glassEnvironmentCube == 0) {
+                                    std::fprintf(stderr,
+                                        "[NifMeshRenderer] Glass-Cube-Map nicht gefunden/dekodierbar: %s (%s)\n",
+                                        src.texture.c_str(), obj.modelPath.c_str());
+                                }
                             }
                             continue;
                         }
@@ -1400,16 +1405,21 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                             const std::string cacheKey = key + "#embedded:" + std::to_string(slotIndex) +
                                                          ":pixel:" + std::to_string(src.sourcePixelDataRef);
                             dst.texture = GetOrLoadEmbeddedTexture(*src.embeddedTexture, cacheKey);
-                        } else if (auto texPath = resolveTexturePath(src.texture)) {
-                            dst.texture = GetOrLoadTexture(*texPath);
-                        } else if (auto sibling = resolveSiblingEmbeddedTexture(src.texture);
-                                   sibling && sibling->faces == 1u) {
-                            const std::string fallbackKey =
-                                key + "#sibling-slot:" + std::to_string(slotIndex) + ":" + src.texture;
-                            dst.texture = GetOrLoadEmbeddedTexture(*sibling, fallbackKey);
                         } else {
-                            std::fprintf(stderr, "[NifMeshRenderer] Objekt-Textur-Slot %zu nicht gefunden: %s\n",
-                                         slotIndex, src.texture.c_str());
+                            if (auto texPath = resolveTexturePath(src.texture))
+                                dst.texture = GetOrLoadTexture(*texPath);
+                            if (dst.texture == 0) {
+                                if (auto sibling = resolveSiblingEmbeddedTexture(src.texture);
+                                    sibling && sibling->faces == 1u) {
+                                    const std::string fallbackKey =
+                                        key + "#sibling-slot:" + std::to_string(slotIndex) + ":" + src.texture;
+                                    dst.texture = GetOrLoadEmbeddedTexture(*sibling, fallbackKey);
+                                }
+                            }
+                            if (dst.texture == 0) {
+                                std::fprintf(stderr, "[NifMeshRenderer] Objekt-Textur-Slot %zu nicht gefunden/dekodierbar: %s\n",
+                                             slotIndex, src.texture.c_str());
+                            }
                         }
                     }
 
@@ -1438,17 +1448,20 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                                     effect.sourcePixelDataRef, obj.modelPath.c_str());
                             }
                         } else if (!effect.texture.empty()) {
-                            if (auto texPath = resolveTexturePath(effect.texture)) {
+                            if (auto texPath = resolveTexturePath(effect.texture))
                                 textureId = GetOrLoadTexture(*texPath);
-                            } else if (auto sibling = resolveSiblingEmbeddedTexture(effect.texture);
-                                       sibling && sibling->faces == 1u) {
-                                const std::string fallbackKey =
-                                    key + "#sibling-effect:" + std::to_string(effectIndex) +
-                                    ":" + effect.texture;
-                                textureId = GetOrLoadEmbeddedTexture(*sibling, fallbackKey);
-                            } else {
+                            if (textureId == 0) {
+                                if (auto sibling = resolveSiblingEmbeddedTexture(effect.texture);
+                                    sibling && sibling->faces == 1u) {
+                                    const std::string fallbackKey =
+                                        key + "#sibling-effect:" + std::to_string(effectIndex) +
+                                        ":" + effect.texture;
+                                    textureId = GetOrLoadEmbeddedTexture(*sibling, fallbackKey);
+                                }
+                            }
+                            if (textureId == 0) {
                                 std::fprintf(stderr,
-                                    "[NifMeshRenderer] TextureEffect-Textur nicht gefunden: %s (%s)\n",
+                                    "[NifMeshRenderer] TextureEffect-Textur nicht gefunden/dekodierbar: %s (%s)\n",
                                     effect.texture.c_str(), obj.modelPath.c_str());
                             }
                         }
@@ -1490,18 +1503,20 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                                         frame.sourcePixelDataRef, obj.modelPath.c_str());
                                 }
                             } else if (!frame.texture.empty()) {
-                                if (auto texPath = resolveTexturePath(frame.texture)) {
+                                if (auto texPath = resolveTexturePath(frame.texture))
                                     textureId = GetOrLoadTexture(*texPath);
-                                } else if (auto sibling = resolveSiblingEmbeddedTexture(frame.texture);
-                                           sibling && sibling->faces == 1u) {
-                                    const std::string fallbackKey =
-                                        key + "#sibling-flip:" + std::to_string(ai) + ":" +
-                                        std::to_string(fi) + ":" + frame.texture;
-                                    textureId = GetOrLoadEmbeddedTexture(*sibling, fallbackKey);
-                                } else {
-                                    std::fprintf(stderr, "[NifMeshRenderer] Flipbook-Textur nicht gefunden: %s\n",
-                                                 frame.texture.c_str());
+                                if (textureId == 0) {
+                                    if (auto sibling = resolveSiblingEmbeddedTexture(frame.texture);
+                                        sibling && sibling->faces == 1u) {
+                                        const std::string fallbackKey =
+                                            key + "#sibling-flip:" + std::to_string(ai) + ":" +
+                                            std::to_string(fi) + ":" + frame.texture;
+                                        textureId = GetOrLoadEmbeddedTexture(*sibling, fallbackKey);
+                                    }
                                 }
+                                if (textureId == 0)
+                                    std::fprintf(stderr, "[NifMeshRenderer] Flipbook-Textur nicht gefunden/dekodierbar: %s\n",
+                                                 frame.texture.c_str());
                             }
                             if (textureId != 0) dstAnim.frameTextures.push_back(textureId);
                         }
@@ -1640,18 +1655,20 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                                 dst.texture = GetOrLoadEmbeddedTexture(*src.embeddedTexture, cacheKey);
                             }
                         } else if (!src.texture.empty()) {
-                            if (auto texPath = resolveParticleTexturePath(src.texture)) {
+                            if (auto texPath = resolveParticleTexturePath(src.texture))
                                 dst.texture = GetOrLoadTexture(*texPath);
-                            } else if (auto sibling = resolveSiblingEmbeddedTexture(src.texture);
-                                       sibling && sibling->faces == 1u) {
-                                const std::string fallbackKey =
-                                    key + "#sibling-particle:" + std::to_string(systemIndex) +
-                                    ":slot:" + std::to_string(slotIndex) + ":" + src.texture;
-                                dst.texture = GetOrLoadEmbeddedTexture(*sibling, fallbackKey);
-                            } else {
-                                std::fprintf(stderr, "[NifMeshRenderer] Particle-Textur-Slot %zu nicht gefunden: %s\n",
-                                             slotIndex, src.texture.c_str());
+                            if (dst.texture == 0) {
+                                if (auto sibling = resolveSiblingEmbeddedTexture(src.texture);
+                                    sibling && sibling->faces == 1u) {
+                                    const std::string fallbackKey =
+                                        key + "#sibling-particle:" + std::to_string(systemIndex) +
+                                        ":slot:" + std::to_string(slotIndex) + ":" + src.texture;
+                                    dst.texture = GetOrLoadEmbeddedTexture(*sibling, fallbackKey);
+                                }
                             }
+                            if (dst.texture == 0)
+                                std::fprintf(stderr, "[NifMeshRenderer] Particle-Textur-Slot %zu nicht gefunden/dekodierbar: %s\n",
+                                             slotIndex, src.texture.c_str());
                         }
                     }
 
@@ -1672,15 +1689,17 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                                     textureId = GetOrLoadEmbeddedTexture(*frame.embeddedTexture, cacheKey);
                                 }
                             } else if (!frame.texture.empty()) {
-                                if (auto texPath = resolveParticleTexturePath(frame.texture)) {
+                                if (auto texPath = resolveParticleTexturePath(frame.texture))
                                     textureId = GetOrLoadTexture(*texPath);
-                                } else if (auto sibling = resolveSiblingEmbeddedTexture(frame.texture);
-                                           sibling && sibling->faces == 1u) {
-                                    const std::string fallbackKey =
-                                        key + "#sibling-particle-flip:" + std::to_string(systemIndex) +
-                                        ":" + std::to_string(ai) + ":" + std::to_string(fi) +
-                                        ":" + frame.texture;
-                                    textureId = GetOrLoadEmbeddedTexture(*sibling, fallbackKey);
+                                if (textureId == 0) {
+                                    if (auto sibling = resolveSiblingEmbeddedTexture(frame.texture);
+                                        sibling && sibling->faces == 1u) {
+                                        const std::string fallbackKey =
+                                            key + "#sibling-particle-flip:" + std::to_string(systemIndex) +
+                                            ":" + std::to_string(ai) + ":" + std::to_string(fi) +
+                                            ":" + frame.texture;
+                                        textureId = GetOrLoadEmbeddedTexture(*sibling, fallbackKey);
+                                    }
                                 }
                             }
                             if (textureId != 0) dstAnim.frameTextures.push_back(textureId);
