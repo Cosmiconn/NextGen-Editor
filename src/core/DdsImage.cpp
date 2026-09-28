@@ -361,7 +361,10 @@ std::expected<DdsCubeImage, std::string> LoadDdsCubeImage(const std::filesystem:
         }
         if (!image) return std::unexpected("DDS-Cube-Flaeche " + std::to_string(face) +
                                            " konnte nicht dekodiert werden: " + image.error());
-        FlipVertical(*image);
+        // Unlike ordinary GL_TEXTURE_2D, OpenGL cube-map face selection follows the
+        // RenderMan top-left convention. Legacy DDS faces are top-down as well, so do
+        // NOT apply the normal 2D DDS vertical flip here. Coordinate-system conversion
+        // (Gamebryo/Direct3D -> editor/OpenGL) belongs to the sampling direction.
         cube.faces[face] = std::move(*image);
     }
     return cube;
