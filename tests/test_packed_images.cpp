@@ -64,6 +64,12 @@ int main() {
         for (std::size_t px = 0; px < 4; ++px)
             for (std::size_t ch = 0; ch < 4; ++ch)
                 cube[base + px*4 + ch] = faceColors[face][ch];
+        // Cube faces intentionally stay in DDS top-down row order. Make the bottom row
+        // of +X different so an accidental ordinary-2D vertical flip is observable.
+        if (face == 0) {
+            cube[base + 8] = 64;  cube[base + 9] = 0; cube[base + 10] = 0; cube[base + 11] = 255;
+            cube[base + 12] = 64; cube[base + 13] = 0; cube[base + 14] = 0; cube[base + 15] = 255;
+        }
         // lower mip deliberately differs; next face must start after these four bytes.
         cube[base+16]=static_cast<std::uint8_t>(face+1);
         cube[base+17]=cube[base+18]=0;
@@ -81,6 +87,11 @@ int main() {
                 check(std::equal(faceColors[face].begin(), faceColors[face].end(),
                                  cubeImage->faces[face].rgba.begin()),
                       "DDS cube face order and mip stride");
+            if (face == 0 && cubeImage->faces[face].rgba.size() >= 12) {
+                check(cubeImage->faces[face].rgba[0] == 255 &&
+                      cubeImage->faces[face].rgba[8] == 64,
+                      "DDS cube preserves top-down face row order");
+            }
         }
     }
     cube.resize(cube.size()-1);
