@@ -124,6 +124,9 @@ private:
         bool alphaTextureBlender11 = false;
         bool alphaTextureBlender = false;
         bool pgTerrain = false;
+        bool glass = false;
+        std::uint32_t glassEnvironmentCube = 0;
+        core::NifGlassShaderParameters glassParameters{};
         // Effektiver klassischer NIF-Vertexfarbenmodus: 0 ignore, 1 emission,
         // 2 ambient+diffuse. Der dedizierte VCAlphaTextureBlender nutzt weiterhin
         // seinen eigenen Shadervertrag und wertet Vertex-RGB/Alpha separat aus.
@@ -199,10 +202,12 @@ private:
     // Lädt (oder liefert aus dem Cache) die GL-Textur für einen aufgelösten Dateipfad - mehrere
     // Mesh-Teile/Modelle teilen sich häufig dieselbe Textur (z.B. "grass.dds").
     std::uint32_t GetOrLoadTexture(const std::filesystem::path& resolvedPath);
+    std::uint32_t GetOrLoadCubeTexture(const std::filesystem::path& resolvedPath);
     std::uint32_t GetOrLoadEmbeddedTexture(const core::NifEmbeddedTexture& image, const std::string& cacheKey);
 
     std::unordered_map<std::string, LoadedModel> modelCache_;   // Schlüssel: aufgelöster Pfad
-    std::unordered_map<std::string, std::uint32_t> textureCache_; // Schlüssel: aufgelöster Textur-Pfad
+    std::unordered_map<std::string, std::uint32_t> textureCache_; // Schlüssel: aufgelöster 2D-Textur-Pfad
+    std::unordered_map<std::string, std::uint32_t> cubeTextureCache_; // separate GL_TEXTURE_CUBE_MAP objects
     std::vector<const LoadedModel*> perObjectModel_;             // parallel zu set, nullptr = kein Mesh
     struct ParticleRuntimeSystem {
         std::vector<core::NifParticleState> particles;
@@ -220,6 +225,20 @@ private:
         std::array<int, 10> locHasTex{}, locUvSet{}, locHasTransform{}, locTranslation{}, locScale{}, locRotation{}, locTransformType{}, locCenter{}, locSampler{};
         std::array<int, kMaxEnvironmentSphereEffects> locEnvironmentSampler{};
     } uniforms_;
+    struct GlassUniformLocations {
+        int locViewProj = -1;
+        int locModel = -1;
+        int locCameraPos = -1;
+        int locEnvironment = -1;
+        int locRainbow = -1;
+        int locBaseColor = -1;
+        int locRefractionScale = -1;
+        int locReflectionScale = -1;
+        int locIorRatio = -1;
+        int locAmbient = -1;
+        int locRainbowSpread = -1;
+        int locRainbowScale = -1;
+    } glassUniforms_;
     struct DrawItem {
         const SubMesh* sub = nullptr;
         Mat4 model = Mat4::Identity();
@@ -233,6 +252,7 @@ private:
     };
     std::vector<DrawItem> opaqueItems_, blendedItems_;
     std::uint32_t shaderProgram_ = 0;
+    std::uint32_t glassShaderProgram_ = 0;
     std::uint32_t particleVao_ = 0, particleVbo_ = 0, particleEbo_ = 0;
 };
 
