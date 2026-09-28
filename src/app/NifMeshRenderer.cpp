@@ -1997,6 +1997,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     glGetBooleanv(GL_DEPTH_WRITEMASK, &prevDepthMask);
     GLint prevProgram = 0, prevVao = 0, prevActiveTexture = 0;
     std::array<GLint, 10 + kMaxEnvironmentSphereEffects> prevTextures{};
+    std::array<GLint, 10 + kMaxEnvironmentSphereEffects> prevCubeTextures{};
     GLint prevCullFace = GL_BACK, prevFrontFace = GL_CCW, prevDepthFunc = GL_LESS;
     GLint prevBlendSrcRgb = GL_ONE, prevBlendDstRgb = GL_ZERO;
     GLint prevBlendSrcAlpha = GL_ONE, prevBlendDstAlpha = GL_ZERO;
@@ -2033,6 +2034,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     for (std::size_t unit = 0; unit < prevTextures.size(); ++unit) {
         glActiveTexture(static_cast<GLenum>(GL_TEXTURE0 + unit));
         glGetIntegerv(GL_TEXTURE_BINDING_2D, &prevTextures[unit]);
+        glGetIntegerv(GL_TEXTURE_BINDING_CUBE_MAP, &prevCubeTextures[unit]);
     }
 
     glUseProgram(shaderProgram_);
@@ -2497,10 +2499,6 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
 
     const auto drawItem = [&](const DrawItem& item, bool blendedPass) {
         const SubMesh& sub = *item.sub;
-        glUniformMatrix4fv(locModel, 1, GL_FALSE, item.model.m);
-        glUniform1i(locParticleMode, item.particle ? 1 : 0);
-        glUniform4f(locParticleColor, item.particleColor[0], item.particleColor[1],
-                    item.particleColor[2], item.particleColor[3]);
         applyFaceDrawMode(sub.faceDrawMode);
         if (sub.depthTest) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
         glDepthMask(sub.depthWrite ? GL_TRUE : GL_FALSE);
@@ -2520,6 +2518,59 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
             glDisable(GL_STENCIL_TEST);
         }
         if (blendedPass) glBlendFunc(blendFactor(sub.alphaSrcBlend), blendFactor(sub.alphaDstBlend));
+
+        if (sub.glass) {
+            glUseProgram(glassShaderProgram_);
+            glUniformMatrix4fv(glassUniforms_.locViewProj, 1, GL_FALSE, viewProj.m);
+            glUniformMatrix4fv(glassUniforms_.locModel, 1, GL_FALSE, item.model.m);
+            glUniform3f(glassUniforms_.locCameraPos,
+                        camera.EyeX(), camera.EyeY(), -camera.EyeZ());
+            glUniform1i(glassUniforms_.locEnvironment, 0);
+            glUniform1i(glassUniforms_.locRainbow, 1);
+            glUniform4f(glassUniforms_.locBaseColor,
+                        sub.glassParameters.baseColor.r,
+                        sub.glassParameters.baseColor.g,
+                        sub.glassParameters.baseColor.b,
+                        sub.glassParameters.baseColor.a);
+            glUniform1f(glassUniforms_.locRefractionScale,
+                        sub.glassParameters.refractionScale);
+            glUniform1f(glassUniforms_.locReflectionScale,
+                        sub.glassParameters.reflectionScale);
+            glUniform1f(glassUniforms_.locIorRatio,
+                        sub.glassParameters.indexOfRefractionRatio);
+            glUniform1f(glassUniforms_.locAmbient,
+                        sub.glassParameters.ambient);
+            glUniform1f(glassUniforms_.locRainbowSpread,
+                        sub.glassParameters.rainbowSpread);
+            glUniform1f(glassUniforms_.locRainbowScale,
+                        sub.glassParameters.rainbowScale);
+            glUniform1i(glassUniforms_.locAlphaTest, sub.alphaTest ? 1 : 0);
+            glUniform1f(glassUniforms_.locAlphaCutoff, sub.alphaCutoff);
+            glUniform1i(glassUniforms_.locAlphaTestFunc,
+                        static_cast<int>(sub.alphaTestFunc));
+
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_CUBE_MAP, sub.glassEnvironmentCube);
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, sub.textures[1].texture);
+            if (sub.textures[1].texture != 0) {
+                // Glass.NSF fixes both samplers to clamp + linear filtering.
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+            }
+
+            glBindVertexArray(sub.vao);
+            glDrawElements(GL_TRIANGLES, static_cast<int>(sub.indexCount), GL_UNSIGNED_INT, nullptr);
+            glUseProgram(shaderProgram_);
+            return;
+        }
+
+        glUniformMatrix4fv(locModel, 1, GL_FALSE, item.model.m);
+        glUniform1i(locParticleMode, item.particle ? 1 : 0);
+        glUniform4f(locParticleColor, item.particleColor[0], item.particleColor[1],
+                    item.particleColor[2], item.particleColor[3]);
 
         glUniform1i(locAlphaTest, sub.alphaTest ? 1 : 0);
         glUniform1f(locAlphaCutoff, sub.alphaCutoff);
@@ -2614,6 +2665,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     for (std::size_t unit = 0; unit < prevTextures.size(); ++unit) {
         glActiveTexture(static_cast<GLenum>(GL_TEXTURE0 + unit));
         glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(prevTextures[unit]));
+        glBindTexture(GL_TEXTURE_CUBE_MAP, static_cast<GLuint>(prevCubeTextures[unit]));
     }
     glActiveTexture(static_cast<GLenum>(prevActiveTexture));
     glUseProgram(static_cast<GLuint>(prevProgram));
