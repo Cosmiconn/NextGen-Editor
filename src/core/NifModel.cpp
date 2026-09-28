@@ -4129,11 +4129,15 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 part.shaderTextureSlots.push_back(std::move(shaderSlot));
             }
 
-            // Verified named-shader map contracts from the real Fiesta ResMap corpus:
+            // Verified named-shader map contracts:
             // - VCAlphaTextureBlender: 0=Texture1, 1=Texture2, 2=Detail.
-            // - AlphaTextureBlender11: 0/1 are opaque color layers, 2 is the alpha blend mask.
+            // - AlphaTextureBlender11: 0/1 are color layers, 2 is the alpha blend mask.
+            // - AlphaTextureBlender (stock Gamebryo 2.6 NSF): 0=Texture1,
+            //   1=Texture2, 2=AlphaBlendMap.
+            // - PgTerrain: 0=color, 1=coverage/alpha.
             if (part.shaderName == "VCAlphaTextureBlender" ||
                 part.shaderName == "AlphaTextureBlender11" ||
+                part.shaderName == "AlphaTextureBlender" ||
                 part.shaderName == "PgTerrain") {
                 for (const auto& [mapId, src] : ts.shaderSlots) {
                     const std::uint32_t maxMapId =
@@ -5037,6 +5041,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         // preserved but diagnostic-only.
         if (system.shaderName == "VCAlphaTextureBlender" ||
             system.shaderName == "AlphaTextureBlender11" ||
+            system.shaderName == "AlphaTextureBlender" ||
             system.shaderName == "PgTerrain") {
             const std::uint32_t maxMapId =
                 system.shaderName == "PgTerrain" ? 1u : 2u;
