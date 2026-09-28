@@ -954,7 +954,9 @@ int main(int argc, char** argv) {
                     const bool hasRequestedUvs =
                         texture.uvSet < part.uvSets.size() &&
                         part.uvSets[texture.uvSet].size() == part.positions.size();
-                    if (renderableGeometry && !hasRequestedUvs) {
+                    const bool shaderDoesNotUseMeshUvs =
+                        shader == "Glass" && slot <= 1u;
+                    if (renderableGeometry && !shaderDoesNotUseMeshUvs && !hasRequestedUvs) {
                         const bool hasBaseFallbackUvs =
                             part.uvs.size() == part.positions.size();
                         const bool usesConstantUv0 =
@@ -1045,7 +1047,9 @@ int main(int argc, char** argv) {
                         const bool hasRequestedUvs =
                             shaderSlot.texture.uvSet < part.uvSets.size() &&
                             part.uvSets[shaderSlot.texture.uvSet].size() == part.positions.size();
-                        if (!hasRequestedUvs) {
+                        const bool shaderDoesNotUseMeshUvs =
+                            shader == "Glass" && shaderSlot.mapId <= 1u;
+                        if (!shaderDoesNotUseMeshUvs && !hasRequestedUvs) {
                             const bool hasBaseFallbackUvs =
                                 part.uvs.size() == part.positions.size();
                             const bool usesConstantUv0 =
