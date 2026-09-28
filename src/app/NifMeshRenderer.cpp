@@ -98,6 +98,7 @@ uniform bool uSpecularEnabled;
 uniform int uApplyMode;
 uniform bool uVcAlphaTextureBlender;
 uniform bool uAlphaTextureBlender11;
+uniform bool uAlphaTextureBlender;
 uniform bool uPgTerrain;
 uniform int uVertexColorMode;
 uniform bool uParticleMode;
@@ -274,6 +275,13 @@ void main() {
         vec3 texture2 = texture(uTex1, slotUv(1)).rgb;
         float blendMask = clamp(texture(uTex2, slotUv(2)).a, 0.0, 1.0);
         surface = materialDiffuse * mix(texture1, texture2, blendMask);
+    } else if (uAlphaTextureBlender && uHasTex[0] && uHasTex[1] && uHasTex[2]) {
+        // Stock Gamebryo 2.6 AlphaTextureBlender.psh:
+        // r0=t0; lrp r0,t2.aaaa,t1,r0 -> (1-mask)*Texture1 + mask*Texture2.
+        vec4 texture1 = texture(uTex0, slotUv(0));
+        vec4 texture2 = texture(uTex1, slotUv(1));
+        float blendMask = clamp(texture(uTex2, slotUv(2)).a, 0.0, 1.0);
+        surface = mix(texture1.rgb, texture2.rgb, blendMask);
     } else if (uPgTerrain && uHasTex[0]) {
         // Fiesta PgTerrain corpus contract: shader map 0 is the visible color map.
         // Map 1 is a grayscale/alpha coverage map; it is intentionally not multiplied
@@ -297,7 +305,12 @@ void main() {
     if (uHasTex[9]) { vec4 d = texture(uTex9, slotUv(9)); surface = mix(surface, d.rgb, d.a); }
 
     float alpha = uMaterialAlpha;
-    if (uPgTerrain && uHasTex[1]) {
+    if (uAlphaTextureBlender && uHasTex[0] && uHasTex[1] && uHasTex[2]) {
+        vec4 texture1 = texture(uTex0, slotUv(0));
+        vec4 texture2 = texture(uTex1, slotUv(1));
+        float blendMask = clamp(texture(uTex2, slotUv(2)).a, 0.0, 1.0);
+        alpha *= mix(texture1.a, texture2.a, blendMask);
+    } else if (uPgTerrain && uHasTex[1]) {
         // PgTerrain's authored second map is coverage. Preserve the material alpha too:
         // several real Fiesta water/terrain parts intentionally set it below 1.
         alpha *= texture(uTex1, slotUv(1)).a;
@@ -337,7 +350,11 @@ void main() {
     vec3 environment = uEnvironmentSphereCount > 0
         ? environmentSphereColor(environmentSphereUv(n))
         : vec3(0.0);
-    FragColor = vec4(ambient + diffuse + specular + emissive + environment, alpha);
+    if (uAlphaTextureBlender) {
+        FragColor = vec4(surface, alpha);
+    } else {
+        FragColor = vec4(ambient + diffuse + specular + emissive + environment, alpha);
+    }
 }
 )";
 
@@ -584,6 +601,7 @@ void NifMeshRenderer::Init() {
     uniforms_.locApplyMode = glGetUniformLocation(shaderProgram_, "uApplyMode");
     uniforms_.locVcAlphaTextureBlender = glGetUniformLocation(shaderProgram_, "uVcAlphaTextureBlender");
     uniforms_.locAlphaTextureBlender11 = glGetUniformLocation(shaderProgram_, "uAlphaTextureBlender11");
+    uniforms_.locAlphaTextureBlender = glGetUniformLocation(shaderProgram_, "uAlphaTextureBlender");
     uniforms_.locPgTerrain = glGetUniformLocation(shaderProgram_, "uPgTerrain");
     uniforms_.locVertexColorMode = glGetUniformLocation(shaderProgram_, "uVertexColorMode");
     uniforms_.locBumpLumaScale = glGetUniformLocation(shaderProgram_, "uBumpLumaScale");
@@ -899,6 +917,7 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                     sub.textureApplyMode = part.textureApplyMode;
                     sub.vcAlphaTextureBlender = part.shaderName == "VCAlphaTextureBlender";
                     sub.alphaTextureBlender11 = part.shaderName == "AlphaTextureBlender11";
+                    sub.alphaTextureBlender = part.shaderName == "AlphaTextureBlender";
                     sub.pgTerrain = part.shaderName == "PgTerrain";
                     const bool hasVertexColors =
                         part.vertexColors.size() == part.positions.size();
@@ -1268,6 +1287,7 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                     sub.textureApplyMode = srcSystem.textureApplyMode;
                     sub.vcAlphaTextureBlender = srcSystem.shaderName == "VCAlphaTextureBlender";
                     sub.alphaTextureBlender11 = srcSystem.shaderName == "AlphaTextureBlender11";
+                    sub.alphaTextureBlender = srcSystem.shaderName == "AlphaTextureBlender";
                     sub.pgTerrain = srcSystem.shaderName == "PgTerrain";
                     if (dstSystem.hasColors) {
                         if (!srcSystem.hasVertexColorProperty) sub.vertexColorMode = 2;
@@ -1844,6 +1864,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     const auto& locApplyMode = uniforms_.locApplyMode;
     const auto& locVcAlphaTextureBlender = uniforms_.locVcAlphaTextureBlender;
     const auto& locAlphaTextureBlender11 = uniforms_.locAlphaTextureBlender11;
+    const auto& locAlphaTextureBlender = uniforms_.locAlphaTextureBlender;
     const auto& locPgTerrain = uniforms_.locPgTerrain;
     const auto& locVertexColorMode = uniforms_.locVertexColorMode;
     const auto& locBumpLumaScale = uniforms_.locBumpLumaScale;
@@ -2321,6 +2342,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
         glUniform1i(locApplyMode, static_cast<int>(sub.textureApplyMode));
         glUniform1i(locVcAlphaTextureBlender, sub.vcAlphaTextureBlender ? 1 : 0);
         glUniform1i(locAlphaTextureBlender11, sub.alphaTextureBlender11 ? 1 : 0);
+        glUniform1i(locAlphaTextureBlender, sub.alphaTextureBlender ? 1 : 0);
         glUniform1i(locPgTerrain, sub.pgTerrain ? 1 : 0);
         glUniform1i(locVertexColorMode, static_cast<int>(sub.vertexColorMode));
         glUniform1f(locBumpLumaScale, sub.bumpMapLumaScale);
