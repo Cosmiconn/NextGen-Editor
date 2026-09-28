@@ -1088,10 +1088,21 @@ int main(int argc, char** argv) {
                         }
                         if (shaderSlot.mapId == 0u &&
                             shaderSlot.texture.sourceUsesEmbeddedPixelData) {
-                            // NifEmbeddedTexture currently represents one 2D surface, not the
-                            // six faces required by the stock Glass environment sampler.
-                            ++unmaterializedShaderDescriptors;
-                            rendererGapFiles.insert(entry.path().string());
+                            bool validEmbeddedCube = false;
+                            if (shaderSlot.texture.embeddedTexture) {
+                                const auto& image = *shaderSlot.texture.embeddedTexture;
+                                const std::size_t faceBytes =
+                                    static_cast<std::size_t>(image.width) * image.height * 4u;
+                                validEmbeddedCube =
+                                    image.faces == 6u && image.width > 0u && image.height > 0u;
+                                for (const auto& face : image.cubeFaceRgba)
+                                    validEmbeddedCube =
+                                        validEmbeddedCube && face.size() == faceBytes;
+                            }
+                            if (!validEmbeddedCube) {
+                                ++unmaterializedShaderDescriptors;
+                                rendererGapFiles.insert(entry.path().string());
+                            }
                         }
                     }
                     if (shaderSlot.texture.uvSet > 7u) {
