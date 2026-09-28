@@ -247,6 +247,124 @@ void FlipVertical(DdsImage& image) {
     }
 }
 
+std::expected<DdsCubeImage, std::string> LoadDdsCubeImage(const std::filesystem::path& file) {
+    std::ifstream in(file, std::ios::binary);
+    if (!in) return std::unexpected("Konnte DDS-Cube-Map nicht oeffnen: " + file.string());
+
+    std::array<std::uint8_t, 128> header{};
+    in.read(reinterpret_cast<char*>(header.data()), static_cast<std::streamsize>(header.size()));
+    if (!in || std::memcmp(header.data(), "DDS ", 4) != 0)
+        return std::unexpected("Keine gueltige DDS-Cube-Map (Signatur fehlt): " + file.string());
+
+    const auto u32 = [&](std::size_t offset) {
+        std::uint32_t v = 0;
+        std::memcpy(&v, header.data() + offset, 4);
+        return v;
+    };
+    const std::uint32_t height = u32(12);
+    const std::uint32_t width = u32(16);
+    if (u32(4) != 124 || u32(76) != 32 || width == 0 || height == 0 ||
+        static_cast<std::uint64_t>(width) * height > 64u * 1024u * 1024u)
+        return std::unexpected("Ungueltiger DDS-Cube-Header oder Bildgroesse: " + file.string());
+
+    constexpr std::uint32_t kCubeMap = 0x00000200u;
+    constexpr std::uint32_t kAllCubeFaces = 0x0000FC00u;
+    const std::uint32_t caps2 = u32(112);
+    if ((caps2 & kCubeMap) == 0 || (caps2 & kAllCubeFaces) != kAllCubeFaces)
+        return std::unexpected("DDS ist keine vollstaendige 6-Flaechen-Cube-Map: " + file.string());
+
+    const std::uint32_t mipCount = std::max(1u, u32(28));
+    const std::uint32_t pfFlags = u32(80);
+    const bool packedRgb = (pfFlags & 0x40u) != 0 && (pfFlags & 0x4u) == 0;
+    const std::uint32_t bits = u32(88);
+    char fourCC[4]{};
+    std::memcpy(fourCC, header.data() + 84, 4);
+    const BcFormat bcFormat = DetectFormat(fourCC);
+
+    std::size_t blockSize = 0;
+    std::size_t pixelBytes = 0;
+    if (packedRgb) {
+        if (!bits || bits > 32 || bits % 8u)
+            return std::unexpected("Nicht unterstuetzte DDS-Cube-RGB-Bittiefe");
+        pixelBytes = bits / 8u;
+    } else {
+        if (bcFormat == BcFormat::Unsupported) {
+            return std::unexpected("Nicht unterstuetztes DDS-Cube-Format (FourCC '" +
+                std::string(fourCC, 4) + "')");
+        }
+        blockSize = bcFormat == BcFormat::BC1 ? 8u : 16u;
+    }
+
+    const auto mipBytes = [&](std::uint32_t w, std::uint32_t h) -> std::optional<std::size_t> {
+        if (packedRgb) {
+            const std::uint64_t rowBytes64 = static_cast<std::uint64_t>(w) * pixelBytes;
+            if (rowBytes64 > std::numeric_limits<std::size_t>::max() - 3u) return std::nullopt;
+            const std::size_t pitch = (static_cast<std::size_t>(rowBytes64) + 3u) & ~std::size_t(3u);
+            if (h != 0 && pitch > std::numeric_limits<std::size_t>::max() / h) return std::nullopt;
+            return pitch * h;
+        }
+        const std::size_t bw = (static_cast<std::size_t>(w) + 3u) / 4u;
+        const std::size_t bh = (static_cast<std::size_t>(h) + 3u) / 4u;
+        if (bw != 0 && bh > std::numeric_limits<std::size_t>::max() / bw) return std::nullopt;
+        const std::size_t blocks = bw * bh;
+        if (blockSize != 0 && blocks > std::numeric_limits<std::size_t>::max() / blockSize) return std::nullopt;
+        return blocks * blockSize;
+    };
+
+    std::size_t faceBytes = 0;
+    std::uint32_t mw = width, mh = height;
+    for (std::uint32_t mip = 0; mip < mipCount; ++mip) {
+        const auto bytes = mipBytes(mw, mh);
+        if (!bytes || faceBytes > std::numeric_limits<std::size_t>::max() - *bytes)
+            return std::unexpected("DDS-Cube-Mipgroesse laeuft ueber");
+        faceBytes += *bytes;
+        mw = std::max(1u, mw / 2u);
+        mh = std::max(1u, mh / 2u);
+    }
+    const auto topBytes = mipBytes(width, height);
+    if (!topBytes || faceBytes == 0)
+        return std::unexpected("Ungueltige DDS-Cube-Mipgroesse");
+
+    in.seekg(0, std::ios::end);
+    const std::streamoff fileSize = in.tellg();
+    const std::uint64_t required =
+        128ull + static_cast<std::uint64_t>(faceBytes) * 6ull;
+    if (fileSize < 0 || static_cast<std::uint64_t>(fileSize) < required)
+        return std::unexpected("DDS-Cube-Datei ist abgeschnitten: " + file.string());
+
+    DdsCubeImage cube;
+    cube.width = width;
+    cube.height = height;
+    const std::array<std::uint32_t, 4> masks{
+        u32(92), u32(96), u32(100), (pfFlags & 1u) ? u32(104) : 0u};
+
+    for (std::size_t face = 0; face < cube.faces.size(); ++face) {
+        const std::uint64_t absolute =
+            128ull + static_cast<std::uint64_t>(faceBytes) * face;
+        in.seekg(static_cast<std::streamoff>(absolute), std::ios::beg);
+        std::vector<std::uint8_t> raw(*topBytes);
+        in.read(reinterpret_cast<char*>(raw.data()), static_cast<std::streamsize>(raw.size()));
+        if (!in) return std::unexpected("DDS-Cube-Flaeche ist abgeschnitten");
+
+        std::expected<DdsImage, std::string> image =
+            std::unexpected("Nicht unterstuetzte DDS-Cube-Flaeche");
+        if (packedRgb) {
+            const std::size_t rowPitch =
+                ((static_cast<std::size_t>(width) * pixelBytes) + 3u) & ~std::size_t(3u);
+            image = DecodePackedImage(width, height, bits, masks, raw, rowPitch);
+        } else {
+            const std::uint32_t pf =
+                bcFormat == BcFormat::BC1 ? 4u : (bcFormat == BcFormat::BC2 ? 5u : 6u);
+            image = DecodeBcImage(width, height, pf, raw);
+        }
+        if (!image) return std::unexpected("DDS-Cube-Flaeche " + std::to_string(face) +
+                                           " konnte nicht dekodiert werden: " + image.error());
+        FlipVertical(*image);
+        cube.faces[face] = std::move(*image);
+    }
+    return cube;
+}
+
 std::expected<DdsImage, std::string> LoadDdsImage(const std::filesystem::path& file) {
     std::ifstream in(file, std::ios::binary);
     if (!in) {
