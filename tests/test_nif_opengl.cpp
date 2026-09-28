@@ -12,7 +12,7 @@ using namespace theseed::mapeditor;
 // Explicit opt-in runtime test, requiring a real OpenGL context. The ordinary
 // CTest suite remains usable on machines without a display/GPU.
 int main(int argc, char** argv) {
-    if (argc != 3) return 2;
+    if (argc < 3) return 2;
     if (!glfwInit()) { std::cerr << "GLFW init failed\n"; return 1; }
     glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
@@ -32,9 +32,13 @@ int main(int argc, char** argv) {
         renderer.Init();
         if (glGetError() != GL_NO_ERROR) ++failures;
         std::vector<std::string> names;
-        for (const auto& entry : std::filesystem::directory_iterator(argv[1]))
-            if (entry.path().extension() == ".nif") names.push_back(entry.path().filename().string());
-        std::sort(names.begin(), names.end());
+        if (argc > 3) {
+            for (int arg = 3; arg < argc; ++arg) names.emplace_back(argv[arg]);
+        } else {
+            for (const auto& entry : std::filesystem::directory_iterator(argv[1]))
+                if (entry.path().extension() == ".nif") names.push_back(entry.path().filename().string());
+            std::sort(names.begin(), names.end());
+        }
         if (names.empty()) ++failures;
         for (const auto& name : names) {
             auto model = core::LoadNifMesh(std::filesystem::path(argv[1]) / name, false);
@@ -52,9 +56,10 @@ int main(int argc, char** argv) {
             camera.Zoom(extent * 2.0f - camera.Distance());
             core::ObjectPlacementSet set;
             core::PlacedObject object; object.modelPath = name; set.AddObject(object);
-            std::unordered_map<std::string, core::NifModel> custom;
-            custom.emplace(name, std::move(*model));
-            renderer.LoadModelsForSet(set, argv[1], &custom);
+            // Deliberately reload through the ordinary renderer path instead of injecting a
+            // custom model. Visual regression must exercise the exact runtime model/texture
+            // resolver, including external paths and sibling-embedded Fiesta fallbacks.
+            renderer.LoadModelsForSet(set, argv[1]);
             if (!renderer.HasRealMesh(0) || glGetError() != GL_NO_ERROR) ++failures;
             glViewport(0, 0, 512, 512);
             glClearColor(0, 0, 0, 1);
