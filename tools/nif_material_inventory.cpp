@@ -381,7 +381,8 @@ int main(int argc, char** argv) {
             undecodedEmbedded += model->undecodedEmbeddedTextures;
 
             const auto auditExternalTexture = [&](const std::string& textureName,
-                                                  const char* bindingKind) {
+                                                  const char* bindingKind,
+                                                  bool cubeMap = false) {
                 if (textureName.empty()) return;
                 ++externalTextureBindings;
                 if (!verifyExternalTextures) return;
@@ -404,7 +405,8 @@ int main(int argc, char** argv) {
 
                 ++resolvedExternalTextureBindings;
                 resolvedExternalTextureFiles.insert(resolution.path->string());
-                const std::string decodeKey = resolution.path->string();
+                const std::string decodeKey = resolution.path->string() +
+                    (cubeMap ? "#cube" : "#2d");
                 auto cache = externalDecodeCache.find(decodeKey);
                 if (cache == externalDecodeCache.end()) {
                     std::string ext = resolution.path->extension().string();
@@ -412,8 +414,13 @@ int main(int argc, char** argv) {
                         ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
                     std::optional<std::string> error;
                     if (ext == ".dds") {
-                        const auto decoded = core::LoadDdsImage(*resolution.path);
-                        if (!decoded) error = decoded.error();
+                        if (cubeMap) {
+                            const auto decoded = core::LoadDdsCubeImage(*resolution.path);
+                            if (!decoded) error = decoded.error();
+                        } else {
+                            const auto decoded = core::LoadDdsImage(*resolution.path);
+                            if (!decoded) error = decoded.error();
+                        }
                     } else if (ext == ".tga") {
                         const auto decoded = core::LoadTgaImage(*resolution.path);
                         if (!decoded) error = decoded.error();
@@ -676,7 +683,7 @@ int main(int argc, char** argv) {
                             ++particleUnresolvedEmbedded;
                             rendererGapFiles.insert(entry.path().string());
                         } else if (!texture.sourceUsesEmbeddedPixelData && !texture.texture.empty()) {
-                            auditExternalTexture(texture.texture, "particle-slot");
+                            auditExternalTexture(texture.texture, "particle-slot", texture.sourceIsCubeMap);
                         }
                         if (texture.clampMode > 3u) { ++unsupportedClampBindings; rendererGapFiles.insert(entry.path().string()); }
                         if (texture.filterMode > 6u) { ++unsupportedFilterBindings; rendererGapFiles.insert(entry.path().string()); }
@@ -696,7 +703,8 @@ int main(int argc, char** argv) {
                             rendererGapFiles.insert(entry.path().string());
                         } else if (!shaderSlot.texture.sourceUsesEmbeddedPixelData &&
                                    !shaderSlot.texture.texture.empty()) {
-                            auditExternalTexture(shaderSlot.texture.texture, "particle-shader-slot");
+                            auditExternalTexture(shaderSlot.texture.texture, "particle-shader-slot",
+                                                 shaderSlot.texture.sourceIsCubeMap);
                         }
                     }
                     particleTextureTransformTracks += system.textureTransformAnimations.size();
@@ -916,7 +924,7 @@ int main(int argc, char** argv) {
                         if (!texture.embeddedTexture) ++stat.unresolvedEmbedded;
                     } else if (!texture.texture.empty()) {
                         ++stat.external;
-                        auditExternalTexture(texture.texture, "classic-slot");
+                        auditExternalTexture(texture.texture, "classic-slot", texture.sourceIsCubeMap);
                     }
                     ++classicClampModes[texture.clampMode];
                     ++classicFilterModes[texture.filterMode];
@@ -1001,10 +1009,19 @@ int main(int argc, char** argv) {
                         (shader == "VCAlphaTextureBlender" && shaderSlot.mapId <= 2u) ||
                         (shader == "AlphaTextureBlender11" && shaderSlot.mapId <= 2u) ||
                         (shader == "AlphaTextureBlender" && shaderSlot.mapId <= 2u) ||
-                        (shader == "PgTerrain" && shaderSlot.mapId <= 1u);
+                        (shader == "PgTerrain" && shaderSlot.mapId <= 1u) ||
+                        (shader == "Glass" && shaderSlot.mapId <= 1u);
                     if (!materializedShaderMap) {
                         ++unmaterializedShaderDescriptors;
                         rendererGapFiles.insert(entry.path().string());
+                    }
+                    if (shader == "Glass") {
+                        const bool expectedCube = shaderSlot.mapId == 0u;
+                        if (shaderSlot.mapId <= 1u &&
+                            shaderSlot.texture.sourceIsCubeMap != expectedCube) {
+                            ++unmaterializedShaderDescriptors;
+                            rendererGapFiles.insert(entry.path().string());
+                        }
                     }
                     if (shaderSlot.texture.uvSet > 7u) {
                         ++uvRendererOverflowBindings;
@@ -1077,7 +1094,7 @@ int main(int argc, char** argv) {
                         if (!texture.embeddedTexture) ++stat.unresolvedEmbedded;
                     } else if (!texture.texture.empty()) {
                         ++stat.external;
-                        auditExternalTexture(texture.texture, "shader-slot");
+                        auditExternalTexture(texture.texture, "shader-slot", texture.sourceIsCubeMap);
                     }
                 }
 
