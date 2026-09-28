@@ -4,6 +4,8 @@
 #include <fstream>
 #include <bit>
 #include <limits>
+#include <algorithm>
+#include <optional>
 
 namespace theseed::mapeditor::core {
 
