@@ -393,6 +393,9 @@ uniform float uGlassIorRatio;
 uniform float uGlassAmbient;
 uniform float uGlassRainbowSpread;
 uniform float uGlassRainbowScale;
+uniform bool uGlassAlphaTest;
+uniform float uGlassAlphaCutoff;
+uniform int uGlassAlphaTestFunc;
 
 void main() {
     vec3 normal = normalize(gNormal);
@@ -429,7 +432,20 @@ void main() {
     vec4 refr = uGlassRefractionScale * refraction * uGlassBaseColor;
 
     // Exact stock Gamebryo 2.6 ComplexGlassPS composition.
-    FragColor = sine * refl + (1.0 - sine2) * refr + sine2 * rain + vec4(uGlassAmbient);
+    vec4 result = sine * refl + (1.0 - sine2) * refr + sine2 * rain + vec4(uGlassAmbient);
+    if (uGlassAlphaTest) {
+        bool passAlpha = true;
+        if (uGlassAlphaTestFunc == 0) passAlpha = false;
+        else if (uGlassAlphaTestFunc == 1) passAlpha = result.a < uGlassAlphaCutoff;
+        else if (uGlassAlphaTestFunc == 2) passAlpha = abs(result.a - uGlassAlphaCutoff) < (1.0 / 255.0);
+        else if (uGlassAlphaTestFunc == 3) passAlpha = result.a <= uGlassAlphaCutoff;
+        else if (uGlassAlphaTestFunc == 4) passAlpha = result.a > uGlassAlphaCutoff;
+        else if (uGlassAlphaTestFunc == 5) passAlpha = abs(result.a - uGlassAlphaCutoff) >= (1.0 / 255.0);
+        else if (uGlassAlphaTestFunc == 6) passAlpha = result.a >= uGlassAlphaCutoff;
+        else if (uGlassAlphaTestFunc == 7) passAlpha = true;
+        if (!passAlpha) discard;
+    }
+    FragColor = result;
 }
 )";
 
@@ -724,6 +740,9 @@ void NifMeshRenderer::Init() {
     glassUniforms_.locAmbient = glGetUniformLocation(glassShaderProgram_, "uGlassAmbient");
     glassUniforms_.locRainbowSpread = glGetUniformLocation(glassShaderProgram_, "uGlassRainbowSpread");
     glassUniforms_.locRainbowScale = glGetUniformLocation(glassShaderProgram_, "uGlassRainbowScale");
+    glassUniforms_.locAlphaTest = glGetUniformLocation(glassShaderProgram_, "uGlassAlphaTest");
+    glassUniforms_.locAlphaCutoff = glGetUniformLocation(glassShaderProgram_, "uGlassAlphaCutoff");
+    glassUniforms_.locAlphaTestFunc = glGetUniformLocation(glassShaderProgram_, "uGlassAlphaTestFunc");
 
     // NifSkope's classic particle renderer draws a camera-space +/-size quad with the same
     // UVs for every texture stage. Keep one immutable unit quad and vary only the model/color.
