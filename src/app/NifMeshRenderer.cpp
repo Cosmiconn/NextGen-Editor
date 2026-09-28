@@ -658,10 +658,14 @@ std::expected<core::DdsImage, std::string> LoadPlatformRasterImage(
 NifMeshRenderer::~NifMeshRenderer() { Shutdown(); }
 
 void NifMeshRenderer::Init() {
-    if (shaderProgram_) Shutdown();
+    if (shaderProgram_ || glassShaderProgram_) Shutdown();
     const std::uint32_t vs = CompileShader(GL_VERTEX_SHADER, kVertexShaderSrc);
     const std::uint32_t fs = CompileShader(GL_FRAGMENT_SHADER, kFragmentShaderSrc);
     shaderProgram_ = LinkProgram(vs, fs);
+
+    const std::uint32_t glassVs = CompileShader(GL_VERTEX_SHADER, kGlassVertexShaderSrc);
+    const std::uint32_t glassFs = CompileShader(GL_FRAGMENT_SHADER, kGlassFragmentShaderSrc);
+    glassShaderProgram_ = LinkProgram(glassVs, glassFs);
     uniforms_.locViewProj = glGetUniformLocation(shaderProgram_, "uViewProj");
     uniforms_.locView = glGetUniformLocation(shaderProgram_, "uView");
     uniforms_.locModel = glGetUniformLocation(shaderProgram_, "uModel");
@@ -707,6 +711,19 @@ void NifMeshRenderer::Init() {
         std::snprintf(name, sizeof(name), "uEnvironmentTex%zu", effect);
         uniforms_.locEnvironmentSampler[effect] = glGetUniformLocation(shaderProgram_, name);
     }
+
+    glassUniforms_.locViewProj = glGetUniformLocation(glassShaderProgram_, "uViewProj");
+    glassUniforms_.locModel = glGetUniformLocation(glassShaderProgram_, "uModel");
+    glassUniforms_.locCameraPos = glGetUniformLocation(glassShaderProgram_, "uCameraPos");
+    glassUniforms_.locEnvironment = glGetUniformLocation(glassShaderProgram_, "uGlassEnvironment");
+    glassUniforms_.locRainbow = glGetUniformLocation(glassShaderProgram_, "uGlassRainbow");
+    glassUniforms_.locBaseColor = glGetUniformLocation(glassShaderProgram_, "uGlassBaseColor");
+    glassUniforms_.locRefractionScale = glGetUniformLocation(glassShaderProgram_, "uGlassRefractionScale");
+    glassUniforms_.locReflectionScale = glGetUniformLocation(glassShaderProgram_, "uGlassReflectionScale");
+    glassUniforms_.locIorRatio = glGetUniformLocation(glassShaderProgram_, "uGlassIorRatio");
+    glassUniforms_.locAmbient = glGetUniformLocation(glassShaderProgram_, "uGlassAmbient");
+    glassUniforms_.locRainbowSpread = glGetUniformLocation(glassShaderProgram_, "uGlassRainbowSpread");
+    glassUniforms_.locRainbowScale = glGetUniformLocation(glassShaderProgram_, "uGlassRainbowScale");
 
     // NifSkope's classic particle renderer draws a camera-space +/-size quad with the same
     // UVs for every texture stage. Keep one immutable unit quad and vary only the model/color.
@@ -773,6 +790,10 @@ void NifMeshRenderer::Shutdown() {
         if (tex) glDeleteTextures(1, &tex);
     }
     textureCache_.clear();
+    for (auto& [path, tex] : cubeTextureCache_) {
+        if (tex) glDeleteTextures(1, &tex);
+    }
+    cubeTextureCache_.clear();
     perObjectModel_.clear();
     perObjectParticleRuntime_.clear();
     opaqueItems_.clear();
@@ -782,7 +803,9 @@ void NifMeshRenderer::Shutdown() {
     if (particleVao_) glDeleteVertexArrays(1, &particleVao_);
     particleEbo_ = particleVbo_ = particleVao_ = 0;
     if (shaderProgram_) glDeleteProgram(shaderProgram_);
+    if (glassShaderProgram_) glDeleteProgram(glassShaderProgram_);
     shaderProgram_ = 0;
+    glassShaderProgram_ = 0;
 }
 
 std::uint32_t NifMeshRenderer::GetOrLoadTexture(const std::filesystem::path& resolvedPath) {
@@ -820,6 +843,50 @@ std::uint32_t NifMeshRenderer::GetOrLoadTexture(const std::filesystem::path& res
                       resolvedPath.string().c_str(), imageResult.error().c_str());
     }
     textureCache_.emplace(key, tex);
+    return tex;
+}
+
+std::uint32_t NifMeshRenderer::GetOrLoadCubeTexture(
+    const std::filesystem::path& resolvedPath) {
+    const std::string key = resolvedPath.string();
+    if (const auto it = cubeTextureCache_.find(key); it != cubeTextureCache_.end())
+        return it->second;
+
+    std::uint32_t tex = 0;
+    const auto cube = core::LoadDdsCubeImage(resolvedPath);
+    if (!cube) {
+        std::fprintf(stderr, "[NifMeshRenderer] Cube-Map nicht ladbar (%s): %s\n",
+                     resolvedPath.string().c_str(), cube.error().c_str());
+        cubeTextureCache_.emplace(key, 0);
+        return 0;
+    }
+
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, tex);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    for (std::size_t face = 0; face < cube->faces.size(); ++face) {
+        const auto& image = cube->faces[face];
+        if (image.width != cube->width || image.height != cube->height ||
+            image.rgba.size() != static_cast<std::size_t>(image.width) * image.height * 4u) {
+            std::fprintf(stderr, "[NifMeshRenderer] Ungueltige Cube-Map-Flaeche %zu: %s\n",
+                         face, resolvedPath.string().c_str());
+            glDeleteTextures(1, &tex);
+            cubeTextureCache_.emplace(key, 0);
+            return 0;
+        }
+        glTexImage2D(static_cast<GLenum>(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face),
+                     0, GL_RGBA8, static_cast<GLsizei>(image.width),
+                     static_cast<GLsizei>(image.height), 0,
+                     GL_RGBA, GL_UNSIGNED_BYTE, image.rgba.data());
+    }
+    glGenerateMipmap(GL_TEXTURE_CUBE_MAP);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+    cubeTextureCache_.emplace(key, tex);
     return tex;
 }
 
