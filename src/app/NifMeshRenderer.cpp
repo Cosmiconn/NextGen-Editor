@@ -1061,6 +1061,9 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                     sub.alphaTextureBlender11 = part.shaderName == "AlphaTextureBlender11";
                     sub.alphaTextureBlender = part.shaderName == "AlphaTextureBlender";
                     sub.pgTerrain = part.shaderName == "PgTerrain";
+                    sub.glass = part.shaderName == "Glass";
+                    if (sub.glass && part.glassShader)
+                        sub.glassParameters = *part.glassShader;
                     const bool hasVertexColors =
                         part.vertexColors.size() == part.positions.size();
                     if (hasVertexColors) {
@@ -1113,6 +1116,12 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                     sub.alphaSrcBlend = part.alphaSrcBlend;
                     sub.alphaDstBlend = part.alphaDstBlend;
                     sub.alphaTestFunc = part.alphaTestFunc;
+                    if (sub.glass) {
+                        // Stock Gamebryo Glass.NSF explicitly overrides these two render states.
+                        sub.alphaBlend = true;
+                        sub.alphaSrcBlend = 6; // SRC_ALPHA
+                        sub.alphaDstBlend = 7; // INV_SRC_ALPHA
+                    }
                     sub.depthTest = part.depthTest;
                     sub.depthWrite = part.depthWrite;
                     sub.depthFunction = part.depthFunction;
@@ -1237,10 +1246,32 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                         }
                         if (!src.sourceUsesEmbeddedPixelData && src.texture.empty()) continue;
 
+                        // Glass.NSF packs only position+normal. EnvMap is sampled as a cube
+                        // direction and RainbowMap from the view/normal angle, so neither authored
+                        // shader texture consumes mesh UVs.
+                        if (sub.glass && slotIndex == 0u && src.sourceIsCubeMap) {
+                            if (src.sourceUsesEmbeddedPixelData) {
+                                std::fprintf(stderr,
+                                    "[NifMeshRenderer] Eingebettete Glass-Cube-Map wird nicht unterstuetzt: %s\n",
+                                    obj.modelPath.c_str());
+                            } else if (auto texPath = resolveTexturePath(src.texture)) {
+                                sub.glassEnvironmentCube = GetOrLoadCubeTexture(*texPath);
+                            } else {
+                                std::fprintf(stderr,
+                                    "[NifMeshRenderer] Glass-Cube-Map nicht gefunden: %s (%s)\n",
+                                    src.texture.c_str(), obj.modelPath.c_str());
+                            }
+                            continue;
+                        }
+
+                        const bool glassAngleTexture = sub.glass && slotIndex == 1u;
                         const bool hasSlotUvs = src.uvSet < part.uvSets.size() &&
                                                 part.uvSets[src.uvSet].size() == part.positions.size();
                         const bool hasBaseFallbackUvs = part.uvs.size() == part.positions.size();
-                        if (!hasSlotUvs && hasBaseFallbackUvs) {
+                        if (glassAngleTexture) {
+                            // RainbowMap is sampled as a 1D lookup encoded in a 2D texture.
+                            dst.uvSet = 0;
+                        } else if (!hasSlotUvs && hasBaseFallbackUvs) {
                             // Some Fiesta exports reference an unavailable secondary UV set even
                             // though UV0 is valid. Dropping the complete texture made whole material
                             // layers disappear; render with UV0 as a deterministic fallback.
