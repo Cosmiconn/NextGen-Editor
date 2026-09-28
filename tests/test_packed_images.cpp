@@ -43,6 +43,51 @@ int main() {
     check(image && image->rgba == std::vector<std::uint8_t>{0,0,255,255,255,0,0,255}, "DDS row pitch, masks and vertical origin");
     std::filesystem::remove(file);
 
+    // Legacy DDS cube map, 2x2 RGBA32 with a second 1x1 mip after every face.
+    // Distinct face colors verify that the loader skips each face's full mip chain.
+    std::vector<std::uint8_t> cube(128 + 6 * 20, 0);
+    auto putCube = [&](int at, std::uint32_t n) {
+        for (int b = 0; b < 4; ++b) cube[at + b] = static_cast<std::uint8_t>(n >> (b * 8));
+    };
+    putCube(0,0x20534444); putCube(4,124); putCube(8,0x2100F); putCube(12,2); putCube(16,2);
+    putCube(20,8); putCube(28,2); putCube(76,32); putCube(80,0x41); putCube(88,32);
+    putCube(92,0x000000ff); putCube(96,0x0000ff00); putCube(100,0x00ff0000); putCube(104,0xff000000);
+    putCube(108,0x401008); // texture + mipmap + complex
+    putCube(112,0x0000fe00); // cubemap + all six faces
+    const std::array<std::array<std::uint8_t,4>,6> faceColors{{
+        {{255,0,0,255}}, {{0,255,0,255}}, {{0,0,255,255}},
+        {{255,255,0,255}}, {{255,0,255,255}}, {{0,255,255,255}}
+    }};
+    for (std::size_t face = 0; face < faceColors.size(); ++face) {
+        const std::size_t base = 128 + face * 20;
+        for (std::size_t px = 0; px < 4; ++px)
+            for (std::size_t ch = 0; ch < 4; ++ch)
+                cube[base + px*4 + ch] = faceColors[face][ch];
+        // lower mip deliberately differs; next face must start after these four bytes.
+        cube[base+16]=static_cast<std::uint8_t>(face+1);
+        cube[base+17]=cube[base+18]=0;
+        cube[base+19]=255;
+    }
+    const auto cubeFile = std::filesystem::temp_directory_path() / "nextgen-cubemap.dds";
+    { std::ofstream out(cubeFile,std::ios::binary);
+      out.write(reinterpret_cast<const char*>(cube.data()),static_cast<std::streamsize>(cube.size())); }
+    const auto cubeImage = LoadDdsCubeImage(cubeFile);
+    check(cubeImage && cubeImage->width == 2 && cubeImage->height == 2, "DDS cube dimensions");
+    if (cubeImage) {
+        for (std::size_t face = 0; face < faceColors.size(); ++face) {
+            check(cubeImage->faces[face].rgba.size() == 16, "DDS cube face pixel count");
+            if (cubeImage->faces[face].rgba.size() >= 4)
+                check(std::equal(faceColors[face].begin(), faceColors[face].end(),
+                                 cubeImage->faces[face].rgba.begin()),
+                      "DDS cube face order and mip stride");
+        }
+    }
+    cube.resize(cube.size()-1);
+    { std::ofstream out(cubeFile,std::ios::binary);
+      out.write(reinterpret_cast<const char*>(cube.data()),static_cast<std::streamsize>(cube.size())); }
+    check(!LoadDdsCubeImage(cubeFile), "Truncated DDS cube rejected");
+    std::filesystem::remove(cubeFile);
+
     // 24-bit BMP: 2x2, positive height (bottom-up), each 6-byte row padded to 8 bytes.
     // DdsImage convention keeps the bottom row first for OpenGL V=0.
     std::vector<std::uint8_t> bmp(54 + 16, 0);
