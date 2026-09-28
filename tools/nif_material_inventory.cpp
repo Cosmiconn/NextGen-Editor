@@ -391,14 +391,15 @@ int main(int argc, char** argv) {
 
             const auto auditExternalTexture = [&](const std::string& textureName,
                                                   const char* bindingKind,
-                                                  bool cubeMap = false) {
+                                                  bool cubeMap = false,
+                                                  const core::NifMeshPart* geometryHint = nullptr) {
                 if (textureName.empty()) return;
                 ++externalTextureBindings;
                 if (!verifyExternalTextures) return;
 
                 const auto useSiblingEmbeddedFallback = [&]() {
                     const auto fallback =
-                        core::ResolveSiblingEmbeddedTexture(entry.path(), textureName);
+                        core::ResolveSiblingEmbeddedTexture(entry.path(), textureName, geometryHint);
                     if (fallback.ambiguous) {
                         ++ambiguousSiblingEmbeddedFallbackBindings;
                         return false;
@@ -989,7 +990,7 @@ int main(int argc, char** argv) {
                     }
                     for (const auto& frame : anim.frames) {
                         if (!frame.sourceUsesEmbeddedPixelData && !frame.texture.empty())
-                            auditExternalTexture(frame.texture, "flip-frame");
+                            auditExternalTexture(frame.texture, "flip-frame", false, &part);
                     }
                 }
 
@@ -1022,7 +1023,7 @@ int main(int argc, char** argv) {
                         if (!texture.embeddedTexture) ++stat.unresolvedEmbedded;
                     } else if (!texture.texture.empty()) {
                         ++stat.external;
-                        auditExternalTexture(texture.texture, "classic-slot", texture.sourceIsCubeMap);
+                        auditExternalTexture(texture.texture, "classic-slot", texture.sourceIsCubeMap, &part);
                     }
                     ++classicClampModes[texture.clampMode];
                     ++classicFilterModes[texture.filterMode];
@@ -1214,7 +1215,7 @@ int main(int argc, char** argv) {
                         if (!texture.embeddedTexture) ++stat.unresolvedEmbedded;
                     } else if (!texture.texture.empty()) {
                         ++stat.external;
-                        auditExternalTexture(texture.texture, "shader-slot", texture.sourceIsCubeMap);
+                        auditExternalTexture(texture.texture, "shader-slot", texture.sourceIsCubeMap, &part);
                     }
                 }
 
@@ -1238,7 +1239,7 @@ int main(int argc, char** argv) {
                         if (!effect.embeddedTexture) ++stat.unresolvedEmbedded;
                     } else if (!effect.texture.empty()) {
                         ++stat.external;
-                        auditExternalTexture(effect.texture, "texture-effect");
+                        auditExternalTexture(effect.texture, "texture-effect", false, &part);
                     }
                     if (effect.clippingPlaneEnabled) {
                         ++stat.clippingPlane;
