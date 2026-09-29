@@ -102,7 +102,7 @@ The visual runner writes:
 The SHA-256 values are evidence identifiers, not a cross-GPU pixel-equality gate.
 Driver/GPU rasterization can differ slightly; unexplained visual differences still require inspection.
 
-The Python runner also decodes the generated 24-bit BMPs and validates the evidence itself. A category is rejected if all three deterministic samples are blank. Dynamic categories are rejected when they change **zero rendered pixels** across all three samples; this is stronger and more transparent than merely comparing file hashes. Frame-edge contact is recorded as a review flag rather than a hard failure because legitimate terrain/water/large geometry may intentionally reach the viewport boundary.
+The Python runner also decodes the generated 24-bit BMPs and validates the evidence itself. A category is rejected if all three deterministic samples are blank. Dynamic categories are rejected when they change **zero rendered pixels** across all three samples; this is stronger and more transparent than merely comparing file hashes. Frame-edge contact is recorded as a review flag rather than a hard failure because legitimate terrain/water/large geometry may intentionally reach the viewport boundary. Coverage, bounds and edge-contact counts remain diagnostic evidence only; no arbitrary visual-quality threshold is introduced.
 
 ## Running the full visual matrix
 
