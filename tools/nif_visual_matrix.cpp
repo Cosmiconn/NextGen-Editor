@@ -61,6 +61,21 @@ bool ShaderIs(const core::NifMeshPart& part, std::string_view wanted) {
     return Lower(part.shaderName) == Lower(std::string(wanted));
 }
 
+// The visual matrix is a review set, not a stress benchmark. Prefer assets whose relevant
+// feature is unambiguous while keeping geometry/system counts small enough to inspect in one
+// 512x512 snapshot. Stress/coverage remains the job of nif_material_inventory over the full corpus.
+std::uint64_t NearTargetScore(std::uint64_t value, std::uint64_t target) {
+    constexpr std::uint64_t kSpan = 1000000000ull;
+    const std::uint64_t delta = value > target ? value - target : target - value;
+    return kSpan - std::min(delta, kSpan);
+}
+
+std::uint64_t SimpleCountScore(std::uint64_t count) {
+    constexpr std::uint64_t kSpan = 1000000000ull;
+    if (count == 0) return 0;
+    return kSpan - std::min(count - 1u, kSpan);
+}
+
 void Consider(std::map<std::string, Candidate>& best,
               const std::string& category,
               const fs::path& root,
@@ -220,10 +235,13 @@ int main(int argc, char** argv) {
             std::uint64_t classicParticles = 0;
             std::uint64_t meshParticles = 0;
             std::uint64_t worldSpaceParticles = 0;
+            std::uint64_t activeInitialParticles = 0;
             for (const auto& system : model->particleSystems) {
                 if (system.meshParticles) ++meshParticles;
                 else ++classicParticles;
                 if (system.worldSpace) ++worldSpaceParticles;
+                if (system.hasParticleData)
+                    activeInitialParticles += system.particleData.activeCount;
             }
 
             const std::uint64_t envSphere =
@@ -243,58 +261,67 @@ int main(int argc, char** argv) {
 
             if (vegetationName && triangles > 0) {
                 Consider(best, "vegetation", root, it->path(), relative,
-                         1000000000000000ull + alphaTestParts * 1000000000000ull + triangles,
+                         (alphaTestParts > 0 ? 1000000000000000ull : 0ull) +
+                         NearTargetScore(triangles, 2500u),
                          Counts({{"nameKeyword", 1}, {"alphaTestParts", alphaTestParts}, {"triangles", triangles}}));
             }
 
             if (triangles > 0 && model->particleSystems.empty()) {
                 const std::uint64_t semanticBonus = buildingName ? 1000000000000000ull : 0ull;
                 Consider(best, "building_static", root, it->path(), relative,
-                         semanticBonus + triangles,
+                         semanticBonus + NearTargetScore(triangles, 8000u),
                          Counts({{"buildingKeyword", buildingName ? 1u : 0u}, {"triangles", triangles}}));
             }
 
             if (alphaTestParts > 0) {
                 Consider(best, "alpha_cutout", root, it->path(), relative,
-                         alphaTestParts * 1000000000000ull + alphaBlendParts * 1000000000ull + triangles,
+                         SimpleCountScore(alphaTestParts) * 1000000000ull +
+                         NearTargetScore(triangles, 2500u),
                          Counts({{"alphaTestParts", alphaTestParts}, {"alphaBlendParts", alphaBlendParts}, {"triangles", triangles}}));
             }
 
             if (envSphere > 0 || glassParts > 0) {
-                const std::uint64_t waterBonus = waterName ? 100000000000000ull : 0ull;
+                const std::uint64_t waterBonus = waterName ? 1000000000000000ull : 0ull;
                 Consider(best, "environment_water", root, it->path(), relative,
-                         envSphere * 1000000000000000ull + waterBonus + glassParts * 1000000000000ull + triangles,
+                         waterBonus + (envSphere > 0 ? 1000000000000ull : 0ull) +
+                         NearTargetScore(triangles, 1200u),
                          Counts({{"environmentSphereBlocks", envSphere}, {"waterKeyword", waterName ? 1u : 0u}, {"glassParts", glassParts}}));
             }
 
             if (glowParts > 0) {
                 Consider(best, "glow_emissive", root, it->path(), relative,
-                         glowParts * 1000000000000ull + triangles,
+                         SimpleCountScore(glowParts) * 1000000000ull +
+                         NearTargetScore(triangles, 2000u),
                          Counts({{"glowParts", glowParts}, {"triangles", triangles}}));
             }
 
             if (bumpParts > 0) {
                 Consider(best, "bump", root, it->path(), relative,
-                         bumpParts * 1000000000000ull + triangles,
+                         SimpleCountScore(bumpParts) * 1000000000ull +
+                         NearTargetScore(triangles, 1000u),
                          Counts({{"bumpParts", bumpParts}, {"triangles", triangles}}));
             }
 
             if (lodParts > 0) {
                 Consider(best, "lod", root, it->path(), relative,
-                         lodParts * 1000000000000ull + triangles,
+                         SimpleCountScore(lodParts) * 1000000000ull +
+                         NearTargetScore(triangles, 3000u),
                          Counts({{"lodParts", lodParts}, {"triangles", triangles}}));
             }
 
             if (billboardParts > 0) {
                 Consider(best, "billboard", root, it->path(), relative,
-                         billboardParts * 1000000000000ull + triangles,
+                         SimpleCountScore(billboardParts) * 1000000000ull +
+                         NearTargetScore(triangles, 1200u),
                          Counts({{"billboardParts", billboardParts}, {"triangles", triangles}}));
             }
 
             if (textureTransformControllers > 0 || authoredTextureTransforms > 0) {
                 Consider(best, "texture_transform", root, it->path(), relative,
-                         textureTransformControllers * 1000000000000000ull +
-                         authoredTextureTransforms * 1000000000000ull + triangles,
+                         (textureTransformControllers > 0 ? 1000000000000000ull : 0ull) +
+                         SimpleCountScore(textureTransformControllers > 0
+                             ? textureTransformControllers : authoredTextureTransforms) * 1000000ull +
+                         NearTargetScore(triangles, 1200u),
                          Counts({{"transformControllers", textureTransformControllers},
                                  {"authoredTransforms", authoredTextureTransforms},
                                  {"triangles", triangles}}));
@@ -302,52 +329,69 @@ int main(int argc, char** argv) {
 
             if (flipControllers > 0) {
                 Consider(best, "flip_controller", root, it->path(), relative,
-                         flipControllers * 1000000000000ull + triangles,
+                         SimpleCountScore(flipControllers) * 1000000000ull +
+                         NearTargetScore(triangles, 1200u),
                          Counts({{"flipControllers", flipControllers}, {"triangles", triangles}}));
             }
 
             if (classicParticles > 0) {
                 Consider(best, "particles_classic", root, it->path(), relative,
-                         classicParticles * 1000000000000ull + model->particleSystems.size(),
+                         (activeInitialParticles > 0 ? 1000000000000000ull : 0ull) +
+                         SimpleCountScore(classicParticles) * 1000000ull +
+                         NearTargetScore(triangles, 500u),
                          Counts({{"classicSystems", classicParticles},
-                                 {"allParticleSystems", static_cast<std::uint64_t>(model->particleSystems.size())}}));
+                                 {"allParticleSystems", static_cast<std::uint64_t>(model->particleSystems.size())},
+                                 {"activeInitialParticles", activeInitialParticles},
+                                 {"triangles", triangles}}));
             }
 
             if (meshParticles > 0) {
                 Consider(best, "particles_mesh", root, it->path(), relative,
-                         meshParticles * 1000000000000ull + model->particleSystems.size(),
+                         (activeInitialParticles > 0 ? 1000000000000000ull : 0ull) +
+                         SimpleCountScore(meshParticles) * 1000000ull +
+                         NearTargetScore(triangles, 500u),
                          Counts({{"meshSystems", meshParticles},
-                                 {"allParticleSystems", static_cast<std::uint64_t>(model->particleSystems.size())}}));
+                                 {"allParticleSystems", static_cast<std::uint64_t>(model->particleSystems.size())},
+                                 {"activeInitialParticles", activeInitialParticles},
+                                 {"triangles", triangles}}));
             }
 
             if (worldSpaceParticles > 0) {
                 Consider(best, "particles_world_space", root, it->path(), relative,
-                         worldSpaceParticles * 1000000000000ull + model->particleSystems.size(),
+                         (activeInitialParticles > 0 ? 1000000000000000ull : 0ull) +
+                         SimpleCountScore(worldSpaceParticles) * 1000000ull +
+                         NearTargetScore(triangles, 500u),
                          Counts({{"worldSpaceSystems", worldSpaceParticles},
-                                 {"allParticleSystems", static_cast<std::uint64_t>(model->particleSystems.size())}}));
+                                 {"allParticleSystems", static_cast<std::uint64_t>(model->particleSystems.size())},
+                                 {"activeInitialParticles", activeInitialParticles},
+                                 {"triangles", triangles}}));
             }
 
             if (pgTerrainParts > 0) {
                 Consider(best, "pgterrain", root, it->path(), relative,
-                         pgTerrainParts * 1000000000000ull + triangles,
+                         SimpleCountScore(pgTerrainParts) * 1000000000ull +
+                         NearTargetScore(triangles, 5000u),
                          Counts({{"pgTerrainParts", pgTerrainParts}, {"triangles", triangles}}));
             }
 
             if (alphaTextureBlenderParts > 0) {
                 Consider(best, "alpha_texture_blender", root, it->path(), relative,
-                         alphaTextureBlenderParts * 1000000000000ull + triangles,
+                         SimpleCountScore(alphaTextureBlenderParts) * 1000000000ull +
+                         NearTargetScore(triangles, 3000u),
                          Counts({{"alphaTextureBlenderParts", alphaTextureBlenderParts}, {"triangles", triangles}}));
             }
 
             if (alphaTextureBlender11Parts > 0) {
                 Consider(best, "alpha_texture_blender11", root, it->path(), relative,
-                         alphaTextureBlender11Parts * 1000000000000ull + triangles,
+                         SimpleCountScore(alphaTextureBlender11Parts) * 1000000000ull +
+                         NearTargetScore(triangles, 3000u),
                          Counts({{"alphaTextureBlender11Parts", alphaTextureBlender11Parts}, {"triangles", triangles}}));
             }
 
             if (glassParts > 0) {
                 Consider(best, "glass", root, it->path(), relative,
-                         glassParts * 1000000000000ull + triangles,
+                         SimpleCountScore(glassParts) * 1000000000ull +
+                         NearTargetScore(triangles, 500u),
                          Counts({{"glassParts", glassParts}, {"triangles", triangles}}));
             }
         }
