@@ -274,24 +274,40 @@ try {
 
         $stem = Convert-ToSnapshotStem $relativePath
         $initialBmp = Join-Path $categoryDir ($stem + ".bmp")
-        $animatedBmp = Join-Path $categoryDir ($stem + "__animated.bmp")
+        $t025Bmp = Join-Path $categoryDir ($stem + "__animated.bmp")
+        $t1Bmp = Join-Path $categoryDir ($stem + "__t1.bmp")
 
         if (-not (Test-Path -LiteralPath $initialBmp -PathType Leaf)) {
-            throw "Missing initial snapshot for [$category]: $initialBmp"
+            throw "Missing t=0.00 snapshot for [$category]: $initialBmp"
         }
-        if (-not (Test-Path -LiteralPath $animatedBmp -PathType Leaf)) {
-            throw "Missing animated snapshot for [$category]: $animatedBmp"
+        if (-not (Test-Path -LiteralPath $t025Bmp -PathType Leaf)) {
+            throw "Missing t=0.25 snapshot for [$category]: $t025Bmp"
+        }
+        if (-not (Test-Path -LiteralPath $t1Bmp -PathType Leaf)) {
+            throw "Missing t=1.00 snapshot for [$category]: $t1Bmp"
+        }
+
+        $nifPath = Join-Path $root $relativePath
+        if (-not (Test-Path -LiteralPath $nifPath -PathType Leaf)) {
+            throw "Selected NIF disappeared before review hashing: $nifPath"
         }
 
         $reviewRows.Add([pscustomobject]@{
             Category = $category
             Path = $relativePath
             Reason = [string]$row.reason
-            Initial = "snapshots/$category/$stem.bmp"
-            Animated = "snapshots/$category/$($stem)__animated.bmp"
+            NifSha256 = (Get-FileHash -LiteralPath $nifPath -Algorithm SHA256).Hash
+            T000Sha256 = (Get-FileHash -LiteralPath $initialBmp -Algorithm SHA256).Hash
+            T025Sha256 = (Get-FileHash -LiteralPath $t025Bmp -Algorithm SHA256).Hash
+            T100Sha256 = (Get-FileHash -LiteralPath $t1Bmp -Algorithm SHA256).Hash
+            T000 = "snapshots/$category/$stem.bmp"
+            T025 = "snapshots/$category/$($stem)__animated.bmp"
+            T100 = "snapshots/$category/$($stem)__t1.bmp"
         })
     }
 
+    $reviewTable = Join-Path $output "review.tsv"
+    $reviewRows | Export-Csv -LiteralPath $reviewTable -Delimiter ([char]9) -NoTypeInformation -Encoding utf8NoBOM
     $checklist = Join-Path $output "VISUAL_REVIEW_CHECKLIST.md"
     $md = [System.Text.StringBuilder]::new()
 
@@ -311,8 +327,10 @@ try {
         [void]$md.AppendLine("")
         [void]$md.AppendLine("- NIF: $($item.Path)")
         [void]$md.AppendLine("- Selection evidence: $($item.Reason)")
-        [void]$md.AppendLine("- Initial snapshot: $($item.Initial)")
-        [void]$md.AppendLine("- Animated snapshot: $($item.Animated)")
+        [void]$md.AppendLine("- NIF SHA-256: $($item.NifSha256)")
+        [void]$md.AppendLine("- t=0.00 s: $($item.T000) (SHA-256 $($item.T000Sha256))")
+        [void]$md.AppendLine("- t=0.25 s: $($item.T025) (SHA-256 $($item.T025Sha256))")
+        [void]$md.AppendLine("- t=1.00 s: $($item.T100) (SHA-256 $($item.T100Sha256))")
         [void]$md.AppendLine("- [ ] Geometry")
         [void]$md.AppendLine("- [ ] Texture assignment / UVs")
         [void]$md.AppendLine("- [ ] Alpha / blend / depth / culling")
@@ -341,15 +359,19 @@ try {
         $cat = [System.Net.WebUtility]::HtmlEncode([string]$item.Category)
         $path = [System.Net.WebUtility]::HtmlEncode([string]$item.Path)
         $reason = [System.Net.WebUtility]::HtmlEncode([string]$item.Reason)
-        $initial = ([string]$item.Initial).Replace("\", "/")
-        $animated = ([string]$item.Animated).Replace("\", "/")
+        $initial = ([string]$item.T000).Replace("\\", "/")
+        $t025 = ([string]$item.T025).Replace("\\", "/")
+        $t1 = ([string]$item.T100).Replace("\\", "/")
+        $nifHash = [System.Net.WebUtility]::HtmlEncode([string]$item.NifSha256)
 
         [void]$html.AppendLine(
-            "<section><h2>$cat</h2><p><code>$path</code></p><p>$reason</p><div class='shots'>")
+            "<section><h2>$cat</h2><p><code>$path</code></p><p>$reason</p><p><small>NIF SHA-256: $nifHash</small></p><div class='shots'>")
         [void]$html.AppendLine(
-            "<div class='shot'><h3>Initial</h3><img src='$initial'></div>")
+            "<div class='shot'><h3>t = 0.00 s</h3><img src='$initial'></div>")
         [void]$html.AppendLine(
-            "<div class='shot'><h3>Animated +250 ms</h3><img src='$animated'></div>")
+            "<div class='shot'><h3>t = 0.25 s</h3><img src='$t025'></div>")
+        [void]$html.AppendLine(
+            "<div class='shot'><h3>t = 1.00 s</h3><img src='$t1'></div>")
         [void]$html.AppendLine("</div></section>")
     }
 
@@ -362,6 +384,7 @@ try {
     Write-Host ""
     Write-Host "RESMAP VISUAL MATRIX GENERATED"
     Write-Host "  matrix    : $manifest"
+    Write-Host "  evidence  : $reviewTable"
     Write-Host "  snapshots : $snapshotRoot"
     Write-Host "  review    : $checklist"
     Write-Host "  gallery   : $htmlPath"
