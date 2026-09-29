@@ -64,7 +64,14 @@ jobs:
           ./build/nif_material_inventory --strict-renderer --defer-priority2-character-shaders --asset-root tests/fixtures tests/fixtures
       - name: Smoke-test Linux OpenGL NIF snapshot tool
         if: runner.os == 'Linux'
-        run: xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 ./build/test_nif_opengl tests/fixtures build/gl-output tree05.nif
+        run: |
+          xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 \
+            ./build/test_nif_opengl tests/fixtures build/gl-output tree05.nif
+          # Back_Shamrock contains four real world-space mesh-particle systems with
+          # six authored active particles each. This exercises particle-aware snapshot
+          # framing instead of compiling that evidence path without ever using it.
+          xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 \
+            ./build/test_nif_opengl tests/fixtures/particles build/gl-particle-output Back_Shamrock.nif
       - name: Smoke-test Linux ResMap visual runner
         if: runner.os == 'Linux'
         run: |
@@ -82,17 +89,24 @@ jobs:
           test -s build/resmap-visual-linux-smoke/review.tsv
           test -s build/resmap-visual-linux-smoke/VISUAL_REVIEW_CHECKLIST.md
           test -s build/resmap-visual-linux-smoke/index.html
+      - name: Package Linux NIF visual tools
+        if: runner.os == 'Linux'
+        run: |
+          rm -rf artifact-linux
+          mkdir -p artifact-linux
+          cp \
+            build/nif_material_inventory \
+            build/nif_probe \
+            build/nif_visual_matrix \
+            build/test_nif_opengl \
+            tools/verify_resmap_visual.py \
+            artifact-linux/
       - name: Upload Linux NIF auditor
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v7
         with:
           name: NextGen-NIF-Auditor-linux
-          path: |
-            build/nif_material_inventory
-            build/nif_probe
-            build/nif_visual_matrix
-            build/test_nif_opengl
-            tools/verify_resmap_visual.py
+          path: artifact-linux/
           if-no-files-found: error
       - name: Smoke-test strict ResMap audit runner
         if: runner.os == 'Windows'
