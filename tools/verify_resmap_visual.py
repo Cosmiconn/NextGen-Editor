@@ -19,6 +19,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import struct
 import sys
 import tempfile
 import zipfile
@@ -40,6 +41,88 @@ def sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest().upper()
+
+
+def load_bmp_rgb(path: Path) -> tuple[int, int, bytes]:
+    """Read the deterministic 24-bit BMP emitted by test_nif_opengl."""
+    data = path.read_bytes()
+    if len(data) < 54 or data[:2] != b"BM":
+        raise RuntimeError(f"Snapshot is not a BMP file: {path}")
+
+    pixel_offset = struct.unpack_from("<I", data, 10)[0]
+    dib_size = struct.unpack_from("<I", data, 14)[0]
+    width = struct.unpack_from("<i", data, 18)[0]
+    signed_height = struct.unpack_from("<i", data, 22)[0]
+    planes, bits_per_pixel = struct.unpack_from("<HH", data, 26)
+    compression = struct.unpack_from("<I", data, 30)[0]
+    if dib_size < 40 or width <= 0 or signed_height == 0 or planes != 1 or bits_per_pixel != 24 or compression != 0:
+        raise RuntimeError(
+            f"Unsupported snapshot BMP layout: {path} "
+            f"(dib={dib_size}, width={width}, height={signed_height}, planes={planes}, "
+            f"bpp={bits_per_pixel}, compression={compression})"
+        )
+
+    height = abs(signed_height)
+    row_stride = (width * 3 + 3) & ~3
+    required = pixel_offset + row_stride * height
+    if required > len(data):
+        raise RuntimeError(f"Truncated snapshot BMP: {path}")
+
+    rgb = bytearray(width * height * 3)
+    for display_y in range(height):
+        source_y = height - 1 - display_y if signed_height > 0 else display_y
+        row_start = pixel_offset + source_y * row_stride
+        destination = display_y * width * 3
+        for x in range(width):
+            source = row_start + x * 3
+            target = destination + x * 3
+            rgb[target + 0] = data[source + 2]
+            rgb[target + 1] = data[source + 1]
+            rgb[target + 2] = data[source + 0]
+    return width, height, bytes(rgb)
+
+
+def frame_stats(width: int, height: int, rgb: bytes) -> dict[str, int | float | str]:
+    visible = 0
+    min_x, min_y = width, height
+    max_x = max_y = -1
+    border_pixels = 0
+
+    for pixel in range(width * height):
+        offset = pixel * 3
+        if rgb[offset] == 0 and rgb[offset + 1] == 0 and rgb[offset + 2] == 0:
+            continue
+        visible += 1
+        x = pixel % width
+        y = pixel // width
+        min_x = min(min_x, x)
+        min_y = min(min_y, y)
+        max_x = max(max_x, x)
+        max_y = max(max_y, y)
+        if x == 0 or y == 0 or x == width - 1 or y == height - 1:
+            border_pixels += 1
+
+    bounds = "" if visible == 0 else f"{min_x},{min_y},{max_x},{max_y}"
+    return {
+        "visible": visible,
+        "coverage": visible / float(width * height),
+        "bounds": bounds,
+        "borderPixels": border_pixels,
+    }
+
+
+def changed_pixels(first: bytes, second: bytes) -> int:
+    if len(first) != len(second):
+        raise RuntimeError("Snapshot dimensions changed between deterministic samples.")
+    changed = 0
+    for offset in range(0, len(first), 3):
+        if (
+            first[offset] != second[offset]
+            or first[offset + 1] != second[offset + 1]
+            or first[offset + 2] != second[offset + 2]
+        ):
+            changed += 1
+    return changed
 
 
 def snapshot_stem(value: str) -> str:
@@ -172,12 +255,34 @@ def write_review_outputs(output: Path, rows: list[dict[str, str]]) -> None:
     fields = [
         "Category", "Path", "Reason", "NifSha256",
         "T000Sha256", "T025Sha256", "T100Sha256",
+        "T000VisiblePixels", "T025VisiblePixels", "T100VisiblePixels",
+        "T000Coverage", "T025Coverage", "T100Coverage",
+        "T000Bounds", "T025Bounds", "T100Bounds",
+        "T000BorderPixels", "T025BorderPixels", "T100BorderPixels",
+        "ChangedT000T025", "ChangedT025T100", "ChangedT000T100",
+        "ReviewFlags",
         "T000", "T025", "T100",
     ]
     with review_path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fields, delimiter="\t", lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
+
+    metrics_path = output / "frame_metrics.tsv"
+    metric_fields = [
+        "Category", "Path",
+        "T000VisiblePixels", "T025VisiblePixels", "T100VisiblePixels",
+        "T000Coverage", "T025Coverage", "T100Coverage",
+        "T000Bounds", "T025Bounds", "T100Bounds",
+        "T000BorderPixels", "T025BorderPixels", "T100BorderPixels",
+        "ChangedT000T025", "ChangedT025T100", "ChangedT000T100",
+        "ReviewFlags",
+    ]
+    with metrics_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=metric_fields, delimiter="\t", lineterminator="\n")
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({field: row[field] for field in metric_fields})
 
     checklist = output / "VISUAL_REVIEW_CHECKLIST.md"
     lines = [
@@ -196,9 +301,11 @@ def write_review_outputs(output: Path, rows: list[dict[str, str]]) -> None:
             f"- NIF: {item['Path']}",
             f"- Selection evidence: {item['Reason']}",
             f"- NIF SHA-256: {item['NifSha256']}",
-            f"- t=0.00 s: {item['T000']} (SHA-256 {item['T000Sha256']})",
-            f"- t=0.25 s: {item['T025']} (SHA-256 {item['T025Sha256']})",
-            f"- t=1.00 s: {item['T100']} (SHA-256 {item['T100Sha256']})",
+            f"- t=0.00 s: {item['T000']} (SHA-256 {item['T000Sha256']}; visible {item['T000VisiblePixels']}; bounds {item['T000Bounds'] or 'blank'})",
+            f"- t=0.25 s: {item['T025']} (SHA-256 {item['T025Sha256']}; visible {item['T025VisiblePixels']}; bounds {item['T025Bounds'] or 'blank'})",
+            f"- t=1.00 s: {item['T100']} (SHA-256 {item['T100Sha256']}; visible {item['T100VisiblePixels']}; bounds {item['T100Bounds'] or 'blank'})",
+            f"- Changed pixels: 0→0.25 {item['ChangedT000T025']}; 0.25→1.0 {item['ChangedT025T100']}; 0→1.0 {item['ChangedT000T100']}",
+            f"- Automated review flags: {item['ReviewFlags'] or 'none'}",
             "- [ ] Geometry",
             "- [ ] Texture assignment / UVs",
             "- [ ] Alpha / blend / depth / culling",
@@ -219,6 +326,9 @@ def write_review_outputs(output: Path, rows: list[dict[str, str]]) -> None:
             f"<p><code>{html.escape(item['Path'])}</code></p>"
             f"<p>{html.escape(item['Reason'])}</p>"
             f"<p><small>NIF SHA-256: {html.escape(item['NifSha256'])}</small></p>"
+            f"<p><small>Visible pixels: {item['T000VisiblePixels']} / {item['T025VisiblePixels']} / {item['T100VisiblePixels']}; "
+            f"changed: {item['ChangedT000T025']} / {item['ChangedT025T100']} / {item['ChangedT000T100']}; "
+            f"flags: {html.escape(item['ReviewFlags'] or 'none')}</small></p>"
             "<div class='shots'>"
             f"<div class='shot'><h3>t = 0.00 s</h3><img src='{html.escape(item['T000'])}'></div>"
             f"<div class='shot'><h3>t = 0.25 s</h3><img src='{html.escape(item['T025'])}'></div>"
@@ -375,11 +485,41 @@ def main() -> int:
                 raise RuntimeError(f"Selected NIF disappeared before review hashing: {nif_path}")
 
             hashes = (sha256(initial_bmp), sha256(t025_bmp), sha256(t100_bmp))
-            if category in DYNAMIC_CATEGORIES and hashes[0] == hashes[1] == hashes[2]:
+            frames = [
+                load_bmp_rgb(initial_bmp),
+                load_bmp_rgb(t025_bmp),
+                load_bmp_rgb(t100_bmp),
+            ]
+            if len({(width, height) for width, height, _ in frames}) != 1:
                 raise RuntimeError(
-                    f"Dynamic visual matrix category [{category}] produced identical snapshots "
+                    f"Snapshot dimensions changed between deterministic samples for [{category}]: "
+                    f"{relative_path}"
+                )
+            width, height = frames[0][0], frames[0][1]
+            stats = [frame_stats(width, height, rgb) for _, _, rgb in frames]
+            changes = (
+                changed_pixels(frames[0][2], frames[1][2]),
+                changed_pixels(frames[1][2], frames[2][2]),
+                changed_pixels(frames[0][2], frames[2][2]),
+            )
+
+            if all(int(item["visible"]) == 0 for item in stats):
+                raise RuntimeError(
+                    f"Visual matrix category [{category}] produced three blank snapshots: "
+                    f"{relative_path}"
+                )
+            if category in DYNAMIC_CATEGORIES and changes == (0, 0, 0):
+                raise RuntimeError(
+                    f"Dynamic visual matrix category [{category}] changed zero pixels "
                     f"at t=0.00/0.25/1.00: {relative_path}"
                 )
+
+            flags: list[str] = []
+            for label, item in zip(("t000", "t025", "t100"), stats):
+                if int(item["visible"]) == 0:
+                    flags.append(f"{label}_blank")
+                if int(item["borderPixels"]) > 0:
+                    flags.append(f"{label}_touches_frame_edge")
 
             review_rows.append({
                 "Category": category,
@@ -389,6 +529,22 @@ def main() -> int:
                 "T000Sha256": hashes[0],
                 "T025Sha256": hashes[1],
                 "T100Sha256": hashes[2],
+                "T000VisiblePixels": str(stats[0]["visible"]),
+                "T025VisiblePixels": str(stats[1]["visible"]),
+                "T100VisiblePixels": str(stats[2]["visible"]),
+                "T000Coverage": f"{float(stats[0]['coverage']):.8f}",
+                "T025Coverage": f"{float(stats[1]['coverage']):.8f}",
+                "T100Coverage": f"{float(stats[2]['coverage']):.8f}",
+                "T000Bounds": str(stats[0]["bounds"]),
+                "T025Bounds": str(stats[1]["bounds"]),
+                "T100Bounds": str(stats[2]["bounds"]),
+                "T000BorderPixels": str(stats[0]["borderPixels"]),
+                "T025BorderPixels": str(stats[1]["borderPixels"]),
+                "T100BorderPixels": str(stats[2]["borderPixels"]),
+                "ChangedT000T025": str(changes[0]),
+                "ChangedT025T100": str(changes[1]),
+                "ChangedT000T100": str(changes[2]),
+                "ReviewFlags": ",".join(flags),
                 "T000": f"snapshots/{category}/{stem}.bmp",
                 "T025": f"snapshots/{category}/{stem}__animated.bmp",
                 "T100": f"snapshots/{category}/{stem}__t1.bmp",
@@ -400,6 +556,7 @@ def main() -> int:
         print(f"  provenance : {output / 'provenance.json'}")
         print(f"  matrix     : {manifest}")
         print(f"  evidence   : {output / 'review.tsv'}")
+        print(f"  metrics    : {output / 'frame_metrics.tsv'}")
         print(f"  snapshots  : {snapshots}")
         print(f"  review     : {output / 'VISUAL_REVIEW_CHECKLIST.md'}")
         print(f"  gallery    : {output / 'index.html'}")
