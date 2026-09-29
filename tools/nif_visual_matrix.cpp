@@ -144,37 +144,49 @@ float PeriodicDelta(float a, float b, float period) {
     return std::fabs(std::remainder(a - b, period));
 }
 
-bool TrackChangesAtEvidenceSamples(const core::NifTextureTransformAnimation& animation,
-                                   const core::NifTextureSlot& slot) {
-    if (!slot.present || !slot.hasTransform) return false;
+float EvidenceSampleTransformMotion(const core::NifTextureTransformAnimation& animation,
+                                    const core::NifTextureSlot& slot) {
+    if (!slot.present || !slot.hasTransform) return 0.0f;
 
     const auto v0 = EvaluateFloatTrackAt(animation.track, 0.0f);
     const auto v025 = EvaluateFloatTrackAt(animation.track, 0.25f);
     const auto v1 = EvaluateFloatTrackAt(animation.track, 1.0f);
-    if (!v0 || !v025 || !v1) return false;
+    if (!v0 || !v025 || !v1) return 0.0f;
 
-    const auto differs = [&](float a, float b) {
-        constexpr float kEpsilon = 1.0e-5f;
+    const auto normalizedDelta = [&](float a, float b) {
         switch (animation.operation) {
             case 0: { // U translation
                 const bool repeatsU = slot.clampMode != 0u && slot.clampMode != 1u;
-                return (repeatsU ? PeriodicDelta(a, b, 1.0f) : std::fabs(a - b)) > kEpsilon;
+                const float delta = repeatsU ? PeriodicDelta(a, b, 1.0f) : std::fabs(a - b);
+                return std::min(delta / (repeatsU ? 0.5f : 1.0f), 1.0f);
             }
             case 1: { // V translation
                 const bool repeatsV = slot.clampMode != 0u && slot.clampMode != 2u;
-                return (repeatsV ? PeriodicDelta(a, b, 1.0f) : std::fabs(a - b)) > kEpsilon;
+                const float delta = repeatsV ? PeriodicDelta(a, b, 1.0f) : std::fabs(a - b);
+                return std::min(delta / (repeatsV ? 0.5f : 1.0f), 1.0f);
             }
-            case 2: // rotation
-                return PeriodicDelta(a, b, 6.2831853071795864769f) > kEpsilon;
+            case 2: // rotation: pi is the largest distinct angular delta
+                return std::min(
+                    PeriodicDelta(a, b, 6.2831853071795864769f) / 3.14159265358979323846f,
+                    1.0f);
             case 3: // U scale
             case 4: // V scale
-                return std::fabs(a - b) > kEpsilon;
+                return std::min(std::fabs(a - b), 1.0f);
             default:
-                return false;
+                return 0.0f;
         }
     };
 
-    return differs(*v0, *v025) || differs(*v025, *v1) || differs(*v0, *v1);
+    return std::max({
+        normalizedDelta(*v0, *v025),
+        normalizedDelta(*v025, *v1),
+        normalizedDelta(*v0, *v1)
+    });
+}
+
+bool TrackChangesAtEvidenceSamples(const core::NifTextureTransformAnimation& animation,
+                                   const core::NifTextureSlot& slot) {
+    return EvidenceSampleTransformMotion(animation, slot) > 1.0e-5f;
 }
 
 // The visual matrix is a review set, not a stress benchmark. Prefer assets whose relevant
@@ -326,6 +338,7 @@ int main(int argc, char** argv) {
             std::uint64_t textureTransformControllers = 0;
             std::uint64_t dynamicTextureTransformControllers = 0;
             std::uint64_t evidenceSampleTransformControllers = 0;
+            float evidenceSampleTransformMotion = 0.0f;
             std::uint64_t authoredTextureTransforms = 0;
             std::uint64_t flipControllers = 0;
             std::uint64_t pgTerrainParts = 0;
@@ -346,10 +359,14 @@ int main(int argc, char** argv) {
                     ++textureTransformControllers;
                     if (TrackHasVisibleVariation(animation.track))
                         ++dynamicTextureTransformControllers;
-                    if (animation.slot < part.textureSlots.size() &&
-                        TrackChangesAtEvidenceSamples(
-                            animation, part.textureSlots[animation.slot]))
-                        ++evidenceSampleTransformControllers;
+                    if (animation.slot < part.textureSlots.size()) {
+                        const float evidenceMotion = EvidenceSampleTransformMotion(
+                            animation, part.textureSlots[animation.slot]);
+                        evidenceSampleTransformMotion =
+                            std::max(evidenceSampleTransformMotion, evidenceMotion);
+                        if (evidenceMotion > 1.0e-5f)
+                            ++evidenceSampleTransformControllers;
+                    }
                 }
                 flipControllers += part.textureFlipAnimations.size();
                 for (const auto& slot : part.textureSlots)
@@ -464,12 +481,17 @@ int main(int argc, char** argv) {
                          (dynamicTextureTransformControllers > 0 ? 4000000000000000ull : 0ull) +
                          (textureTransformControllers > 0 ? 2000000000000000ull : 0ull) +
                          (model->particleSystems.empty() ? 1000000000000000ull : 0ull) +
+                         static_cast<std::uint64_t>(std::llround(
+                             std::clamp(evidenceSampleTransformMotion, 0.0f, 1.0f) * 1000000.0f)) *
+                             1000000ull +
                          SimpleCountScore(textureTransformControllers > 0
                              ? textureTransformControllers : authoredTextureTransforms) * 1000000ull +
                          NearTargetScore(triangles, 1200u),
                          Counts({{"transformControllers", textureTransformControllers},
                                  {"dynamicTransformTracks", dynamicTextureTransformControllers},
                                  {"evidenceSampleTracks", evidenceSampleTransformControllers},
+                                 {"evidenceMotionPpm", static_cast<std::uint64_t>(std::llround(
+                                     std::clamp(evidenceSampleTransformMotion, 0.0f, 1.0f) * 1000000.0f))},
                                  {"authoredTransforms", authoredTextureTransforms},
                                  {"particleSystems", static_cast<std::uint64_t>(model->particleSystems.size())},
                                  {"triangles", triangles}}));
