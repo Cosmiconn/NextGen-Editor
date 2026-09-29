@@ -132,11 +132,17 @@ $global:LASTEXITCODE = 0
     $evidence = @(Import-Csv -LiteralPath $reviewTable -Delimiter ([char]9))
     Assert-True ($evidence.Count -eq 1) "Visual evidence row count changed."
     foreach ($field in @("NifSha256", "T000Sha256", "T025Sha256", "T100Sha256")) {
-        Assert-True ([string]$evidence[0].$field -match '^[0-9A-F]{64}    Assert-True ($checklistText -match "visual_smoke") "Visual review checklist omitted the selected category."
+        $hashValue = [string]$evidence[0].$field
+        Assert-True ($hashValue.Length -eq 64) "Visual evidence SHA-256 length changed: $field"
+        Assert-True (-not ($hashValue -match '[^0-9A-F]')) "Visual evidence SHA-256 contains non-hex characters: $field"
+    }
+    Assert-True ([string]$evidence[0].T100.EndsWith("__t1.bmp", [System.StringComparison]::OrdinalIgnoreCase)) "Visual evidence omitted the t=1.00 snapshot."
+
+    $checklistText = Get-Content -LiteralPath $checklist -Raw
+    Assert-True ($checklistText -match "visual_smoke") "Visual review checklist omitted the selected category."
     Assert-True ($checklistText -match "field/demo\.nif") "Visual review checklist omitted the selected NIF."
     Assert-True ($checklistText -match "t=1\.00 s") "Visual review checklist omitted the one-second sample."
     Assert-True ($checklistText -match "SHA-256") "Visual review checklist omitted hash evidence."
-
     $conflictCaught = $false
     try {
         $conflictArgs = @{
