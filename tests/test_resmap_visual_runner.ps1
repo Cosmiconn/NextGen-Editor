@@ -87,6 +87,9 @@ New-Item -ItemType Directory -Path $output -Force | Out-Null
 [System.IO.File]::WriteAllBytes(
     (Join-Path $output ($stem + "__animated.bmp")),
     [byte[]](0x42, 0x4d))
+[System.IO.File]::WriteAllBytes(
+    (Join-Path $output ($stem + "__t1.bmp")),
+    [byte[]](0x42, 0x4d, 0x01))
 $global:LASTEXITCODE = 0
 '@ | Set-Content -LiteralPath $snapshotStub -Encoding utf8NoBOM
 
@@ -104,23 +107,90 @@ $global:LASTEXITCODE = 0
     Assert-True ($runOutput -match "identical duplicates\s*:\s*1") "Visual runner did not report the expected identical duplicate."
 
     $manifest = Join-Path $output "matrix.tsv"
+    $reviewTable = Join-Path $output "review.tsv"
     $checklist = Join-Path $output "VISUAL_REVIEW_CHECKLIST.md"
     $gallery = Join-Path $output "index.html"
     $initialSnapshot = Join-Path $output "snapshots/visual_smoke/field_demo.nif.bmp"
     $animatedSnapshot = Join-Path $output "snapshots/visual_smoke/field_demo.nif__animated.bmp"
+    $oneSecondSnapshot = Join-Path $output "snapshots/visual_smoke/field_demo.nif__t1.bmp"
 
     foreach ($required in @(
         $manifest,
+        $reviewTable,
         $checklist,
         $gallery,
         $initialSnapshot,
-        $animatedSnapshot)) {
+        $animatedSnapshot,
+        $oneSecondSnapshot)) {
         Assert-True (Test-Path -LiteralPath $required -PathType Leaf) "Visual runner did not create expected output: $required"
     }
 
     $rows = @(Import-Csv -LiteralPath $manifest -Delimiter ([char]9))
     Assert-True ($rows.Count -eq 1) "Visual runner manifest row count changed."
     Assert-True ([string]$rows[0].category -eq "visual_smoke") "Visual runner manifest category changed."
+
+    $evidence = @(Import-Csv -LiteralPath $reviewTable -Delimiter ([char]9))
+    Assert-True ($evidence.Count -eq 1) "Visual evidence row count changed."
+    foreach ($field in @("NifSha256", "T000Sha256", "T025Sha256", "T100Sha256")) {
+        Assert-True ([string]$evidence[0].$field -match '^[0-9A-F]{64}    Assert-True ($checklistText -match "visual_smoke") "Visual review checklist omitted the selected category."
+    Assert-True ($checklistText -match "field/demo\.nif") "Visual review checklist omitted the selected NIF."
+    Assert-True ($checklistText -match "t=1\.00 s") "Visual review checklist omitted the one-second sample."
+    Assert-True ($checklistText -match "SHA-256") "Visual review checklist omitted hash evidence."
+
+    $conflictCaught = $false
+    try {
+        $conflictArgs = @{
+            MatrixExe = $matrixStub
+            SnapshotExe = $snapshotStub
+            InputPath = @($inputA, $conflictInput)
+            OutputPath = $conflictOutput
+            AllowIncompleteMatrix = $true
+        }
+        & $runner @conflictArgs 2>&1 | Out-Null
+    }
+    catch {
+        $conflictCaught = $_.Exception.Message -match "Conflicting ResMap archive path"
+    }
+
+    Assert-True $conflictCaught "Visual runner did not reject conflicting duplicate archive paths."
+
+    Write-Host "ResMap visual runner smoke test passed."
+}
+finally {
+    if (Test-Path -LiteralPath $tempRoot -PathType Container) {
+        Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+) "Visual evidence omitted a SHA-256 field: $field"
+    }
+    Assert-True ([string]$evidence[0].T100 -match '__t1\.bmp    Assert-True ($checklistText -match "visual_smoke") "Visual review checklist omitted the selected category."
+    Assert-True ($checklistText -match "field/demo\.nif") "Visual review checklist omitted the selected NIF."
+
+    $conflictCaught = $false
+    try {
+        $conflictArgs = @{
+            MatrixExe = $matrixStub
+            SnapshotExe = $snapshotStub
+            InputPath = @($inputA, $conflictInput)
+            OutputPath = $conflictOutput
+            AllowIncompleteMatrix = $true
+        }
+        & $runner @conflictArgs 2>&1 | Out-Null
+    }
+    catch {
+        $conflictCaught = $_.Exception.Message -match "Conflicting ResMap archive path"
+    }
+
+    Assert-True $conflictCaught "Visual runner did not reject conflicting duplicate archive paths."
+
+    Write-Host "ResMap visual runner smoke test passed."
+}
+finally {
+    if (Test-Path -LiteralPath $tempRoot -PathType Container) {
+        Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+) "Visual evidence omitted the t=1.00 snapshot."
 
     $checklistText = Get-Content -LiteralPath $checklist -Raw
     Assert-True ($checklistText -match "visual_smoke") "Visual review checklist omitted the selected category."
