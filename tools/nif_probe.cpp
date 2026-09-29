@@ -28,20 +28,50 @@ int main(int argc, char** argv) {
         if (std::string(argv[1]) == "--inspect") {
             for (std::size_t partIndex = 0; partIndex < result->parts.size(); ++partIndex) {
                 const auto& part = result->parts[partIndex];
+                theseed::mapeditor::core::NifVec3 boundsMin{}, boundsMax{};
+                if (!part.positions.empty()) {
+                    boundsMin = boundsMax = part.positions.front();
+                    for (const auto& p : part.positions) {
+                        boundsMin.x = std::min(boundsMin.x, p.x);
+                        boundsMin.y = std::min(boundsMin.y, p.y);
+                        boundsMin.z = std::min(boundsMin.z, p.z);
+                        boundsMax.x = std::max(boundsMax.x, p.x);
+                        boundsMax.y = std::max(boundsMax.y, p.y);
+                        boundsMax.z = std::max(boundsMax.z, p.z);
+                    }
+                }
                 std::cout << "PART\tindex=" << partIndex
+                          << "\tname=" << part.name
                           << "\tshader=" << part.shaderName
                           << "\tshaderExtraData=" << part.shaderExtraData
                           << "\tvertices=" << part.positions.size()
                           << "\ttriangles=" << (part.triangleIndices.size() / 3u)
+                          << "\tboundsMin=" << boundsMin.x << "," << boundsMin.y << "," << boundsMin.z
+                          << "\tboundsMax=" << boundsMax.x << "," << boundsMax.y << "," << boundsMax.z
                           << "\tuvSets=" << part.uvSets.size()
                           << "\tuvDiagnostics=" << part.uvSetDiagnostics.size()
                           << "\tvertexColors=" << part.vertexColors.size()
                           << "\tapplyMode=" << part.textureApplyMode
+                          << "\tmaterialAmbient=" << part.material.ambient[0] << "," << part.material.ambient[1] << "," << part.material.ambient[2]
+                          << "\tmaterialDiffuse=" << part.material.diffuse[0] << "," << part.material.diffuse[1] << "," << part.material.diffuse[2]
+                          << "\tmaterialSpecular=" << part.material.specular[0] << "," << part.material.specular[1] << "," << part.material.specular[2]
+                          << "\tmaterialEmissive=" << part.material.emissive[0] << "," << part.material.emissive[1] << "," << part.material.emissive[2]
+                          << "\tglossiness=" << part.material.glossiness
                           << "\tmaterialAlpha=" << part.material.alpha
+                          << "\tbumpLumaScale=" << part.bumpMapLumaScale
+                          << "\tbumpLumaOffset=" << part.bumpMapLumaOffset
+                          << "\tbumpMatrix=" << part.bumpMapMatrix[0] << "," << part.bumpMapMatrix[1] << ","
+                          << part.bumpMapMatrix[2] << "," << part.bumpMapMatrix[3]
                           << "\talphaBlend=" << part.alphaBlend
+                          << "\talphaSrc=" << static_cast<unsigned>(part.alphaSrcBlend)
+                          << "\talphaDst=" << static_cast<unsigned>(part.alphaDstBlend)
                           << "\talphaTest=" << part.alphaTest
+                          << "\talphaTestFunc=" << static_cast<unsigned>(part.alphaTestFunc)
+                          << "\talphaThreshold=" << static_cast<unsigned>(part.alphaThreshold)
                           << "\tdepthTest=" << part.depthTest
-                          << "\tdepthWrite=" << part.depthWrite << '\n';
+                          << "\tdepthWrite=" << part.depthWrite
+                          << "\tdepthFunction=" << part.depthFunction
+                          << "\tfaceDrawMode=" << part.faceDrawMode << '\n';
                 if (!part.vertexColors.empty()) {
                     float minA = 1.0f, maxA = 0.0f, sumA = 0.0f;
                     for (const auto& color : part.vertexColors) {
