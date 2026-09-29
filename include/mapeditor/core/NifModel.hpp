@@ -74,10 +74,25 @@ struct NifMaterial {
 
 // Ein einzelnes NiTriStrips/NiTriStripsData-Paar, in Dreiecke aufgelöst (aus den
 // Dreiecksstreifen mit Degenerate-Triangle-Entfernung - siehe ExpandTriangleStrip).
+struct NifPixelChannelInfo {
+    // nif.xml PixelComponent / PixelRepresentation values from NiPixelFormat.
+    std::uint32_t component = 19;      // PX_COMP_EMPTY
+    std::uint32_t representation = 0; // PX_REP_NORM_INT
+    std::uint8_t bits = 0;
+    bool isSigned = false;
+};
+
 struct NifEmbeddedTexture {
     std::uint32_t width = 0;
     std::uint32_t height = 0;
     std::uint32_t faces = 1;
+    // Preserve the authored NiPixelFormat contract. This is required for legacy
+    // dU/dV bump maps: their channels are semantic OFFSET_U/OFFSET_V/LUMA values,
+    // not ordinary RGB colors. Existing RGBA remains the compatibility render payload.
+    std::uint32_t pixelFormat = 16; // PX_FMT_UNKNOWN
+    std::uint32_t bitsPerPixel = 0;
+    std::uint32_t bytesPerPixel = 0;
+    std::array<NifPixelChannelInfo, 4> channels{};
     // 2D compatibility payload. For ordinary textures this is the vertically adjusted
     // OpenGL image used by the existing renderer path. For cube maps it mirrors face 0.
     std::vector<std::uint8_t> rgba;
