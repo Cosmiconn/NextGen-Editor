@@ -5,9 +5,88 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
-#include <chrono>
+#include <chrono>\n#include <cctype>\n#include <thread>
 
 using namespace theseed::mapeditor;
+
+namespace {
+
+std::string SnapshotStem(std::string value) {
+    for (char& ch : value) {
+        const unsigned char u = static_cast<unsigned char>(ch);
+        if (!(std::isalnum(u) || ch == '.' || ch == '_' || ch == '-')) ch = '_';
+    }
+    return value;
+}
+
+bool WritePpm(const std::filesystem::path& path,
+              const std::vector<unsigned char>& pixels,
+              int width,
+              int height) {
+    std::ofstream out(path, std::ios::binary);
+    if (!out) return false;
+    out << "P6\\n" << width << ' ' << height << "\\n255\\n";
+    for (int y = height - 1; y >= 0; --y) {
+        for (int x = 0; x < width; ++x) {
+            out.write(reinterpret_cast<const char*>(
+                          pixels.data() + (static_cast<std::size_t>(y) * width + x) * 4),
+                      3);
+        }
+    }
+    return static_cast<bool>(out);
+}
+
+bool WriteBmp(const std::filesystem::path& path,
+              const std::vector<unsigned char>& pixels,
+              int width,
+              int height) {
+    std::ofstream out(path, std::ios::binary);
+    if (!out) return false;
+
+    const std::uint32_t rowBytes = static_cast<std::uint32_t>(width * 3);
+    const std::uint32_t rowStride = (rowBytes + 3u) & ~3u;
+    const std::uint32_t imageBytes = rowStride * static_cast<std::uint32_t>(height);
+    const std::uint32_t fileBytes = 54u + imageBytes;
+    const auto u16 = [&](std::uint16_t v) {
+        out.put(static_cast<char>(v & 0xffu));
+        out.put(static_cast<char>((v >> 8u) & 0xffu));
+    };
+    const auto u32 = [&](std::uint32_t v) {
+        out.put(static_cast<char>(v & 0xffu));
+        out.put(static_cast<char>((v >> 8u) & 0xffu));
+        out.put(static_cast<char>((v >> 16u) & 0xffu));
+        out.put(static_cast<char>((v >> 24u) & 0xffu));
+    };
+
+    out.put('B'); out.put('M');
+    u32(fileBytes); u16(0); u16(0); u32(54);
+    u32(40); u32(static_cast<std::uint32_t>(width)); u32(static_cast<std::uint32_t>(height));
+    u16(1); u16(24); u32(0); u32(imageBytes);
+    u32(2835); u32(2835); u32(0); u32(0);
+
+    const std::array<char, 3> padding{0, 0, 0};
+    const std::uint32_t padBytes = rowStride - rowBytes;
+    // OpenGL readback starts with the bottom row, exactly the order of a positive-height BMP.
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            const auto index = (static_cast<std::size_t>(y) * width + x) * 4;
+            out.put(static_cast<char>(pixels[index + 2]));
+            out.put(static_cast<char>(pixels[index + 1]));
+            out.put(static_cast<char>(pixels[index + 0]));
+        }
+        out.write(padding.data(), padBytes);
+    }
+    return static_cast<bool>(out);
+}
+
+std::size_t CountVisiblePixels(const std::vector<unsigned char>& pixels) {
+    std::size_t lit = 0;
+    for (std::size_t i = 0; i < pixels.size(); i += 4)
+        if (pixels[i] || pixels[i + 1] || pixels[i + 2]) ++lit;
+    return lit;
+}
+
+} // namespace
 
 // Explicit opt-in runtime test, requiring a real OpenGL context. The ordinary
 // CTest suite remains usable on machines without a display/GPU.
@@ -69,17 +148,20 @@ int main(int argc, char** argv) {
             std::vector<unsigned char> pixels(512 * 512 * 4);
             glReadPixels(0, 0, 512, 512, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
             const auto error = glGetError();
-            std::size_t lit = 0;
-            for (std::size_t i = 0; i < pixels.size(); i += 4)
-                if (pixels[i] || pixels[i+1] || pixels[i+2]) ++lit;
+            const std::size_t lit = CountVisiblePixels(pixels);
             std::cout << name << ": visible pixels=" << lit << ", GL error=" << error
-                      << ", expected=" << (expectVisible ? "visible" : "transparent (all materials alpha=0)") << '\n';
+                      << ", expected=" << (expectVisible ? "visible" : "transparent (all materials alpha=0)") << '\\n';
             if ((expectVisible ? lit < 20 : lit != 0) || error != GL_NO_ERROR) ++failures;
-            std::filesystem::create_directories(argv[2]);
-            std::ofstream out(std::filesystem::path(argv[2]) / (std::string(name) + ".ppm"), std::ios::binary);
-            out << "P6\n512 512\n255\n";
-            for (int y = 511; y >= 0; --y) for (int x = 0; x < 512; ++x)
-                out.write(reinterpret_cast<const char*>(pixels.data() + (y * 512 + x) * 4), 3);
+
+            const std::filesystem::path outputDir = argv[2];
+            std::filesystem::create_directories(outputDir);
+            const std::string snapshotStem = SnapshotStem(name);
+            if (!WritePpm(outputDir / (snapshotStem + ".ppm"), pixels, 512, 512) ||
+                !WriteBmp(outputDir / (snapshotStem + ".bmp"), pixels, 512, 512)) {
+                std::cerr << name << ": failed to write initial snapshot\\n";
+                ++failures;
+            }
+
             const auto begin = std::chrono::steady_clock::now();
             for (int frame = 0; frame < 30; ++frame) {
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -87,7 +169,26 @@ int main(int argc, char** argv) {
             }
             glFinish();
             std::cout << name << ": warm_frame_ms=" <<
-                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count() / 30.0 << '\n';
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count() / 30.0 << '\\n';
+
+            // A second frame separated in wall-clock time makes authored texture controllers
+            // and particle motion visually inspectable instead of only proving frame zero draws.
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            renderer.Draw(set, camera, 512, 512);
+            glFinish();
+            glReadPixels(0, 0, 512, 512, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+            const auto animatedError = glGetError();
+            const std::size_t animatedLit = CountVisiblePixels(pixels);
+            std::cout << name << ": animated visible pixels=" << animatedLit
+                      << ", GL error=" << animatedError << '\\n';
+            if ((expectVisible ? animatedLit < 20 : animatedLit != 0) || animatedError != GL_NO_ERROR)
+                ++failures;
+            if (!WritePpm(outputDir / (snapshotStem + "__animated.ppm"), pixels, 512, 512) ||
+                !WriteBmp(outputDir / (snapshotStem + "__animated.bmp"), pixels, 512, 512)) {
+                std::cerr << name << ": failed to write animated snapshot\\n";
+                ++failures;
+            }
             // Negative control: hiding the object must leave the framebuffer clear.
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             const std::vector<char> hidden{1};
