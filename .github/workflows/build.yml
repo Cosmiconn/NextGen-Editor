@@ -87,8 +87,34 @@ jobs:
             ./build/visual-smoke-input/resmap
           test -s build/resmap-visual-linux-smoke/provenance.json
           test -s build/resmap-visual-linux-smoke/review.tsv
+          test -s build/resmap-visual-linux-smoke/frame_metrics.tsv
           test -s build/resmap-visual-linux-smoke/VISUAL_REVIEW_CHECKLIST.md
           test -s build/resmap-visual-linux-smoke/index.html
+          python3 - <<'PY'
+          import csv
+          from pathlib import Path
+
+          metrics = Path("build/resmap-visual-linux-smoke/frame_metrics.tsv")
+          with metrics.open("r", encoding="utf-8", newline="") as handle:
+              rows = list(csv.DictReader(handle, delimiter="\t"))
+          if not rows:
+              raise SystemExit("frame_metrics.tsv has no evidence rows")
+          required = {
+              "T000VisiblePixels", "T025VisiblePixels", "T100VisiblePixels",
+              "ChangedT000T025", "ChangedT025T100", "ChangedT000T100",
+              "ReviewFlags",
+          }
+          missing = required.difference(rows[0])
+          if missing:
+              raise SystemExit(f"frame_metrics.tsv missing columns: {sorted(missing)}")
+          if not any(
+              int(row["T000VisiblePixels"]) > 0
+              or int(row["T025VisiblePixels"]) > 0
+              or int(row["T100VisiblePixels"]) > 0
+              for row in rows
+          ):
+              raise SystemExit("visual smoke produced no visible snapshot pixels")
+          PY
       - name: Package Linux NIF visual tools
         if: runner.os == 'Linux'
         run: |
