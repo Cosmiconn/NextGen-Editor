@@ -2243,6 +2243,7 @@ std::shared_ptr<const NifEmbeddedTexture> ParseNiPixelData(
     PendingPalettedTexture* pendingPalette = nullptr) {
     const std::uint32_t pixelFormat = r.PeekU32(0);
     std::array<std::uint32_t, 4> colorMasks{};
+    std::array<NifPixelChannelInfo, 4> channelInfo{};
     std::uint32_t bitsPerPixel = 0;
     bool packedFormatSupported = true;
     if (r.LegacyLayout()) {
@@ -2263,6 +2264,9 @@ std::shared_ptr<const NifEmbeddedTexture> ParseNiPixelData(
             for (int i = 0; i < 4; ++i) {
                 const auto component = r.U32(), representation = r.U32();
                 const auto bits = r.U8(), isSigned = r.U8();
+                channelInfo[static_cast<std::size_t>(i)] = {
+                    component, representation, bits, isSigned != 0
+                };
                 if (bits > 32 || shift + bits > 32) packedFormatSupported = false;
                 // Fiesta exporters set the trailing channel flag to 1 even for
                 // unsigned RGB8/RGB5A1 colors (including one-bit alpha). Match
@@ -2431,6 +2435,10 @@ std::shared_ptr<const NifEmbeddedTexture> ParseNiPixelData(
     out->width = top.width;
     out->height = top.height;
     out->faces = faces;
+    out->pixelFormat = pixelFormat;
+    out->bitsPerPixel = bitsPerPixel;
+    out->bytesPerPixel = bytesPerPixel;
+    out->channels = channelInfo;
     if (faces == 1u) {
         // Ordinary GL_TEXTURE_2D keeps the established OpenGL-V convention.
         flipVertical(decodedFaces[0]);
