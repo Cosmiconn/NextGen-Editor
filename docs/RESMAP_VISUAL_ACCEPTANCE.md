@@ -92,7 +92,8 @@ The visual runner writes:
 
 - `provenance.json` (Python runner) — source-root, merge, duplicate and physical/logical NIF counts;
 - `matrix.tsv` — selected category/NIF/evidence;
-- `review.tsv` — selected NIF SHA-256 plus SHA-256 for all three BMP snapshots;
+- `review.tsv` — selected NIF SHA-256 plus SHA-256 for all three BMP snapshots and the per-frame review metrics;
+- `frame_metrics.tsv` (Python runner) — visible-pixel counts, coverage, non-black frame bounds, border-contact counts, exact changed-pixel counts between the deterministic samples and non-failing review flags;
 - `runtime.log` — OpenGL vendor/renderer/version, visible-pixel counts, GL errors and warm-frame timings;
 - `snapshots/<category>/...` — BMP + PPM captures;
 - `VISUAL_REVIEW_CHECKLIST.md` — per-category manual review checklist;
@@ -100,6 +101,8 @@ The visual runner writes:
 
 The SHA-256 values are evidence identifiers, not a cross-GPU pixel-equality gate.
 Driver/GPU rasterization can differ slightly; unexplained visual differences still require inspection.
+
+The Python runner also decodes the generated 24-bit BMPs and validates the evidence itself. A category is rejected if all three deterministic samples are blank. Dynamic categories are rejected when they change **zero rendered pixels** across all three samples; this is stronger and more transparent than merely comparing file hashes. Frame-edge contact is recorded as a review flag rather than a hard failure because legitimate terrain/water/large geometry may intentionally reach the viewport boundary.
 
 ## Running the full visual matrix
 
@@ -127,7 +130,7 @@ python3 verify_resmap_visual.py \
   Resmap_5.5.zip
 ```
 
-The Linux CI job smoke-tests the complete runner control path — normalization, selector invocation, Xvfb/OpenGL snapshots, evidence hashing and review/gallery generation — rather than only syntax-checking the script.
+The Linux CI job smoke-tests the complete runner control path — normalization, selector invocation, Xvfb/OpenGL snapshots, evidence hashing, BMP metric extraction and review/gallery generation — rather than only syntax-checking the script. CI additionally requires a non-empty `frame_metrics.tsv` with the expected metric columns and at least one visible rendered sample.
 
 ### Windows
 
@@ -183,7 +186,7 @@ ResMap can be documented as complete only when all of the following hold on the 
 3. Embedded/external texture resolution and decode remain clean.
 4. No unexplained UV / ShaderTexDesc / ApplyMode / TextureEffect / render-state gaps remain.
 5. The strict 18-category visual matrix is complete.
-6. OpenGL runtime snapshots have no GL errors or obvious broken frames; dynamic categories visibly differ across at least one of the deterministic evidence samples.
+6. OpenGL runtime snapshots have no GL errors or obvious broken frames; no category is blank at all three deterministic samples, and dynamic categories change rendered pixels across at least one sample pair.
 7. Manual/reference review has **no unexplained renderer deviation**. A green headless/CI snapshot run is evidence infrastructure, not a substitute for this reference comparison.
 
 Only after that may `docs/UI_UPGRADE_PLAN.md` state:
