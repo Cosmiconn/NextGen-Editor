@@ -122,8 +122,9 @@ int main(int argc, char** argv) {
         for (const auto& name : names) {
             auto model = core::LoadNifMesh(std::filesystem::path(argv[1]) / name, false);
             if (!model) { ++failures; continue; }
-            const bool expectVisible = std::any_of(model->parts.begin(), model->parts.end(),
+            const bool expectStaticVisible = std::any_of(model->parts.begin(), model->parts.end(),
                 [](const auto& part) { return part.material.alpha > 0.0f; });
+            const bool hasParticleSystems = !model->particleSystems.empty();
             float lo[3] = {1e30f, 1e30f, 1e30f}, hi[3] = {-1e30f, -1e30f, -1e30f};
             for (const auto& part : model->parts) for (const auto& p : part.positions) {
                 const float v[3] = {p.x, p.y, p.z};
@@ -182,7 +183,9 @@ int main(int argc, char** argv) {
             const std::size_t animatedLit = CountVisiblePixels(pixels);
             std::cout << name << ": animated visible pixels=" << animatedLit
                       << ", GL error=" << animatedError << '\\n';
-            if ((expectVisible ? animatedLit < 20 : animatedLit != 0) || animatedError != GL_NO_ERROR)
+            if (animatedError != GL_NO_ERROR ||
+                (expectStaticVisible && animatedLit < 20) ||
+                (!expectStaticVisible && !hasParticleSystems && animatedLit != 0))
                 ++failures;
             if (!WritePpm(outputDir / (snapshotStem + "__animated.ppm"), pixels, 512, 512) ||
                 !WriteBmp(outputDir / (snapshotStem + "__animated.bmp"), pixels, 512, 512)) {
