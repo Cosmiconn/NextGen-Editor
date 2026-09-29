@@ -246,6 +246,13 @@ try {
     }
 
     $reviewRows = [System.Collections.Generic.List[object]]::new()
+    $dynamicCategories = @(
+        "texture_transform",
+        "flip_controller",
+        "particles_classic",
+        "particles_mesh",
+        "particles_world_space"
+    )
 
     foreach ($row in $rows) {
         $category = [string]$row.category
@@ -292,14 +299,28 @@ try {
             throw "Selected NIF disappeared before review hashing: $nifPath"
         }
 
+        $nifHash = (Get-FileHash -LiteralPath $nifPath -Algorithm SHA256).Hash
+        $t000Hash = (Get-FileHash -LiteralPath $initialBmp -Algorithm SHA256).Hash
+        $t025Hash = (Get-FileHash -LiteralPath $t025Bmp -Algorithm SHA256).Hash
+        $t100Hash = (Get-FileHash -LiteralPath $t1Bmp -Algorithm SHA256).Hash
+
+        # Dynamic review categories must prove visible temporal behavior. Merely parsing an
+        # authored controller/particle system is insufficient evidence if all sampled runtime
+        # frames are byte-identical.
+        if ($dynamicCategories -contains $category -and
+            $t000Hash -eq $t025Hash -and
+            $t025Hash -eq $t100Hash) {
+            throw "Dynamic visual matrix category [$category] produced identical snapshots at t=0.00/0.25/1.00: $relativePath"
+        }
+
         $reviewRows.Add([pscustomobject]@{
             Category = $category
             Path = $relativePath
             Reason = [string]$row.reason
-            NifSha256 = (Get-FileHash -LiteralPath $nifPath -Algorithm SHA256).Hash
-            T000Sha256 = (Get-FileHash -LiteralPath $initialBmp -Algorithm SHA256).Hash
-            T025Sha256 = (Get-FileHash -LiteralPath $t025Bmp -Algorithm SHA256).Hash
-            T100Sha256 = (Get-FileHash -LiteralPath $t1Bmp -Algorithm SHA256).Hash
+            NifSha256 = $nifHash
+            T000Sha256 = $t000Hash
+            T025Sha256 = $t025Hash
+            T100Sha256 = $t100Hash
             T000 = "snapshots/$category/$stem.bmp"
             T025 = "snapshots/$category/$($stem)__animated.bmp"
             T100 = "snapshots/$category/$($stem)__t1.bmp"
