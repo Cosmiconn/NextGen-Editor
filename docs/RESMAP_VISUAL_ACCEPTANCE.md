@@ -157,6 +157,21 @@ The Windows artifact contains `nif_visual_matrix.exe`, `test_nif_opengl.exe` and
 
 Do not use `--allow-incomplete-matrix` / `-AllowIncompleteMatrix` for final acceptance.
 
+## Latest full-corpus evidence run
+
+The real ten-archive ResMap matrix was executed on renderer/tooling head `66fe07f8e960eac2d29b1483a9364ef87655612d` with the Linux/Xvfb artifact from that exact head.
+
+- normalization: 10 source roots, 6,217 merged unique files, 168 byte-identical duplicates, 0 conflicting duplicate paths;
+- corpus accounting: 3,765 physical NIF entries -> 3,685 logical runtime NIF paths;
+- selector: 3,685/3,685 logical NIFs loaded, 0 failed, 18/18 required categories selected, 0 missing;
+- OpenGL: every selected category rendered at t=0.00/0.25/1.00 with GL error 0;
+- frame metrics: no category produced three blank samples, no sample touched the viewport edge, and every review flag was empty;
+- dynamic evidence: TextureTransform, FlipController, classic particles, mesh particles and world-space particles all changed actual rendered pixels across the deterministic samples.
+
+The first full run exposed a review-selection weakness rather than a renderer-semantic gap: `IDField/EgmaDn01 2/Lava.nif` has a valid authored V-offset controller but moves only from 0 to 1 over 33.3333 seconds, so its first-second 512x512 evidence snapshots were pixel-identical. Independent real ResMap candidates proved the renderer's TextureTransform path was active. The selector now ranks candidates by normalized authored motion at the actual evidence times; without filename hardcoding it selects `KDField/KDPanMaze/Fountain.nif`, whose t=0.00/0.25/1.00 samples visibly and pixel-wise differ. No renderer material/shader semantics were changed for this correction.
+
+This run closes the **automated full-corpus visual matrix gate**, but not the final manual/reference gate below. ResMap must remain open until the selected output has been compared with a trustworthy independent Fiesta/Gamebryo visual reference and no unexplained renderer deviation remains.
+
 ## What must be reviewed
 
 For every category/NIF, compare the snapshot/output against a trustworthy Fiesta/Gamebryo visual reference and check:
