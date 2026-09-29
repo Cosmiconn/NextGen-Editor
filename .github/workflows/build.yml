@@ -39,6 +39,8 @@ jobs:
             libxinerama-dev \
             libxcursor-dev \
             libxi-dev \
+            p7zip-full \
+            qt6-base-dev \
             xvfb
       - name: Configure Linux core and standalone NIF OpenGL verifier
         if: runner.os == 'Linux'
@@ -115,6 +117,49 @@ jobs:
           ):
               raise SystemExit("visual smoke produced no visible snapshot pixels")
           PY
+      - name: Build temporary independent NifSkope reference runtime
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          rm -rf build/nifskope-reference artifact-nifskope-reference
+          mkdir -p build/nifskope-reference artifact-nifskope-reference/app artifact-nifskope-reference/lib
+          curl -L --fail --retry 3 \
+            https://github.com/fo76utils/nifskope/releases/download/v2.0.dev11-20251230/NifSkope_2_0_2025-12-30-linuxqt6_x64.7z \
+            -o build/NifSkope-reference.7z
+          echo "b0b83e519a866f97c9c2c13d4bb0b7460b457fdcb6664e6fc1f8f7638177a508  build/NifSkope-reference.7z" | sha256sum -c -
+          7z x -y build/NifSkope-reference.7z -obuild/nifskope-reference >/dev/null
+          NIFSKOPE="$(find build/nifskope-reference -type f -name NifSkope -perm -u+x | head -n 1)"
+          test -n "$NIFSKOPE"
+          cp tests/fixtures/tree05.nif build/nifskope-reference-smoke.nif
+          "$NIFSKOPE" -no-gui --UpdateBounds build/nifskope-reference-smoke.nif
+          cp -a build/nifskope-reference/. artifact-nifskope-reference/app/
+          while IFS= read -r dependency; do
+            test -f "$dependency" || continue
+            cp -L "$dependency" artifact-nifskope-reference/lib/
+          done < <(ldd "$NIFSKOPE" | awk '/=> \/.* \(/ {print $3} /^\// {print $1}' | sort -u)
+          if test -d /usr/lib/x86_64-linux-gnu/qt6/plugins; then
+            cp -a /usr/lib/x86_64-linux-gnu/qt6/plugins artifact-nifskope-reference/qt6-plugins
+          fi
+          cat > artifact-nifskope-reference/run-nifskope-reference.sh <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          HERE="$(cd "$(dirname "$0")" && pwd)"
+          NIFSKOPE="$(find "$HERE/app" -type f -name NifSkope -perm -u+x | head -n 1)"
+          export LD_LIBRARY_PATH="$HERE/lib:${LD_LIBRARY_PATH:-}"
+          if test -d "$HERE/qt6-plugins"; then
+            export QT_PLUGIN_PATH="$HERE/qt6-plugins"
+          fi
+          exec "$NIFSKOPE" "$@"
+          SH
+          chmod +x artifact-nifskope-reference/run-nifskope-reference.sh
+          find artifact-nifskope-reference -maxdepth 2 -type f -printf '%p\n' | sort | head -100
+      - name: Upload temporary NifSkope reference runtime
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: NifSkope-reference-linux
+          path: artifact-nifskope-reference/
+          if-no-files-found: error
       - name: Package Linux NIF visual tools
         if: runner.os == 'Linux'
         run: |
