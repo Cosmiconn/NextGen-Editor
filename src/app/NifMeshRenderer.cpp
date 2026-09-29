@@ -2187,7 +2187,10 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     const Mat4 proj = OrbitCamera::PerspectiveMatrix(0.9f, static_cast<float>(width) / static_cast<float>(height), camera.NearPlane(), camera.FarPlane());
     const Mat4 viewProj = proj * view;
     static const auto animationEpoch = std::chrono::steady_clock::now();
-    const float animationTime = std::chrono::duration<float>(std::chrono::steady_clock::now() - animationEpoch).count();
+    const float wallClockAnimationTime =
+        std::chrono::duration<float>(std::chrono::steady_clock::now() - animationEpoch).count();
+    const float animationTime =
+        animationTimeOverride_.value_or(wallClockAnimationTime);
 
     const auto& locViewProj = uniforms_.locViewProj;
     const auto& locView = uniforms_.locView;
