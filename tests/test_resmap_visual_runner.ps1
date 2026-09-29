@@ -97,7 +97,9 @@ $global:LASTEXITCODE = 0
         OutputPath = $output
         AllowIncompleteMatrix = $true
     }
-    $runOutput = & $runner @runnerArgs 2>&1 | Out-String
+    # Merge all PowerShell streams so Write-Host diagnostics from the runner are
+    # asserted as part of the smoke test instead of only appearing in the CI console.
+    $runOutput = & $runner @runnerArgs *>&1 | Out-String
 
     Assert-True ($runOutput -match "identical duplicates\s*:\s*1") "Visual runner did not report the expected identical duplicate."
 
