@@ -27,12 +27,29 @@ jobs:
       - name: Validate UI icon mappings
         if: runner.os == 'Linux'
         run: python3 tools/ui/check_icon_consistency.py
-      - name: Install C++23 compiler
+      - name: Install C++23 compiler and headless OpenGL build dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y g++-14
-      - name: Configure Linux core
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            g++-14 \
+            libgl1-mesa-dev \
+            libx11-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxcursor-dev \
+            libxi-dev \
+            xvfb
+      - name: Configure Linux core and standalone NIF OpenGL verifier
         if: runner.os == 'Linux'
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-14 -DNEXTGEN_EDITOR_CORE_ONLY=ON
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_CXX_COMPILER=g++-14
+          -DNEXTGEN_EDITOR_CORE_ONLY=ON
+          -DNEXTGEN_EDITOR_BUILD_GL_TEST_TOOLS=ON
+          -DCMAKE_DISABLE_FIND_PACKAGE_glfw3=TRUE
+          -DCMAKE_DISABLE_FIND_PACKAGE_glad=TRUE
       - name: Configure Windows core
         if: runner.os == 'Windows'
         run: cmake -S . -B build -DNEXTGEN_EDITOR_CORE_ONLY=ON
@@ -45,6 +62,9 @@ jobs:
           # using NsPgToonNoAni implementation 0. Keep them visible, but do not let them block
           # the ResMap-priority gate before that shader is addressed in the reschar phase.
           ./build/nif_material_inventory --strict-renderer --defer-priority2-character-shaders --asset-root tests/fixtures tests/fixtures
+      - name: Smoke-test Linux OpenGL NIF snapshot tool
+        if: runner.os == 'Linux'
+        run: xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 ./build/test_nif_opengl tests/fixtures build/gl-output tree05.nif
       - name: Upload Linux NIF auditor
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v7
@@ -54,6 +74,7 @@ jobs:
             build/nif_material_inventory
             build/nif_probe
             build/nif_visual_matrix
+            build/test_nif_opengl
           if-no-files-found: error
       - name: Smoke-test strict ResMap audit runner
         if: runner.os == 'Windows'
