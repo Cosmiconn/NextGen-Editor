@@ -1,0 +1,21 @@
+GL_VENDOR=NVIDIA Corporation
+GL_RENDERER=NVIDIA GeForce RTX 3060/PCIe/SSE2
+GL_VERSION=3.3.0 NVIDIA 591.86
+Back_Shamrock.nif: visible pixels=5083, GL error=0, expected=visible
+Back_Shamrock.nif: warm_frame_ms=0.225387
+DarkVally_Frog.nif: visible pixels=8594, GL error=0, expected=visible
+DarkVally_Frog.nif: warm_frame_ms=0.10394
+MapLinkGate2.nif: visible pixels=9363, GL error=0, expected=visible
+MapLinkGate2.nif: warm_frame_ms=0.155163
+RouTempDn01_ground.nif: visible pixels=6334, GL error=0, expected=visible
+RouTempDn01_ground.nif: warm_frame_ms=0.0692567
+StaXReward01.nif: visible pixels=0, GL error=0, expected=transparent (all materials alpha=0)
+StaXReward01.nif: warm_frame_ms=0.04828
+Yak_VaporPower.nif: visible pixels=28608, GL error=0, expected=visible
+Yak_VaporPower.nif: warm_frame_ms=0.18558
+machine.nif: visible pixels=3989, GL error=0, expected=visible
+machine.nif: warm_frame_ms=0.10026
+machine_Urg.nif: visible pixels=3989, GL error=0, expected=visible
+machine_Urg.nif: warm_frame_ms=0.106
+treeThin.nif: visible pixels=9318, GL error=0, expected=visible
+treeThin.nif: warm_frame_ms=0.0522633

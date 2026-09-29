@@ -1,0 +1,428 @@
+Start testing: Sep 23 15:04 Mitteleurop‰ische Sommerzeit
+----------------------------------------------------------
+1/13 Testing: nif_scan_harness
+1/13 Test: nif_scan_harness
+Command: "C:/Users/david/AppData/Local/Python/pythoncore-3.14-64/python.exe" "D:/SERVER_FIESTA/map-editor/tools/test_scan_nifs.py"
+Directory: D:/SERVER_FIESTA/map-editor/build-v12
+"nif_scan_harness" start time: Sep 23 15:04 Mitteleurop‰ische Sommerzeit
+Output:
+----------------------------------------------------------
+Inventory: 2 occurrences, 1 distinct SHA-256 inputs
+..
+----------------------------------------------------------------------
+Ran 2 tests in 0.317s
+
+OK
+<end of output>
+Test time =   0.61 sec
+----------------------------------------------------------
+Test Passed.
+"nif_scan_harness" end time: Sep 23 15:04 Mitteleurop‰ische Sommerzeit
+"nif_scan_harness" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/13 Testing: heightmap_core
+2/13 Test: heightmap_core
+Command: "D:/SERVER_FIESTA/map-editor/build-v12/Release/test_heightmap_core.exe"
+Directory: D:/SERVER_FIESTA/map-editor/build-v12
+"heightmap_core" start time: Sep 23 15:04 Mitteleurop‰ische Sommerzeit
+Output:
+----------------------------------------------------------
+== Heightmap Core Tests ==
+[ok]     At() liefert gesetzten Wert zur√ºck
+[ok]     SampleWorld exakt auf Vertex
+[ok]     SampleWorld bilinear im Quad-Zentrum
+[ok]     MinMax √ºber gemischtes Gitter
+[ok]     Raise-Pinsel erh√∂ht H√∂he im Zentrum
+[ok]     Undo erfolgreich
+[ok]     Undo stellt Ausgangswert wieder her
+[ok]     Redo erfolgreich
+[ok]     Redo stellt bearbeiteten Wert wieder her
+[ok]     Flatten konvergiert gegen Zielh√∂he
+[ok]     SaveTshm erfolgreich
+[ok]     LoadTshm erfolgreich
+[ok]     Dimensionen nach Roundtrip identisch
+[ok]     H√∂henwerte nach Roundtrip identisch
+[ok]     Konstruktor mit Blockgroesse 0 uebernimmt sie NICHT (bleibt beim sicheren Default)
+[ok]     SampleWorld(0,0) bei (ehemals) Blockgroesse 0 liefert einen endlichen Wert, kein UB
+[ok]     SetBlockSize(0, negativ) wird ignoriert - vorheriger gueltiger Wert bleibt stehen
+[ok]     SetBlockSize(NaN, gueltig) uebernimmt nur den gueltigen Wert
+[ok]     SampleWorld faengt NaN-Weltkoordinaten selbst ab (unabhaengig von der Blockgroesse)
+[ok]     Test-.ini ohne OneBlockWidth laedt trotzdem
+[ok]     Fehlendes OneBlockWidth/-Height faellt auf 50.0 zurueck, NICHT auf 0.0
+
+(Legacy-Import/Export-Test √ºbersprungen - Aufruf mit: D:/SERVER_FIESTA/map-editor/build-v12/Release/test_heightmap_core.exe <Rou.HTD> <Rou.HTDG>)
+
+0 Fehler.
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"heightmap_core" end time: Sep 23 15:04 Mitteleurop‰ische Sommerzeit
+"heightmap_core" time elapsed: 00:00:00
+----------------------------------------------------------
+
+3/13 Testing: texture_layers
+3/13 Test: texture_layers
+Command: "D:/SERVER_FIESTA/map-editor/build-v12/Release/test_texture_layers.exe"
+Directory: D:/SERVER_FIESTA/map-editor
+"texture_layers" start time: Sep 23 15:04 Mitteleurop‰ische Sommerzeit
+Output:
+----------------------------------------------------------
+== TextureLayerStack / TexturePaintOps / .tstex Tests ==
+[ok]     AddLayer erh√∂ht LayerCount
+[ok]     Erster Layer startet voll belegt (1.0)
+[ok]     Zweiter Layer startet leer (0.0)
+[ok]     Gewichtssumme direkt nach Anlage = 1.0
+[ok]     Rock-Layer nach mehrfachem Malen stark erh√∂ht
+[ok]     Gewichtssumme bleibt nach Malen ~1.0 (Normalisierung)
+[ok]     Undo (Textur) erfolgreich
+[ok]     Gewichtssumme bleibt auch nach Undo ~1.0
+[ok]     SaveTsTex erfolgreich
+[ok]     LoadTsTex erfolgreich
+[ok]     LayerCount nach Roundtrip identisch
+[ok]     Layer-Name nach Roundtrip identisch
+[ok]     Blend-Gewicht nach Roundtrip identisch (Quantisierungsfehler < 0.01)
+[ok]     BMP schreiben
+[ok]     BMP-Groesse plausibel
+[ok]     Gitterzeile 0 steht als ERSTE Zeile in der Datei (Rohreihenfolge)
+[ok]     Rueckweg liefert dieselbe Zeilenreihenfolge
+
+== Legacy-ini-Parser gegen echten Rou.ini-Inhalt ==
+[ok]     ParseLegacyMapIni(Rou.ini) erfolgreich
+[ok]     Heightmap-Dimensionen korrekt geparst (257x257)
+[ok]     OneBlockWidth korrekt geparst (50.0)
+[ok]     QuadsWide/High korrekt geparst (64x64)
+[ok]     HeightFileName korrekt geparst (inkl. Backslashes)
+[ok]     Alle 4 Layer-Bl√∂cke gefunden
+[ok]     Layer 0 Name korrekt
+[ok]     Layer 0 DiffuseFileName korrekt
+[ok]     Layer 0 UVScaleDiffuse korrekt (4f -> 4.0)
+[ok]     Layer 3 Name korrekt
+[ok]     Layer 3 UVScaleDiffuse korrekt (5f -> 5.0)
+[ok]     TextureLayerStack aus Legacy-ini hat 4 Layer
+[ok]     TextureLayerStack nutzt unabh√§ngige Platzhalter-Aufl√∂sung (512x512), NICHT die Heightmap-Aufl√∂sung (korrigiert - siehe docs/MAP_FORMAT.md)
+[ok]     Basis-Layer nach Konvertierung voll belegt (Summe 1.0)
+[ok]     SerializeLegacyMapIni erfolgreich
+[ok]     Reparse der serialisierten .ini erfolgreich
+[ok]     Reparse: Heightmap-Dimensionen identisch zum Original-Parse
+[ok]     Reparse: HeightFileName identisch
+[ok]     Reparse: gleiche Layer-Anzahl
+[ok]     Reparse: alle Layer-Metadaten wertgleich zum Original-Parse
+
+0 Fehler.
+<end of output>
+Test time =   0.08 sec
+----------------------------------------------------------
+Test Passed.
+"texture_layers" end time: Sep 23 15:04 Mitteleurop‰ische Sommerzeit
+"texture_layers" time elapsed: 00:00:00
+----------------------------------------------------------
+
+4/13 Testing: legacy_texture_roundtrip
+4/13 Test: legacy_texture_roundtrip
+Command: "D:/SERVER_FIESTA/map-editor/build-v12/Release/test_legacy_texture_roundtrip.exe"
+Directory: D:/SERVER_FIESTA/map-editor
+"legacy_texture_roundtrip" start time: Sep 23 15:04 Mitteleurop‰ische Sommerzeit
+Output:
+----------------------------------------------------------
+== BMP-Blend-Codec Selbsttest ==
+[ok]     WriteBlendMapBmp erfolgreich
+[ok]     ReadBlendMapBmp erfolgreich
+[ok]     BMP-Roundtrip: Dimensionen identisch
+         Max. Abweichung nach BMP-Roundtrip: 0.00196 (Toleranz: 0.00392)
+[ok]     BMP-Roundtrip: alle Werte innerhalb der 8-bit-Quantisierungstoleranz
+
+== Voller Legacy-Texturing-Rundlauf (echte Rou.ini) ==
+[ok]     ImportLegacyTextureSet(Rou.ini) erfolgreich
+         Fehlende Blend-BMPs beim Import (erwartet, da nicht bereitgestellt): 5 von 4 Layern
+[ok]     Alle 4 Blend-BMPs korrekt als fehlend erkannt + Fallback-Aufl√∂sungs-Hinweis (keine BMP im Referenzdatensatz enthalten)
+[ok]     Ohne lesbare BMP wird die dokumentierte Platzhalter-Aufl√∂sung 512x512 verwendet (NICHT die Heightmap-Aufl√∂sung 257x257)
+[ok]     Erneutes Parsen der ini f√ºr Export-Metadaten erfolgreich
+[ok]     ExportLegacyTextureSet erfolgreich
+[ok]     Exportierte Rou.ini existiert
+[ok]     Exportierte Blend-BMP liegt an der aus dem Legacy-Pfad abgeleiteten Stelle (ohne virtuelles 'resmap'-Pr√§fix, siehe docs/MAP_FORMAT.md)
+[ok]     Re-Import des exportierten Sets erfolgreich
+[ok]     Beim Re-Import fehlt KEINE Blend-BMP mehr (alle wurden ja gerade exportiert)
+[ok]     Re-Import: gleiche Layer-Anzahl
+         Max. Gewichtsabweichung nach vollem Export+Re-Import: 0.00196
+[ok]     Re-Import: alle Blend-Gewichte innerhalb der 8-bit-Toleranz identisch zum Export-Zustand
+
+0 Fehler.
+<end of output>
+Test time =   0.09 sec
+----------------------------------------------------------
+Test Passed.
+"legacy_texture_roundtrip" end time: Sep 23 15:04 Mitteleurop‰ische Sommerzeit
+"legacy_texture_roundtrip" time elapsed: 00:00:00
+----------------------------------------------------------
+
+5/13 Testing: walk_grid
+5/13 Test: walk_grid
+Command: "D:/SERVER_FIESTA/map-editor/build-v12/Release/test_walk_grid.exe"
+Directory: D:/SERVER_FIESTA/map-editor/build-v12
+"walk_grid" start time: Sep 23 15:04 Mitteleurop‰ische Sommerzeit
+Output:
+----------------------------------------------------------
+== WalkGrid Core Tests ==
+[ok]     Neues Gitter startet mit -1 ("frei/unbelegt")
+[ok]     Set/At funktioniert mit Bitmask-Werten
+[ok]     Stamp setzt Zellen im Radius auf den Zielwert
+[ok]     Undo erfolgreich
+[ok]     Undo stellt Ausgangswert (-1) wieder her
+[ok]     Redo erfolgreich
+[ok]     Redo stellt gestempelten Wert wieder her
+[ok]     Cols/Rows: 4 Woerter = 64 Zellen
+[ok]     Zelle 17 = Bit 1 im Wort 1 (LSB-zuerst)
+[ok]     nur die eine Zelle ist blockiert
+[ok]     Freigeben loescht das Bit wieder
+[ok]     Radius 1 sperrt genau die Zelle unter dem Zeiger
+[ok]     Aenderungs-Rechteck stimmt
+[ok]     Undo stellt das Wort wieder her
+[ok]     Polygon-Stempel sperrt 10x10 = 100 Zellen
+[ok]     zweites Anwenden aendert nichts
+[ok]     SaveTsWalk erfolgreich
+[ok]     LoadTsWalk erfolgreich
+[ok]     Dimensionen nach Roundtrip identisch
+[ok]     Bitmask-Wert nach Roundtrip identisch
+
+(Legacy-shbd-Test √ºbersprungen - Aufruf mit: D:/SERVER_FIESTA/map-editor/build-v12/Release/test_walk_grid.exe <Rou.shbd>)
+
+0 Fehler.
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"walk_grid" end time: Sep 23 15:04 Mitteleurop‰ische Sommerzeit
+"walk_grid" time elapsed: 00:00:00
+----------------------------------------------------------
+
+6/13 Testing: object_placement
+6/13 Test: object_placement
+Command: "D:/SERVER_FIESTA/map-editor/build-v12/Release/test_object_placement.exe"
+Directory: D:/SERVER_FIESTA/map-editor/build-v12
+"object_placement" start time: Sep 23 15:04 Mitteleurop‰ische Sommerzeit
+Output:
+----------------------------------------------------------
+== ObjectPlacement Core Tests ==
+[ok]     AddObject erh√∂ht Count
+[ok]     At() liefert korrektes Objekt
+[ok]     RemoveObject entfernt Objekt
+[ok]     SaveTsObj erfolgreich
+[ok]     LoadTsObj erfolgreich
+[ok]     Kategorie nach Roundtrip identisch
+[ok]     Objekt-Anzahl nach Roundtrip identisch
+[ok]     Modellpfad nach Roundtrip identisch
+[ok]     Position nach Roundtrip identisch
+
+(Legacy-Tests √ºbersprungen - Aufruf mit: D:/SERVER_FIESTA/map-editor/build-v12/Release/test_object_placement.exe <Rou.shmd> <Rou.idm> <Rou.aid>)
+
+0 Fehler.
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"object_placement" end time: Sep 23 15:04 Mitteleurop‰ische Sommerzeit
+"object_placement" time elapsed: 00:00:00
+----------------------------------------------------------
+
+7/13 Testing: legacy_map_project
+7/13 Test: legacy_map_project
+Command: "D:/SERVER_FIESTA/map-editor/build-v12/Release/test_legacy_map_project.exe"
+Directory: D:/SERVER_FIESTA/map-editor/build-v12
+"legacy_map_project" start time: Sep 23 15:04 Mitteleurop‰ische Sommerzeit
+Output:
+----------------------------------------------------------
+(Test √ºbersprungen - Aufruf mit: D:/SERVER_FIESTA/map-editor/build-v12/Release/test_legacy_map_project.exe <pfad/zu/karte.ini>)
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"legacy_map_project" end time: Sep 23 15:04 Mitteleurop‰ische Sommerzeit
+"legacy_map_project" time elapsed: 00:00:00
+----------------------------------------------------------
+
+8/13 Testing: nif_model
+8/13 Test: nif_model
+Command: "D:/SERVER_FIESTA/map-editor/build-v12/Release/test_nif_model.exe" "D:/SERVER_FIESTA/map-editor/tests/fixtures/tree05.nif"
+Directory: D:/SERVER_FIESTA/map-editor/build-v12
+"nif_model" start time: Sep 23 15:04 Mitteleurop‰ische Sommerzeit
+Output:
+----------------------------------------------------------
+== Einfaches, untexturiertes Mesh laden ==
+[ok]     LoadNifMesh(einfache Datei) erfolgreich
+     root='Scene Root', 6 Teil(e)
+[ok]     Mindestens ein Mesh-Teil vorhanden
+[ok]     Vertex-Positionen vorhanden
+[ok]     Dreiecks-Indizes vorhanden
+[ok]     Dreiecks-Indexanzahl ist durch 3 teilbar
+[ok]     Alle Dreiecks-Indizes zeigen auf g√ºltige Vertices
+[ok]     Eingebettete NiPixelData-Textur ist vollst√§ndig dekodiert
+[ok]     Alle Dreiecksindizes liegen innerhalb der Vertices des Parts
+
+== Szenengraph-Transformationen ==
+[ok]     Modell haengt nicht unter dem Ursprung (Knoten-Transformationen angewendet)
+
+== Grundflaechen-Huelle (ComputeFootprintHull) ==
+[ok]     Huelle hat mindestens 3 Punkte
+[ok]     Huelle liegt (gegen den Uhrzeigersinn) innerhalb der Bounding-Box
+
+0 Fehler.
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"nif_model" end time: Sep 23 15:04 Mitteleurop‰ische Sommerzeit
+"nif_model" time elapsed: 00:00:00
+----------------------------------------------------------
+
+9/13 Testing: nif_particles
+9/13 Test: nif_particles
+Command: "D:/SERVER_FIESTA/map-editor/build-v12/Release/test_nif_particles.exe" "D:/SERVER_FIESTA/map-editor/tests/fixtures/particles"
+Directory: D:/SERVER_FIESTA/map-editor/build-v12
+"nif_particles" start time: Sep 23 15:04 Mitteleurop‰ische Sommerzeit
+Output:
+----------------------------------------------------------
+machine.nif: 13 parts, 2978 vertices, 1760 triangles
+machine_Urg.nif: 13 parts, 2978 vertices, 1760 triangles
+Yak_VaporPower.nif: 34 parts, 1762 vertices, 2386 triangles
+Back_Shamrock.nif: 31 parts, 304 vertices, 274 triangles
+StaXReward01.nif: 3 parts, 12 vertices, 6 triangles
+<end of output>
+Test time =   0.10 sec
+----------------------------------------------------------
+Test Passed.
+"nif_particles" end time: Sep 23 15:04 Mitteleurop‰ische Sommerzeit
+"nif_particles" time elapsed: 00:00:00
+----------------------------------------------------------
+
+10/13 Testing: camera_handedness
+10/13 Test: camera_handedness
+Command: "D:/SERVER_FIESTA/map-editor/build-v12/Release/test_camera_handedness.exe"
+Directory: D:/SERVER_FIESTA/map-editor/build-v12
+"camera_handedness" start time: Sep 23 15:04 Mitteleurop‰ische Sommerzeit
+Output:
+----------------------------------------------------------
+[ok]     Osten (+X) liegt rechts von der Bildmitte
+[ok]     Norden (+Z) liegt oberhalb der Bildmitte
+[ok]     LookBy: die Augenposition bleibt beim Umsehen stehen
+[ok]     MoveLocal(vorwaerts 100): 100 Einheiten weiter, Blickrichtung unveraendert
+[ok]     Ziel wandert mit dem Auge (Abstand bleibt)
+[ok]     MoveLocal(rechts): senkrecht zur Blickrichtung
+[ok]     ZoomSteps(1): 12 % naeher
+[ok]     Zoom stoppt bei ~1.5 Einheiten (ganz nah dran)
+[ok]     Nahebene passt sich an: nah < 1, weit > 10
+[ok]     nah am Ziel darf die Kamera nach oben schauen (negativer Pitch)
+[ok]     aus grosser Entfernung bleibt die Kamera ueber dem Boden
+
+0 Fehler.
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"camera_handedness" end time: Sep 23 15:04 Mitteleurop‰ische Sommerzeit
+"camera_handedness" time elapsed: 00:00:00
+----------------------------------------------------------
+
+11/13 Testing: avatar_preview
+11/13 Test: avatar_preview
+Command: "D:/SERVER_FIESTA/map-editor/build-v12/Release/test_avatar_preview.exe"
+Directory: D:/SERVER_FIESTA/map-editor/build-v12
+"avatar_preview" start time: Sep 23 15:04 Mitteleurop‰ische Sommerzeit
+Output:
+----------------------------------------------------------
+== AvatarPreview ==
+[ok]     Klassen-Ordnernamen
+[ok]     Archer (Klasse 1) hat keinen Ordner
+[ok]     Archer liefert eine Fehlermeldung statt eines Modells
+(Modell-Test uebersprungen - Aufruf mit: D:/SERVER_FIESTA/map-editor/build-v12/Release/test_avatar_preview.exe <reschar-Ordner> [resitem-Ordner])
+
+0 Fehler.
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"avatar_preview" end time: Sep 23 15:04 Mitteleurop‰ische Sommerzeit
+"avatar_preview" time elapsed: 00:00:00
+----------------------------------------------------------
+
+12/13 Testing: manual
+12/13 Test: manual
+Command: "D:/SERVER_FIESTA/map-editor/build-v12/Release/test_manual.exe"
+Directory: D:/SERVER_FIESTA/map-editor/build-v12
+"manual" start time: Sep 23 15:04 Mitteleurop‰ische Sommerzeit
+Output:
+----------------------------------------------------------
+== Handbuch ==
+[ok]     mindestens 5 Kapitel
+[ok]     mindestens 20 Abschnitte
+[ok]     alle Abschnitte: zweisprachig, nicht leer, gueltige Kapitel, eindeutige IDs
+[ok]     Kapitel hat Abschnitte: start
+[ok]     Kapitel hat Abschnitte: controls
+[ok]     Kapitel hat Abschnitte: map
+[ok]     Kapitel hat Abschnitte: shn
+[ok]     Kapitel hat Abschnitte: creators
+[ok]     Kapitel hat Abschnitte: reference
+
+== Suche ==
+[ok]     Suche 'kamera' findet die 3D-Steuerung
+[ok]     Suche 'camera' (EN) findet die 3D-Steuerung
+[ok]     Suche mit zwei Woertern (alle muessen vorkommen)
+[ok]     Suche 'walk' (EN)
+[ok]     unbekanntes Wort -> kein Treffer
+[ok]     leere Suche liefert alle Abschnitte
+[ok]     Titeltreffer zuerst (zoom -> Steuerung)
+
+== Tooltips ==
+[ok]     Tooltip fuer 'Anlegen' (DE)
+[ok]     Tooltip fuer 'Anlegen' (EN) ist uebersetzt
+[ok]     Suffix-Beschriftung 'Importieren##htd'
+[ok]     unbekannter Suffix ohne Basiseintrag -> keiner
+[ok]     gleiche Beschriftung 'X' je Widget-Art unterschiedlich (InputInt/SmallButton)
+[ok]     T()-Schluessel-Tooltip
+[ok]     keine Tooltip-Erfindung fuer Unbekanntes
+
+== Spalten ==
+[ok]     ItemInfo.BuyPrice ist beschrieben und belegt
+[ok]     allgemeine Beschreibung fuer ID in jeder Tabelle
+[ok]     ActiveSkill.DlyTime (aus dem Skill-Editor uebernommen)
+[ok]     Unsicheres ist als 'vermutet' markiert (ActiveSkill.HPRate)
+[ok]     unbekannte Spalte -> keine Beschreibung
+[ok]     alle Spalten-Beschreibungen zweisprachig
+
+0 Fehler.
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"manual" end time: Sep 23 15:04 Mitteleurop‰ische Sommerzeit
+"manual" time elapsed: 00:00:00
+----------------------------------------------------------
+
+13/13 Testing: npc_orientation
+13/13 Test: npc_orientation
+Command: "D:/SERVER_FIESTA/map-editor/build-v12/Release/test_npc_orientation.exe"
+Directory: D:/SERVER_FIESTA/map-editor/build-v12
+"npc_orientation" start time: Sep 23 15:04 Mitteleurop‰ische Sommerzeit
+Output:
+----------------------------------------------------------
+== Formel: NpcYawRadians + Blickvektor (fx=-sin, fz=-cos) ==
+[ok]     sign=+1,offset=0,Direct=0 -> Blick (0,-1)
+[ok]     sign=+1,offset=0,Direct=90 -> Blick (-1,0)
+
+== Regression: Standardwerte zeigen vom synthetischen Nachbarn (Wand) weg ==
+[ok]     Standardwerte sind sign=+1, offset=0 Grad
+[ok]     Mit den Standardwerten blickt Direct=270 nach Osten (+X, von der Westwand weg)
+[ok]     ApplyNpcRecordToObject: Quaternion entspricht NpcYawRadians(Direct)
+[ok]     EstimateNpcOrientation findet auf dem Testfall ebenfalls 'nach Osten' (fx=1.000000)
+
+0 Fehler.
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"npc_orientation" end time: Sep 23 15:04 Mitteleurop‰ische Sommerzeit
+"npc_orientation" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Sep 23 15:04 Mitteleurop‰ische Sommerzeit

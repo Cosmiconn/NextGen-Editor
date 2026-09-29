@@ -1,0 +1,21 @@
+GL_VENDOR=NVIDIA Corporation
+GL_RENDERER=NVIDIA GeForce RTX 3060/PCIe/SSE2
+GL_VERSION=3.3.0 NVIDIA 591.86
+BirthdayConf.nif: visible pixels=29730, GL error=0, expected=visible
+BirthdayConf.nif: warm_frame_ms=0.0633733
+EglackMad.nif: visible pixels=19400, GL error=0, expected=visible
+EglackMad.nif: warm_frame_ms=0.249583
+Female_Hat_Antler00.nif: visible pixels=10098, GL error=0, expected=visible
+Female_Hat_Antler00.nif: warm_frame_ms=0.08686
+Helga.nif: visible pixels=10062, GL error=0, expected=visible
+Helga.nif: warm_frame_ms=0.0912267
+KingdomC00.nif: visible pixels=51394, GL error=0, expected=visible
+KingdomC00.nif: warm_frame_ms=0.122733
+LegelFairy.nif: visible pixels=13160, GL error=0, expected=visible
+LegelFairy.nif: warm_frame_ms=0.106377
+LegelFeatherDemon.nif: visible pixels=34268, GL error=0, expected=visible
+LegelFeatherDemon.nif: warm_frame_ms=0.13042
+M_MajesticLion.nif: visible pixels=9585, GL error=0, expected=visible
+M_MajesticLion.nif: warm_frame_ms=0.0653867
+Male_Hat_Antler00.nif: visible pixels=10036, GL error=0, expected=visible
+Male_Hat_Antler00.nif: warm_frame_ms=0.0920067

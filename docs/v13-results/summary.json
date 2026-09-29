@@ -1,0 +1,44 @@
+{
+  "date": "2026-09-24",
+  "source_commit": "727793fd3d49dcecc580ee3fb6910a703e0a95b5",
+  "format_files": 41067,
+  "inventory_files": 52476,
+  "unique_nifs": 11418,
+  "nif_status": {
+    "OK_GEOMETRY": 11331,
+    "OK_NO_GEOMETRY": 87
+  },
+  "nif_warnings": 0,
+  "nif_undecoded_files": 0,
+  "format_status": {
+    ".aid:ROUNDTRIP_EXACT": 72,
+    ".dds:DECODED": 10032,
+    ".dds:ERROR": 1,
+    ".htd:NEEDS_MAP_INI": 8,
+    ".htd:ROUNDTRIP_EXACT": 91,
+    ".htdg:NEEDS_MAP_INI": 11,
+    ".htdg:ROUNDTRIP_EXACT": 66,
+    ".idm:ROUNDTRIP_EXACT": 108,
+    ".ini:NOT_MAP_INI": 10,
+    ".ini:ROUNDTRIP_EXACT": 109,
+    ".kf:OK_NO_GEOMETRY": 12590,
+    ".nif:OK_GEOMETRY": 15340,
+    ".nif:OK_NO_GEOMETRY": 104,
+    ".shbd:ROUNDTRIP_EXACT": 394,
+    ".shmd:ROUNDTRIP_EXACT": 236,
+    ".shn:ERROR": 1,
+    ".shn:ROUNDTRIP_EXACT": 398,
+    ".tga:DECODED": 809,
+    ".txt:ROUNDTRIP_EXACT": 687
+  },
+  "infrastructure_errors": 0,
+  "timeouts": 0,
+  "auditor_full_sha256": "79fd009501d50e33664850ba26ee33f2c1c13639081e99b633be8d149f9f14e4",
+  "auditor_height_recheck_sha256": "bcdf48ba65ff48a407749ab1f7138effd3a75f838c008575fc7121fd886eb14e",
+  "ci_run": "https://github.com/Cosmiconn/NextGen-Editor/actions/runs/35943292538",
+  "ci_results": {
+    "linux_core": "success",
+    "windows_core": "success",
+    "windows_gui": "success"
+  }
+}

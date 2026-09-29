@@ -1,0 +1,32 @@
+MSBuild-Version 18.9.1+a81b43525 für .NET Framework
+  mapeditor_core.vcxproj -> <workspace>\build-v13\Release\mapeditor_core.lib
+  fiesta_audit.vcxproj -> <workspace>\build-v13\Release\fiesta_audit.exe
+  KfmPanel.cpp
+  map_editor.vcxproj -> <workspace>\build-v13\Release\map_editor.exe
+  nif_benchmark.vcxproj -> <workspace>\build-v13\Release\nif_benchmark.exe
+  nif_probe.vcxproj -> <workspace>\build-v13\Release\nif_probe.exe
+  test_avatar_preview.vcxproj -> <workspace>\build-v13\Release\test_avatar_preview.exe
+  test_camera_handedness.vcxproj -> <workspace>\build-v13\Release\test_camera_handedness.exe
+  test_heightmap_core.vcxproj -> <workspace>\build-v13\Release\test_heightmap_core.exe
+  test_kfm_file.vcxproj -> <workspace>\build-v13\Release\test_kfm_file.exe
+cl : befehlszeile  warning D9025: "/DNDEBUG" wird durch "/UNDEBUG" überschrieben [<workspace>\build-v13\test_kfm_opengl.vcxproj]
+  KfmPanel.cpp
+  test_kfm_opengl.vcxproj -> <workspace>\build-v13\Release\test_kfm_opengl.exe
+  test_legacy_map_project.vcxproj -> <workspace>\build-v13\Release\test_legacy_map_project.exe
+  test_legacy_texture_roundtrip.vcxproj -> <workspace>\build-v13\Release\test_legacy_texture_roundtrip.exe
+  test_manual.vcxproj -> <workspace>\build-v13\Release\test_manual.exe
+  test_nif_extensions.vcxproj -> <workspace>\build-v13\Release\test_nif_extensions.exe
+  test_nif_model.vcxproj -> <workspace>\build-v13\Release\test_nif_model.exe
+  test_nif_opengl.vcxproj -> <workspace>\build-v13\Release\test_nif_opengl.exe
+  test_nif_particles.vcxproj -> <workspace>\build-v13\Release\test_nif_particles.exe
+cl : befehlszeile  warning D9025: "/DNDEBUG" wird durch "/UNDEBUG" überschrieben [<workspace>\build-v13\test_npc_orientation.vcxproj]
+  KfmPanel.cpp
+  test_npc_orientation.vcxproj -> <workspace>\build-v13\Release\test_npc_orientation.exe
+  test_object_placement.vcxproj -> <workspace>\build-v13\Release\test_object_placement.exe
+  test_packed_images.vcxproj -> <workspace>\build-v13\Release\test_packed_images.exe
+  test_process_runner.vcxproj -> <workspace>\build-v13\Release\test_process_runner.exe
+  test_questdata.vcxproj -> <workspace>\build-v13\Release\test_questdata.exe
+  test_shinetext.vcxproj -> <workspace>\build-v13\Release\test_shinetext.exe
+  test_shn_file.vcxproj -> <workspace>\build-v13\Release\test_shn_file.exe
+  test_texture_layers.vcxproj -> <workspace>\build-v13\Release\test_texture_layers.exe
+  test_walk_grid.vcxproj -> <workspace>\build-v13\Release\test_walk_grid.exe

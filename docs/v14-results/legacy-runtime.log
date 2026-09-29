@@ -1,0 +1,7 @@
+warm_load_median_ms=0.0661, warm_encode_median_ms=0.0025
+GL_RENDERER=NVIDIA GeForce RTX 3060/PCIe/SSE2
+GL_VERSION=3.3.0 NVIDIA 591.86
+DE: bright_pixels=9525, vertices=3084, GL_error=0
+DE: warm_panel_frame_ms=1.20549
+EN: bright_pixels=9330, vertices=3032, GL_error=0
+EN: warm_panel_frame_ms=1.07958

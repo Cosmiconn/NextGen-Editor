@@ -1,0 +1,43 @@
+Test project <workspace>/build-v13
+      Start  1: process_runner
+ 1/19 Test  #1: process_runner ...................   Passed    0.46 sec
+      Start  2: heightmap_core
+ 2/19 Test  #2: heightmap_core ...................   Passed    0.03 sec
+      Start  3: texture_layers
+ 3/19 Test  #3: texture_layers ...................   Passed    0.03 sec
+      Start  4: legacy_texture_roundtrip
+ 4/19 Test  #4: legacy_texture_roundtrip .........   Passed    0.06 sec
+      Start  5: walk_grid
+ 5/19 Test  #5: walk_grid ........................   Passed    0.03 sec
+      Start  6: object_placement
+ 6/19 Test  #6: object_placement .................   Passed    0.68 sec
+      Start  7: legacy_map_project
+ 7/19 Test  #7: legacy_map_project ...............   Passed    0.66 sec
+      Start  8: shn_file
+ 8/19 Test  #8: shn_file .........................   Passed    0.03 sec
+      Start  9: shinetext
+ 9/19 Test  #9: shinetext ........................   Passed    0.11 sec
+      Start 10: questdata
+10/19 Test #10: questdata ........................   Passed    0.11 sec
+      Start 11: kfm_file
+11/19 Test #11: kfm_file .........................   Passed    0.02 sec
+      Start 12: packed_images
+12/19 Test #12: packed_images ....................   Passed    0.02 sec
+      Start 13: nif_extensions
+13/19 Test #13: nif_extensions ...................   Passed    0.07 sec
+      Start 14: nif_model
+14/19 Test #14: nif_model ........................   Passed    0.01 sec
+      Start 15: nif_particles
+15/19 Test #15: nif_particles ....................   Passed    0.05 sec
+      Start 16: camera_handedness
+16/19 Test #16: camera_handedness ................   Passed    0.01 sec
+      Start 17: avatar_preview
+17/19 Test #17: avatar_preview ...................   Passed    0.01 sec
+      Start 18: manual
+18/19 Test #18: manual ...........................   Passed    0.01 sec
+      Start 19: npc_orientation
+19/19 Test #19: npc_orientation ..................   Passed    0.03 sec
+
+100% tests passed out of 19
+
+Total Test time (real) =   2.49 sec
