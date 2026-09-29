@@ -73,6 +73,12 @@ public:
     void Draw(const core::ObjectPlacementSet& set, const OrbitCamera& camera, int width, int height,
               const std::vector<char>* hidden = nullptr);
 
+    // Deterministic visual-regression hook. Normal editor runtime leaves this unset and
+    // continues to use steady_clock; snapshot tooling can pin controller/particle time exactly.
+    void SetAnimationTimeOverrideForTesting(std::optional<float> seconds) {
+        animationTimeOverride_ = seconds;
+    }
+
 private:
     struct TextureBinding {
         std::uint32_t texture = 0;
@@ -256,6 +262,7 @@ private:
         float controllerTime = 0.0f;
     };
     std::vector<DrawItem> opaqueItems_, blendedItems_;
+    std::optional<float> animationTimeOverride_;
     std::uint32_t shaderProgram_ = 0;
     std::uint32_t glassShaderProgram_ = 0;
     std::uint32_t particleVao_ = 0, particleVbo_ = 0, particleEbo_ = 0;
