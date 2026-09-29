@@ -8,7 +8,6 @@
 #include <limits>
 #include <chrono>
 #include <cctype>
-#include <thread>
 
 using namespace theseed::mapeditor;
 
@@ -165,6 +164,7 @@ int main(int argc, char** argv) {
             // custom model. With --runtime-map-dir the test uses a production-like
             // <Client>/resmap/field/<Map> directory while the selected model still comes from
             // modelRoot; this exercises the real client-root texture resolver across split archives.
+            renderer.SetAnimationTimeOverrideForTesting(0.0f);
             renderer.LoadModelsForSet(set, runtimeMapDir);
             if (!renderer.HasRealMesh(0) || glGetError() != GL_NO_ERROR) ++failures;
             glViewport(0, 0, 512, 512);
@@ -203,9 +203,9 @@ int main(int argc, char** argv) {
             std::cout << name << ": warm_frame_ms=" <<
                 std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count() / 30.0 << '\n';
 
-            // A second frame separated in wall-clock time makes authored texture controllers
-            // and particle motion visually inspectable instead of only proving frame zero draws.
-            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+            // Sample an exact authored runtime time. This must not depend on runner speed:
+            // the same NIF on the same renderer now snapshots t=0.00 and t=0.25 deterministically.
+            renderer.SetAnimationTimeOverrideForTesting(0.25f);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
             renderer.Draw(set, camera, 512, 512);
             glFinish();
