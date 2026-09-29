@@ -65,6 +65,23 @@ jobs:
       - name: Smoke-test Linux OpenGL NIF snapshot tool
         if: runner.os == 'Linux'
         run: xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 ./build/test_nif_opengl tests/fixtures build/gl-output tree05.nif
+      - name: Smoke-test Linux ResMap visual runner
+        if: runner.os == 'Linux'
+        run: |
+          python3 -m py_compile tools/verify_resmap_visual.py
+          mkdir -p build/visual-smoke-input/resmap
+          cp tests/fixtures/tree05.nif build/visual-smoke-input/resmap/
+          python3 tools/verify_resmap_visual.py \
+            --matrix-exe ./build/nif_visual_matrix \
+            --snapshot-exe ./build/test_nif_opengl \
+            --output ./build/resmap-visual-linux-smoke \
+            --allow-incomplete-matrix \
+            --xvfb \
+            ./build/visual-smoke-input/resmap
+          test -s build/resmap-visual-linux-smoke/provenance.json
+          test -s build/resmap-visual-linux-smoke/review.tsv
+          test -s build/resmap-visual-linux-smoke/VISUAL_REVIEW_CHECKLIST.md
+          test -s build/resmap-visual-linux-smoke/index.html
       - name: Upload Linux NIF auditor
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v7
@@ -75,6 +92,7 @@ jobs:
             build/nif_probe
             build/nif_visual_matrix
             build/test_nif_opengl
+            tools/verify_resmap_visual.py
           if-no-files-found: error
       - name: Smoke-test strict ResMap audit runner
         if: runner.os == 'Windows'
