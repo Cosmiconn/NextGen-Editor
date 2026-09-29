@@ -82,6 +82,14 @@ int main(int argc, char** argv) {
                     std::cout << "TEX\tpart=" << partIndex
                               << "\tslot=" << slot
                               << "\tuv=" << tex.uvSet
+                              << "\tclamp=" << tex.clampMode
+                              << "\tfilter=" << tex.filterMode
+                              << "\thasTransform=" << tex.hasTransform
+                              << "\ttranslation=" << tex.translation.u << "," << tex.translation.v
+                              << "\tscale=" << tex.scale.u << "," << tex.scale.v
+                              << "\trotation=" << tex.rotation
+                              << "\ttransformType=" << tex.transformType
+                              << "\tcenter=" << tex.center.u << "," << tex.center.v
                               << "\texternal=" << (!tex.sourceUsesEmbeddedPixelData)
                               << "\tcube=" << tex.sourceIsCubeMap
                               << "\tembeddedFaces=" << (tex.embeddedTexture ? tex.embeddedTexture->faces : 0u)
@@ -109,6 +117,35 @@ int main(int argc, char** argv) {
                                   << "\tbMean=" << (pixels ? static_cast<double>(sums[2])/pixels : 0.0)
                                   << "\taMean=" << (pixels ? static_cast<double>(sums[3])/pixels : 0.0)
                                   << "\taMin=" << mins[3] << "\taMax=" << maxs[3] << '\n';
+                    }
+                }
+                for (std::size_t animationIndex = 0;
+                     animationIndex < part.textureTransformAnimations.size();
+                     ++animationIndex) {
+                    const auto& animation = part.textureTransformAnimations[animationIndex];
+                    const auto& track = animation.track;
+                    std::cout << "TEXANIM\tpart=" << partIndex
+                              << "\tindex=" << animationIndex
+                              << "\tslot=" << animation.slot
+                              << "\toperation=" << animation.operation
+                              << "\tactive=" << track.active
+                              << "\textrapolation=" << static_cast<unsigned>(track.extrapolation)
+                              << "\tfrequency=" << track.frequency
+                              << "\tphase=" << track.phase
+                              << "\tstart=" << track.startTime
+                              << "\tstop=" << track.stopTime
+                              << "\tcurrent=" << track.currentValue
+                              << "\tinterpolation=" << track.interpolation
+                              << "\tkeys=" << track.keys.size() << '\n';
+                    for (std::size_t keyIndex = 0; keyIndex < track.keys.size(); ++keyIndex) {
+                        const auto& key = track.keys[keyIndex];
+                        std::cout << "TEXANIMKEY\tpart=" << partIndex
+                                  << "\tanimation=" << animationIndex
+                                  << "\tindex=" << keyIndex
+                                  << "\ttime=" << key.time
+                                  << "\tvalue=" << key.value
+                                  << "\tforward=" << key.forwardTangent
+                                  << "\tbackward=" << key.backwardTangent << '\n';
                     }
                 }
                 for (const auto& tex : part.shaderTextureSlots) {
