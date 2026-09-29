@@ -142,11 +142,24 @@ int main(int argc, char** argv) {
                                   << "\tkind=classic\tid=" << slot
                                   << "\twidth=" << image.width
                                   << "\theight=" << image.height
+                                  << "\tpixelFormat=" << image.pixelFormat
+                                  << "\tbitsPerPixel=" << image.bitsPerPixel
+                                  << "\tbytesPerPixel=" << image.bytesPerPixel
                                   << "\trMean=" << (pixels ? static_cast<double>(sums[0])/pixels : 0.0)
                                   << "\tgMean=" << (pixels ? static_cast<double>(sums[1])/pixels : 0.0)
                                   << "\tbMean=" << (pixels ? static_cast<double>(sums[2])/pixels : 0.0)
                                   << "\taMean=" << (pixels ? static_cast<double>(sums[3])/pixels : 0.0)
                                   << "\taMin=" << mins[3] << "\taMax=" << maxs[3] << '\n';
+                        for (std::size_t channelIndex = 0; channelIndex < image.channels.size(); ++channelIndex) {
+                            const auto& channel = image.channels[channelIndex];
+                            std::cout << "EMBEDCHANNEL\tpart=" << partIndex
+                                      << "\tkind=classic\tid=" << slot
+                                      << "\tindex=" << channelIndex
+                                      << "\tcomponent=" << channel.component
+                                      << "\trepresentation=" << channel.representation
+                                      << "\tbits=" << static_cast<unsigned>(channel.bits)
+                                      << "\tsigned=" << channel.isSigned << '\n';
+                        }
                     }
                 }
                 for (std::size_t animationIndex = 0;
@@ -204,11 +217,24 @@ int main(int argc, char** argv) {
                                   << "\tkind=shader\tid=" << tex.mapId
                                   << "\twidth=" << image.width
                                   << "\theight=" << image.height
+                                  << "\tpixelFormat=" << image.pixelFormat
+                                  << "\tbitsPerPixel=" << image.bitsPerPixel
+                                  << "\tbytesPerPixel=" << image.bytesPerPixel
                                   << "\trMean=" << (pixels ? static_cast<double>(sums[0])/pixels : 0.0)
                                   << "\tgMean=" << (pixels ? static_cast<double>(sums[1])/pixels : 0.0)
                                   << "\tbMean=" << (pixels ? static_cast<double>(sums[2])/pixels : 0.0)
                                   << "\taMean=" << (pixels ? static_cast<double>(sums[3])/pixels : 0.0)
                                   << "\taMin=" << mins[3] << "\taMax=" << maxs[3] << '\n';
+                        for (std::size_t channelIndex = 0; channelIndex < image.channels.size(); ++channelIndex) {
+                            const auto& channel = image.channels[channelIndex];
+                            std::cout << "EMBEDCHANNEL\tpart=" << partIndex
+                                      << "\tkind=shader\tid=" << tex.mapId
+                                      << "\tindex=" << channelIndex
+                                      << "\tcomponent=" << channel.component
+                                      << "\trepresentation=" << channel.representation
+                                      << "\tbits=" << static_cast<unsigned>(channel.bits)
+                                      << "\tsigned=" << channel.isSigned << '\n';
+                        }
                     }
                 }
             }
