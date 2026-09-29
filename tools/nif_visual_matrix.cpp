@@ -76,6 +76,107 @@ bool TrackHasVisibleVariation(const core::NifFloatTrack& track) {
     return std::isfinite(lo) && std::isfinite(hi) && (hi - lo) > 1.0e-5f;
 }
 
+// Keep this sampling logic intentionally equivalent to NifMeshRenderer::EvaluateFloatTrack.
+// The visual selector must rank what the runtime will actually sample at its deterministic
+// t=0.00/0.25/1.00 evidence frames rather than merely noticing that authored keys differ.
+std::optional<float> EvaluateFloatTrackAt(const core::NifFloatTrack& track, float sceneTime) {
+    if (!track.active) return std::nullopt;
+
+    float time = track.frequency * sceneTime + track.phase;
+    if (!(time >= track.startTime && time <= track.stopTime)) {
+        const float delta = track.stopTime - track.startTime;
+        switch (track.extrapolation) {
+            case 0: {
+                if (delta <= 0.0f) time = track.startTime;
+                else {
+                    const float x = (time - track.startTime) / delta;
+                    const float y = (x - std::floor(x)) * delta;
+                    time = track.startTime + y;
+                }
+                break;
+            }
+            case 1: {
+                if (delta <= 0.0f) time = track.startTime;
+                else {
+                    const float x = (time - track.startTime) / delta;
+                    const float y = (x - std::floor(x)) * delta;
+                    const auto cycle = static_cast<long long>(std::fabs(std::floor(x)));
+                    time = ((cycle & 1LL) == 0LL)
+                        ? (track.startTime + y) : (track.stopTime - y);
+                }
+                break;
+            }
+            case 2:
+            default:
+                time = std::clamp(time, track.startTime, track.stopTime);
+                break;
+        }
+    }
+
+    if (track.keys.empty()) return track.currentValue;
+    if (time <= track.keys.front().time) return track.keys.front().value;
+    if (time >= track.keys.back().time) return track.keys.back().value;
+
+    auto upper = std::upper_bound(
+        track.keys.begin(), track.keys.end(), time,
+        [](float t, const core::NifFloatKey& key) { return t < key.time; });
+    if (upper == track.keys.begin()) return upper->value;
+
+    const auto& k2 = *upper;
+    const auto& k1 = *(upper - 1);
+    const float dt = k2.time - k1.time;
+    const float x = dt > 1.0e-8f
+        ? std::clamp((time - k1.time) / dt, 0.0f, 1.0f) : 0.0f;
+
+    if (track.interpolation == 2u) {
+        const float x2 = x * x;
+        const float x3 = x2 * x;
+        return k1.value * (2.0f * x3 - 3.0f * x2 + 1.0f) +
+               k2.value * (-2.0f * x3 + 3.0f * x2) +
+               k1.backwardTangent * (x3 - 2.0f * x2 + x) +
+               k2.forwardTangent * (x3 - x2);
+    }
+    if (track.interpolation == 5u) return x < 0.5f ? k1.value : k2.value;
+    return k1.value + (k2.value - k1.value) * x;
+}
+
+float PeriodicDelta(float a, float b, float period) {
+    return std::fabs(std::remainder(a - b, period));
+}
+
+bool TrackChangesAtEvidenceSamples(const core::NifTextureTransformAnimation& animation,
+                                   const core::NifTextureSlot& slot) {
+    if (!slot.present || !slot.hasTransform) return false;
+
+    const auto v0 = EvaluateFloatTrackAt(animation.track, 0.0f);
+    const auto v025 = EvaluateFloatTrackAt(animation.track, 0.25f);
+    const auto v1 = EvaluateFloatTrackAt(animation.track, 1.0f);
+    if (!v0 || !v025 || !v1) return false;
+
+    const auto differs = [&](float a, float b) {
+        constexpr float kEpsilon = 1.0e-5f;
+        switch (animation.operation) {
+            case 0: { // U translation
+                const bool repeatsU = slot.clampMode != 0u && slot.clampMode != 1u;
+                return (repeatsU ? PeriodicDelta(a, b, 1.0f) : std::fabs(a - b)) > kEpsilon;
+            }
+            case 1: { // V translation
+                const bool repeatsV = slot.clampMode != 0u && slot.clampMode != 2u;
+                return (repeatsV ? PeriodicDelta(a, b, 1.0f) : std::fabs(a - b)) > kEpsilon;
+            }
+            case 2: // rotation
+                return PeriodicDelta(a, b, 6.2831853071795864769f) > kEpsilon;
+            case 3: // U scale
+            case 4: // V scale
+                return std::fabs(a - b) > kEpsilon;
+            default:
+                return false;
+        }
+    };
+
+    return differs(*v0, *v025) || differs(*v025, *v1) || differs(*v0, *v1);
+}
+
 // The visual matrix is a review set, not a stress benchmark. Prefer assets whose relevant
 // feature is unambiguous while keeping geometry/system counts small enough to inspect in one
 // 512x512 snapshot. Stress/coverage remains the job of nif_material_inventory over the full corpus.
@@ -224,6 +325,7 @@ int main(int argc, char** argv) {
             std::uint64_t billboardParts = 0;
             std::uint64_t textureTransformControllers = 0;
             std::uint64_t dynamicTextureTransformControllers = 0;
+            std::uint64_t evidenceSampleTransformControllers = 0;
             std::uint64_t authoredTextureTransforms = 0;
             std::uint64_t flipControllers = 0;
             std::uint64_t pgTerrainParts = 0;
@@ -244,6 +346,10 @@ int main(int argc, char** argv) {
                     ++textureTransformControllers;
                     if (TrackHasVisibleVariation(animation.track))
                         ++dynamicTextureTransformControllers;
+                    if (animation.slot < part.textureSlots.size() &&
+                        TrackChangesAtEvidenceSamples(
+                            animation, part.textureSlots[animation.slot]))
+                        ++evidenceSampleTransformControllers;
                 }
                 flipControllers += part.textureFlipAnimations.size();
                 for (const auto& slot : part.textureSlots)
@@ -354,6 +460,7 @@ int main(int argc, char** argv) {
                 // presence of a controller block. Prefer active FloatKey tracks with a real
                 // authored value range, then isolated/non-particle assets for clear inspection.
                 Consider(best, "texture_transform", root, it->path(), relative,
+                         (evidenceSampleTransformControllers > 0 ? 8000000000000000ull : 0ull) +
                          (dynamicTextureTransformControllers > 0 ? 4000000000000000ull : 0ull) +
                          (textureTransformControllers > 0 ? 2000000000000000ull : 0ull) +
                          (model->particleSystems.empty() ? 1000000000000000ull : 0ull) +
@@ -362,6 +469,7 @@ int main(int argc, char** argv) {
                          NearTargetScore(triangles, 1200u),
                          Counts({{"transformControllers", textureTransformControllers},
                                  {"dynamicTransformTracks", dynamicTextureTransformControllers},
+                                 {"evidenceSampleTracks", evidenceSampleTransformControllers},
                                  {"authoredTransforms", authoredTextureTransforms},
                                  {"particleSystems", static_cast<std::uint64_t>(model->particleSystems.size())},
                                  {"triangles", triangles}}));
