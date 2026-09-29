@@ -5,7 +5,9 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
-#include <chrono>\n#include <cctype>\n#include <thread>
+#include <chrono>
+#include <cctype>
+#include <thread>
 
 using namespace theseed::mapeditor;
 
@@ -25,7 +27,7 @@ bool WritePpm(const std::filesystem::path& path,
               int height) {
     std::ofstream out(path, std::ios::binary);
     if (!out) return false;
-    out << "P6\\n" << width << ' ' << height << "\\n255\\n";
+    out << "P6\n" << width << ' ' << height << "\n255\n";
     for (int y = height - 1; y >= 0; --y) {
         for (int x = 0; x < width; ++x) {
             out.write(reinterpret_cast<const char*>(
@@ -151,15 +153,19 @@ int main(int argc, char** argv) {
             const auto error = glGetError();
             const std::size_t lit = CountVisiblePixels(pixels);
             std::cout << name << ": visible pixels=" << lit << ", GL error=" << error
-                      << ", expected=" << (expectVisible ? "visible" : "transparent (all materials alpha=0)") << '\\n';
-            if ((expectVisible ? lit < 20 : lit != 0) || error != GL_NO_ERROR) ++failures;
+                      << ", expected=" << (expectStaticVisible ? "static-visible" :
+                          (hasParticleSystems ? "particle/runtime-dependent" : "transparent-static")) << '\n';
+            if (error != GL_NO_ERROR ||
+                (expectStaticVisible && lit < 20) ||
+                (!expectStaticVisible && !hasParticleSystems && lit != 0))
+                ++failures;
 
             const std::filesystem::path outputDir = argv[2];
             std::filesystem::create_directories(outputDir);
             const std::string snapshotStem = SnapshotStem(name);
             if (!WritePpm(outputDir / (snapshotStem + ".ppm"), pixels, 512, 512) ||
                 !WriteBmp(outputDir / (snapshotStem + ".bmp"), pixels, 512, 512)) {
-                std::cerr << name << ": failed to write initial snapshot\\n";
+                std::cerr << name << ": failed to write initial snapshot\n";
                 ++failures;
             }
 
@@ -170,7 +176,7 @@ int main(int argc, char** argv) {
             }
             glFinish();
             std::cout << name << ": warm_frame_ms=" <<
-                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count() / 30.0 << '\\n';
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count() / 30.0 << '\n';
 
             // A second frame separated in wall-clock time makes authored texture controllers
             // and particle motion visually inspectable instead of only proving frame zero draws.
@@ -182,14 +188,14 @@ int main(int argc, char** argv) {
             const auto animatedError = glGetError();
             const std::size_t animatedLit = CountVisiblePixels(pixels);
             std::cout << name << ": animated visible pixels=" << animatedLit
-                      << ", GL error=" << animatedError << '\\n';
+                      << ", GL error=" << animatedError << '\n';
             if (animatedError != GL_NO_ERROR ||
                 (expectStaticVisible && animatedLit < 20) ||
                 (!expectStaticVisible && !hasParticleSystems && animatedLit != 0))
                 ++failures;
             if (!WritePpm(outputDir / (snapshotStem + "__animated.ppm"), pixels, 512, 512) ||
                 !WriteBmp(outputDir / (snapshotStem + "__animated.bmp"), pixels, 512, 512)) {
-                std::cerr << name << ": failed to write animated snapshot\\n";
+                std::cerr << name << ": failed to write animated snapshot\n";
                 ++failures;
             }
             // Negative control: hiding the object must leave the framebuffer clear.
