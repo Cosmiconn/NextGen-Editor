@@ -152,6 +152,7 @@ int main(int argc, char** argv) {
         "particles_mesh",
         "particles_world_space",
         "pgterrain",
+        "vc_alpha_texture_blender",
         "alpha_texture_blender",
         "alpha_texture_blender11",
         "glass"
@@ -210,6 +211,7 @@ int main(int argc, char** argv) {
             std::uint64_t authoredTextureTransforms = 0;
             std::uint64_t flipControllers = 0;
             std::uint64_t pgTerrainParts = 0;
+            std::uint64_t vcAlphaTextureBlenderParts = 0;
             std::uint64_t alphaTextureBlenderParts = 0;
             std::uint64_t alphaTextureBlender11Parts = 0;
             std::uint64_t glassParts = 0;
@@ -227,6 +229,7 @@ int main(int argc, char** argv) {
                 for (const auto& slot : part.textureSlots)
                     authoredTextureTransforms += (slot.present && slot.hasTransform) ? 1u : 0u;
                 pgTerrainParts += ShaderIs(part, "PgTerrain") ? 1u : 0u;
+                vcAlphaTextureBlenderParts += ShaderIs(part, "VCAlphaTextureBlender") ? 1u : 0u;
                 alphaTextureBlender11Parts += ShaderIs(part, "AlphaTextureBlender11") ? 1u : 0u;
                 alphaTextureBlenderParts += ShaderIs(part, "AlphaTextureBlender") ? 1u : 0u;
                 glassParts += (part.glassShader.has_value() || ShaderIs(part, "Glass")) ? 1u : 0u;
@@ -372,6 +375,13 @@ int main(int argc, char** argv) {
                          SimpleCountScore(pgTerrainParts) * 1000000000ull +
                          NearTargetScore(triangles, 5000u),
                          Counts({{"pgTerrainParts", pgTerrainParts}, {"triangles", triangles}}));
+            }
+
+            if (vcAlphaTextureBlenderParts > 0) {
+                Consider(best, "vc_alpha_texture_blender", root, it->path(), relative,
+                         SimpleCountScore(vcAlphaTextureBlenderParts) * 1000000000ull +
+                         NearTargetScore(triangles, 3000u),
+                         Counts({{"vcAlphaTextureBlenderParts", vcAlphaTextureBlenderParts}, {"triangles", triangles}}));
             }
 
             if (alphaTextureBlenderParts > 0) {
