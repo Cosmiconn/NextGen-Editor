@@ -49,8 +49,10 @@ The known visual/full-audit input set is:
 - `Resmap_5.4.zip`
 - `Resmap_5.5.zip`
 
-`verify_resmap_visual.ps1` normalizes the historical archive layouts into one production-like `<Client>/resmap` tree before selection/rendering.
-It accepts wrapper directories such as `resmap`, `resmap_3.1`, `resmap_3.2` and later parts whose ResMap contents are at archive root.
+`verify_resmap_visual.ps1` and the cross-platform `verify_resmap_visual.py` normalize the historical archive layouts into one production-like `<Client>/resmap` tree before selection/rendering.
+Both accept wrapper directories such as `resmap`, `resmap_3.1`, `resmap_3.2` and later parts whose ResMap contents are at archive root.
+
+The supplied ten-part corpus contains **3,765 physical NIF entries** when the archive roots are audited separately. After byte-identical logical paths are deduplicated into the production-like runtime tree, there are **3,685 logical NIF paths**. These numbers measure different things and are both intentional: the strict full-corpus gate preserves every physical corpus entry, while the visual runner mirrors the single logical client tree seen by the editor.
 
 macOS metadata (`._*`, `__MACOSX`) is excluded.
 If the same logical path appears multiple times, byte-identical files are deduplicated.
@@ -88,6 +90,7 @@ This gives texture controllers and particle systems more than one authored runti
 
 The visual runner writes:
 
+- `provenance.json` (Python runner) — source-root, merge, duplicate and physical/logical NIF counts;
 - `matrix.tsv` — selected category/NIF/evidence;
 - `review.tsv` — selected NIF SHA-256 plus SHA-256 for all three BMP snapshots;
 - `runtime.log` — OpenGL vendor/renderer/version, visible-pixel counts, GL errors and warm-frame timings;
@@ -100,10 +103,35 @@ Driver/GPU rasterization can differ slightly; unexplained visual differences sti
 
 ## Running the full visual matrix
 
-Use the Windows CI artifact from the exact branch head being reviewed.
-It contains `nif_visual_matrix.exe`, `test_nif_opengl.exe` and `verify_resmap_visual.ps1`.
+Use a CI artifact from the **exact branch head** being reviewed.
 
-Example:
+### Linux / headless software OpenGL
+
+The Linux artifact contains `nif_visual_matrix`, `test_nif_opengl` and `verify_resmap_visual.py`. The Python runner is the preferred path for automated/headless evidence because it can run the same OpenGL renderer under Xvfb with Mesa software rendering.
+
+```bash
+python3 verify_resmap_visual.py \
+  --matrix-exe ./nif_visual_matrix \
+  --snapshot-exe ./test_nif_opengl \
+  --output ./resmap-visual-matrix \
+  --xvfb \
+  resmap_1.zip \
+  resmap_2.zip \
+  resmap_3.1.zip \
+  resmap_3.2.zip \
+  resmap_4.zip \
+  resmap_5.1.zip \
+  Resmap_5.2.zip \
+  Resmap_5.3.zip \
+  Resmap_5.4.zip \
+  Resmap_5.5.zip
+```
+
+The Linux CI job smoke-tests the complete runner control path — normalization, selector invocation, Xvfb/OpenGL snapshots, evidence hashing and review/gallery generation — rather than only syntax-checking the script.
+
+### Windows
+
+The Windows artifact contains `nif_visual_matrix.exe`, `test_nif_opengl.exe` and `verify_resmap_visual.ps1`.
 
 ```powershell
 ./verify_resmap_visual.ps1 `
@@ -124,7 +152,7 @@ Example:
   -OutputPath ./resmap-visual-matrix
 ```
 
-Do not use `-AllowIncompleteMatrix` for final acceptance.
+Do not use `--allow-incomplete-matrix` / `-AllowIncompleteMatrix` for final acceptance.
 
 ## What must be reviewed
 
@@ -155,8 +183,8 @@ ResMap can be documented as complete only when all of the following hold on the 
 3. Embedded/external texture resolution and decode remain clean.
 4. No unexplained UV / ShaderTexDesc / ApplyMode / TextureEffect / render-state gaps remain.
 5. The strict 18-category visual matrix is complete.
-6. OpenGL runtime snapshots have no GL errors or obvious broken frames.
-7. Manual/reference review has **no unexplained renderer deviation**.
+6. OpenGL runtime snapshots have no GL errors or obvious broken frames; dynamic categories visibly differ across at least one of the deterministic evidence samples.
+7. Manual/reference review has **no unexplained renderer deviation**. A green headless/CI snapshot run is evidence infrastructure, not a substitute for this reference comparison.
 
 Only after that may `docs/UI_UPGRADE_PLAN.md` state:
 
