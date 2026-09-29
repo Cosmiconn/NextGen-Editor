@@ -8,6 +8,7 @@
 #include <limits>
 #include <chrono>
 #include <cctype>
+#include <cmath>
 
 using namespace theseed::mapeditor;
 
@@ -88,6 +89,51 @@ std::size_t CountVisiblePixels(const std::vector<unsigned char>& pixels) {
     return lit;
 }
 
+core::NifVec3 ParticlePositionForSnapshotBounds(
+    const core::NifParticleSystemInfo& system,
+    const core::NifParticleState& particle) {
+    const auto& p = particle.position;
+    const auto& t = system.sceneTransform;
+
+    // Keep this exactly aligned with NifMeshRenderer::Draw. World-space systems
+    // neutralize authored node translation/rotation and retain only scene scale;
+    // local-space systems apply the full legacy NIF transform after particle
+    // positions have already been remapped to editor Y-up by ParseNiPSysData.
+    if (system.worldSpace)
+        return {p.x * t.scale, p.y * t.scale, p.z * t.scale};
+
+    const float legacyX = p.x;
+    const float legacyY = p.z;
+    const float legacyZ = p.y;
+    const float legacyOutX =
+        t.translation.x + t.scale * (
+            t.rotation[0] * legacyX + t.rotation[1] * legacyY + t.rotation[2] * legacyZ);
+    const float legacyOutY =
+        t.translation.y + t.scale * (
+            t.rotation[3] * legacyX + t.rotation[4] * legacyY + t.rotation[5] * legacyZ);
+    const float legacyOutZ =
+        t.translation.z + t.scale * (
+            t.rotation[6] * legacyX + t.rotation[7] * legacyY + t.rotation[8] * legacyZ);
+    return {legacyOutX, legacyOutZ, legacyOutY};
+}
+
+bool ExpandSnapshotBounds(
+    float lo[3],
+    float hi[3],
+    const core::NifVec3& point,
+    float margin = 0.0f) {
+    if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z))
+        return false;
+    if (!std::isfinite(margin)) margin = 0.0f;
+    margin = std::max(0.0f, std::abs(margin));
+    const float values[3] = {point.x, point.y, point.z};
+    for (int i = 0; i < 3; ++i) {
+        lo[i] = std::min(lo[i], values[i] - margin);
+        hi[i] = std::max(hi[i], values[i] + margin);
+    }
+    return true;
+}
+
 } // namespace
 
 // Explicit opt-in runtime test, requiring a real OpenGL context. The ordinary
@@ -146,10 +192,35 @@ int main(int argc, char** argv) {
                 [](const auto& part) { return part.material.alpha > 0.0f; });
             const bool hasParticleSystems = !model->particleSystems.empty();
             float lo[3] = {1e30f, 1e30f, 1e30f}, hi[3] = {-1e30f, -1e30f, -1e30f};
-            for (const auto& part : model->parts) for (const auto& p : part.positions) {
-                const float v[3] = {p.x, p.y, p.z};
-                for (int i = 0; i < 3; ++i) { lo[i] = std::min(lo[i], v[i]); hi[i] = std::max(hi[i], v[i]); }
+            bool haveSnapshotBounds = false;
+            for (const auto& part : model->parts) {
+                for (const auto& p : part.positions)
+                    haveSnapshotBounds = ExpandSnapshotBounds(lo, hi, p) || haveSnapshotBounds;
             }
+
+            // Pure particle NIFs may have no static mesh vertices at all. Frame the authored
+            // active particle state in the exact model-space semantics used by Draw() so a
+            // successful snapshot is actually inspectable rather than accidentally aimed at
+            // the origin. Radius*size is included as conservative quad/mesh-particle padding.
+            for (const auto& system : model->particleSystems) {
+                if (!system.hasParticleData) continue;
+                const std::size_t active = std::min<std::size_t>(
+                    system.particleData.activeCount, system.particleData.particles.size());
+                for (std::size_t particleIndex = 0; particleIndex < active; ++particleIndex) {
+                    const auto& particle = system.particleData.particles[particleIndex];
+                    const auto position = ParticlePositionForSnapshotBounds(system, particle);
+                    const float radius =
+                        std::abs(particle.radius * particle.size * system.sceneTransform.scale);
+                    haveSnapshotBounds =
+                        ExpandSnapshotBounds(lo, hi, position, radius) || haveSnapshotBounds;
+                }
+            }
+
+            if (!haveSnapshotBounds) {
+                lo[0] = lo[1] = lo[2] = -0.5f;
+                hi[0] = hi[1] = hi[2] = 0.5f;
+            }
+
             app::OrbitCamera camera;
             camera.SetTarget((lo[0]+hi[0])/2, (lo[1]+hi[1])/2, (lo[2]+hi[2])/2);
             const float extent = std::max({hi[0]-lo[0], hi[1]-lo[1], hi[2]-lo[2], 1.0f});
