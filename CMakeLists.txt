@@ -106,8 +106,14 @@ endif()
 
 # Standalone-App (GLFW3 + Dear ImGui [docking, glfw+opengl3-binding] + glad)
 # Installation via vcpkg, siehe vcpkg.json.
+# The standalone NIF OpenGL verifier needs only GLFW + glad + OpenGL, so Linux CI
+# can build that renderer evidence tool without pulling in the full desktop GUI.
 # -----------------------------------------------------------------------------
-if(NEXTGEN_EDITOR_BUILD_GUI)
+option(NEXTGEN_EDITOR_BUILD_GL_TEST_TOOLS
+       "Build standalone OpenGL renderer verification utilities"
+       OFF)
+
+if(NEXTGEN_EDITOR_BUILD_GUI OR NEXTGEN_EDITOR_BUILD_GL_TEST_TOOLS)
 find_package(glfw3 CONFIG QUIET)
 if(NOT TARGET glfw)
     include(FetchContent)
@@ -115,6 +121,10 @@ if(NOT TARGET glfw)
     set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
     set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
+    if(UNIX AND NOT APPLE)
+        set(GLFW_BUILD_X11 ON CACHE BOOL "" FORCE)
+        set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "" FORCE)
+    endif()
     FetchContent_Declare(
         glfw
         GIT_REPOSITORY https://github.com/glfw/glfw.git
@@ -123,10 +133,30 @@ if(NOT TARGET glfw)
     )
     FetchContent_MakeAvailable(glfw)
 endif()
+
+find_package(glad CONFIG QUIET)
+if(NOT TARGET glad::glad)
+    include(FetchContent)
+    FetchContent_Declare(
+        glad
+        GIT_REPOSITORY https://github.com/Dav1dde/glad.git
+        GIT_TAG v0.1.36
+        GIT_SHALLOW TRUE
+    )
+    FetchContent_MakeAvailable(glad)
+    if(TARGET glad AND NOT TARGET glad::glad)
+        add_library(glad::glad ALIAS glad)
+    endif()
+endif()
+if(NOT TARGET glad::glad)
+    message(FATAL_ERROR "glad::glad target is required for OpenGL renderer verification")
+endif()
+find_package(OpenGL REQUIRED)
+endif()
+
+if(NEXTGEN_EDITOR_BUILD_GUI)
 find_package(imgui CONFIG REQUIRED)
 find_package(imguizmo CONFIG REQUIRED)
-find_package(glad CONFIG REQUIRED)
-find_package(OpenGL REQUIRED)
 
 add_executable(map_editor
     src/app/main.cpp
@@ -309,20 +339,21 @@ add_executable(test_kfm_opengl tests/test_kfm_opengl.cpp src/app/KfmPanel.cpp)
 target_include_directories(test_kfm_opengl PRIVATE src/app)
 target_link_libraries(test_kfm_opengl PRIVATE mapeditor_core glfw imgui::imgui glad::glad OpenGL::GL)
 
+endif() # GUI-only regression tests that require the full desktop dependency set
+
+option(NEXTGEN_EDITOR_ENABLE_GL_TESTS "Run tests requiring a real OpenGL context" OFF)
+if(NEXTGEN_EDITOR_BUILD_GUI OR NEXTGEN_EDITOR_BUILD_GL_TEST_TOOLS)
 add_executable(test_nif_opengl tests/test_nif_opengl.cpp src/app/Camera.cpp src/app/NifMeshRenderer.cpp)
 target_include_directories(test_nif_opengl PRIVATE src/app)
 target_link_libraries(test_nif_opengl PRIVATE mapeditor_core glfw glad::glad OpenGL::GL)
 if(WIN32)
     target_link_libraries(test_nif_opengl PRIVATE Ole32 Windowscodecs)
 endif()
-option(NEXTGEN_EDITOR_ENABLE_GL_TESTS "Run tests requiring a real OpenGL context" OFF)
 if(NEXTGEN_EDITOR_ENABLE_GL_TESTS)
     add_test(NAME nif_opengl COMMAND test_nif_opengl
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/particles ${CMAKE_CURRENT_BINARY_DIR}/gl-output)
 endif()
-
-
-endif() # GUI-only regression test
+endif()
 
 # Assertions are test checks, including in optimized builds. NDEBUG must never
 # silently turn the SHN/Quest/ShineText roundtrip tests into no-ops.
