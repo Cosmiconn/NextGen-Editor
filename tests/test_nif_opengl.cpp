@@ -220,9 +220,29 @@ int main(int argc, char** argv) {
                 ++failures;
             if (!WritePpm(outputDir / (snapshotStem + "__animated.ppm"), pixels, 512, 512) ||
                 !WriteBmp(outputDir / (snapshotStem + "__animated.bmp"), pixels, 512, 512)) {
-                std::cerr << name << ": failed to write animated snapshot\n";
+                std::cerr << name << ": failed to write t=0.25 snapshot\n";
                 ++failures;
             }
+
+            renderer.SetAnimationTimeOverrideForTesting(1.0f);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+            renderer.Draw(set, camera, 512, 512);
+            glFinish();
+            glReadPixels(0, 0, 512, 512, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+            const auto oneSecondError = glGetError();
+            const std::size_t oneSecondLit = CountVisiblePixels(pixels);
+            std::cout << name << ": t=1.00 visible pixels=" << oneSecondLit
+                      << ", GL error=" << oneSecondError << '\n';
+            if (oneSecondError != GL_NO_ERROR ||
+                (expectStaticVisible && oneSecondLit < 20) ||
+                (!expectStaticVisible && !hasParticleSystems && oneSecondLit != 0))
+                ++failures;
+            if (!WritePpm(outputDir / (snapshotStem + "__t1.ppm"), pixels, 512, 512) ||
+                !WriteBmp(outputDir / (snapshotStem + "__t1.bmp"), pixels, 512, 512)) {
+                std::cerr << name << ": failed to write t=1.00 snapshot\n";
+                ++failures;
+            }
+
             // Negative control: hiding the object must leave the framebuffer clear.
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
             const std::vector<char> hidden{1};
