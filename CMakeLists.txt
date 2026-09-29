@@ -179,6 +179,11 @@ add_executable(nif_material_inventory tools/nif_material_inventory.cpp)
 target_link_libraries(nif_material_inventory PRIVATE mapeditor_core)
 add_test(NAME nif_material_inventory
     COMMAND nif_material_inventory ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures)
+
+add_executable(nif_visual_matrix tools/nif_visual_matrix.cpp)
+target_link_libraries(nif_visual_matrix PRIVATE mapeditor_core)
+add_test(NAME nif_visual_matrix
+    COMMAND nif_visual_matrix ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures)
 add_executable(fiesta_audit tools/fiesta_audit.cpp)
 target_link_libraries(fiesta_audit PRIVATE mapeditor_core)
 add_executable(test_process_runner tests/test_process_runner.cpp)
