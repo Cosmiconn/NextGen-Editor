@@ -3,9 +3,11 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <optional>
 #include <set>
@@ -59,6 +61,19 @@ bool ContainsAny(const std::string& value, std::initializer_list<std::string_vie
 
 bool ShaderIs(const core::NifMeshPart& part, std::string_view wanted) {
     return Lower(part.shaderName) == Lower(std::string(wanted));
+}
+
+bool TrackHasVisibleVariation(const core::NifFloatTrack& track) {
+    if (!track.active || track.keys.size() < 2) return false;
+
+    float lo = std::numeric_limits<float>::infinity();
+    float hi = -std::numeric_limits<float>::infinity();
+    for (const auto& key : track.keys) {
+        if (!std::isfinite(key.value)) continue;
+        lo = std::min(lo, key.value);
+        hi = std::max(hi, key.value);
+    }
+    return std::isfinite(lo) && std::isfinite(hi) && (hi - lo) > 1.0e-5f;
 }
 
 // The visual matrix is a review set, not a stress benchmark. Prefer assets whose relevant
@@ -208,6 +223,7 @@ int main(int argc, char** argv) {
             std::uint64_t lodParts = 0;
             std::uint64_t billboardParts = 0;
             std::uint64_t textureTransformControllers = 0;
+            std::uint64_t dynamicTextureTransformControllers = 0;
             std::uint64_t authoredTextureTransforms = 0;
             std::uint64_t flipControllers = 0;
             std::uint64_t pgTerrainParts = 0;
@@ -224,7 +240,11 @@ int main(int argc, char** argv) {
                 bumpParts += part.textureSlots[5].present ? 1u : 0u;
                 lodParts += part.lodControlled ? 1u : 0u;
                 billboardParts += part.billboard ? 1u : 0u;
-                textureTransformControllers += part.textureTransformAnimations.size();
+                for (const auto& animation : part.textureTransformAnimations) {
+                    ++textureTransformControllers;
+                    if (TrackHasVisibleVariation(animation.track))
+                        ++dynamicTextureTransformControllers;
+                }
                 flipControllers += part.textureFlipAnimations.size();
                 for (const auto& slot : part.textureSlots)
                     authoredTextureTransforms += (slot.present && slot.hasTransform) ? 1u : 0u;
@@ -258,6 +278,9 @@ int main(int argc, char** argv) {
                 "house", "building", "castle", "tower", "bridge", "wall", "gate",
                 "temple", "church", "shop", "warehouse", "fort", "palace", "statue"
             });
+            const bool buildingSurfaceName = ContainsAny(pathLower, {
+                "ground", "floor", "road", "terrain", "coast", "water"
+            });
             const bool waterName = ContainsAny(pathLower, {
                 "water", "river", "lake", "fountain", "pond", "sea", "ocean"
             });
@@ -270,10 +293,17 @@ int main(int argc, char** argv) {
             }
 
             if (triangles > 0 && model->particleSystems.empty()) {
-                const std::uint64_t semanticBonus = buildingName ? 1000000000000000ull : 0ull;
+                // Prefer an actual structure over a path that merely contains a structure name
+                // but identifies one of its ground/floor/road support meshes. This affects only
+                // visual-review quality; full-corpus renderer coverage remains unchanged.
+                const std::uint64_t semanticBonus =
+                    buildingName && !buildingSurfaceName ? 2000000000000000ull :
+                    buildingName ? 1000000000000000ull : 0ull;
                 Consider(best, "building_static", root, it->path(), relative,
                          semanticBonus + NearTargetScore(triangles, 8000u),
-                         Counts({{"buildingKeyword", buildingName ? 1u : 0u}, {"triangles", triangles}}));
+                         Counts({{"buildingKeyword", buildingName ? 1u : 0u},
+                                 {"surfaceKeyword", buildingSurfaceName ? 1u : 0u},
+                                 {"triangles", triangles}}));
             }
 
             if (alphaTestParts > 0) {
@@ -320,13 +350,20 @@ int main(int argc, char** argv) {
             }
 
             if (textureTransformControllers > 0 || authoredTextureTransforms > 0) {
+                // A visual animation reference should prove temporal behavior, not merely the
+                // presence of a controller block. Prefer active FloatKey tracks with a real
+                // authored value range, then isolated/non-particle assets for clear inspection.
                 Consider(best, "texture_transform", root, it->path(), relative,
-                         (textureTransformControllers > 0 ? 1000000000000000ull : 0ull) +
+                         (dynamicTextureTransformControllers > 0 ? 4000000000000000ull : 0ull) +
+                         (textureTransformControllers > 0 ? 2000000000000000ull : 0ull) +
+                         (model->particleSystems.empty() ? 1000000000000000ull : 0ull) +
                          SimpleCountScore(textureTransformControllers > 0
                              ? textureTransformControllers : authoredTextureTransforms) * 1000000ull +
                          NearTargetScore(triangles, 1200u),
                          Counts({{"transformControllers", textureTransformControllers},
+                                 {"dynamicTransformTracks", dynamicTextureTransformControllers},
                                  {"authoredTransforms", authoredTextureTransforms},
+                                 {"particleSystems", static_cast<std::uint64_t>(model->particleSystems.size())},
                                  {"triangles", triangles}}));
             }
 
