@@ -211,7 +211,32 @@ jobs:
           reference_count="$(find build/resmap-visual-nifskope-smoke/nifskope_reference -maxdepth 1 -type f -name '*.png' | wc -l)"
           matrix_count="$(tail -n +2 build/resmap-visual-nifskope-smoke/matrix.tsv | sed '/^$/d' | wc -l)"
           test "$reference_count" -eq "$matrix_count"
-          grep -q       - name: Upload temporary NifSkope reference runtime
+          python3 - <<'PY'
+          import csv
+          from pathlib import Path
+
+          root = Path("build/resmap-visual-nifskope-smoke")
+          with (root / "review.tsv").open("r", encoding="utf-8", newline="") as handle:
+              reader = csv.DictReader(handle, delimiter="\t")
+              rows = list(reader)
+          required = {"NifSkopeReference", "NifSkopeReferenceSha256"}
+          missing = required.difference(reader.fieldnames or [])
+          if missing:
+              raise SystemExit(f"review.tsv missing NifSkope fields: {sorted(missing)}")
+          if not rows or any(not row["NifSkopeReference"] or not row["NifSkopeReferenceSha256"] for row in rows):
+              raise SystemExit("review.tsv contains an empty NifSkope reference entry")
+
+          checklist = (root / "VISUAL_REVIEW_CHECKLIST.md").read_text(encoding="utf-8")
+          if "Independent NifSkope reference:" not in checklist:
+              raise SystemExit("visual checklist does not expose NifSkope references")
+
+          gallery = (root / "index.html").read_text(encoding="utf-8")
+          if "<h3>NifSkope reference</h3>" not in gallery:
+              raise SystemExit("visual gallery does not expose NifSkope references")
+          PY
+
+          cp tools/capture_nifskope_reference.py artifact-nifskope-reference/
+      - name: Upload temporary NifSkope reference runtime
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v7
         with:
