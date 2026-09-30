@@ -197,6 +197,22 @@ jobs:
           if len(data) < 1024 or not data.startswith(b"\x89PNG\r\n\x1a\n"):
               raise SystemExit("NifSkope reference capture is not a valid non-trivial PNG")
           PY
+
+          rm -rf build/resmap-visual-nifskope-smoke
+          python3 tools/verify_resmap_visual.py \
+            --matrix-exe ./build/nif_visual_matrix \
+            --snapshot-exe ./build/test_nif_opengl \
+            --output ./build/resmap-visual-nifskope-smoke \
+            --allow-incomplete-matrix \
+            --xvfb \
+            --nifskope-reference ./artifact-nifskope-reference/run-nifskope-reference.sh \
+            ./build/visual-smoke-input/resmap
+          test -s build/resmap-visual-nifskope-smoke/nifskope_reference/nifskope_reference.tsv
+          reference_count="$(find build/resmap-visual-nifskope-smoke/nifskope_reference -maxdepth 1 -type f -name '*.png' | wc -l)"
+          matrix_count="$(tail -n +2 build/resmap-visual-nifskope-smoke/matrix.tsv | sed '/^$/d' | wc -l)"
+          test "$reference_count" -eq "$matrix_count"
+
+          cp tools/capture_nifskope_reference.py artifact-nifskope-reference/
       - name: Upload temporary NifSkope reference runtime
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v7
@@ -214,6 +230,7 @@ jobs:
             build/nif_probe \
             build/nif_visual_matrix \
             build/test_nif_opengl \
+            tools/capture_nifskope_reference.py \
             tools/verify_resmap_visual.py \
             artifact-linux/
       - name: Upload Linux NIF auditor
