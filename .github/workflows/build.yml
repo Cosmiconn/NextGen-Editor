@@ -226,57 +226,112 @@ jobs:
           test "$reference_count" -eq "$matrix_count"
 
           cp tools/capture_nifskope_reference.py artifact-nifskope-reference/
-      - name: Detect private full ResMap release corpus
-        id: resmap_release
-        if: runner.os == 'Linux' && github.event_name == 'workflow_dispatch'
+      - name: Detect secure full ResMap corpus source
+        id: resmap_corpus
+        if: runner.os == 'Linux' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[resmap-full]')))
         env:
-          GH_TOKEN: ${{ github.token }}
+          CORPUS_URL: ${{ secrets.RESMAP_CORPUS_URL }}
         run: |
           set -euo pipefail
-          tag="resmap-audit-${GITHUB_SHA:0:8}"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          if gh release view "$tag" >/dev/null 2>&1; then
+          if test -n "$CORPUS_URL"; then
             echo "available=true" >> "$GITHUB_OUTPUT"
-            echo "Found private ResMap corpus release: $tag"
+            echo "Secure ResMap corpus source is configured."
           else
             echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::notice title=Full ResMap reference audit skipped::Create private release '$tag' with the ten historical ResMap ZIP assets, then rerun this workflow manually on the same branch/head."
+            echo "::notice title=Full ResMap reference audit skipped::Repository secret RESMAP_CORPUS_URL is not configured. Set it to a private/temporary direct-download URL for a ZIP bundle containing the ten historical ResMap ZIPs."
           fi
-      - name: Run full ResMap strict + visual + NifSkope release audit
-        if: runner.os == 'Linux' && github.event_name == 'workflow_dispatch' && steps.resmap_release.outputs.available == 'true'
+      - name: Run full ResMap strict + visual + NifSkope secure corpus audit
+        if: runner.os == 'Linux' && steps.resmap_corpus.outputs.available == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
+          CORPUS_URL: ${{ secrets.RESMAP_CORPUS_URL }}
+          CORPUS_SHA256: ${{ secrets.RESMAP_CORPUS_SHA256 }}
         run: |
           set -euo pipefail
-          tag="${{ steps.resmap_release.outputs.tag }}"
-          rm -rf build/resmap-release-input build/resmap-release-evidence
-          mkdir -p build/resmap-release-input
-          gh release download "$tag" --dir build/resmap-release-input --clobber
+          rm -rf build/resmap-corpus-bundle.zip build/resmap-corpus-unpacked build/resmap-secure-input build/resmap-secure-evidence
+          mkdir -p build/resmap-corpus-unpacked build/resmap-secure-input
+
+          # The URL is stored as a GitHub Actions secret, so its value is masked in logs.
+          curl -L --fail --retry 3 --retry-all-errors \
+            "$CORPUS_URL" \
+            -o build/resmap-corpus-bundle.zip
+
+          if test -n "$CORPUS_SHA256"; then
+            echo "$CORPUS_SHA256  build/resmap-corpus-bundle.zip" | sha256sum -c -
+          fi
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil
+          import zipfile
+
+          bundle = Path("build/resmap-corpus-bundle.zip")
+          unpacked = Path("build/resmap-corpus-unpacked")
+          normalized = Path("build/resmap-secure-input")
+          expected = [
+              "resmap_1.zip",
+              "resmap_2.zip",
+              "resmap_3.1.zip",
+              "resmap_3.2.zip",
+              "resmap_4.zip",
+              "resmap_5.1.zip",
+              "Resmap_5.2.zip",
+              "Resmap_5.3.zip",
+              "Resmap_5.4.zip",
+              "Resmap_5.5.zip",
+          ]
+
+          root = unpacked.resolve()
+          with zipfile.ZipFile(bundle) as handle:
+              for info in handle.infolist():
+                  relative = Path(info.filename)
+                  if relative.is_absolute() or ".." in relative.parts:
+                      raise SystemExit(f"Unsafe corpus bundle member: {info.filename}")
+                  target = (unpacked / relative).resolve()
+                  try:
+                      target.relative_to(root)
+                  except ValueError:
+                      raise SystemExit(f"Unsafe corpus bundle member: {info.filename}")
+              handle.extractall(unpacked)
+
+          normalized.mkdir(parents=True, exist_ok=True)
+          for name in expected:
+              matches = [path for path in unpacked.rglob(name) if path.is_file()]
+              if len(matches) != 1:
+                  raise SystemExit(
+                      f"Expected exactly one {name} in secure corpus bundle; got {len(matches)}"
+                  )
+              target = normalized / name
+              shutil.copy2(matches[0], target)
+              if target.stat().st_size == 0:
+                  raise SystemExit(f"Secure corpus asset is empty: {name}")
+
+          unexpected = sorted(
+              path.name for path in normalized.glob("*.zip")
+              if path.name not in expected
+          )
+          if unexpected:
+              raise SystemExit(f"Unexpected normalized corpus ZIPs: {unexpected}")
+          print("Secure ResMap corpus bundle normalized: 10/10 ZIP assets")
+          PY
 
           inputs=(
-            build/resmap-release-input/resmap_1.zip
-            build/resmap-release-input/resmap_2.zip
-            build/resmap-release-input/resmap_3.1.zip
-            build/resmap-release-input/resmap_3.2.zip
-            build/resmap-release-input/resmap_4.zip
-            build/resmap-release-input/resmap_5.1.zip
-            build/resmap-release-input/Resmap_5.2.zip
-            build/resmap-release-input/Resmap_5.3.zip
-            build/resmap-release-input/Resmap_5.4.zip
-            build/resmap-release-input/Resmap_5.5.zip
+            build/resmap-secure-input/resmap_1.zip
+            build/resmap-secure-input/resmap_2.zip
+            build/resmap-secure-input/resmap_3.1.zip
+            build/resmap-secure-input/resmap_3.2.zip
+            build/resmap-secure-input/resmap_4.zip
+            build/resmap-secure-input/resmap_5.1.zip
+            build/resmap-secure-input/Resmap_5.2.zip
+            build/resmap-secure-input/Resmap_5.3.zip
+            build/resmap-secure-input/Resmap_5.4.zip
+            build/resmap-secure-input/Resmap_5.5.zip
           )
-          for input in "${inputs[@]}"; do
-            test -s "$input" || {
-              echo "::error::Required ResMap release asset missing or empty: $input"
-              exit 1
-            }
-          done
 
           python3 tools/verify_resmap_visual.py \
             --matrix-exe ./build/nif_visual_matrix \
             --snapshot-exe ./build/test_nif_opengl \
             --strict-audit-exe ./build/nif_material_inventory \
-            --output ./build/resmap-release-evidence \
+            --output ./build/resmap-secure-evidence \
             --xvfb \
             --nifskope-reference ./artifact-nifskope-reference/run-nifskope-reference.sh \
             "${inputs[@]}"
@@ -286,7 +341,7 @@ jobs:
           import json
           from pathlib import Path
 
-          root = Path("build/resmap-release-evidence")
+          root = Path("build/resmap-secure-evidence")
           provenance = json.loads((root / "provenance.json").read_text(encoding="utf-8"))
           expected = {
               "sourceRoots": 10,
@@ -325,16 +380,16 @@ jobs:
           if flagged:
               raise SystemExit(f"Automated frame review flags remain: {flagged}")
 
-          print("FULL RESMAP RELEASE EVIDENCE PASSED")
+          print("FULL RESMAP SECURE EVIDENCE PASSED")
           print(summaries[-1])
           print("18/18 visual rows with independent NifSkope captures")
           PY
-      - name: Upload full ResMap release evidence
-        if: runner.os == 'Linux' && github.event_name == 'workflow_dispatch' && steps.resmap_release.outputs.available == 'true' && always()
+      - name: Upload full ResMap secure evidence
+        if: runner.os == 'Linux' && steps.resmap_corpus.outputs.available == 'true' && always()
         uses: actions/upload-artifact@v7
         with:
           name: ResMap-full-reference-evidence-${{ github.sha }}
-          path: build/resmap-release-evidence/
+          path: build/resmap-secure-evidence/
           if-no-files-found: error
           retention-days: 30
       - name: Upload temporary NifSkope reference runtime
