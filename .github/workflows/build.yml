@@ -66,6 +66,16 @@ jobs:
           # using NsPgToonNoAni implementation 0. Keep them visible, but do not let them block
           # the ResMap-priority gate before that shader is addressed in the reschar phase.
           ./build/nif_material_inventory --strict-renderer --defer-priority2-character-shaders --asset-root tests/fixtures tests/fixtures
+      - name: Smoke-test Linux strict ResMap archive runner
+        if: runner.os == 'Linux'
+        run: |
+          python3 -m py_compile tools/audit_resmap.py
+          python3 tools/audit_resmap.py \
+            --audit-exe ./build/nif_material_inventory \
+            --report ./build/resmap-strict-audit-linux-smoke.txt \
+            --defer-priority2-character-shaders \
+            ./tests/fixtures
+          grep -q 'rendererGapFiles=0' ./build/resmap-strict-audit-linux-smoke.txt
       - name: Smoke-test Linux OpenGL NIF snapshot tool
         if: runner.os == 'Linux'
         run: |
@@ -85,11 +95,14 @@ jobs:
           python3 tools/verify_resmap_visual.py \
             --matrix-exe ./build/nif_visual_matrix \
             --snapshot-exe ./build/test_nif_opengl \
+            --strict-audit-exe ./build/nif_material_inventory \
             --output ./build/resmap-visual-linux-smoke \
             --allow-incomplete-matrix \
             --xvfb \
             ./build/visual-smoke-input/resmap
           test -s build/resmap-visual-linux-smoke/provenance.json
+          test -s build/resmap-visual-linux-smoke/strict_audit.log
+          grep -q 'rendererGapFiles=0' build/resmap-visual-linux-smoke/strict_audit.log
           test -s build/resmap-visual-linux-smoke/review.tsv
           test -s build/resmap-visual-linux-smoke/frame_metrics.tsv
           test -s build/resmap-visual-linux-smoke/VISUAL_REVIEW_CHECKLIST.md
@@ -213,6 +226,117 @@ jobs:
           test "$reference_count" -eq "$matrix_count"
 
           cp tools/capture_nifskope_reference.py artifact-nifskope-reference/
+      - name: Detect private full ResMap release corpus
+        id: resmap_release
+        if: runner.os == 'Linux' && github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="resmap-audit-${GITHUB_SHA:0:8}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "Found private ResMap corpus release: $tag"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Full ResMap reference audit skipped::Create private release '$tag' with the ten historical ResMap ZIP assets, then rerun this workflow manually on the same branch/head."
+          fi
+      - name: Run full ResMap strict + visual + NifSkope release audit
+        if: runner.os == 'Linux' && github.event_name == 'workflow_dispatch' && steps.resmap_release.outputs.available == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.resmap_release.outputs.tag }}"
+          rm -rf build/resmap-release-input build/resmap-release-evidence
+          mkdir -p build/resmap-release-input
+          gh release download "$tag" --dir build/resmap-release-input --clobber
+
+          inputs=(
+            build/resmap-release-input/resmap_1.zip
+            build/resmap-release-input/resmap_2.zip
+            build/resmap-release-input/resmap_3.1.zip
+            build/resmap-release-input/resmap_3.2.zip
+            build/resmap-release-input/resmap_4.zip
+            build/resmap-release-input/resmap_5.1.zip
+            build/resmap-release-input/Resmap_5.2.zip
+            build/resmap-release-input/Resmap_5.3.zip
+            build/resmap-release-input/Resmap_5.4.zip
+            build/resmap-release-input/Resmap_5.5.zip
+          )
+          for input in "${inputs[@]}"; do
+            test -s "$input" || {
+              echo "::error::Required ResMap release asset missing or empty: $input"
+              exit 1
+            }
+          done
+
+          python3 tools/verify_resmap_visual.py \
+            --matrix-exe ./build/nif_visual_matrix \
+            --snapshot-exe ./build/test_nif_opengl \
+            --strict-audit-exe ./build/nif_material_inventory \
+            --output ./build/resmap-release-evidence \
+            --xvfb \
+            --nifskope-reference ./artifact-nifskope-reference/run-nifskope-reference.sh \
+            "${inputs[@]}"
+
+          python3 - <<'PY'
+          import csv
+          import json
+          from pathlib import Path
+
+          root = Path("build/resmap-release-evidence")
+          provenance = json.loads((root / "provenance.json").read_text(encoding="utf-8"))
+          expected = {
+              "sourceRoots": 10,
+              "mergedFiles": 6217,
+              "identicalDuplicateFiles": 168,
+              "physicalNifEntries": 3765,
+              "logicalNifPaths": 3685,
+              "strictAuditEnabled": True,
+              "strictAuditScanRoots": 10,
+          }
+          mismatches = {
+              key: (provenance.get(key), value)
+              for key, value in expected.items()
+              if provenance.get(key) != value
+          }
+          if mismatches:
+              raise SystemExit(f"Unexpected ResMap corpus provenance: {mismatches}")
+
+          strict_log = (root / "strict_audit.log").read_text(encoding="utf-8", errors="replace")
+          summaries = [line for line in strict_log.splitlines() if line.startswith("SUMMARY")]
+          if not summaries or "rendererGapFiles=0" not in summaries[-1].split():
+              raise SystemExit("Strict full-corpus audit did not finish at rendererGapFiles=0")
+
+          with (root / "review.tsv").open("r", encoding="utf-8", newline="") as handle:
+              rows = list(csv.DictReader(handle, delimiter="\t"))
+          if len(rows) != 18:
+              raise SystemExit(f"Expected 18 visual reference rows, got {len(rows)}")
+          missing_reference = [row["Category"] for row in rows if not row["NifSkopeReference"]]
+          if missing_reference:
+              raise SystemExit(f"Missing NifSkope references: {missing_reference}")
+          flagged = {
+              row["Category"]: row["ReviewFlags"]
+              for row in rows
+              if row["ReviewFlags"]
+          }
+          if flagged:
+              raise SystemExit(f"Automated frame review flags remain: {flagged}")
+
+          print("FULL RESMAP RELEASE EVIDENCE PASSED")
+          print(summaries[-1])
+          print("18/18 visual rows with independent NifSkope captures")
+          PY
+      - name: Upload full ResMap release evidence
+        if: runner.os == 'Linux' && github.event_name == 'workflow_dispatch' && steps.resmap_release.outputs.available == 'true' && always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ResMap-full-reference-evidence-${{ github.sha }}
+          path: build/resmap-release-evidence/
+          if-no-files-found: error
+          retention-days: 30
       - name: Upload temporary NifSkope reference runtime
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v7
@@ -230,6 +354,7 @@ jobs:
             build/nif_probe \
             build/nif_visual_matrix \
             build/test_nif_opengl \
+            tools/audit_resmap.py \
             tools/capture_nifskope_reference.py \
             tools/verify_resmap_visual.py \
             artifact-linux/
