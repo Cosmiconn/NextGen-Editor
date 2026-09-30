@@ -355,11 +355,32 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=Path("resmap-visual-matrix"))
     parser.add_argument("--allow-incomplete-matrix", action="store_true")
     parser.add_argument("--xvfb", action="store_true", help="Run every OpenGL snapshot under xvfb-run; sets LIBGL_ALWAYS_SOFTWARE=1.")
+    parser.add_argument(
+        "--nifskope-reference",
+        type=Path,
+        help="Optional NifSkope executable/wrapper. Captures independent reference PNGs while the merged client tree is still available.",
+    )
+    parser.add_argument(
+        "--nifskope-capture-tool",
+        type=Path,
+        default=Path(__file__).with_name("capture_nifskope_reference.py"),
+        help="NifSkope capture helper used with --nifskope-reference.",
+    )
     parser.add_argument("inputs", nargs="+", type=Path, help="ResMap directories and/or ZIP archives.")
     args = parser.parse_args()
 
     matrix = require_file(args.matrix_exe, "Matrix executable")
     snapshot = require_file(args.snapshot_exe, "Snapshot executable")
+    nifskope_reference = (
+        require_file(args.nifskope_reference, "NifSkope reference executable/wrapper")
+        if args.nifskope_reference
+        else None
+    )
+    nifskope_capture_tool = (
+        require_file(args.nifskope_capture_tool, "NifSkope capture helper")
+        if nifskope_reference
+        else None
+    )
     inputs = [path.resolve(strict=True) for path in args.inputs]
 
     output = args.output.resolve()
@@ -550,6 +571,47 @@ def main() -> int:
                 "T100": f"snapshots/{category}/{stem}__t1.bmp",
             })
 
+        if nifskope_reference is not None:
+            assert nifskope_capture_tool is not None
+            reference_output = output / "nifskope_reference"
+            reference_log = output / "nifskope_reference.log"
+            reference_cmd = [
+                sys.executable,
+                str(nifskope_capture_tool),
+                "--nifskope",
+                str(nifskope_reference),
+                "--matrix",
+                str(manifest),
+                "--output",
+                str(reference_output),
+            ]
+            reference_env = os.environ.copy()
+            if args.xvfb:
+                xvfb = shutil.which("xvfb-run")
+                if not xvfb:
+                    raise RuntimeError("--xvfb requested but xvfb-run is not available on PATH.")
+                reference_env["LIBGL_ALWAYS_SOFTWARE"] = "1"
+                reference_cmd = [xvfb, "-a", *reference_cmd]
+
+            print("\nCapturing independent NifSkope reference views")
+            if run_logged(reference_cmd, reference_log, env=reference_env) != 0:
+                raise RuntimeError(
+                    "NifSkope reference capture failed. "
+                    f"See: {reference_log}"
+                )
+
+            reference_manifest = reference_output / "nifskope_reference.tsv"
+            if not reference_manifest.is_file():
+                raise RuntimeError(
+                    f"NifSkope reference manifest was not produced: {reference_manifest}"
+                )
+            reference_pngs = list(reference_output.glob("*.png"))
+            if len(reference_pngs) != len(matrix_rows):
+                raise RuntimeError(
+                    "NifSkope reference capture count does not match the visual matrix: "
+                    f"{len(reference_pngs)} PNGs for {len(matrix_rows)} categories."
+                )
+
         write_review_outputs(output, review_rows)
 
         print("\nRESMAP VISUAL MATRIX GENERATED")
@@ -560,6 +622,8 @@ def main() -> int:
         print(f"  snapshots  : {snapshots}")
         print(f"  review     : {output / 'VISUAL_REVIEW_CHECKLIST.md'}")
         print(f"  gallery    : {output / 'index.html'}")
+        if nifskope_reference is not None:
+            print(f"  NifSkope   : {output / 'nifskope_reference'}")
 
     return 0
 
