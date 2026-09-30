@@ -171,7 +171,16 @@ The real ten-archive ResMap matrix was executed on renderer/tooling head `66fe07
 
 The first full run exposed a review-selection weakness rather than a renderer-semantic gap: `IDField/EgmaDn01 2/Lava.nif` has a valid authored V-offset controller but moves only from 0 to 1 over 33.3333 seconds, so its first-second 512x512 evidence snapshots were pixel-identical. Independent real ResMap candidates proved the renderer's TextureTransform path was active. The selector now ranks candidates by normalized authored motion at the actual evidence times; without filename hardcoding it selects `KDField/KDPanMaze/Fountain.nif`, whose t=0.00/0.25/1.00 samples visibly and pixel-wise differ. No renderer material/shader semantics were changed for this correction.
 
-This run closes the **automated full-corpus visual matrix gate**, but not the final manual/reference gate below. The tooling can now capture an independent NifSkope reference PNG for every selected row during the same merged-tree run; that capture path is CI-proven, but the real 18-category ten-archive NifSkope/reference review has not yet been accepted. NifSkope is an independent reference only for the Gamebryo semantics it actually supports. Fiesta-specific named shaders and engine behavior (for example `PgTerrain` or the verified Fiesta/Gamebryo-2.6 `Glass` contract) still require the corresponding source/data evidence or a trustworthy Fiesta runtime reference instead of treating a NifSkope difference as authoritative. ResMap must remain open until no unexplained renderer deviation remains.
+This run closes the **automated full-corpus visual matrix gate**, but not the final manual/reference gate below. The tooling can now capture an independent NifSkope reference PNG for every selected row during the same merged-tree run; that capture path is CI-proven, but the real 18-category ten-archive NifSkope/reference review has not yet been accepted. NifSkope is an independent reference only for the Gamebryo semantics it actually supports. Fiesta-specific named shaders and engine behavior must use the stronger source/data evidence instead of treating a NifSkope difference as authoritative. ResMap must remain open until no unexplained renderer deviation remains.
+
+The runner records this distinction as `ReferenceAuthority` in `review.tsv`, the checklist and the HTML gallery:
+
+- ordinary Gamebryo categories: independent NifSkope capture plus authored NIF/material/render-state evidence;
+- `PgTerrain`, `VCAlphaTextureBlender`, `AlphaTextureBlender11`: the verified Fiesta authored corpus/map contract is authoritative; NifSkope is contextual only;
+- `AlphaTextureBlender`: the stock Gamebryo 2.6 shader source plus authored maps is authoritative; NifSkope is supporting evidence;
+- `Glass`: the verified Gamebryo 2.6 shader/source contract plus authored shader extra-data is authoritative; NifSkope is supporting/context evidence.
+
+This prevents the final review from accepting or rejecting a named-shader path merely because an independent general-purpose viewer looks different.
 
 ## What must be reviewed
 
