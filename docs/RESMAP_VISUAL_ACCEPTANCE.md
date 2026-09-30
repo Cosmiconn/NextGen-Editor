@@ -110,7 +110,7 @@ Use a CI artifact from the **exact branch head** being reviewed.
 
 ### Linux / headless software OpenGL
 
-The Linux artifact contains `nif_visual_matrix`, `test_nif_opengl` and `verify_resmap_visual.py`. The Python runner is the preferred path for automated/headless evidence because it can run the same OpenGL renderer under Xvfb with Mesa software rendering.
+The Linux artifact contains `nif_visual_matrix`, `test_nif_opengl`, `verify_resmap_visual.py` and `capture_nifskope_reference.py`. The Python runner is the preferred path for automated/headless evidence because it can run the same OpenGL renderer under Xvfb with Mesa software rendering. The separate `NifSkope-reference-linux` CI artifact provides the pinned independent NifSkope 2.0.dev11 runtime used for supported Gamebryo reference captures.
 
 ```bash
 python3 verify_resmap_visual.py \
@@ -118,6 +118,7 @@ python3 verify_resmap_visual.py \
   --snapshot-exe ./test_nif_opengl \
   --output ./resmap-visual-matrix \
   --xvfb \
+  --nifskope-reference ./NifSkope-reference-linux/run-nifskope-reference.sh \
   resmap_1.zip \
   resmap_2.zip \
   resmap_3.1.zip \
@@ -130,7 +131,7 @@ python3 verify_resmap_visual.py \
   Resmap_5.5.zip
 ```
 
-The Linux CI job smoke-tests the complete runner control path — normalization, selector invocation, Xvfb/OpenGL snapshots, evidence hashing, BMP metric extraction and review/gallery generation — rather than only syntax-checking the script. CI additionally requires a non-empty `frame_metrics.tsv` with the expected metric columns and at least one visible rendered sample.
+The Linux CI job smoke-tests the complete runner control path — normalization, selector invocation, Xvfb/OpenGL snapshots, evidence hashing, BMP metric extraction and review/gallery generation — rather than only syntax-checking the script. CI additionally requires a non-empty `frame_metrics.tsv` with the expected metric columns and at least one visible rendered sample. The pinned NifSkope runtime is also launched under Xvfb, centered on the selected fixture NIF, captured to a non-trivial PNG, and then exercised through the integrated `verify_resmap_visual.py --nifskope-reference` path. The integrated smoke requires one NifSkope PNG for every selected matrix row while the temporary merged client tree is still alive.
 
 ### Windows
 
@@ -170,7 +171,7 @@ The real ten-archive ResMap matrix was executed on renderer/tooling head `66fe07
 
 The first full run exposed a review-selection weakness rather than a renderer-semantic gap: `IDField/EgmaDn01 2/Lava.nif` has a valid authored V-offset controller but moves only from 0 to 1 over 33.3333 seconds, so its first-second 512x512 evidence snapshots were pixel-identical. Independent real ResMap candidates proved the renderer's TextureTransform path was active. The selector now ranks candidates by normalized authored motion at the actual evidence times; without filename hardcoding it selects `KDField/KDPanMaze/Fountain.nif`, whose t=0.00/0.25/1.00 samples visibly and pixel-wise differ. No renderer material/shader semantics were changed for this correction.
 
-This run closes the **automated full-corpus visual matrix gate**, but not the final manual/reference gate below. ResMap must remain open until the selected output has been compared with a trustworthy independent Fiesta/Gamebryo visual reference and no unexplained renderer deviation remains.
+This run closes the **automated full-corpus visual matrix gate**, but not the final manual/reference gate below. The tooling can now capture an independent NifSkope reference PNG for every selected row during the same merged-tree run; that capture path is CI-proven, but the real 18-category ten-archive NifSkope/reference review has not yet been accepted. NifSkope is an independent reference only for the Gamebryo semantics it actually supports. Fiesta-specific named shaders and engine behavior (for example `PgTerrain` or the verified Fiesta/Gamebryo-2.6 `Glass` contract) still require the corresponding source/data evidence or a trustworthy Fiesta runtime reference instead of treating a NifSkope difference as authoritative. ResMap must remain open until no unexplained renderer deviation remains.
 
 ## What must be reviewed
 
