@@ -110,12 +110,13 @@ Use a CI artifact from the **exact branch head** being reviewed.
 
 ### Linux / headless software OpenGL
 
-The Linux artifact contains `nif_visual_matrix`, `test_nif_opengl`, `verify_resmap_visual.py` and `capture_nifskope_reference.py`. The Python runner is the preferred path for automated/headless evidence because it can run the same OpenGL renderer under Xvfb with Mesa software rendering. The separate `NifSkope-reference-linux` CI artifact provides the pinned independent NifSkope 2.0.dev11 runtime used for supported Gamebryo reference captures.
+The Linux artifact contains `nif_material_inventory`, `nif_visual_matrix`, `test_nif_opengl`, `audit_resmap.py`, `verify_resmap_visual.py` and `capture_nifskope_reference.py`. The Python runner is the preferred path for automated/headless evidence because it can run the same OpenGL renderer under Xvfb with Mesa software rendering. The separate `NifSkope-reference-linux` CI artifact provides the pinned independent NifSkope 2.0.dev11 runtime used for supported Gamebryo reference captures.
 
 ```bash
 python3 verify_resmap_visual.py \
   --matrix-exe ./nif_visual_matrix \
   --snapshot-exe ./test_nif_opengl \
+  --strict-audit-exe ./nif_material_inventory \
   --output ./resmap-visual-matrix \
   --xvfb \
   --nifskope-reference ./NifSkope-reference-linux/run-nifskope-reference.sh \
@@ -132,6 +133,25 @@ python3 verify_resmap_visual.py \
 ```
 
 The Linux CI job smoke-tests the complete runner control path — normalization, selector invocation, Xvfb/OpenGL snapshots, evidence hashing, BMP metric extraction and review/gallery generation — rather than only syntax-checking the script. CI additionally requires a non-empty `frame_metrics.tsv` with the expected metric columns and at least one visible rendered sample. The pinned NifSkope runtime is also launched under Xvfb, centered on the selected fixture NIF, captured to a non-trivial PNG, and then exercised through the integrated `verify_resmap_visual.py --nifskope-reference` path. The integrated smoke requires one NifSkope PNG for every selected matrix row while the temporary merged client tree is still alive.
+
+### Secure CI fallback when the local executor is unavailable
+
+The repository is public, so the raw Fiesta/ResMap corpus must **not** be committed to Git, uploaded as a public release, or attached to a normal Actions artifact. The supported fallback is a private/temporary direct-download URL stored only in the GitHub Actions secret `RESMAP_CORPUS_URL`. An optional `RESMAP_CORPUS_SHA256` secret pins the outer bundle bytes.
+
+The URL must return one ZIP bundle that contains exactly these ten historical ZIP files somewhere below its root: `resmap_1.zip`, `resmap_2.zip`, `resmap_3.1.zip`, `resmap_3.2.zip`, `resmap_4.zip`, `resmap_5.1.zip`, `Resmap_5.2.zip`, `Resmap_5.3.zip`, `Resmap_5.4.zip`, and `Resmap_5.5.zip`.
+
+On a manual `workflow_dispatch` (or an explicit push whose commit message contains `[resmap-full]`), the Ubuntu job:
+
+1. downloads the secret URL with the value masked from logs;
+2. safely extracts the outer bundle and normalizes the ten expected ZIPs;
+3. extracts the corpus only once;
+4. runs the **physical** strict audit on the original ten extracted roots with all discovered ResMap asset roots;
+5. reuses the same extraction to build the deduplicated production-like runtime tree;
+6. runs the strict 18-category NextGen OpenGL matrix plus independent NifSkope captures;
+7. hard-checks the known corpus provenance (10 roots, 6,217 merged unique files, 168 identical duplicates, 3,765 physical NIFs, 3,685 logical NIF paths), `rendererGapFiles=0`, 18 review rows, one NifSkope reference per row, and zero automated frame flags;
+8. uploads only `ResMap-full-reference-evidence-<SHA>` for 30 days. The raw corpus and source URL are never re-uploaded.
+
+A private cloud object, expiring signed URL, or revocable Dropbox/Drive-style direct-download link can provide `RESMAP_CORPUS_URL`. Once the run completes, the evidence artifact can be downloaded independently for the final visual/reference review.
 
 ### Windows
 
