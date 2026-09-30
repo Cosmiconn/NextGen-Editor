@@ -400,6 +400,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Generate the deterministic ResMap visual acceptance matrix.")
     parser.add_argument("--matrix-exe", required=True, type=Path)
     parser.add_argument("--snapshot-exe", required=True, type=Path)
+    parser.add_argument(
+        "--strict-audit-exe",
+        type=Path,
+        help="Optional nif_material_inventory executable. Runs the physical full-corpus strict audit on the same extracted roots before matrix rendering.",
+    )
     parser.add_argument("--output", type=Path, default=Path("resmap-visual-matrix"))
     parser.add_argument("--allow-incomplete-matrix", action="store_true")
     parser.add_argument("--xvfb", action="store_true", help="Run every OpenGL snapshot under xvfb-run; sets LIBGL_ALWAYS_SOFTWARE=1.")
@@ -419,6 +424,11 @@ def main() -> int:
 
     matrix = require_file(args.matrix_exe, "Matrix executable")
     snapshot = require_file(args.snapshot_exe, "Snapshot executable")
+    strict_audit = (
+        require_file(args.strict_audit_exe, "Strict audit executable")
+        if args.strict_audit_exe
+        else None
+    )
     nifskope_reference = (
         require_file(args.nifskope_reference, "NifSkope reference executable/wrapper")
         if args.nifskope_reference
@@ -440,18 +450,40 @@ def main() -> int:
         temp_root = Path(temp_name)
         source_roots: list[Path] = []
         seen_roots: set[str] = set()
+        physical_scan_roots: list[Path] = []
+        audit_asset_roots: list[Path] = []
+        seen_scan_roots: set[str] = set()
+        seen_asset_roots: set[str] = set()
+
+        def add_unique_path(target: list[Path], seen: set[str], value: Path) -> None:
+            resolved = value.resolve()
+            key = os.path.normcase(str(resolved))
+            if key not in seen:
+                seen.add(key)
+                target.append(resolved)
+
+        def add_audit_roots(scan_root: Path) -> None:
+            add_unique_path(physical_scan_roots, seen_scan_roots, scan_root)
+            add_unique_path(audit_asset_roots, seen_asset_roots, scan_root)
+            for candidate in scan_root.rglob("*"):
+                if candidate.is_dir() and candidate.name.casefold() == "resmap":
+                    add_unique_path(audit_asset_roots, seen_asset_roots, candidate)
 
         for index, input_path in enumerate(inputs, start=1):
             if input_path.is_dir():
+                scan_root = input_path
                 roots = logical_resmap_roots(input_path)
             elif input_path.is_file() and input_path.suffix.lower() == ".zip":
                 extract_root = temp_root / f"archive-{index:02d}"
                 extract_root.mkdir(parents=True)
                 print(f"Extracting {input_path} -> {extract_root}")
                 safe_extract_zip(input_path, extract_root)
+                scan_root = extract_root
                 roots = logical_resmap_roots(extract_root)
             else:
                 raise RuntimeError(f"Only directories and .zip archives are supported: {input_path}")
+
+            add_audit_roots(scan_root)
 
             for root in roots:
                 key = os.path.normcase(str(root.resolve()))
@@ -490,6 +522,9 @@ def main() -> int:
             "identicalDuplicateFiles": identical_duplicates,
             "physicalNifEntries": physical_nif_entries,
             "logicalNifPaths": logical_nif_paths,
+            "strictAuditEnabled": strict_audit is not None,
+            "strictAuditScanRoots": len(physical_scan_roots) if strict_audit is not None else 0,
+            "strictAuditAssetRoots": len(audit_asset_roots) if strict_audit is not None else 0,
         }
         (output / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
 
@@ -500,6 +535,34 @@ def main() -> int:
         print(f"  physical NIF entries  : {physical_nif_entries}")
         print(f"  logical NIF paths     : {logical_nif_paths}")
         print(f"  client root           : {client_root}")
+
+        if strict_audit is not None:
+            strict_log = output / "strict_audit.log"
+            strict_cmd = [str(strict_audit), "--strict-renderer"]
+            for root in audit_asset_roots:
+                strict_cmd += ["--asset-root", str(root)]
+            strict_cmd += [str(root) for root in physical_scan_roots]
+
+            print("\nRunning physical full-corpus strict renderer audit")
+            print(f"  scan roots            : {len(physical_scan_roots)}")
+            print(f"  asset roots           : {len(audit_asset_roots)}")
+            if run_logged(strict_cmd, strict_log) != 0:
+                raise RuntimeError(f"Strict ResMap audit failed. See: {strict_log}")
+
+            summary = ""
+            with strict_log.open("r", encoding="utf-8", errors="replace") as handle:
+                for line in handle:
+                    if line.startswith("SUMMARY"):
+                        summary = line.strip()
+            if not summary:
+                raise RuntimeError(f"Strict ResMap audit emitted no SUMMARY line. See: {strict_log}")
+            if "rendererGapFiles=0" not in summary.split():
+                raise RuntimeError(
+                    "Strict ResMap audit did not finish at rendererGapFiles=0. "
+                    f"See: {strict_log}"
+                )
+            print("STRICT RESMAP AUDIT PASSED")
+            print(summary)
 
         manifest = output / "matrix.tsv"
         matrix_log = output / "matrix.log"
@@ -692,6 +755,8 @@ def main() -> int:
 
         print("\nRESMAP VISUAL MATRIX GENERATED")
         print(f"  provenance : {output / 'provenance.json'}")
+        if strict_audit is not None:
+            print(f"  strict     : {output / 'strict_audit.log'}")
         print(f"  matrix     : {manifest}")
         print(f"  evidence   : {output / 'review.tsv'}")
         print(f"  metrics    : {output / 'frame_metrics.tsv'}")
