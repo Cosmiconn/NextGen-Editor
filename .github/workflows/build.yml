@@ -39,8 +39,10 @@ jobs:
             libxinerama-dev \
             libxcursor-dev \
             libxi-dev \
+            imagemagick \
             p7zip-full \
             qt6-base-dev \
+            xdotool \
             xvfb
       - name: Configure Linux core and standalone NIF OpenGL verifier
         if: runner.os == 'Linux'
@@ -169,6 +171,32 @@ jobs:
           SH
           chmod +x artifact-nifskope-reference/run-nifskope-reference.sh
           find artifact-nifskope-reference -maxdepth 2 -type f -printf '%p\n' | sort | head -100
+      - name: Smoke-test NifSkope reference capture
+        if: runner.os == 'Linux'
+        run: |
+          python3 -m py_compile tools/capture_nifskope_reference.py
+          rm -rf build/nifskope-reference-capture-smoke
+          mkdir -p build/nifskope-reference-capture-smoke
+          {
+            printf 'category\troot\tpath\treason\n'
+            printf 'vegetation\t%s\ttree05.nif\tfixture smoke\n' "$PWD/tests/fixtures"
+          } > build/nifskope-reference-capture-smoke/matrix.tsv
+          xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 \
+            python3 tools/capture_nifskope_reference.py \
+              --nifskope ./artifact-nifskope-reference/run-nifskope-reference.sh \
+              --matrix ./build/nifskope-reference-capture-smoke/matrix.tsv \
+              --output ./build/nifskope-reference-capture-smoke/output \
+              --settle 0.75
+          test -s build/nifskope-reference-capture-smoke/output/vegetation.png
+          test -s build/nifskope-reference-capture-smoke/output/nifskope_reference.tsv
+          python3 - <<'PY'
+          from pathlib import Path
+
+          png = Path("build/nifskope-reference-capture-smoke/output/vegetation.png")
+          data = png.read_bytes()
+          if len(data) < 1024 or not data.startswith(b"\x89PNG\r\n\x1a\n"):
+              raise SystemExit("NifSkope reference capture is not a valid non-trivial PNG")
+          PY
       - name: Upload temporary NifSkope reference runtime
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v7
