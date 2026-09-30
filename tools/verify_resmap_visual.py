@@ -34,6 +34,33 @@ DYNAMIC_CATEGORIES = {
     "particles_world_space",
 }
 
+# Reference images are evidence, not automatically authoritative for every shader.
+# Standard Gamebryo categories use the independent NifSkope view plus authored NIF
+# state. Fiesta/custom named-shader categories keep their stronger source/data
+# contract explicit so a NifSkope difference is never mistaken for ground truth.
+REFERENCE_AUTHORITY = {
+    "pgterrain": (
+        "Verified Fiesta authored corpus contract; NifSkope is contextual only."
+    ),
+    "vc_alpha_texture_blender": (
+        "Verified Fiesta authored named-shader/map contract; NifSkope is contextual only."
+    ),
+    "alpha_texture_blender11": (
+        "Verified Fiesta authored named-shader/map contract; NifSkope is contextual only."
+    ),
+    "alpha_texture_blender": (
+        "Stock Gamebryo 2.6 AlphaTextureBlender shader source plus authored NIF maps; "
+        "NifSkope is supporting evidence."
+    ),
+    "glass": (
+        "Verified Gamebryo 2.6 Glass shader/source contract plus authored shader extra-data; "
+        "NifSkope is supporting/context evidence."
+    ),
+}
+DEFAULT_REFERENCE_AUTHORITY = (
+    "Independent NifSkope capture plus authored NIF/material/render-state evidence."
+)
+
 
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -261,6 +288,7 @@ def write_review_outputs(output: Path, rows: list[dict[str, str]]) -> None:
         "T000BorderPixels", "T025BorderPixels", "T100BorderPixels",
         "ChangedT000T025", "ChangedT025T100", "ChangedT000T100",
         "ReviewFlags",
+        "ReferenceAuthority",
         "NifSkopeReference", "NifSkopeReferenceSha256",
         "T000", "T025", "T100",
     ]
@@ -307,6 +335,7 @@ def write_review_outputs(output: Path, rows: list[dict[str, str]]) -> None:
             f"- t=1.00 s: {item['T100']} (SHA-256 {item['T100Sha256']}; visible {item['T100VisiblePixels']}; bounds {item['T100Bounds'] or 'blank'})",
             f"- Changed pixels: 0→0.25 {item['ChangedT000T025']}; 0.25→1.0 {item['ChangedT025T100']}; 0→1.0 {item['ChangedT000T100']}",
             f"- Automated review flags: {item['ReviewFlags'] or 'none'}",
+            f"- Reference authority: {item['ReferenceAuthority']}",
             *(
                 [
                     f"- Independent NifSkope reference: {item['NifSkopeReference']} (SHA-256 {item['NifSkopeReferenceSha256']})",
@@ -338,6 +367,8 @@ def write_review_outputs(output: Path, rows: list[dict[str, str]]) -> None:
             f"<p><small>Visible pixels: {item['T000VisiblePixels']} / {item['T025VisiblePixels']} / {item['T100VisiblePixels']}; "
             f"changed: {item['ChangedT000T025']} / {item['ChangedT025T100']} / {item['ChangedT000T100']}; "
             f"flags: {html.escape(item['ReviewFlags'] or 'none')}</small></p>"
+            f"<p><small><strong>Reference authority:</strong> "
+            f"{html.escape(item['ReferenceAuthority'])}</small></p>"
             "<div class='shots'>"
             f"<div class='shot'><h3>NextGen t = 0.00 s</h3><img src='{html.escape(item['T000'])}'></div>"
             f"<div class='shot'><h3>NextGen t = 0.25 s</h3><img src='{html.escape(item['T025'])}'></div>"
@@ -583,6 +614,9 @@ def main() -> int:
                 "ChangedT025T100": str(changes[1]),
                 "ChangedT000T100": str(changes[2]),
                 "ReviewFlags": ",".join(flags),
+                "ReferenceAuthority": REFERENCE_AUTHORITY.get(
+                    category, DEFAULT_REFERENCE_AUTHORITY
+                ),
                 "NifSkopeReference": "",
                 "NifSkopeReferenceSha256": "",
                 "T000": f"snapshots/{category}/{stem}.bmp",
