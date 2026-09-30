@@ -261,6 +261,7 @@ def write_review_outputs(output: Path, rows: list[dict[str, str]]) -> None:
         "T000BorderPixels", "T025BorderPixels", "T100BorderPixels",
         "ChangedT000T025", "ChangedT025T100", "ChangedT000T100",
         "ReviewFlags",
+        "NifSkopeReference", "NifSkopeReferenceSha256",
         "T000", "T025", "T100",
     ]
     with review_path.open("w", encoding="utf-8", newline="") as handle:
@@ -306,6 +307,14 @@ def write_review_outputs(output: Path, rows: list[dict[str, str]]) -> None:
             f"- t=1.00 s: {item['T100']} (SHA-256 {item['T100Sha256']}; visible {item['T100VisiblePixels']}; bounds {item['T100Bounds'] or 'blank'})",
             f"- Changed pixels: 0→0.25 {item['ChangedT000T025']}; 0.25→1.0 {item['ChangedT025T100']}; 0→1.0 {item['ChangedT000T100']}",
             f"- Automated review flags: {item['ReviewFlags'] or 'none'}",
+            *(
+                [
+                    f"- Independent NifSkope reference: {item['NifSkopeReference']} (SHA-256 {item['NifSkopeReferenceSha256']})",
+                    "- [ ] Compare supported Gamebryo appearance against the NifSkope reference",
+                ]
+                if item.get("NifSkopeReference")
+                else []
+            ),
             "- [ ] Geometry",
             "- [ ] Texture assignment / UVs",
             "- [ ] Alpha / blend / depth / culling",
@@ -330,10 +339,17 @@ def write_review_outputs(output: Path, rows: list[dict[str, str]]) -> None:
             f"changed: {item['ChangedT000T025']} / {item['ChangedT025T100']} / {item['ChangedT000T100']}; "
             f"flags: {html.escape(item['ReviewFlags'] or 'none')}</small></p>"
             "<div class='shots'>"
-            f"<div class='shot'><h3>t = 0.00 s</h3><img src='{html.escape(item['T000'])}'></div>"
-            f"<div class='shot'><h3>t = 0.25 s</h3><img src='{html.escape(item['T025'])}'></div>"
-            f"<div class='shot'><h3>t = 1.00 s</h3><img src='{html.escape(item['T100'])}'></div>"
-            "</div></section>"
+            f"<div class='shot'><h3>NextGen t = 0.00 s</h3><img src='{html.escape(item['T000'])}'></div>"
+            f"<div class='shot'><h3>NextGen t = 0.25 s</h3><img src='{html.escape(item['T025'])}'></div>"
+            f"<div class='shot'><h3>NextGen t = 1.00 s</h3><img src='{html.escape(item['T100'])}'></div>"
+            + (
+                f"<div class='shot reference'><h3>NifSkope reference</h3>"
+                f"<img src='{html.escape(item['NifSkopeReference'])}'>"
+                f"<p><small>SHA-256: {html.escape(item['NifSkopeReferenceSha256'])}</small></p></div>"
+                if item.get("NifSkopeReference")
+                else ""
+            )
+            + "</div></section>"
         )
     html_path.write_text(
         "<!doctype html><html><head><meta charset='utf-8'><title>ResMap visual matrix</title>"
@@ -341,6 +357,7 @@ def write_review_outputs(output: Path, rows: list[dict[str, str]]) -> None:
         "section{border:1px solid #333;border-radius:8px;padding:16px;margin:0 0 20px}"
         "h2{margin-top:0}.shots{display:flex;gap:16px;flex-wrap:wrap}.shot{min-width:300px;flex:1}"
         ".shot img{max-width:512px;width:100%;height:auto;background:#000;border:1px solid #444}"
+        ".reference{border-left:3px solid #777;padding-left:12px}"
         "code{color:#9de}</style></head><body><h1>ResMap visual reference matrix</h1>"
         + "".join(sections)
         + "</body></html>",
@@ -566,6 +583,8 @@ def main() -> int:
                 "ChangedT025T100": str(changes[1]),
                 "ChangedT000T100": str(changes[2]),
                 "ReviewFlags": ",".join(flags),
+                "NifSkopeReference": "",
+                "NifSkopeReferenceSha256": "",
                 "T000": f"snapshots/{category}/{stem}.bmp",
                 "T025": f"snapshots/{category}/{stem}__animated.bmp",
                 "T100": f"snapshots/{category}/{stem}__t1.bmp",
@@ -611,6 +630,29 @@ def main() -> int:
                     "NifSkope reference capture count does not match the visual matrix: "
                     f"{len(reference_pngs)} PNGs for {len(matrix_rows)} categories."
                 )
+
+            with reference_manifest.open("r", encoding="utf-8", newline="") as handle:
+                reference_rows = list(csv.DictReader(handle, delimiter="\t"))
+            reference_by_category = {
+                row.get("Category", ""): row.get("ReferencePng", "")
+                for row in reference_rows
+                if row.get("Category") and row.get("ReferencePng")
+            }
+            if len(reference_by_category) != len(matrix_rows):
+                raise RuntimeError(
+                    "NifSkope reference manifest does not contain exactly one row per visual category: "
+                    f"{len(reference_by_category)} rows for {len(matrix_rows)} categories."
+                )
+            for item in review_rows:
+                category = item["Category"]
+                reference_name = reference_by_category.get(category, "")
+                reference_path = reference_output / reference_name
+                if not reference_name or not reference_path.is_file():
+                    raise RuntimeError(
+                        f"Missing NifSkope reference PNG for [{category}]: {reference_path}"
+                    )
+                item["NifSkopeReference"] = f"nifskope_reference/{reference_name}"
+                item["NifSkopeReferenceSha256"] = sha256(reference_path)
 
         write_review_outputs(output, review_rows)
 
