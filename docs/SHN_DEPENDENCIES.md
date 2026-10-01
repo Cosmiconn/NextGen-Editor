@@ -104,3 +104,39 @@ im Datei-Browser des Single-SHN-Editors automatisch alle hier per Namens-Stamm O
 Zeilenanzahl gefundenen Familienmitglieder mit einem gelben ⚠-Symbol + Tooltip.
 
 Zusätzlich besitzt der Single-SHN-Grid jetzt eine **streng begrenzte semantische Referenzprüfung** für die drei oben verifizierten ID-Familien Item/Mob/ActiveSkill. ID-Zellen erhalten Grün/Rot/Gelb-Status, der ausgewählte Datensatz zeigt die geladenen Familienziele, und eindeutige Treffer sind direkt anklickbar. Für andere Dateien/Spalten wird bewusst keine Referenzsemantik erfunden.
+
+
+## Verbindliche Mutationsregel ab 01.10.2026
+
+Die vollständige Change-Typ-Matrix steht in
+[`docs/DATA_DEPENDENCY_MATRIX.md`](DATA_DEPENDENCY_MATRIX.md). Für Save-Ziele und
+Copy-on-write gilt
+[`docs/PROJECT_OUTPUT_POLICY.md`](PROJECT_OUTPUT_POLICY.md).
+
+Wichtig: `FindDependencyPeers` bleibt als **Diagnoseheuristik** erhalten, darf aber
+keine Rows oder Dateien automatisch verändern. Namensstamm und identische
+Zeilenanzahl sind nicht stark genug für Mutation.
+
+Automatische Row-Propagation ist nur für die drei direkt über ihre ID-Mengen
+verifizierten Familien freigegeben:
+
+- Item
+- Mob
+- ActiveSkill
+
+Dabei werden alle geladenen Client-/Server-Kopien der verifizierten
+Familienmitglieder berücksichtigt. Andere Kandidaten werden nur angezeigt.
+
+Eine Referenzbeziehung ist ebenfalls keine Mutationsbeziehung: Eine Quest, die eine
+Item-/Mob-ID benutzt, darf beispielsweise ItemInfo/MobInfo nicht verändern, solange
+nicht gleichzeitig ausdrücklich ein neuer Item-/Mob-Datensatz angelegt wird.
+
+### Client-/Server-Kopien im NA2016-Bestand
+
+Im aktuell geprüften NA2016-Tree wurden 130 Client-SHN und 220 Server-SHN gefunden.
+93 Dateinamen existieren auf beiden Seiten. 92 dieser 93 Paare sind über ihren
+Git-Blob byte-identisch; nur `ColorInfo.shn` unterscheidet sich.
+
+Das ist starke Evidenz für konkrete bekannte Shared-Table-Fälle, aber **keine
+globale Sync-Regel**. Der Editor synchronisiert nur ausdrücklich verifizierte
+Familien/Dateien.
