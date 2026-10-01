@@ -2,13 +2,12 @@ name: NextGen-Editor Build
 
 on: [push, pull_request, workflow_dispatch]
 
-# Renderer work lands in small, evidence-driven commits. Only the newest commit on the
-# same ref is useful; cancelling superseded runs prevents stale Windows builds from
-# delaying the current full audit artifact.
+# Renderer work lands in small, evidence-driven commits. Only the newest ordinary
+# branch run is useful, so pull_request and push normally collapse onto one branch
+# group. A [resmap-full] push is different: it owns short-lived private corpus URLs
+# and must not be cancelled by the parallel pull_request run for the same commit.
 concurrency:
-  # pull_request uses refs/pull/... while push uses refs/heads/.... head_ref collapses
-  # both events onto the actual working branch so only one build survives per commit.
-  group: nextgen-editor-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  group: nextgen-editor-${{ github.workflow }}-${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[resmap-full]') && format('resmap-full-{0}', github.ref_name) || (github.head_ref || github.ref_name) }}
   cancel-in-progress: true
 
 permissions:
