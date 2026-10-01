@@ -353,6 +353,21 @@ std::expected<std::filesystem::path, std::string> SaveProjectShineOverride(
     return path;
 }
 
+bool IsProjectSidePath(
+    const ProjectConfig& cfg,
+    core::ProjectOutputSide side,
+    const std::filesystem::path& path) {
+
+    if (cfg.projectFolder[0] == '\0' || path.empty()) return false;
+    const auto sideRoot = std::filesystem::path(cfg.projectFolder) /
+        (side == core::ProjectOutputSide::Client ? "Client" : "Server");
+    std::error_code ec;
+    auto relative = std::filesystem::relative(path, sideRoot, ec);
+    if (ec || relative.empty() || relative.is_absolute()) return false;
+    for (const auto& part : relative) if (part == "..") return false;
+    return true;
+}
+
 // Schreibt die Projekt-Konfiguration als einfache "schlüssel=wert"-Datei (bewusst kein
 // JSON - im restlichen Code werden ausschließlich native/legacy Formate ohne
 // JSON-Abhängigkeit verwendet, siehe docs/MAP_FORMAT.md) nach <projectFolder>/project.tsproj.
@@ -2387,10 +2402,18 @@ bool OpenLegacyMapIntoState(EditorState& state, const std::filesystem::path& ini
 
     std::snprintf(state.legacyMapIniPath, sizeof(state.legacyMapIniPath), "%s", iniPath.string().c_str());
     ApplyProjectToState(state, std::move(*result), iniPath.parent_path());
-    if (preferProjectOutput && state.project.projectFolder[0] != '\0')
-        std::snprintf(state.legacySaveDir, sizeof(state.legacySaveDir), "%s", state.project.projectFolder);
-    else
-        std::snprintf(state.legacySaveDir, sizeof(state.legacySaveDir), "%s", iniPath.parent_path().string().c_str());
+    if (preferProjectOutput && state.project.projectFolder[0] != '\0') {
+        std::filesystem::path outputDir;
+        if (IsProjectSidePath(state.project, core::ProjectOutputSide::Client, iniPath)) {
+            outputDir = iniPath.parent_path();
+        } else if (auto target = ProjectPathForSource(
+                       state.project, core::ProjectOutputSide::Client, iniPath)) {
+            outputDir = target->parent_path();
+        }
+        std::snprintf(state.legacySaveDir, sizeof(state.legacySaveDir), "%s", outputDir.string().c_str());
+    } else {
+        state.legacySaveDir[0] = '\0'; // source trees are read-only; no project means no save target
+    }
     std::snprintf(state.legacySaveStem, sizeof(state.legacySaveStem), "%s", iniPath.stem().string().c_str());
 
     TouchRecentMap(state, iniPath.string());
@@ -3820,8 +3843,28 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
     };
     auto saveCurrentMap = [&] {
         if (!mapCanSave) return;
+        if (state.project.projectFolder[0] == '\0') {
+            state.statusMessage = L("Speichern blockiert: zuerst einen Projektordner konfigurieren.",
+                                    "Save blocked: configure a project folder first.");
+            return;
+        }
+        std::filesystem::path outputDir = state.legacySaveDir;
+        if (outputDir.empty() || !IsProjectSidePath(state.project, core::ProjectOutputSide::Client, outputDir)) {
+            auto target = ProjectPathForRelative(
+                state.project, core::ProjectOutputSide::Client,
+                std::filesystem::path("resmap") / state.legacySaveStem /
+                (std::string(state.legacySaveStem) + ".ini"));
+            std::filesystem::path outputIni;
+            std::string error;
+            if (!PrepareProjectOutput(target, outputIni, &error)) {
+                state.statusMessage = "Karte speichern blockiert: " + error;
+                return;
+            }
+            outputDir = outputIni.parent_path();
+        }
+        std::snprintf(state.legacySaveDir, sizeof(state.legacySaveDir), "%s", outputDir.string().c_str());
         auto project = BuildProjectFromState(state);
-        auto result = core::legacy::SaveLegacyMap(project, state.legacySaveDir, state.legacySaveStem);
+        auto result = core::legacy::SaveLegacyMap(project, outputDir, state.legacySaveStem);
         if (result) {
             state.legacyIniMeta = project.ini;
             state.mapDirty = false;
@@ -6505,8 +6548,14 @@ void DrawMapEditorLauncher(EditorState& state) {
                 state.newMapTextureLayer[0] != '\0' ? state.newMapTextureLayer : "Base", "base.dds", 1.0f));
             state.layerPreviewDirty = true;
             std::snprintf(state.legacySaveStem, sizeof(state.legacySaveStem), "%s", state.newMapName);
-            if (state.project.projectFolder[0] != '\0')
-                std::snprintf(state.legacySaveDir, sizeof(state.legacySaveDir), "%s", state.project.projectFolder);
+            state.legacyMapIniPath[0] = '\0';
+            if (state.project.projectFolder[0] != '\0') {
+                const auto outputDir = std::filesystem::path(state.project.projectFolder) /
+                    "Client" / "resmap" / state.newMapName;
+                std::snprintf(state.legacySaveDir, sizeof(state.legacySaveDir), "%s", outputDir.string().c_str());
+            } else {
+                state.legacySaveDir[0] = '\0';
+            }
             state.mapDirty = true;
             state.statusMessage = std::string(L("Neue Karte '","New map '")) + state.newMapName +
                                   L("' angelegt (","' created (") +
@@ -7296,6 +7345,25 @@ void DrawQuestFlowView(EditorState& state,
     (void)avail;
 }
 
+bool SaveQuestDataProject(EditorState& state) {
+    std::filesystem::path path;
+    std::string error;
+    if (!PrepareProjectOutput(
+            ProjectServerShinePath(state.project, "QuestData.shn"),
+            path, &error)) {
+        state.statusMessage = "QuestData.shn speichern blockiert: " + error;
+        return false;
+    }
+    auto saved = core::legacy::SaveQuestData(state.questDataFile, path);
+    if (!saved) {
+        state.statusMessage = "QuestData.shn: " + saved.error();
+        return false;
+    }
+    state.questDirty = false;
+    state.statusMessage = "QuestData.shn als Projekt-Override gespeichert: " + path.string();
+    return true;
+}
+
 void DrawQuestEditor(EditorState& state) {
     EnsureQuestDataLoaded(state);
     EnsureQuestDialogLoaded(state);
@@ -7309,13 +7377,11 @@ void DrawQuestEditor(EditorState& state) {
     }
     auto& quests = state.questDataFile.records;
     auto saveQuestData = [&]() {
-        auto path = std::filesystem::path(state.shnServerRoot) / "QuestData.shn";
-        auto saved = core::legacy::SaveQuestData(state.questDataFile, path);
-        if (saved) state.questDirty = false;
-        state.statusMessage = saved ? std::string("QuestData.shn gespeichert.") : "Fehler: " + saved.error();
+        SaveQuestDataProject(state);
     };
     auto reloadQuestData = [&]() {
-        const auto path=std::filesystem::path(state.shnServerRoot)/"QuestData.shn";
+        const auto sourcePath=std::filesystem::path(state.shnServerRoot)/"QuestData.shn";
+        const auto path=PreferProjectOverride(state.project, core::ProjectOutputSide::Server, sourcePath);
         const int selectedId=(state.selectedQuestIdx>=0 &&
             static_cast<std::size_t>(state.selectedQuestIdx)<quests.size())
             ? static_cast<int>(quests[static_cast<std::size_t>(state.selectedQuestIdx)].id) : -1;
@@ -10409,16 +10475,14 @@ void DrawCustomCreatureEditor(EditorState& state) {
     if (UI::Button(L("Anlegen", "Create"), ImVec2(160.0f, 0.0f))) RunCreateCreature(state);
     ImGui::SameLine();
     if (UI::Button(L("Alle geänderten SHN speichern", "Save all changed SHN"))) {
-        int saved = 0, failed = 0;
-        for (auto& d : state.shnFiles) {
-            if (!d.dirty) continue;
-            auto r = core::legacy::SaveShnFile(d.file, d.file.path);
-            if (r) { d.dirty = false; ++saved; } else { ++failed; w.report.push_back("Fehler beim Speichern von " + d.file.FileName() + ": " + r.error()); }
-        }
+        const auto [shnSaved, shnFailed] = SaveAllDirtyShnDocuments(state);
+        int saved = static_cast<int>(shnSaved), failed = static_cast<int>(shnFailed);
         // NPC.txt (falls ein NPC platziert wurde)
         if (state.npcTextLoaded && !state.shineTextRoot.empty()) {
-            auto r = core::legacy::SaveShineTextFile(state.npcTextFile, std::filesystem::path(state.shineTextRoot) / "World" / "NPC.txt");
-            if (r) ++saved; else { ++failed; w.report.push_back("Fehler beim Speichern von NPC.txt: " + r.error()); }
+            auto r = SaveProjectShineOverride(
+                state.npcTextFile,
+                ProjectServerShinePath(state.project, std::filesystem::path("World") / "NPC.txt"));
+            if (r) ++saved; else { ++failed; w.report.push_back("Fehler beim Projekt-Speichern von NPC.txt: " + r.error()); }
         }
         w.report.push_back("Gespeichert: " + std::to_string(saved) + " Datei(en)" + (failed ? ", Fehler: " + std::to_string(failed) : std::string()));
     }
@@ -11883,12 +11947,7 @@ void DrawCommandPalette(EditorState& state) {
     }
     if (state.questDirty && state.questDataLoaded && !state.shnServerRoot.empty()) {
         add(L("Quest: QuestData speichern","Quest: Save QuestData"), ShortcutLabel(state.shortcutSave), [&] {
-            const auto path = std::filesystem::path(state.shnServerRoot) / "QuestData.shn";
-            const auto result = core::legacy::SaveQuestData(state.questDataFile,path);
-            if (result) {
-                state.questDirty=false;
-                state.statusMessage="QuestData.shn gespeichert.";
-            } else state.statusMessage="QuestData.shn: "+result.error();
+            SaveQuestDataProject(state);
         });
     }
 
@@ -12497,9 +12556,12 @@ void DrawToolsContent(EditorState& state) {
                 DrawDialogEditorPopup(state);
                 ImGui::Separator();
                 if (UI::Button(L("World/NPC.txt speichern","Save World/NPC.txt"))) {
-                    auto path = std::filesystem::path(state.shineTextRoot) / "World" / "NPC.txt";
-                    auto saved = core::legacy::SaveShineTextFile(state.npcTextFile, path);
-                    state.statusMessage = saved ? std::string(L("NPC.txt gespeichert.","NPC.txt saved.")) : L("Fehler: ","Error: ") + saved.error();
+                    auto saved = SaveProjectShineOverride(
+                        state.npcTextFile,
+                        ProjectServerShinePath(state.project, std::filesystem::path("World") / "NPC.txt"));
+                    state.statusMessage = saved
+                        ? std::string(L("NPC.txt als Projekt-Override gespeichert.","NPC.txt saved as project override."))
+                        : L("Fehler: ","Error: ") + saved.error();
                 }
             }
         }
@@ -12618,9 +12680,14 @@ void DrawToolsContent(EditorState& state) {
                 }
                 ImGui::Separator();
                 if (UI::Button(L("MobRegen speichern","Save MobRegen"))) {
-                    auto path = std::filesystem::path(state.shineTextRoot) / "MobRegen" / (std::string(state.legacySaveStem) + ".txt");
-                    auto saved = core::legacy::SaveShineTextFile(state.mobRegenTextFile, path);
-                    state.statusMessage = saved ? std::string(L("MobRegen gespeichert.","MobRegen saved.")) : L("Fehler: ","Error: ") + saved.error();
+                    auto saved = SaveProjectShineOverride(
+                        state.mobRegenTextFile,
+                        ProjectServerShinePath(
+                            state.project,
+                            std::filesystem::path("MobRegen") / (std::string(state.legacySaveStem) + ".txt")));
+                    state.statusMessage = saved
+                        ? std::string(L("MobRegen als Projekt-Override gespeichert.","MobRegen saved as project override."))
+                        : L("Fehler: ","Error: ") + saved.error();
                 }
             }
         }
