@@ -1,0 +1,5 @@
+ResMap full-corpus acceptance trigger.
+
+Renderer/tooling base head: 15520806d6a42657f594212eebab6ff11f7da256
+Purpose: run the private 10-archive strict + 18-category OpenGL + NifSkope acceptance pipeline.
+This file intentionally changes no renderer semantics.
