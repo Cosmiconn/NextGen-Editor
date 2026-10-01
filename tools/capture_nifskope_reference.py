@@ -104,50 +104,6 @@ def wait_for_main_window(
     )
 
 
-def run_xdotool_on_live_main_window(
-    xdotool: str,
-    process: subprocess.Popen[bytes],
-    args: list[str],
-    *,
-    timeout: float,
-) -> int:
-    """Run an xdotool command against the current live NifSkope main window.
-
-    Qt may replace/recreate its X11 top-level window while the model finishes
-    loading. Never trust a previously discovered window id across a settle delay.
-    """
-    deadline = time.monotonic() + timeout
-    last_returncode: int | None = None
-    while time.monotonic() < deadline:
-        if process.poll() is not None:
-            raise RuntimeError(
-                f"NifSkope exited while waiting for a live window (exit {process.returncode})."
-            )
-
-        windows = visible_windows_for_pid(xdotool, process.pid)
-        best = largest_window(xdotool, windows)
-        if best is None or best[1] < 320 or best[2] < 240:
-            time.sleep(0.20)
-            continue
-
-        window = best[0]
-        result = subprocess.run(
-            [xdotool, *args, str(window)],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-        )
-        last_returncode = result.returncode
-        if result.returncode == 0:
-            return window
-        time.sleep(0.20)
-
-    raise RuntimeError(
-        "xdotool command did not succeed against a live NifSkope window "
-        f"for PID {process.pid}; last return code={last_returncode}"
-    )
-
-
 def capture_live_main_window(
     xdotool: str,
     import_tool: str,
@@ -247,14 +203,9 @@ def capture_one(
         # NifSkope's documented Z action centers the viewport on the loaded object.
         # Qt can recreate the top-level X11 window while loading, so reacquire the
         # largest live window and retry instead of using a stale id discovered above.
-        window = run_xdotool_on_live_main_window(
-            xdotool,
-            process,
-            ["key", "--window"],
-            timeout=min(timeout, 5.0),
+        window, _, _ = wait_for_main_window(
+            xdotool, process, min(timeout, 5.0)
         )
-        # Send the key separately after the live window id because xdotool's
-        # positional grammar is: key --window <id> <key>.
         key_result = subprocess.run(
             [xdotool, "key", "--window", str(window), "z"],
             stdout=subprocess.DEVNULL,
