@@ -231,35 +231,99 @@ jobs:
         if: runner.os == 'Linux' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[resmap-full]')))
         env:
           CORPUS_URL: ${{ secrets.RESMAP_CORPUS_URL }}
+          CORPUS_URLS: ${{ secrets.RESMAP_CORPUS_URLS }}
         run: |
           set -euo pipefail
-          if test -n "$CORPUS_URL"; then
+          if test -n "$CORPUS_URLS"; then
+            echo "mode=direct" >> "$GITHUB_OUTPUT"
             echo "available=true" >> "$GITHUB_OUTPUT"
-            echo "Secure ResMap corpus source is configured."
+            echo "Secure direct ResMap corpus source is configured."
+          elif test -n "$CORPUS_URL"; then
+            echo "mode=bundle" >> "$GITHUB_OUTPUT"
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "Secure bundled ResMap corpus source is configured."
           else
+            echo "mode=none" >> "$GITHUB_OUTPUT"
             echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::notice title=Full ResMap reference audit skipped::Repository secret RESMAP_CORPUS_URL is not configured. Set it to a private/temporary direct-download URL for a ZIP bundle containing the ten historical ResMap ZIPs."
+            echo "::notice title=Full ResMap reference audit skipped::Configure RESMAP_CORPUS_URLS as a JSON array of ten private direct-download URLs, or RESMAP_CORPUS_URL as one private ZIP bundle URL."
           fi
-      - name: Run full ResMap strict + visual + NifSkope secure corpus audit
+      - name: Download secure full ResMap corpus
         if: runner.os == 'Linux' && steps.resmap_corpus.outputs.available == 'true'
         env:
+          CORPUS_MODE: ${{ steps.resmap_corpus.outputs.mode }}
           CORPUS_URL: ${{ secrets.RESMAP_CORPUS_URL }}
+          CORPUS_URLS: ${{ secrets.RESMAP_CORPUS_URLS }}
           CORPUS_SHA256: ${{ secrets.RESMAP_CORPUS_SHA256 }}
         run: |
           set -euo pipefail
-          rm -rf build/resmap-corpus-bundle.zip build/resmap-corpus-unpacked build/resmap-secure-input build/resmap-secure-evidence
+          rm -rf build/resmap-corpus-bundle.zip build/resmap-corpus-unpacked build/resmap-secure-input
           mkdir -p build/resmap-corpus-unpacked build/resmap-secure-input
 
-          # The URL is stored as a GitHub Actions secret, so its value is masked in logs.
-          curl -L --fail --retry 3 --retry-all-errors \
-            "$CORPUS_URL" \
-            -o build/resmap-corpus-bundle.zip
+          if test "$CORPUS_MODE" = "direct"; then
+            python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import shutil
+          import urllib.request
+          import zipfile
 
-          if test -n "$CORPUS_SHA256"; then
-            echo "$CORPUS_SHA256  build/resmap-corpus-bundle.zip" | sha256sum -c -
-          fi
+          expected = [
+              ("resmap_1.zip", 306058568),
+              ("resmap_2.zip", 283955047),
+              ("resmap_3.1.zip", 236252970),
+              ("resmap_3.2.zip", 216722721),
+              ("resmap_4.zip", 258190491),
+              ("resmap_5.1.zip", 169735280),
+              ("Resmap_5.2.zip", 108531020),
+              ("Resmap_5.3.zip", 211594060),
+              ("Resmap_5.4.zip", 153272094),
+              ("Resmap_5.5.zip", 99270678),
+          ]
+          raw = os.environ.get("CORPUS_URLS", "")
+          try:
+              urls = json.loads(raw)
+          except json.JSONDecodeError as exc:
+              raise SystemExit(f"RESMAP_CORPUS_URLS is not valid JSON: {exc}")
+          if not isinstance(urls, list) or len(urls) != len(expected):
+              raise SystemExit(
+                  f"RESMAP_CORPUS_URLS must be a JSON array with exactly {len(expected)} URLs"
+              )
+          if any(not isinstance(url, str) or not url.startswith("https://") for url in urls):
+              raise SystemExit("Every RESMAP_CORPUS_URLS entry must be a non-empty HTTPS URL")
 
-          python3 - <<'PY'
+          destination = Path("build/resmap-secure-input")
+          for index, ((name, expected_size), url) in enumerate(zip(expected, urls), start=1):
+              target = destination / name
+              print(f"Downloading secure ResMap asset {index}/{len(expected)}: {name}", flush=True)
+              request = urllib.request.Request(
+                  url,
+                  headers={"User-Agent": "NextGen-Editor-ResMap-Audit/1.0"},
+              )
+              with urllib.request.urlopen(request, timeout=120) as response, target.open("wb") as handle:
+                  shutil.copyfileobj(response, handle, length=1024 * 1024)
+              actual_size = target.stat().st_size
+              if actual_size != expected_size:
+                  raise SystemExit(
+                      f"Unexpected size for {name}: {actual_size} bytes; expected {expected_size}"
+                  )
+              with zipfile.ZipFile(target) as archive:
+                  bad_member = archive.testzip()
+                  if bad_member is not None:
+                      raise SystemExit(f"ZIP integrity failure in {name}: {bad_member}")
+
+          print("Secure direct ResMap corpus downloaded and verified: 10/10 ZIP assets")
+          PY
+          elif test "$CORPUS_MODE" = "bundle"; then
+            curl -L --fail --retry 3 --retry-all-errors \
+              "$CORPUS_URL" \
+              -o build/resmap-corpus-bundle.zip
+
+            if test -n "$CORPUS_SHA256"; then
+              echo "$CORPUS_SHA256  build/resmap-corpus-bundle.zip" | sha256sum -c -
+            fi
+
+            python3 - <<'PY'
           from pathlib import Path
           import shutil
           import zipfile
@@ -268,16 +332,16 @@ jobs:
           unpacked = Path("build/resmap-corpus-unpacked")
           normalized = Path("build/resmap-secure-input")
           expected = [
-              "resmap_1.zip",
-              "resmap_2.zip",
-              "resmap_3.1.zip",
-              "resmap_3.2.zip",
-              "resmap_4.zip",
-              "resmap_5.1.zip",
-              "Resmap_5.2.zip",
-              "Resmap_5.3.zip",
-              "Resmap_5.4.zip",
-              "Resmap_5.5.zip",
+              ("resmap_1.zip", 306058568),
+              ("resmap_2.zip", 283955047),
+              ("resmap_3.1.zip", 236252970),
+              ("resmap_3.2.zip", 216722721),
+              ("resmap_4.zip", 258190491),
+              ("resmap_5.1.zip", 169735280),
+              ("Resmap_5.2.zip", 108531020),
+              ("Resmap_5.3.zip", 211594060),
+              ("Resmap_5.4.zip", 153272094),
+              ("Resmap_5.5.zip", 99270678),
           ]
 
           root = unpacked.resolve()
@@ -294,7 +358,7 @@ jobs:
               handle.extractall(unpacked)
 
           normalized.mkdir(parents=True, exist_ok=True)
-          for name in expected:
+          for name, expected_size in expected:
               matches = [path for path in unpacked.rglob(name) if path.is_file()]
               if len(matches) != 1:
                   raise SystemExit(
@@ -302,17 +366,27 @@ jobs:
                   )
               target = normalized / name
               shutil.copy2(matches[0], target)
-              if target.stat().st_size == 0:
-                  raise SystemExit(f"Secure corpus asset is empty: {name}")
+              actual_size = target.stat().st_size
+              if actual_size != expected_size:
+                  raise SystemExit(
+                      f"Unexpected size for {name}: {actual_size} bytes; expected {expected_size}"
+                  )
+              with zipfile.ZipFile(target) as archive:
+                  bad_member = archive.testzip()
+                  if bad_member is not None:
+                      raise SystemExit(f"ZIP integrity failure in {name}: {bad_member}")
 
-          unexpected = sorted(
-              path.name for path in normalized.glob("*.zip")
-              if path.name not in expected
-          )
-          if unexpected:
-              raise SystemExit(f"Unexpected normalized corpus ZIPs: {unexpected}")
-          print("Secure ResMap corpus bundle normalized: 10/10 ZIP assets")
+          print("Secure bundled ResMap corpus normalized and verified: 10/10 ZIP assets")
           PY
+          else
+            echo "::error::Unsupported secure corpus mode: $CORPUS_MODE"
+            exit 1
+          fi
+      - name: Run full ResMap strict + visual + NifSkope secure corpus audit
+        if: runner.os == 'Linux' && steps.resmap_corpus.outputs.available == 'true'
+        run: |
+          set -euo pipefail
+          rm -rf build/resmap-secure-evidence
 
           inputs=(
             build/resmap-secure-input/resmap_1.zip
