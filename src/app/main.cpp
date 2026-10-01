@@ -340,6 +340,19 @@ std::expected<std::filesystem::path, std::string> ProjectServerShinePath(
         std::filesystem::path("9Data") / "Shine" / relative);
 }
 
+std::expected<std::filesystem::path, std::string> SaveProjectShineOverride(
+    core::legacy::ShineTextFile& file,
+    const std::expected<std::filesystem::path, std::string>& target) {
+
+    std::filesystem::path path;
+    std::string error;
+    if (!PrepareProjectOutput(target, path, &error)) return std::unexpected(error);
+    auto saved = core::legacy::SaveShineTextFile(file, path);
+    if (!saved) return std::unexpected(saved.error());
+    file.path = path;
+    return path;
+}
+
 // Schreibt die Projekt-Konfiguration als einfache "schlüssel=wert"-Datei (bewusst kein
 // JSON - im restlichen Code werden ausschließlich native/legacy Formate ohne
 // JSON-Abhängigkeit verwendet, siehe docs/MAP_FORMAT.md) nach <projectFolder>/project.tsproj.
