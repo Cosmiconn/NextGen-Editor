@@ -4859,14 +4859,10 @@ std::string DefaultShnValueText(const core::legacy::ShnColumn& column) {
     }
 }
 
-// Legt in der aktuell ausgewählten Datei eine neue Zeile an (Default-Werte je Spaltentyp) und
-// zugleich in allen gerade geladenen Abhängigkeits-Familienmitgliedern (siehe
-// FindDependencyPeers) je eine passende neue Zeile - Spalten mit demselben Namen wie in der
-// Quelldatei werden aus der neuen Quellzeile übernommen und grün markiert, alle übrigen
-// Spalten der Familienmitglieder rot (siehe cellStatus). Mockup-Wunsch, siehe CHANGELOG
-// [0.44.14]. Die neue Zeile in der Quelldatei selbst bleibt unmarkiert (normal) - der Nutzer
-// legt sie ja gerade bewusst selbst an.
-// (Definition weiter unten, nach FindDependencyPeers - siehe dort.)
+// Legt in der aktuell ausgewählten Datei eine neue Zeile an. Automatische Propagation ist
+// absichtlich auf die gegen den NA2016-Korpus verifizierten ID-Familien Item/Mob/ActiveSkill
+// begrenzt. FindDependencyPeers (Namensstamm/Zeilenzahl) bleibt nur Diagnose und darf niemals
+// Dateien mutieren.
 void AddRowWithPropagation(EditorState& state, int docIndex);
 
 void DrawShnGrid(EditorState& state) {
@@ -4921,7 +4917,7 @@ void DrawShnGrid(EditorState& state) {
     ImGui::SameLine();
     if (UI::Button("+ Neue Zeile")) AddRowWithPropagation(state, state.shnSelectedFile);
     if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Legt eine neue Zeile an und propagiert sie – soweit erkannt – in geladene Familienmitglieder.");
+        ImGui::SetTooltip("Legt eine neue Zeile an. Automatische Propagation erfolgt ausschließlich in verifizierte Item/Mob/ActiveSkill-ID-Familien; heuristische Abhängigkeiten werden nur angezeigt.");
     ImGui::SameLine();
     ImGui::BeginDisabled(state.shnSelectedRow < 0 || state.shnSelectedColumn < 0);
     if (UI::Button("Kopieren")) CopySelectedShnCell(state);
@@ -5428,9 +5424,17 @@ void AddRowWithPropagation(EditorState& state, int docIndex) {
         auto v = core::legacy::ParseShnValue(col, DefaultShnValueText(col));
         newRow.values.push_back(v ? std::move(*v) : core::legacy::ShnValue(std::uint32_t{0}));
     }
-    const auto peers = FindDependencyPeers(state, docIndex);
+    std::vector<int> peers;
+    if (const auto* verifiedFamily = KnownShnFamilyFor(srcDoc.file.FileName())) {
+        for (std::size_t i = 0; i < state.shnFiles.size(); ++i) {
+            if (static_cast<int>(i) == docIndex) continue;
+            const auto* candidateFamily = KnownShnFamilyFor(state.shnFiles[i].file.FileName());
+            if (candidateFamily && std::string_view(candidateFamily->label) == verifiedFamily->label)
+                peers.push_back(static_cast<int>(i));
+        }
+    }
 
-    // Automatische, freie ID (statt 0): hoechster Wert ueber die Quelldatei UND alle Familien-
+    // Automatische, freie ID (statt 0): hoechster Wert ueber die Quelldatei UND alle VERIFIZIERTEN Familien-
     // Dateien + 1, damit die neue Zeile in allen zusammengehoerigen Dateien dieselbe ID bekommt.
     const int idCol = FindShnIdColumn(srcDoc.file);
     long long newId = -1;
@@ -5512,8 +5516,8 @@ void AddRowWithPropagation(EditorState& state, int docIndex) {
     state.shnSelectedRow = static_cast<int>(newRowIdx);
     state.shnSelectedColumn = 0;
     state.shnStatus = "Neue Zeile angelegt" + (newId >= 0 ? " (freie ID " + std::to_string(newId) + " automatisch vergeben)" : std::string()) + (propagated > 0
-        ? (" und in " + std::to_string(propagated) + " Familienmitglied(ern) propagiert (grün=übernommen, rot=braucht Eingabe).")
-        : std::string(" (keine geladenen Familienmitglieder gefunden)."));
+        ? (" und in " + std::to_string(propagated) + " verifizierte(n) Familienkopie(n) propagiert (grün=übernommen, rot=braucht Eingabe).")
+        : std::string(" (keine geladene verifizierte Mutationsfamilie gefunden; Heuristiken wurden nicht verändert)."));
 }
 
 void DrawShnSourceList(EditorState& state, EditorState::ShnSource source, const char* id) {
