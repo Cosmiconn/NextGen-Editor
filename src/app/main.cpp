@@ -7838,10 +7838,15 @@ void EnsureTownPortalLoaded(EditorState& state) {
     EnsureNpcDialogRoot(state);
     // Client- und Server-Kopie von TownPortal.shn sind byte-identisch (NA2016 geprueft) - die
     // Server-Kopie dient als Rueckfall, falls nur ein Server-Ordner bekannt ist.
-    std::vector<std::filesystem::path> candidates;
-    if (!state.npcDialogRessystemRoot.empty()) candidates.push_back(std::filesystem::path(state.npcDialogRessystemRoot) / "TownPortal.shn");
-    if (const auto srv = PortalServerRoot(state); !srv.empty()) candidates.push_back(std::filesystem::path(srv) / "TownPortal.shn");
-    for (const auto& path : candidates) {
+    std::vector<std::pair<std::filesystem::path, core::ProjectOutputSide>> candidates;
+    if (!state.npcDialogRessystemRoot.empty())
+        candidates.emplace_back(std::filesystem::path(state.npcDialogRessystemRoot) / "TownPortal.shn",
+                                core::ProjectOutputSide::Client);
+    if (const auto srv = PortalServerRoot(state); !srv.empty())
+        candidates.emplace_back(std::filesystem::path(srv) / "TownPortal.shn",
+                                core::ProjectOutputSide::Server);
+    for (const auto& [sourcePath, side] : candidates) {
+        const auto path = PreferProjectOverride(state.project, side, sourcePath);
         auto result = core::legacy::LoadShnFile(path);
         if (result) {
             state.townPortalShn = std::move(*result);
@@ -7874,20 +7879,36 @@ void EnsureRecallCoordLoaded(EditorState& state) {
 void SaveTownPortalFiles(EditorState& state) {
     EnsureNpcDialogRoot(state);
     std::string done, failed;
-    auto saveTo = [&](const std::filesystem::path& path, const char* label, bool mustExist) {
+
+    auto saveProjectCopy = [&](const std::filesystem::path& sourcePath,
+                               core::ProjectOutputSide side,
+                               const char* label) {
         std::error_code ec;
-        if (mustExist && !std::filesystem::exists(path, ec)) return;
-        auto saved = core::legacy::SaveShnFile(state.townPortalShn, path);
+        if (!std::filesystem::is_regular_file(sourcePath, ec)) return;
+        auto target = ProjectPathForSource(state.project, side, sourcePath);
+        std::filesystem::path output;
+        std::string error;
+        if (!PrepareProjectOutput(target, output, &error)) {
+            failed += std::string(label) + ": " + error + " ";
+            return;
+        }
+        auto saved = core::legacy::SaveShnFile(state.townPortalShn, output);
         if (saved) done += std::string(done.empty() ? "" : " + ") + label;
         else failed += std::string(label) + ": " + saved.error() + " ";
     };
-    if (!state.npcDialogRessystemRoot.empty()) saveTo(std::filesystem::path(state.npcDialogRessystemRoot) / "TownPortal.shn", "Client", false);
-    if (const auto srv = PortalServerRoot(state); !srv.empty()) saveTo(std::filesystem::path(srv) / "TownPortal.shn", "Server", true);
-    if (!failed.empty()) state.statusMessage = "Fehler beim Speichern von TownPortal.shn - " + failed;
-    else if (done.empty()) state.statusMessage = "TownPortal.shn: kein Ziel-Ordner bekannt (Client-ressystem oder Server-Shine-Ordner nötig).";
+
+    if (!state.npcDialogRessystemRoot.empty())
+        saveProjectCopy(std::filesystem::path(state.npcDialogRessystemRoot) / "TownPortal.shn",
+                        core::ProjectOutputSide::Client, "Client");
+    if (const auto srv = PortalServerRoot(state); !srv.empty())
+        saveProjectCopy(std::filesystem::path(srv) / "TownPortal.shn",
+                        core::ProjectOutputSide::Server, "Server");
+
+    if (!failed.empty()) state.statusMessage = "Fehler beim Projekt-Speichern von TownPortal.shn - " + failed;
+    else if (done.empty()) state.statusMessage = "TownPortal.shn: keine vorhandene Client/Server-Quellkopie gefunden.";
     else {
         state.townPortalDirty = false;
-        state.statusMessage = "TownPortal.shn gespeichert (" + done + ").";
+        state.statusMessage = "TownPortal.shn als Projekt-Override gespeichert (" + done + ").";
     }
 }
 
@@ -7897,11 +7918,12 @@ bool SaveRecallCoordFile(EditorState& state) {
         state.statusMessage=L("RecallCoord.txt: kein Server-Shine-Ordner bekannt.","RecallCoord.txt: no server Shine folder is known.");
         return false;
     }
-    const auto path=std::filesystem::path(root)/"World"/"RecallCoord.txt";
-    auto saved=core::legacy::SaveShineTextFile(state.recallCoordFile,path);
+    auto saved=SaveProjectShineOverride(
+        state.recallCoordFile,
+        ProjectServerShinePath(state.project, std::filesystem::path("World") / "RecallCoord.txt"));
     if (saved) {
         state.recallCoordDirty=false;
-        state.statusMessage=L("RecallCoord.txt gespeichert.","RecallCoord.txt saved.");
+        state.statusMessage=L("RecallCoord.txt als Projekt-Override gespeichert.","RecallCoord.txt saved as project override.");
         return true;
     }
     state.statusMessage=L("Fehler: ","Error: ")+saved.error();
@@ -8656,18 +8678,27 @@ bool LoadAiScriptFile(EditorState& state, const std::filesystem::path& path,
 
 bool SaveAiScript(EditorState& state) {
     if(state.aiScriptEditorPath.empty()) return false;
-    std::ofstream out(state.aiScriptEditorPath,std::ios::binary|std::ios::trunc);
+    std::filesystem::path target;
+    std::string error;
+    if (!PrepareProjectOutput(
+            ProjectPathForSource(state.project, core::ProjectOutputSide::Server,
+                                 std::filesystem::path(state.aiScriptEditorPath)),
+            target, &error)) {
+        state.statusMessage = "KI-Skript speichern blockiert: " + error;
+        return false;
+    }
+    std::ofstream out(target,std::ios::binary|std::ios::trunc);
     if(!out) {
-        state.statusMessage = "Fehler beim Speichern: " + state.aiScriptEditorPath;
+        state.statusMessage = "Fehler beim Speichern: " + target.string();
         return false;
     }
     out.write(state.aiScriptEditorText.data(),static_cast<std::streamsize>(state.aiScriptEditorText.size()));
     if(!out) {
-        state.statusMessage = "Fehler beim Speichern: " + state.aiScriptEditorPath;
+        state.statusMessage = "Fehler beim Speichern: " + target.string();
         return false;
     }
     state.aiScriptDirty=false;
-    state.statusMessage = "Gespeichert: " + state.aiScriptEditorPath;
+    state.statusMessage = "Projekt-Override gespeichert: " + target.string();
     return true;
 }
 
@@ -8813,10 +8844,13 @@ void DrawPatrolRouteEditorPopup(EditorState& state) {
                 }
                 ImGui::Separator();
                 if (UI::Button(L("Speichern","Save"))) {
-                    auto path = std::filesystem::path(state.shnServerRoot) / "MobRoam" / (state.patrolEditorName + ".txt");
-                    auto saved = core::legacy::SaveShineTextFile(state.patrolRouteFile, path);
+                    auto saved = SaveProjectShineOverride(
+                        state.patrolRouteFile,
+                        ProjectServerShinePath(
+                            state.project,
+                            std::filesystem::path("MobRoam") / (state.patrolEditorName + ".txt")));
                     state.statusMessage = saved
-                        ? L("Patrouillenroute gespeichert.","Patrol route saved.")
+                        ? L("Patrouillenroute als Projekt-Override gespeichert.","Patrol route saved as project override.")
                         : L("Fehler: ","Error: ") + saved.error();
                     if (saved) state.roamOverlayKey.clear();
                 }
@@ -9381,10 +9415,16 @@ void DrawDialogEditorPopup(EditorState& state) {
                 auto parsedVal = core::legacy::ParseShnValue(state.npcDialogShn.columns[2], text);
                 if (parsedVal) {
                     row.values[2] = std::move(*parsedVal);
-                    auto path = std::filesystem::path(state.npcDialogRessystemRoot) / "NpcDialogData.shn";
-                    auto saved = core::legacy::SaveShnFile(state.npcDialogShn, path);
+                    std::filesystem::path path;
+                    std::string pathError;
+                    const bool targetReady = PrepareProjectOutput(
+                        ProjectClientRessystemPath(state.project, "NpcDialogData.shn"),
+                        path, &pathError);
+                    auto saved = targetReady
+                        ? core::legacy::SaveShnFile(state.npcDialogShn, path)
+                        : std::expected<void,std::string>(std::unexpected(pathError));
                     state.statusMessage = saved
-                        ? L("NpcDialogData.shn gespeichert.","NpcDialogData.shn saved.")
+                        ? L("NpcDialogData.shn als Projekt-Override gespeichert.","NpcDialogData.shn saved as project override.")
                         : L("Fehler: ","Error: ") + saved.error();
                     if (saved) { state.dialogEditorOpen = false; ImGui::CloseCurrentPopup(); }
                 } else {
@@ -9680,12 +9720,14 @@ void DrawShopEditorPopup(EditorState& state) {
             UI::Checkbox(L("Löschen freigeben","Enable delete"), &state.shopDeleteArmed);
             ImGui::SameLine();
             if (UI::Button(L("Speichern","Save"))) {
-                std::error_code ec;
-                std::filesystem::create_directories(shopPath.parent_path(), ec);
-                auto saved = core::legacy::SaveShineTextFile(state.shopTextFile, shopPath);
+                auto saved = SaveProjectShineOverride(
+                    state.shopTextFile,
+                    ProjectServerShinePath(
+                        state.project,
+                        std::filesystem::path("NPCItemList") / (state.shopLoadedForNpc + ".txt")));
                 if (saved) {
                     state.statusMessage =
-                        L("Händler-Inventar gespeichert: ","Shop inventory saved: ") +
+                        L("Händler-Inventar als Projekt-Override gespeichert: ","Shop inventory saved as project override: ") +
                         state.shopLoadedForNpc;
                     // Neu laden: Tabellen/Records bekommen ihre echten Quellzeilen, "neu"-Markierungen entfallen.
                     const std::string npc = state.shopLoadedForNpc;
@@ -16686,13 +16728,15 @@ void EnsureDropTableLoaded(EditorState& state) {
 
 bool SaveDropTable(EditorState& state) {
     if (!state.dropTableLoaded || state.dropTableFile.path.empty()) return false;
-    auto saved = core::legacy::SaveShineTextFile(state.dropTableFile, state.dropTableFile.path);
+    auto saved = SaveProjectShineOverride(
+        state.dropTableFile,
+        ProjectServerShinePath(state.project, std::filesystem::path("World") / "ItemDropTable.txt"));
     if (!saved) {
         state.statusMessage = "Drop Table speichern fehlgeschlagen: " + saved.error();
         return false;
     }
     state.dropTableDirty = false;
-    state.statusMessage = "Drop Table gespeichert: " + state.dropTableFile.path.string();
+    state.statusMessage = "Drop Table Projekt-Override gespeichert: " + saved->string();
     return true;
 }
 
