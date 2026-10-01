@@ -1579,6 +1579,77 @@ core::legacy::LegacyMapProject BuildProjectFromState(const EditorState& state) {
     return project;
 }
 
+bool SaveLegacyMapProject(EditorState& state) {
+    if (state.project.projectFolder[0] == '\0') {
+        state.statusMessage = L("Karte speichern blockiert: kein Projektordner konfiguriert.",
+                                "Map save blocked: no project folder configured.");
+        return false;
+    }
+    if (state.legacySaveStem[0] == '\0') {
+        state.statusMessage = L("Karte speichern blockiert: kein Kartenname.",
+                                "Map save blocked: no map name.");
+        return false;
+    }
+
+    std::filesystem::path outputDir;
+    const std::filesystem::path requested(state.legacySaveDir);
+    if (!requested.empty() &&
+        IsProjectSidePath(state.project, core::ProjectOutputSide::Client, requested)) {
+        outputDir = requested;
+    }
+
+    if (outputDir.empty() && state.legacyMapIniPath[0] != '\0') {
+        const std::filesystem::path workingOrSource(state.legacyMapIniPath);
+        if (IsProjectSidePath(state.project, core::ProjectOutputSide::Client, workingOrSource)) {
+            outputDir = workingOrSource.parent_path();
+        } else if (auto target = ProjectPathForSource(
+                       state.project, core::ProjectOutputSide::Client, workingOrSource)) {
+            outputDir = target->parent_path();
+        }
+    }
+
+    if (outputDir.empty()) {
+        auto target = ProjectPathForRelative(
+            state.project, core::ProjectOutputSide::Client,
+            std::filesystem::path("resmap") / state.legacySaveStem /
+            (std::string(state.legacySaveStem) + ".ini"));
+        std::filesystem::path outputIni;
+        std::string error;
+        if (!PrepareProjectOutput(target, outputIni, &error)) {
+            state.statusMessage = "Karte speichern blockiert: " + error;
+            return false;
+        }
+        outputDir = outputIni.parent_path();
+    } else {
+        std::string error;
+        std::filesystem::path outputIni;
+        auto validated = ProjectPathForRelative(
+            state.project, core::ProjectOutputSide::Client,
+            std::filesystem::relative(
+                outputDir / (std::string(state.legacySaveStem) + ".ini"),
+                std::filesystem::path(state.project.projectFolder) / "Client") );
+        if (!PrepareProjectOutput(validated, outputIni, &error)) {
+            state.statusMessage = "Karte speichern blockiert: " + error;
+            return false;
+        }
+    }
+
+    std::snprintf(state.legacySaveDir, sizeof(state.legacySaveDir), "%s", outputDir.string().c_str());
+    auto project = BuildProjectFromState(state);
+    auto result = core::legacy::SaveLegacyMap(project, outputDir, state.legacySaveStem);
+    if (!result) {
+        state.statusMessage = L("Fehler: ","Error: ") + result.error();
+        return false;
+    }
+
+    state.legacyIniMeta = project.ini;
+    state.mapDirty = false;
+    const auto ini = outputDir / (std::string(state.legacySaveStem) + ".ini");
+    TouchRecentMap(state, ini.string());
+    state.statusMessage = std::string(T("workspace.savedas")) + outputDir.string();
+    return true;
+}
+
 int ShmdCategoryKind(const std::string& name) {
     std::string lower = name;
     std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
@@ -2905,17 +2976,7 @@ void DrawAdvancedFileOps(EditorState& state) {
         UI::InputText("Kartenname##project", state.legacySaveStem, sizeof(state.legacySaveStem));
         ImGui::BeginDisabled(!state.hasLegacyIniMeta);
         if (UI::Button("Karte speichern")) {
-            auto project = BuildProjectFromState(state);
-            auto result = core::legacy::SaveLegacyMap(project, state.legacySaveDir, state.legacySaveStem);
-            if (result) {
-                state.legacyIniMeta = project.ini; // ExportLegacyTextureSet aktualisiert z.B. Layer-Metadaten
-                state.mapDirty = false;
-                TouchRecentMap(state, (std::filesystem::path(state.legacySaveDir) /
-                                      (std::string(state.legacySaveStem) + ".ini")).string());
-                state.statusMessage = "Karte gespeichert nach: " + std::string(state.legacySaveDir);
-            } else {
-                state.statusMessage = "Karte speichern fehlgeschlagen: " + result.error();
-            }
+            SaveLegacyMapProject(state);
         }
         ImGui::EndDisabled();
         if (!state.hasLegacyIniMeta) {
@@ -3843,42 +3904,12 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
     };
     auto saveCurrentMap = [&] {
         if (!mapCanSave) return;
-        if (state.project.projectFolder[0] == '\0') {
-            state.statusMessage = L("Speichern blockiert: zuerst einen Projektordner konfigurieren.",
-                                    "Save blocked: configure a project folder first.");
-            return;
-        }
-        std::filesystem::path outputDir = state.legacySaveDir;
-        if (outputDir.empty() || !IsProjectSidePath(state.project, core::ProjectOutputSide::Client, outputDir)) {
-            auto target = ProjectPathForRelative(
-                state.project, core::ProjectOutputSide::Client,
-                std::filesystem::path("resmap") / state.legacySaveStem /
-                (std::string(state.legacySaveStem) + ".ini"));
-            std::filesystem::path outputIni;
-            std::string error;
-            if (!PrepareProjectOutput(target, outputIni, &error)) {
-                state.statusMessage = "Karte speichern blockiert: " + error;
-                return;
-            }
-            outputDir = outputIni.parent_path();
-        }
-        std::snprintf(state.legacySaveDir, sizeof(state.legacySaveDir), "%s", outputDir.string().c_str());
-        auto project = BuildProjectFromState(state);
-        auto result = core::legacy::SaveLegacyMap(project, outputDir, state.legacySaveStem);
-        if (result) {
-            state.legacyIniMeta = project.ini;
-            state.mapDirty = false;
-            TouchRecentMap(state, (std::filesystem::path(state.legacySaveDir) /
-                                  (std::string(state.legacySaveStem) + ".ini")).string());
-            state.statusMessage = std::string(T("workspace.savedas")) + state.legacySaveDir;
-            if (state.editMode == EditMode::Portals) {
-                if (state.townPortalDirty) SaveTownPortalFiles(state);
-                if (state.recallCoordDirty) SaveRecallCoordFile(state);
-            }
-        } else {
-            state.statusMessage = L("Fehler: ","Error: ") + result.error();
+        if (SaveLegacyMapProject(state) && state.editMode == EditMode::Portals) {
+            if (state.townPortalDirty) SaveTownPortalFiles(state);
+            if (state.recallCoordDirty) SaveRecallCoordFile(state);
         }
     };
+
     auto canMapHistory = [&](bool redo) {
         if (!mapWorkspace) return false;
         switch (state.editMode) {
@@ -11668,17 +11699,7 @@ void HandleGlobalShortcuts(EditorState& state) {
 
     if (ShortcutPressed(state.shortcutSave) &&
         state.legacySaveDir[0] != '\0' && state.legacySaveStem[0] != '\0') {
-        auto project = BuildProjectFromState(state);
-        auto result = core::legacy::SaveLegacyMap(project, state.legacySaveDir, state.legacySaveStem);
-        if (result) {
-            state.legacyIniMeta = project.ini;
-            state.mapDirty = false;
-            TouchRecentMap(state, (std::filesystem::path(state.legacySaveDir) /
-                                  (std::string(state.legacySaveStem) + ".ini")).string());
-            state.statusMessage = std::string(T("workspace.savedas")) + state.legacySaveDir;
-        } else {
-            state.statusMessage = L("Fehler: ","Error: ") + result.error();
-        }
+        SaveLegacyMapProject(state);
         if (state.editMode == EditMode::Portals) {
             if (state.townPortalDirty) SaveTownPortalFiles(state);
             if (state.recallCoordDirty) SaveRecallCoordFile(state);
@@ -11915,17 +11936,7 @@ void DrawCommandPalette(EditorState& state) {
 
         if (state.legacySaveDir[0] != '\0' && state.legacySaveStem[0] != '\0') {
             add(L("Karte: Speichern","Map: Save"), ShortcutLabel(state.shortcutSave), [&] {
-                auto project = BuildProjectFromState(state);
-                auto result = core::legacy::SaveLegacyMap(project, state.legacySaveDir, state.legacySaveStem);
-                if (result) {
-                    state.legacyIniMeta = project.ini;
-                    state.mapDirty = false;
-                    TouchRecentMap(state, (std::filesystem::path(state.legacySaveDir) /
-                                          (std::string(state.legacySaveStem) + ".ini")).string());
-                    state.statusMessage = std::string(T("workspace.savedas")) + state.legacySaveDir;
-                } else {
-                    state.statusMessage = "Fehler: " + result.error();
-                }
+                SaveLegacyMapProject(state);
             });
         }
     }
@@ -14825,17 +14836,7 @@ void DrawWorkspaceTabBar(EditorState& state) {
 
     const bool canSave = state.hasLegacyIniMeta || state.legacySaveDir[0] != '\0';
     if (DrawIconButton("cmd.save", L("Speichern","Save"), DrawIconSave, false, ImVec2(78,58), canSave, "file.save")) {
-        auto project = BuildProjectFromState(state);
-        auto result = core::legacy::SaveLegacyMap(project, state.legacySaveDir, state.legacySaveStem);
-        if (result) {
-            state.legacyIniMeta = project.ini;
-            state.mapDirty = false;
-            TouchRecentMap(state, (std::filesystem::path(state.legacySaveDir) /
-                                  (std::string(state.legacySaveStem) + ".ini")).string());
-            state.statusMessage = std::string(T("workspace.savedas")) + state.legacySaveDir;
-        } else {
-            state.statusMessage = "Fehler: " + result.error();
-        }
+        SaveLegacyMapProject(state);
     }
     ImGui::SameLine();
     if (DrawIconButton("cmd.undo", L("Rückgängig","Undo"), DrawIconUndo, false, ImVec2(68,58), undoAvailable(), "history.undo")) doUndo();
@@ -18093,17 +18094,7 @@ void DrawMapEditorWorkspace(EditorState& state) {
             UI::InputText(L("Ordner","Folder"), state.legacySaveDir, sizeof(state.legacySaveDir));
             UI::InputText(L("Name","Name"), state.legacySaveStem, sizeof(state.legacySaveStem));
             if (UI::Button(T("workspace.save"))) {
-                auto project = BuildProjectFromState(state);
-                auto result = core::legacy::SaveLegacyMap(project, state.legacySaveDir, state.legacySaveStem);
-                if (result) {
-                    state.legacyIniMeta = project.ini;
-                    state.mapDirty = false;
-                    TouchRecentMap(state, (std::filesystem::path(state.legacySaveDir) /
-                                          (std::string(state.legacySaveStem) + ".ini")).string());
-                    state.statusMessage = std::string(T("workspace.savedas")) + state.legacySaveDir;
-                } else {
-                    state.statusMessage = "Fehler: " + result.error();
-                }
+                SaveLegacyMapProject(state);
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
