@@ -54,6 +54,7 @@
 #include "mapeditor/core/HeightmapIO.hpp"
 #include "mapeditor/core/ObjectPlacement.hpp"
 #include "mapeditor/core/ObjectPlacementIO.hpp"
+#include "mapeditor/core/ProjectOutput.hpp"
 #include "mapeditor/core/TextureLayerIO.hpp"
 #include "mapeditor/core/TextureLayerStack.hpp"
 #include "mapeditor/core/TexturePaintOps.hpp"
@@ -276,6 +277,44 @@ struct ProjectConfig {
     bool hasProject = false;
 };
 
+std::expected<std::filesystem::path, std::string> ProjectPathForSource(
+    const ProjectConfig& cfg,
+    core::ProjectOutputSide side,
+    const std::filesystem::path& sourcePath) {
+
+    const std::filesystem::path projectRoot(cfg.projectFolder);
+    const std::filesystem::path sourceRoot(
+        side == core::ProjectOutputSide::Client ? cfg.clientFolder : cfg.serverFolder);
+    return core::ProjectOutputForSource(projectRoot, sourceRoot, sourcePath, side);
+}
+
+std::expected<std::filesystem::path, std::string> ProjectPathForRelative(
+    const ProjectConfig& cfg,
+    core::ProjectOutputSide side,
+    const std::filesystem::path& relativePath) {
+
+    return core::ProjectOutputForRelative(
+        std::filesystem::path(cfg.projectFolder), side, relativePath);
+}
+
+bool PrepareProjectOutput(
+    const std::expected<std::filesystem::path, std::string>& target,
+    std::filesystem::path& out,
+    std::string* errorOut = nullptr) {
+
+    if (!target) {
+        if (errorOut) *errorOut = target.error();
+        return false;
+    }
+    auto parent = core::EnsureProjectOutputParent(*target);
+    if (!parent) {
+        if (errorOut) *errorOut = parent.error();
+        return false;
+    }
+    out = *target;
+    return true;
+}
+
 // Schreibt die Projekt-Konfiguration als einfache "schlüssel=wert"-Datei (bewusst kein
 // JSON - im restlichen Code werden ausschließlich native/legacy Formate ohne
 // JSON-Abhängigkeit verwendet, siehe docs/MAP_FORMAT.md) nach <projectFolder>/project.tsproj.
@@ -286,6 +325,12 @@ bool SaveProjectConfig(const ProjectConfig& cfg, std::string* errorOut) {
     }
     std::error_code ec;
     std::filesystem::create_directories(cfg.projectFolder, ec);
+    if (!ec) std::filesystem::create_directories(std::filesystem::path(cfg.projectFolder) / "Client", ec);
+    if (!ec) std::filesystem::create_directories(std::filesystem::path(cfg.projectFolder) / "Server", ec);
+    if (ec) {
+        if (errorOut) *errorOut = "Projekt-Ausgabestruktur konnte nicht angelegt werden: " + ec.message();
+        return false;
+    }
     const std::filesystem::path path = std::filesystem::path(cfg.projectFolder) / "project.tsproj";
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
     if (!out) {
@@ -744,6 +789,9 @@ struct EditorState {
     enum class ShnSource { Client, Server };
     struct ShnDocument {
         core::legacy::ShnFile file;
+        // Immutable provenance: the configured Client/Server source tree is read-only.
+        // file.path may switch to the project override after the first save.
+        std::filesystem::path sourcePath;
         ShnSource source = ShnSource::Client;
         bool dirty = false;
         // Pro-Zelle Status für die Grün/Rot-Markierung (Mockup-Wunsch, siehe CHANGELOG
