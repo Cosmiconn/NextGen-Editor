@@ -769,7 +769,7 @@ struct EditorState {
     // MobBehaviorDescript/) - reiner Text-Editor, keine Syntaxprüfung/Interpretation, siehe
     // CHANGELOG [0.44.22]. Pfad wird bei Bedarf direkt unter state.shnServerRoot gesucht.
     bool aiScriptEditorOpen = false;
-    std::string aiScriptEditorPath;
+    std::string aiScriptEditorPath;       // immutable source identity
     std::string aiScriptEditorText;
     std::string aiScriptEditorName;
     bool aiScriptDirty = false;
@@ -6846,7 +6846,8 @@ bool DrawAssetPickerPopup(const char* popupId, const std::vector<std::string>& f
 // NpcRecordsForCurrentMap). Speichern erfolgt minimal-invasiv über SaveShineTextFile.
 void EnsureNpcTextLoaded(EditorState& state) {
     if (state.npcTextLoaded || state.shineTextRoot.empty()) return;
-    auto path = std::filesystem::path(state.shineTextRoot) / "World" / "NPC.txt";
+    const auto sourcePath = std::filesystem::path(state.shineTextRoot) / "World" / "NPC.txt";
+    const auto path = PreferProjectOverride(state.project, core::ProjectOutputSide::Server, sourcePath);
     auto result = core::legacy::LoadShineTextFile(path);
     if (result) { state.npcTextFile = std::move(*result); state.npcTextLoaded = true; }
     else state.statusMessage = "NPC.txt: " + result.error();
@@ -6873,7 +6874,8 @@ std::vector<std::size_t> NpcRecordsForCurrentMap(EditorState& state) {
 void EnsureMobRegenLoaded(EditorState& state) {
     if (state.shineTextRoot.empty()) return;
     if (state.mobRegenTextLoaded && state.mobRegenLoadedForMap == state.legacySaveStem) return;
-    auto path = std::filesystem::path(state.shineTextRoot) / "MobRegen" / (std::string(state.legacySaveStem) + ".txt");
+    const auto sourcePath = std::filesystem::path(state.shineTextRoot) / "MobRegen" / (std::string(state.legacySaveStem) + ".txt");
+    const auto path = PreferProjectOverride(state.project, core::ProjectOutputSide::Server, sourcePath);
     auto result = core::legacy::LoadShineTextFile(path);
     if (result) {
         state.mobRegenTextFile = std::move(*result);
@@ -6887,7 +6889,8 @@ void EnsureMobRegenLoaded(EditorState& state) {
 
 void EnsureShopTextLoaded(EditorState& state, const std::string& npcName) {
     if (state.shopTextLoaded && state.shopLoadedForNpc == npcName) return;
-    auto path = std::filesystem::path(state.shineTextRoot) / "NPCItemList" / (npcName + ".txt");
+    const auto sourcePath = std::filesystem::path(state.shineTextRoot) / "NPCItemList" / (npcName + ".txt");
+    const auto path = PreferProjectOverride(state.project, core::ProjectOutputSide::Server, sourcePath);
     state.shopFileIsNew = false;
     state.shopLoadedForNpc = npcName;
     std::error_code ec;
@@ -6992,6 +6995,7 @@ void EnsureQuestDataLoaded(EditorState& state) {
             if (auto shine = FindServerShineRoot(state.shnServerRoot)) path = *shine / "QuestData.shn";
         }
     }
+    path = PreferProjectOverride(state.project, core::ProjectOutputSide::Server, path);
     auto result = core::legacy::LoadQuestData(path);
     if (result) { state.questDataFile = std::move(*result); state.questDataLoaded = true; }
     else state.statusMessage = "QuestData.shn: " + result.error();
@@ -7003,7 +7007,8 @@ void EnsureQuestDialogLoaded(EditorState& state) {
     if (state.questDialogLoaded) return;
     EnsureNpcDialogRoot(state);
     if (state.npcDialogRessystemRoot.empty()) return;
-    auto path = std::filesystem::path(state.npcDialogRessystemRoot) / "QuestDialog.shn";
+    const auto sourcePath = std::filesystem::path(state.npcDialogRessystemRoot) / "QuestDialog.shn";
+    const auto path = PreferProjectOverride(state.project, core::ProjectOutputSide::Client, sourcePath);
     auto result = core::legacy::LoadShnFile(path);
     if (result) { state.questDialogShn = std::move(*result); state.questDialogLoaded = true; }
 }
@@ -7852,7 +7857,8 @@ void EnsureTownPortalLoaded(EditorState& state) {
 void EnsureRecallCoordLoaded(EditorState& state) {
     const std::string serverRoot = PortalServerRoot(state);
     if (state.recallCoordLoaded || serverRoot.empty()) return;
-    auto path = std::filesystem::path(serverRoot) / "World" / "RecallCoord.txt";
+    const auto sourcePath = std::filesystem::path(serverRoot) / "World" / "RecallCoord.txt";
+    const auto path = PreferProjectOverride(state.project, core::ProjectOutputSide::Server, sourcePath);
     auto result = core::legacy::LoadShineTextFile(path);
     if (result) {
         state.recallCoordFile = std::move(*result);
@@ -8609,7 +8615,8 @@ bool FocusCurrentSceneSelection(EditorState& state) {
 
 void EnsureNpcDialogLoaded(EditorState& state) {
     if (state.npcDialogLoaded || state.npcDialogRessystemRoot.empty()) return;
-    auto path = std::filesystem::path(state.npcDialogRessystemRoot) / "NpcDialogData.shn";
+    const auto sourcePath = std::filesystem::path(state.npcDialogRessystemRoot) / "NpcDialogData.shn";
+    const auto path = PreferProjectOverride(state.project, core::ProjectOutputSide::Client, sourcePath);
     auto result = core::legacy::LoadShnFile(path);
     if (result) { state.npcDialogShn = std::move(*result); state.npcDialogLoaded = true; }
     else state.statusMessage = "NpcDialogData.shn: " + result.error();
@@ -8617,8 +8624,10 @@ void EnsureNpcDialogLoaded(EditorState& state) {
 
 bool LoadAiScriptFile(EditorState& state, const std::filesystem::path& path,
                       const std::string& displayName, bool openPopup, bool discardDirty=false) {
+    const auto workingPath = PreferProjectOverride(
+        state.project, core::ProjectOutputSide::Server, path);
     std::error_code ec;
-    if (!std::filesystem::is_regular_file(path,ec)) {
+    if (!std::filesystem::is_regular_file(workingPath,ec)) {
         state.statusMessage = "KI-Skript nicht gefunden: " + path.string();
         return false;
     }
@@ -8632,9 +8641,9 @@ bool LoadAiScriptFile(EditorState& state, const std::filesystem::path& path,
         state.statusMessage = "KI-Skript hat ungespeicherte Änderungen. Erst speichern oder neu laden.";
         return false;
     }
-    std::ifstream in(path,std::ios::binary);
+    std::ifstream in(workingPath,std::ios::binary);
     if (!in) {
-        state.statusMessage = "KI-Skript konnte nicht geöffnet werden: " + path.string();
+        state.statusMessage = "KI-Skript konnte nicht geöffnet werden: " + workingPath.string();
         return false;
     }
     state.aiScriptEditorText.assign((std::istreambuf_iterator<char>(in)),std::istreambuf_iterator<char>());
@@ -8733,7 +8742,8 @@ void OpenPatrolRouteEditor(EditorState& state, const std::string& mobName) {
             "Server SHN folder required (Single SHN Editor).");
         return;
     }
-    auto path = std::filesystem::path(state.shnServerRoot) / "MobRoam" / (mobName + ".txt");
+    const auto sourcePath = std::filesystem::path(state.shnServerRoot) / "MobRoam" / (mobName + ".txt");
+    const auto path = PreferProjectOverride(state.project, core::ProjectOutputSide::Server, sourcePath);
     std::error_code ec;
     if (!std::filesystem::exists(path, ec)) {
         state.statusMessage =
@@ -16651,7 +16661,8 @@ void EnsureDropTableLoaded(EditorState& state) {
         state.dropTableLoadError = "Server-Shine-Ordner nicht gefunden.";
         return;
     }
-    const auto path = std::filesystem::path(state.shineTextRoot) / "World" / "ItemDropTable.txt";
+    const auto sourcePath = std::filesystem::path(state.shineTextRoot) / "World" / "ItemDropTable.txt";
+    const auto path = PreferProjectOverride(state.project, core::ProjectOutputSide::Server, sourcePath);
     auto loaded = core::legacy::LoadShineTextFile(path);
     if (!loaded) {
         state.dropTableLoadError = loaded.error();
