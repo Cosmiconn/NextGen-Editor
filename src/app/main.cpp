@@ -4146,27 +4146,43 @@ void SelectShnDocument(EditorState& state, int index) {
     state.shnVisibleKey.clear();
 }
 
+std::filesystem::path ShnWorkingPath(
+    const EditorState& state,
+    const std::filesystem::path& sourcePath,
+    EditorState::ShnSource source) {
+
+    const auto side = source == EditorState::ShnSource::Client
+        ? core::ProjectOutputSide::Client : core::ProjectOutputSide::Server;
+    auto target = ProjectPathForSource(state.project, side, sourcePath);
+    std::error_code ec;
+    if (target && std::filesystem::is_regular_file(*target, ec)) return *target;
+    return sourcePath;
+}
+
 void OpenShnFile(EditorState& state, const std::filesystem::path& path,
                 std::optional<EditorState::ShnSource> sourceOverride = std::nullopt) {
-    auto result = core::legacy::LoadShnFile(path);
+    const auto source = sourceOverride.value_or(InferShnSource(path, EditorState::ShnSource::Client));
+    const auto workingPath = ShnWorkingPath(state, path, source);
+    auto result = core::legacy::LoadShnFile(workingPath);
     if (!result) {
         state.shnStatus = "SHN öffnen fehlgeschlagen: " + result.error();
         return;
     }
-    const auto source = sourceOverride.value_or(InferShnSource(path, EditorState::ShnSource::Client));
     auto existing = std::find_if(state.shnFiles.begin(), state.shnFiles.end(), [&](const auto& f) {
-        return f.file.path == path && f.source == source;
+        return f.sourcePath == path && f.source == source;
     });
     if (existing != state.shnFiles.end()) {
         SelectShnDocument(state, static_cast<int>(std::distance(state.shnFiles.begin(), existing)));
     } else {
         EditorState::ShnDocument doc;
         doc.file = std::move(*result);
+        doc.sourcePath = path;
         doc.source = source;
         state.shnFiles.push_back(std::move(doc));
         SelectShnDocument(state, static_cast<int>(state.shnFiles.size()) - 1);
     }
-    state.shnStatus = std::string(ShnSourceName(source)) + " geladen: " + path.filename().string();
+    state.shnStatus = std::string(ShnSourceName(source)) + " geladen: " + path.filename().string() +
+        (workingPath != path ? " (Projekt-Override)" : "");
 }
 
 void ScanShnFolder(EditorState& state, const std::filesystem::path& root, EditorState::ShnSource source) {
@@ -4182,14 +4198,17 @@ void ScanShnFolder(EditorState& state, const std::filesystem::path& root, Editor
         if (!it->is_regular_file(ec) || ec) { ec.clear(); continue; }
         auto ext = LowerAscii(it->path().extension().string());
         if (ext != ".shn") continue;
-        auto result = core::legacy::LoadShnFile(it->path());
+        const auto sourcePath = it->path();
+        const auto workingPath = ShnWorkingPath(state, sourcePath, source);
+        auto result = core::legacy::LoadShnFile(workingPath);
         if (!result) { ++failed; continue; }
         auto existing = std::find_if(state.shnFiles.begin(), state.shnFiles.end(), [&](const auto& f) {
-            return f.file.path == it->path() && f.source == source;
+            return f.sourcePath == sourcePath && f.source == source;
         });
         if (existing == state.shnFiles.end()) {
             EditorState::ShnDocument doc;
             doc.file = std::move(*result);
+            doc.sourcePath = sourcePath;
             doc.source = source;
             state.shnFiles.push_back(std::move(doc));
             ++loaded;
@@ -4503,15 +4522,92 @@ void ClearShnDirtyCells(EditorState::ShnDocument& doc) {
     for (auto& row : doc.cellDirty) std::fill(row.begin(), row.end(), 0);
 }
 
+std::expected<void, std::string> ValidateShnPatch(EditorState::ShnDocument& doc) {
+    EnsureCellStatusSize(doc);
+    if (doc.file.path.empty())
+        return std::unexpected("SHN hat keinen Arbeits-/Baseline-Pfad.");
+
+    auto baseline = core::legacy::LoadShnFile(doc.file.path);
+    if (!baseline) return std::unexpected("SHN-Baseline konnte nicht geladen werden: " + baseline.error());
+
+    if (baseline->version != doc.file.version ||
+        baseline->defaultRecordLength != doc.file.defaultRecordLength ||
+        baseline->encrypted != doc.file.encrypted ||
+        baseline->cryptoHeader != doc.file.cryptoHeader ||
+        baseline->columns.size() != doc.file.columns.size()) {
+        return std::unexpected("SHN-Struktur wurde ausserhalb einer erlaubten Zell-/Zeilenaenderung veraendert.");
+    }
+    for (std::size_t ci = 0; ci < baseline->columns.size(); ++ci) {
+        const auto& a = baseline->columns[ci];
+        const auto& b = doc.file.columns[ci];
+        if (a.name != b.name || a.type != b.type || a.length != b.length ||
+            a.kind != b.kind || a.synthesizedName != b.synthesizedName) {
+            return std::unexpected("SHN-Spaltenschema wurde veraendert: " + b.name);
+        }
+    }
+    if (doc.file.rows.size() < baseline->rows.size())
+        return std::unexpected("SHN-Zeilen wurden geloescht/umgeordnet; dieser Save-Pfad erlaubt nur Zell-Patches und angehaengte neue Zeilen.");
+
+    for (std::size_t ri = 0; ri < baseline->rows.size(); ++ri) {
+        if (doc.file.rows[ri].values.size() != baseline->rows[ri].values.size())
+            return std::unexpected("SHN-Zellenstruktur wurde in Zeile " + std::to_string(ri) + " veraendert.");
+        for (std::size_t ci = 0; ci < baseline->rows[ri].values.size(); ++ci) {
+            if (doc.file.rows[ri].values[ci] == baseline->rows[ri].values[ci]) continue;
+            const bool marked = ri < doc.cellDirty.size() &&
+                ci < doc.cellDirty[ri].size() && doc.cellDirty[ri][ci] != 0;
+            if (!marked) {
+                return std::unexpected(
+                    "SHN-Sicherheitscheck: nicht markierte Zelle wurde veraendert (Zeile " +
+                    std::to_string(ri) + ", Spalte " + std::to_string(ci) + ").");
+            }
+        }
+    }
+
+    // New records are allowed only as an append operation. This keeps every existing
+    // record in its original logical position and prevents hidden table rebuilds.
+    for (std::size_t ri = baseline->rows.size(); ri < doc.file.rows.size(); ++ri) {
+        const bool markedNew = ri < doc.cellDirty.size() &&
+            doc.cellDirty[ri].size() == doc.file.columns.size() &&
+            std::all_of(doc.cellDirty[ri].begin(), doc.cellDirty[ri].end(),
+                        [](std::uint8_t value) { return value != 0; });
+        if (!markedNew)
+            return std::unexpected("Neue SHN-Zeile ist nicht vollstaendig als explizite Aenderung markiert.");
+    }
+    return {};
+}
+
+std::expected<std::filesystem::path, std::string> ShnProjectTarget(
+    const EditorState& state, const EditorState::ShnDocument& doc) {
+    const auto side = doc.source == EditorState::ShnSource::Client
+        ? core::ProjectOutputSide::Client : core::ProjectOutputSide::Server;
+    const auto sourcePath = doc.sourcePath.empty() ? doc.file.path : doc.sourcePath;
+    return ProjectPathForSource(state.project, side, sourcePath);
+}
+
 bool SaveShnDocument(EditorState& state,int document) {
     if (document < 0 || document >= static_cast<int>(state.shnFiles.size())) return false;
     auto& doc=state.shnFiles[static_cast<std::size_t>(document)];
-    auto result=core::legacy::SaveShnFile(doc.file,doc.file.path);
+
+    auto patch = ValidateShnPatch(doc);
+    if (!patch) {
+        state.shnStatus = "Speichern blockiert: " + patch.error();
+        return false;
+    }
+
+    std::filesystem::path target;
+    std::string pathError;
+    if (!PrepareProjectOutput(ShnProjectTarget(state, doc), target, &pathError)) {
+        state.shnStatus = "Speichern blockiert: " + pathError;
+        return false;
+    }
+
+    auto result=core::legacy::SaveShnFile(doc.file,target);
     if (result) {
+        doc.file.path=target;
         doc.dirty=false;
         ClearShnDirtyCells(doc);
         ++state.shnEditCounter;
-        state.shnStatus=std::string(ShnSourceName(doc.source))+" gespeichert: "+doc.file.FileName();
+        state.shnStatus=std::string(ShnSourceName(doc.source))+" Projekt-Override gespeichert: "+target.string();
         return true;
     }
     state.shnStatus="Speichern fehlgeschlagen: "+result.error();
@@ -4520,18 +4616,11 @@ bool SaveShnDocument(EditorState& state,int document) {
 
 std::pair<std::size_t,std::size_t> SaveAllDirtyShnDocuments(EditorState& state) {
     std::size_t saved = 0, failed = 0;
-    for (auto& doc : state.shnFiles) {
-        if (!doc.dirty) continue;
-        auto result = core::legacy::SaveShnFile(doc.file, doc.file.path);
-        if (result) {
-            doc.dirty = false;
-            ClearShnDirtyCells(doc);
-            ++saved;
-        } else {
-            ++failed;
-        }
+    for (int i = 0; i < static_cast<int>(state.shnFiles.size()); ++i) {
+        if (!state.shnFiles[static_cast<std::size_t>(i)].dirty) continue;
+        if (SaveShnDocument(state, i)) ++saved;
+        else ++failed;
     }
-    if (saved > 0) ++state.shnEditCounter;
     return {saved,failed};
 }
 
