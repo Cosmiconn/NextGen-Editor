@@ -136,22 +136,25 @@ The Linux CI job smoke-tests the complete runner control path — normalization,
 
 ### Secure CI fallback when the local executor is unavailable
 
-The repository is public, so the raw Fiesta/ResMap corpus must **not** be committed to Git, uploaded as a public release, or attached to a normal Actions artifact. The supported fallback is a private/temporary direct-download URL stored only in the GitHub Actions secret `RESMAP_CORPUS_URL`. An optional `RESMAP_CORPUS_SHA256` secret pins the outer bundle bytes.
+The repository is public, so the raw Fiesta/ResMap corpus must **not** be committed to Git, uploaded as a public release, or attached to a normal Actions artifact.
 
-The URL must return one ZIP bundle that contains exactly these ten historical ZIP files somewhere below its root: `resmap_1.zip`, `resmap_2.zip`, `resmap_3.1.zip`, `resmap_3.2.zip`, `resmap_4.zip`, `resmap_5.1.zip`, `Resmap_5.2.zip`, `Resmap_5.3.zip`, `Resmap_5.4.zip`, and `Resmap_5.5.zip`.
+The preferred path is `RESMAP_CORPUS_URLS`: one GitHub Actions secret containing a JSON array of exactly ten private HTTPS direct-download URLs in this fixed order: `resmap_1.zip`, `resmap_2.zip`, `resmap_3.1.zip`, `resmap_3.2.zip`, `resmap_4.zip`, `resmap_5.1.zip`, `Resmap_5.2.zip`, `Resmap_5.3.zip`, `Resmap_5.4.zip`, `Resmap_5.5.zip`. Short-lived Dropbox download URLs are suitable for this mode. The URLs are read from the secret environment value and are never printed by the workflow.
+
+The legacy/bundle fallback remains `RESMAP_CORPUS_URL`: one private URL returning an outer ZIP bundle containing those same ten archives. Optional `RESMAP_CORPUS_SHA256` pins the outer bundle bytes.
 
 On a manual `workflow_dispatch` (or an explicit push whose commit message contains `[resmap-full]`), the Ubuntu job:
 
-1. downloads the secret URL with the value masked from logs;
-2. safely extracts the outer bundle and normalizes the ten expected ZIPs;
-3. extracts the corpus only once;
-4. runs the **physical** strict audit on the original ten extracted roots with all discovered ResMap asset roots;
-5. reuses the same extraction to build the deduplicated production-like runtime tree;
-6. runs the strict 18-category NextGen OpenGL matrix plus independent NifSkope captures;
-7. hard-checks the known corpus provenance (10 roots, 6,217 merged unique files, 168 identical duplicates, 3,765 physical NIFs, 3,685 logical NIF paths), `rendererGapFiles=0`, 18 review rows, one NifSkope reference per row, and zero automated frame flags;
-8. uploads only `ResMap-full-reference-evidence-<SHA>` for 30 days. The raw corpus and source URL are never re-uploaded.
+1. detects the direct-URL or bundle mode without logging secret values;
+2. downloads the ten archives to fixed local names;
+3. validates every archive against the known exact byte size and runs `ZipFile.testzip()` before any renderer work;
+4. extracts the corpus only once;
+5. runs the **physical** strict audit on the original ten extracted roots with all discovered ResMap asset roots;
+6. reuses the same extraction to build the deduplicated production-like runtime tree;
+7. runs the strict 18-category NextGen OpenGL matrix plus independent NifSkope captures;
+8. hard-checks the known corpus provenance (10 roots, 6,217 merged unique files, 168 identical duplicates, 3,765 physical NIFs, 3,685 logical NIF paths), `rendererGapFiles=0`, 18 review rows, one NifSkope reference per row, and zero automated frame flags;
+9. uploads only `ResMap-full-reference-evidence-<SHA>` for 30 days. The raw corpus and source URLs are never re-uploaded.
 
-A private cloud object, expiring signed URL, or revocable Dropbox/Drive-style direct-download link can provide `RESMAP_CORPUS_URL`. Once the run completes, the evidence artifact can be downloaded independently for the final visual/reference review.
+Once the run completes, the evidence artifact can be downloaded independently for the final 18-category visual/reference review.
 
 ### Windows
 
