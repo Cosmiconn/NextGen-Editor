@@ -51,6 +51,8 @@
 
 ### Projekt / Hilfe
 - Projekt mit Client-/Serverpfad.
+- **Read-only Quellinstallation / Copy-on-write Projektstruktur:** umgesetzt. Game-Daten-Saves werden ausschließlich unter `<Projekt>/Client/...` bzw. `<Projekt>/Server/...` geschrieben; vorhandene Projekt-Overrides werden beim Laden gegenüber der Quelle bevorzugt. Direkte Quell-Saves aus SHN, Map, Quest, NPC, Mob, Portal, Dialog, Shop, DropTable, AI und MobRoam sind blockiert/umgeleitet.
+- **Minimal-invasive Datenänderung:** SHN-Saves prüfen Schema, Row-Erhalt und Dirty-Cells vor dem Schreiben; ShineText bewahrt Originalzeilen/Zeilenenden und ersetzt nur betroffene Records. Heuristische SHN-Abhängigkeiten dürfen nicht mehr automatisch mutieren. Verbindliche Regeln: `docs/PROJECT_OUTPUT_POLICY.md` und `docs/DATA_DEPENDENCY_MATRIX.md`.
 - Map öffnen / neu / speichern.
 - Fiesta Import/Export.
 - Deutsch/Englisch.
