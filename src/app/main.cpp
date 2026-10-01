@@ -315,6 +315,31 @@ bool PrepareProjectOutput(
     return true;
 }
 
+std::filesystem::path PreferProjectOverride(
+    const ProjectConfig& cfg,
+    core::ProjectOutputSide side,
+    const std::filesystem::path& sourcePath) {
+
+    auto target = ProjectPathForSource(cfg, side, sourcePath);
+    std::error_code ec;
+    if (target && std::filesystem::is_regular_file(*target, ec)) return *target;
+    return sourcePath;
+}
+
+std::expected<std::filesystem::path, std::string> ProjectClientRessystemPath(
+    const ProjectConfig& cfg, const std::filesystem::path& relative) {
+    return ProjectPathForRelative(
+        cfg, core::ProjectOutputSide::Client,
+        std::filesystem::path("ressystem") / relative);
+}
+
+std::expected<std::filesystem::path, std::string> ProjectServerShinePath(
+    const ProjectConfig& cfg, const std::filesystem::path& relative) {
+    return ProjectPathForRelative(
+        cfg, core::ProjectOutputSide::Server,
+        std::filesystem::path("9Data") / "Shine" / relative);
+}
+
 // Schreibt die Projekt-Konfiguration als einfache "schlüssel=wert"-Datei (bewusst kein
 // JSON - im restlichen Code werden ausschließlich native/legacy Formate ohne
 // JSON-Abhängigkeit verwendet, siehe docs/MAP_FORMAT.md) nach <projectFolder>/project.tsproj.
@@ -4153,10 +4178,7 @@ std::filesystem::path ShnWorkingPath(
 
     const auto side = source == EditorState::ShnSource::Client
         ? core::ProjectOutputSide::Client : core::ProjectOutputSide::Server;
-    auto target = ProjectPathForSource(state.project, side, sourcePath);
-    std::error_code ec;
-    if (target && std::filesystem::is_regular_file(*target, ec)) return *target;
-    return sourcePath;
+    return PreferProjectOverride(state.project, side, sourcePath);
 }
 
 void OpenShnFile(EditorState& state, const std::filesystem::path& path,
