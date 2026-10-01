@@ -104,6 +104,91 @@ def wait_for_main_window(
     )
 
 
+def run_xdotool_on_live_main_window(
+    xdotool: str,
+    process: subprocess.Popen[bytes],
+    args: list[str],
+    *,
+    timeout: float,
+) -> int:
+    """Run an xdotool command against the current live NifSkope main window.
+
+    Qt may replace/recreate its X11 top-level window while the model finishes
+    loading. Never trust a previously discovered window id across a settle delay.
+    """
+    deadline = time.monotonic() + timeout
+    last_returncode: int | None = None
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise RuntimeError(
+                f"NifSkope exited while waiting for a live window (exit {process.returncode})."
+            )
+
+        windows = visible_windows_for_pid(xdotool, process.pid)
+        best = largest_window(xdotool, windows)
+        if best is None or best[1] < 320 or best[2] < 240:
+            time.sleep(0.20)
+            continue
+
+        window = best[0]
+        result = subprocess.run(
+            [xdotool, *args, str(window)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        last_returncode = result.returncode
+        if result.returncode == 0:
+            return window
+        time.sleep(0.20)
+
+    raise RuntimeError(
+        "xdotool command did not succeed against a live NifSkope window "
+        f"for PID {process.pid}; last return code={last_returncode}"
+    )
+
+
+def capture_live_main_window(
+    xdotool: str,
+    import_tool: str,
+    process: subprocess.Popen[bytes],
+    output_png: Path,
+    *,
+    timeout: float,
+) -> int:
+    """Capture the current live main window, retrying if Qt swaps the X11 id."""
+    deadline = time.monotonic() + timeout
+    last_error = ""
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise RuntimeError(
+                f"NifSkope exited before its window could be captured (exit {process.returncode})."
+            )
+
+        windows = visible_windows_for_pid(xdotool, process.pid)
+        best = largest_window(xdotool, windows)
+        if best is None or best[1] < 320 or best[2] < 240:
+            time.sleep(0.20)
+            continue
+
+        window = best[0]
+        result = subprocess.run(
+            [import_tool, "-window", str(window), str(output_png)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if result.returncode == 0:
+            return window
+        last_error = result.stderr.decode(errors="replace").strip()
+        time.sleep(0.20)
+
+    raise RuntimeError(
+        "ImageMagick import did not succeed against a live NifSkope window "
+        f"for PID {process.pid}: {last_error}"
+    )
+
+
 def stop_process(process: subprocess.Popen[bytes]) -> None:
     if process.poll() is not None:
         return
@@ -160,26 +245,51 @@ def capture_one(
         time.sleep(settle)
 
         # NifSkope's documented Z action centers the viewport on the loaded object.
-        subprocess.run(
+        # Qt can recreate the top-level X11 window while loading, so reacquire the
+        # largest live window and retry instead of using a stale id discovered above.
+        window = run_xdotool_on_live_main_window(
+            xdotool,
+            process,
+            ["key", "--window"],
+            timeout=min(timeout, 5.0),
+        )
+        # Send the key separately after the live window id because xdotool's
+        # positional grammar is: key --window <id> <key>.
+        key_result = subprocess.run(
             [xdotool, "key", "--window", str(window), "z"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            check=True,
+            check=False,
         )
+        if key_result.returncode != 0:
+            # The id may have changed between the probe and key event; retry with
+            # a freshly discovered live id.
+            deadline = time.monotonic() + min(timeout, 5.0)
+            while key_result.returncode != 0 and time.monotonic() < deadline:
+                time.sleep(0.20)
+                window, _, _ = wait_for_main_window(
+                    xdotool, process, min(1.5, max(0.25, deadline - time.monotonic()))
+                )
+                key_result = subprocess.run(
+                    [xdotool, "key", "--window", str(window), "z"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                )
+            if key_result.returncode != 0:
+                raise RuntimeError(
+                    "Failed to send NifSkope center key to a live X11 window."
+                )
         time.sleep(settle)
 
         output_png.parent.mkdir(parents=True, exist_ok=True)
-        result = subprocess.run(
-            [import_tool, "-window", str(window), str(output_png)],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
+        window = capture_live_main_window(
+            xdotool,
+            import_tool,
+            process,
+            output_png,
+            timeout=min(timeout, 5.0),
         )
-        if result.returncode != 0:
-            raise RuntimeError(
-                "ImageMagick import failed for NifSkope window "
-                f"{window}: {result.stderr.decode(errors='replace').strip()}"
-            )
 
         data = output_png.read_bytes()
         if len(data) < 1024 or not data.startswith(b"\x89PNG\r\n\x1a\n"):
