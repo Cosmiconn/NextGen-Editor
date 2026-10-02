@@ -33,6 +33,25 @@ int main() {
     assert(serverOut);
     assert(*serverOut == (project / "Server" / "9Data" / "Shine" / "QuestData.shn").lexically_normal());
 
+    // Choosing a deeper read-only source root must never shorten the project layout.
+    auto clientFromRessystem = ProjectOutputForSource(
+        project, client / "ressystem", clientFile, ProjectOutputSide::Client);
+    assert(clientFromRessystem);
+    assert(*clientFromRessystem ==
+           (project / "Client" / "ressystem" / "ItemInfo.shn").lexically_normal());
+
+    auto serverFrom9Data = ProjectOutputForSource(
+        project, server / "9Data", serverFile, ProjectOutputSide::Server);
+    assert(serverFrom9Data);
+    assert(*serverFrom9Data ==
+           (project / "Server" / "9Data" / "Shine" / "QuestData.shn").lexically_normal());
+
+    auto serverFromShine = ProjectOutputForSource(
+        project, server / "9Data" / "Shine", serverFile, ProjectOutputSide::Server);
+    assert(serverFromShine);
+    assert(*serverFromShine ==
+           (project / "Server" / "9Data" / "Shine" / "QuestData.shn").lexically_normal());
+
     auto npcOut = ProjectOutputForRelative(
         project, ProjectOutputSide::Server,
         std::filesystem::path("9Data") / "Shine" / "World" / "NPC.txt");
