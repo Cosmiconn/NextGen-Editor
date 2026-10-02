@@ -97,6 +97,7 @@
 #include <unordered_set>
 #include <set>
 #include <sstream>
+#include <stdexcept>
 #include <string_view>
 #include <vector>
 
