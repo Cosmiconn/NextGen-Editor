@@ -53,6 +53,7 @@ public:
     bool Undo(Heightmap& heightmap);
     bool Redo(Heightmap& heightmap);
     void Clear();
+    void ClearRedo() noexcept { redo_.clear(); }
 
     [[nodiscard]] bool CanUndo() const noexcept { return !undo_.empty(); }
     [[nodiscard]] bool CanRedo() const noexcept { return !redo_.empty(); }
