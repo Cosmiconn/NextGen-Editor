@@ -7454,21 +7454,36 @@ void DrawQuestFlowView(EditorState& state,
 }
 
 bool SaveQuestDataProject(EditorState& state) {
-    std::filesystem::path path;
+    std::filesystem::path clientPath, serverPath;
     std::string error;
     if (!PrepareProjectOutput(
+            ProjectClientRessystemPath(state.project, "QuestData.shn"),
+            clientPath, &error)) {
+        state.statusMessage = "QuestData.shn Client-Speichern blockiert: " + error;
+        return false;
+    }
+    if (!PrepareProjectOutput(
             ProjectServerShinePath(state.project, "QuestData.shn"),
-            path, &error)) {
-        state.statusMessage = "QuestData.shn speichern blockiert: " + error;
+            serverPath, &error)) {
+        state.statusMessage = "QuestData.shn Server-Speichern blockiert: " + error;
         return false;
     }
-    auto saved = core::legacy::SaveQuestData(state.questDataFile, path);
-    if (!saved) {
-        state.statusMessage = "QuestData.shn: " + saved.error();
+
+    auto clientSaved = core::legacy::SaveQuestData(state.questDataFile, clientPath);
+    if (!clientSaved) {
+        state.statusMessage = "QuestData.shn Client: " + clientSaved.error();
         return false;
     }
+    auto serverSaved = core::legacy::SaveQuestData(state.questDataFile, serverPath);
+    if (!serverSaved) {
+        state.statusMessage = "QuestData.shn Server: " + serverSaved.error() +
+            " (Client-Projektkopie wurde geschrieben; Dirty-State bleibt gesetzt.)";
+        return false;
+    }
+
     state.questDirty = false;
-    state.statusMessage = "QuestData.shn als Projekt-Override gespeichert: " + path.string();
+    state.statusMessage =
+        "QuestData.shn als Client+Server Projekt-Override gespeichert.";
     return true;
 }
 
