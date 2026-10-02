@@ -484,7 +484,10 @@ void TryLoadProjectConfig(ProjectConfig& cfg) {
 // Eine über den Ordner-Scan gefundene Karte (Name = Verzeichnisname, iniPath = Pfad zur .ini).
 struct DiscoveredMap {
     std::string name;
+    // Legacy maps point to <Map>/<Map>.ini. Mesh-only maps point directly to
+    // <Map>/<Map>.nif and intentionally have no HTD/HTDG terrain files.
     std::string iniPath;
+    bool standaloneNif = false;
 };
 
 struct EditorState {
@@ -629,6 +632,9 @@ struct EditorState {
     GLuint layerPreviewTex = 0; // Graustufen-Vorschau ausgewählter Textur-Layer
     bool meshDirty = true;
     bool layerPreviewDirty = true;
+    // Terrain-less SHMD/NIF maps cannot be framed from a heightmap. Their camera is
+    // focused from real NIF bounds on the first 3D frame after the scene is loaded.
+    bool focusLoadedNifScenePending = false;
     bool wireframe = false;
     // Sichtbarkeit (Map-Editor, Bereich "Sichtbarkeit"): alles einzeln ein-/ausblendbar.
     bool showTerrain = true;
@@ -887,7 +893,7 @@ struct EditorState {
     // Mesh-Dreiecke mit der authored Boden-/Pivotebene und damit die primaere Editor-Darstellung.
     // Die konvexe Huelle bleibt vorerst nur fuer den bestehenden Walk/Block-Polygonpfad erhalten.
     struct ObjectFootprint {
-        float minX = 0.0f, maxX = 0.0f, minZ = 0.0f, maxZ = 0.0f;
+        float minX = 0.0f, maxX = 0.0f, minY = 0.0f, maxY = 0.0f, minZ = 0.0f, maxZ = 0.0f;
         std::vector<core::NifGroundContactSegment> contactSegments;
         std::vector<std::pair<float, float>> hull;
         bool valid = false;
@@ -2128,6 +2134,11 @@ void DuplicateSelectedObjects(EditorState& state) {
 
 void GroundSelectedObjects(EditorState& state) {
     if (state.selectedObjects.empty()) return;
+    if (state.heightmap.Width() == 0 || state.heightmap.Height() == 0) {
+        state.statusMessage = L("Auf Terrain setzen ist für eine NIF-only-Karte ohne HTD nicht verfügbar.",
+                                "Drop to terrain is unavailable for a NIF-only map without HTD.");
+        return;
+    }
     PromoteSelectedShmdObjectsToPlacements(state);
     SyncObjectEditorMetadata(state);
     for (const int id : state.selectedObjects) {
@@ -2477,6 +2488,8 @@ void RefreshShmdCategoryVisibility(EditorState& state) {
 // Verteilt ein frisch geöffnetes LegacyMapProject auf die einzelnen Editor-Zustandsfelder -
 // setzt außerdem alle Undo-Stacks/Auswahl/Dirty-Flags zurück (neue Karte, alte Historie ungültig).
 void ApplyProjectToState(EditorState& state, core::legacy::LegacyMapProject&& project, const std::filesystem::path& mapDir) {
+    const bool hasHeightmap = project.hasHeightmap &&
+        project.heightmap.Width() > 0 && project.heightmap.Height() > 0;
     state.preservedMapFiles = std::move(project.preservedFiles);
     state.heightmap = std::move(project.heightmap);
     state.htdHeader = project.htdHeader;
@@ -2484,17 +2497,24 @@ void ApplyProjectToState(EditorState& state, core::legacy::LegacyMapProject&& pr
     state.undo.Clear();
     state.meshDirty = true;
 
-    // Kamera auf die neue Karte zentrieren + Entfernung an ihre Größe anpassen - sonst startet
-    // man bei sehr großen oder sehr kleinen Karten leicht außerhalb des sichtbaren Bereichs.
-    {
-        const float spanX = static_cast<float>(state.heightmap.Width() > 1 ? state.heightmap.Width() - 1 : 1) * state.heightmap.BlockWidth();
-        const float spanZ = static_cast<float>(state.heightmap.Height() > 1 ? state.heightmap.Height() - 1 : 1) * state.heightmap.BlockHeight();
+    // Terrain maps are framed from the real height grid. Terrain-less SHMD/NIF maps are
+    // framed later from actual NIF mesh bounds; never invent a 50x50 pseudo-heightmap.
+    if (hasHeightmap) {
+        const float spanX = static_cast<float>(state.heightmap.Width() - 1) * state.heightmap.BlockWidth();
+        const float spanZ = static_cast<float>(state.heightmap.Height() - 1) * state.heightmap.BlockHeight();
         const auto [lo, hi] = state.heightmap.MinMax();
         state.camera.SetTarget(spanX * 0.5f, (lo + hi) * 0.5f, spanZ * 0.5f);
         state.camera.Zoom(std::max(spanX, spanZ) * 0.9f - state.camera.Distance());
-        state.view2dZoom = 1.0f;
-        state.view2dCenterU = state.view2dCenterV = 0.5f;
+        state.focusLoadedNifScenePending = false;
+    } else {
+        state.focusLoadedNifScenePending = true;
+        state.showTerrain = false;
+        if (state.editMode == EditMode::Heightmap || state.editMode == EditMode::TexturePaint ||
+            state.editMode == EditMode::BlockWalk)
+            state.editMode = EditMode::ObjectPlacement;
     }
+    state.view2dZoom = 1.0f;
+    state.view2dCenterU = state.view2dCenterV = 0.5f;
 
     state.textureStack = std::move(project.textureStack);
     state.textureUndo.Clear();
@@ -2586,6 +2606,52 @@ bool OpenLegacyMapIntoState(EditorState& state, const std::filesystem::path& ini
                           " Objekte, " + std::to_string(state.textureStack.LayerCount()) + " Textur-Layer.";
     for (const auto& issue : report.issues) state.statusMessage += "\n- " + issue;
     return true;
+}
+
+bool OpenStandaloneNifMapIntoState(EditorState& state, const std::filesystem::path& nifPath) {
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(nifPath, ec)) {
+        state.statusMessage = "NIF-Karte nicht gefunden: " + nifPath.string();
+        return false;
+    }
+    auto parsed = core::LoadNifMesh(nifPath);
+    if (!parsed) {
+        state.statusMessage = "NIF-Karte konnte nicht gelesen werden: " + parsed.error();
+        return false;
+    }
+
+    core::legacy::LegacyMapProject project;
+    core::ObjectCategoryList ground;
+    ground.name = "GroundObject";
+    ground.modelPaths.push_back(nifPath.filename().string());
+    project.objects.categories.push_back(std::move(ground));
+    project.hasObjects = true;
+
+    // A standalone NIF is a read-only source scene, not a fabricated INI/HTD map. The normal
+    // NIF renderer resolves its textures relative to the source map folder.
+    std::snprintf(state.legacyMapIniPath, sizeof(state.legacyMapIniPath), "%s", nifPath.string().c_str());
+    ApplyProjectToState(state, std::move(project), nifPath.parent_path());
+    state.hasLegacyIniMeta = false;
+    state.legacySaveDir[0] = '\0';
+    std::snprintf(state.legacySaveStem, sizeof(state.legacySaveStem), "%s", nifPath.stem().string().c_str());
+    state.editMode = EditMode::ObjectPlacement;
+    state.objectPlaceMode = 0;
+    state.showTerrain = false;
+    state.mapDirty = false;
+    TouchRecentMap(state, nifPath.string());
+    state.statusMessage = "NIF-Karte geöffnet (ohne HTD/HTDG): " + nifPath.string() +
+                          "\nTerrain-/Textur-/Walk-Werkzeuge bleiben deaktiviert; die NIF-Szene wird direkt gerendert.";
+    return true;
+}
+
+bool OpenMapPathIntoState(EditorState& state, const std::filesystem::path& path,
+                          bool preferProjectOutput = true) {
+    std::string ext = path.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    if (ext == ".nif") return OpenStandaloneNifMapIntoState(state, path);
+    return OpenLegacyMapIntoState(state, path, preferProjectOutput);
 }
 
 // Leitet die Block&Walk-Gitterauflösung aus der Heightmap ab: Breite = QuadsBreite/2, Höhe =
@@ -2921,6 +2987,8 @@ std::vector<DiscoveredMap> ScanForMaps(const std::filesystem::path& root) {
     }
 
     constexpr int kMaxDepth = 6;
+    std::vector<DiscoveredMap> nifOnlyCandidates;
+    std::unordered_set<std::string> legacyMapDirs;
     std::filesystem::recursive_directory_iterator it(
         root, std::filesystem::directory_options::skip_permission_denied, ec);
     const std::filesystem::recursive_directory_iterator end;
@@ -2940,19 +3008,45 @@ std::vector<DiscoveredMap> ScanForMaps(const std::filesystem::path& root) {
         const auto& path = entry.path();
         std::string ext = path.extension().string();
         std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        if (ext != ".ini") continue;
+        if (ext != ".ini" && ext != ".nif") continue;
 
         std::string stem = path.stem().string();
         std::string folderName = path.parent_path().filename().string();
         std::string stemLower = stem, folderLower = folderName;
         std::transform(stemLower.begin(), stemLower.end(), stemLower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         std::transform(folderLower.begin(), folderLower.end(), folderLower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        if (stemLower != folderLower) continue; // z.B. eine Kategorie-weite .ini, keine Karte
+        if (stemLower != folderLower) continue;
 
-        found.push_back({folderName, path.string()});
+        std::string parentKey = path.parent_path().lexically_normal().string();
+        std::transform(parentKey.begin(), parentKey.end(), parentKey.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (ext == ".ini") {
+            legacyMapDirs.insert(parentKey);
+            found.push_back({folderName, path.string(), false});
+            continue;
+        }
+
+        // Standalone mesh maps are conservatively recognized only below a "field" tree and
+        // only when <folder>/<folder>.nif exists. Ordinary resmap model-library NIFs therefore
+        // do not become fake maps.
+        bool belowField = false;
+        for (const auto& component : path.parent_path()) {
+            std::string c = component.string();
+            std::transform(c.begin(), c.end(), c.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+            if (c == "field") { belowField = true; break; }
+        }
+        if (belowField) nifOnlyCandidates.push_back({folderName, path.string(), true});
     }
 
-    std::sort(found.begin(), found.end(), [](const DiscoveredMap& a, const DiscoveredMap& b) { return a.name < b.name; });
+    for (auto& candidate : nifOnlyCandidates) {
+        std::string parentKey = std::filesystem::path(candidate.iniPath).parent_path().lexically_normal().string();
+        std::transform(parentKey.begin(), parentKey.end(), parentKey.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (!legacyMapDirs.contains(parentKey)) found.push_back(std::move(candidate));
+    }
+
+    std::sort(found.begin(), found.end(), [](const DiscoveredMap& a, const DiscoveredMap& b) {
+        if (a.name != b.name) return a.name < b.name;
+        return a.standaloneNif < b.standaloneNif;
+    });
     return found;
 }
 
@@ -3028,10 +3122,12 @@ void DrawAdvancedFileOps(EditorState& state) {
             ImGui::BeginChild("DiscoveredMaps", ImVec2(0, 100), true);
             for (int i = 0; i < static_cast<int>(state.discoveredMaps.size()); ++i) {
                 const bool selected = state.selectedMapIndex == i;
-                if (UI::Selectable(state.discoveredMaps[static_cast<std::size_t>(i)].name.c_str(), selected)) {
+                const auto& discovered = state.discoveredMaps[static_cast<std::size_t>(i)];
+                const std::string label = discovered.name + (discovered.standaloneNif ? " [NIF-only]##advancedMap" : "##advancedMap");
+                if (UI::Selectable(label.c_str(), selected)) {
                     state.selectedMapIndex = i;
                     std::snprintf(state.legacyMapIniPath, sizeof(state.legacyMapIniPath), "%s",
-                                  state.discoveredMaps[static_cast<std::size_t>(i)].iniPath.c_str());
+                                  discovered.iniPath.c_str());
                 }
             }
             ImGui::EndChild();
@@ -3039,7 +3135,7 @@ void DrawAdvancedFileOps(EditorState& state) {
 
         UI::InputText("Karte-.ini##project", state.legacyMapIniPath, sizeof(state.legacyMapIniPath));
         if (UI::Button("Karte öffnen")) {
-            OpenLegacyMapIntoState(state, std::filesystem::path(state.legacyMapIniPath), true);
+            OpenMapPathIntoState(state, std::filesystem::path(state.legacyMapIniPath), true);
         }
         UI::InputText("Ausgabeverzeichnis##project", state.legacySaveDir, sizeof(state.legacySaveDir));
 #ifdef _WIN32
@@ -6826,7 +6922,7 @@ void DrawMapEditorLauncher(EditorState& state) {
                     ImGui::PushID(static_cast<int>(i));
                     ImGui::BeginDisabled(!exists);
                     if (UI::SmallButton(label.empty() ? recent.c_str() : label.c_str())) {
-                        if (OpenLegacyMapIntoState(state, recent, true))
+                        if (OpenMapPathIntoState(state, recent, true))
                             state.screen = AppScreen::MapEditorWorkspace;
                     }
                     ImGui::EndDisabled();
@@ -6847,25 +6943,29 @@ void DrawMapEditorLauncher(EditorState& state) {
             ImGui::BeginChild("##mapList", ImVec2(0.0f, std::max(230.0f, ImGui::GetContentRegionAvail().y - 84.0f)), true);
             if (state.discoveredMaps.empty()) {
                 ImGui::TextDisabled("%s", resmapFound
-                    ? L("Keine .ini-Kartendateien im gefundenen resmap-Ordner.",
-                        "No .ini map files in the discovered resmap folder.")
+                    ? L("Keine .ini- oder eigenständigen NIF-Karten im gefundenen resmap-Ordner.",
+                        "No .ini or standalone NIF maps in the discovered resmap folder.")
                     : L("resmap nicht gefunden – Client-Pfad im Projekt prüfen.",
                         "resmap not found – check the client path in the project."));
             }
             for (int i = 0; i < static_cast<int>(state.discoveredMaps.size()); ++i) {
                 const bool selected = state.selectedMapIndex == i;
                 const auto& map = state.discoveredMaps[static_cast<std::size_t>(i)];
-                if (UI::Selectable(map.name.c_str(), selected)) {
+                const std::string mapLabel = map.name +
+                    (map.standaloneNif ? L("  [NIF-only]##map","  [NIF-only]##map") : "##map");
+                if (UI::Selectable(mapLabel.c_str(), selected)) {
                     state.selectedMapIndex = i;
                     std::snprintf(state.legacyMapIniPath, sizeof(state.legacyMapIniPath), "%s", map.iniPath.c_str());
                 }
-                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", map.iniPath.c_str());
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s%s", map.iniPath.c_str(),
+                    map.standaloneNif ? L("\nEigenständige NIF-Karte ohne HTD/HTDG",
+                                          "\nStandalone NIF map without HTD/HTDG") : "");
             }
             ImGui::EndChild();
 
             ImGui::BeginDisabled(state.selectedMapIndex < 0);
             if (UI::Button(L("Ausgewählte Karte öffnen","Open selected map"), ImVec2(-1.0f, 40.0f))) {
-                if (OpenLegacyMapIntoState(state, state.legacyMapIniPath, true))
+                if (OpenMapPathIntoState(state, state.legacyMapIniPath, true))
                     state.screen = AppScreen::MapEditorWorkspace;
             }
             ImGui::EndDisabled();
@@ -8734,7 +8834,7 @@ bool NavigateToPortalTarget(EditorState& state, const PortalMarker& marker) {
         return true;
     }
 
-    if (!OpenLegacyMapIntoState(state,state.discoveredMaps[static_cast<std::size_t>(mapIndex)].iniPath,true))
+    if (!OpenMapPathIntoState(state,state.discoveredMaps[static_cast<std::size_t>(mapIndex)].iniPath,true))
         return false;
     state.screen = AppScreen::MapEditorWorkspace;
     state.editMode = EditMode::Portals;
@@ -13221,9 +13321,12 @@ const EditorState::ObjectFootprint& GetOrComputeFootprint(EditorState& state, co
                 bool first = true;
                 for (auto& part : model->parts) {
                     for (auto& p : part.positions) {
-                        if (first) { fp.minX = fp.maxX = p.x; fp.minZ = fp.maxZ = p.z; first = false; }
-                        else {
+                        if (first) {
+                            fp.minX = fp.maxX = p.x; fp.minY = fp.maxY = p.y; fp.minZ = fp.maxZ = p.z;
+                            first = false;
+                        } else {
                             fp.minX = std::min(fp.minX, p.x); fp.maxX = std::max(fp.maxX, p.x);
+                            fp.minY = std::min(fp.minY, p.y); fp.maxY = std::max(fp.maxY, p.y);
                             fp.minZ = std::min(fp.minZ, p.z); fp.maxZ = std::max(fp.maxZ, p.z);
                         }
                     }
@@ -13394,6 +13497,39 @@ static std::vector<std::pair<float, float>> ObjectFootprintWorldPolygon(EditorSt
     return world;
 }
 
+bool FocusLoadedNifSceneFromBounds(EditorState& state) {
+    bool any = false;
+    float minX = 0.0f, maxX = 0.0f, minY = 0.0f, maxY = 0.0f, minZ = 0.0f, maxZ = 0.0f;
+    auto includeObject = [&](const core::PlacedObject& obj) {
+        const auto& fp = GetOrComputeFootprint(state, obj.modelPath);
+        if (!fp.valid) return;
+        const float angle = 2.0f * std::atan2(obj.rotY, obj.rotW);
+        const float c = std::cos(angle), sn = std::sin(angle);
+        for (float lx : {fp.minX, fp.maxX}) for (float ly : {fp.minY, fp.maxY}) for (float lz : {fp.minZ, fp.maxZ}) {
+            const float sx = lx * obj.scale, sy = ly * obj.scale, sz = lz * obj.scale;
+            const float x = obj.posX + sx * c + sz * sn;
+            const float y = obj.posY + sy;
+            const float z = obj.posZ - sx * sn + sz * c;
+            if (!any) {
+                minX=maxX=x; minY=maxY=y; minZ=maxZ=z; any=true;
+            } else {
+                minX=std::min(minX,x); maxX=std::max(maxX,x);
+                minY=std::min(minY,y); maxY=std::max(maxY,y);
+                minZ=std::min(minZ,z); maxZ=std::max(maxZ,z);
+            }
+        }
+    };
+    for (std::size_t i=0;i<state.placementSet.Count();++i) includeObject(state.placementSet.At(i));
+    for (std::size_t i=0;i<state.shmdCategoryRenderSet.Count();++i) includeObject(state.shmdCategoryRenderSet.At(i));
+    if (!any) return false;
+
+    const float spanX=maxX-minX, spanY=maxY-minY, spanZ=maxZ-minZ;
+    const float extent=std::max({spanX,spanY,spanZ,100.0f});
+    state.camera.SetTarget((minX+maxX)*0.5f,(minY+maxY)*0.5f,(minZ+maxZ)*0.5f);
+    state.camera.Zoom(std::clamp(extent*1.35f,200.0f,50000.0f)-state.camera.Distance());
+    return true;
+}
+
 static void DrawWalkFootprintPreview(EditorState& state, ImDrawList* drawList,
                                      const ImVec2& mapOrigin, const ImVec2& mapSize,
                                      float spanX, float spanZ) {
@@ -13536,6 +13672,14 @@ void DrawEditor2DContent(EditorState& state) {
     const std::uint32_t gridW = walkMode ? state.walkGrid.Width() : (texMode ? state.textureStack.Width() : state.heightmap.Width());
     const std::uint32_t gridH = walkMode ? state.walkGrid.Height() : (texMode ? state.textureStack.Height() : state.heightmap.Height());
     if (gridW == 0 || gridH == 0) {
+        if (objectMode && state.heightmap.Width() == 0) {
+            ImGui::TextWrapped("%s", L(
+                "Diese Karte besitzt kein HTD/HTDG-Terrain. Die NIF-Szenengeometrie wird vollständig im 3D-Viewport gerendert; eine 2D-Terrainfläche wird bewusst nicht erfunden.",
+                "This map has no HTD/HTDG terrain. Its NIF scene geometry is rendered in the 3D viewport; no fake 2D terrain surface is invented."));
+        } else {
+            ImGui::TextDisabled("%s", L("Für dieses Werkzeug sind keine Kartendaten vorhanden.",
+                                         "No map data is available for this tool."));
+        }
         return;
     }
 
@@ -14873,6 +15017,10 @@ bool DrawObjectGizmoToolbar(EditorState& state, const ImVec2& imageScreenPos) {
 }
 
 void DrawPreview3DContent(EditorState& state) {
+    if (state.focusLoadedNifScenePending) {
+        FocusLoadedNifSceneFromBounds(state);
+        state.focusLoadedNifScenePending = false;
+    }
     const ImVec2 avail = ImGui::GetContentRegionAvail();
     const int w = std::max(1, static_cast<int>(avail.x));
     const int h = std::max(1, static_cast<int>(avail.y));
