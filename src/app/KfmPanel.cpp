@@ -16,15 +16,19 @@ std::string utf8(const std::filesystem::path& path) { const auto s=path.u8string
 std::string lower(std::string value) { for(auto& c:value)c=static_cast<char>(std::tolower(static_cast<unsigned char>(c)));return value; }
 }
 bool KfmPanel::Open(const std::filesystem::path& path) {
-    auto loaded=core::LoadKfmFile(path);
+    return Open(path, path);
+}
+
+bool KfmPanel::Open(const std::filesystem::path& sourcePath, const std::filesystem::path& workingPath) {
+    auto loaded=core::LoadKfmFile(workingPath);
     if(!loaded) { message_=loaded.error();return false; }
-    source_=path;file_=std::move(*loaded);references_.reset();selected_=0;transitionCount_=0;dirty_=false;
+    source_=sourcePath;file_=std::move(*loaded);references_.reset();selected_=0;transitionCount_=0;dirty_=false;
     previewKf_.reset(); previewKfPath_.clear(); previewAnimationIndex_=static_cast<std::size_t>(-1);
     previewNif_.reset(); previewNifPath_.clear(); previewNifMessage_.clear();
     previewTime_=0.0f; previewPlaying_=false; previewMessage_.clear();
     for(const auto& a:file_->animations)transitionCount_+=a.transitions.size();
-    std::snprintf(path_,sizeof(path_),"%s",utf8(path).c_str());
-    const auto copy=path.parent_path()/(path.stem().string()+"-copy.kfm");
+    std::snprintf(path_,sizeof(path_),"%s",utf8(sourcePath).c_str());
+    const auto copy=sourcePath.parent_path()/(sourcePath.stem().string()+"-copy.kfm");
     std::snprintf(exportPath_,sizeof(exportPath_),"%s",utf8(copy).c_str());
     filter_[0]=0;message_.clear();Filter();return true;
 }
@@ -300,7 +304,9 @@ void KfmPanel::DrawSkeletonPreview() {
 }
 
 
-void KfmPanel::Draw(const std::function<std::optional<std::string>()>& browse) {
+void KfmPanel::Draw(const std::function<std::optional<std::string>()>& browse,
+                    const ReadPathResolver& resolveRead,
+                    const WritePathResolver& resolveWrite) {
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f, 7.0f));
 
     // Datei-/Command-Leiste
@@ -308,12 +314,16 @@ void KfmPanel::Draw(const std::function<std::optional<std::string>()>& browse) {
     ImGui::TextColored(ImVec4(0.35f, 0.75f, 1.0f, 1.0f), "%s", L("KFM-DATEI", "KFM FILE"));
     ImGui::SetNextItemWidth(std::max(180.0f, ImGui::GetContentRegionAvail().x - 290.0f));
     const bool enter = ImGui::InputText("##kfm-path", path_, sizeof(path_), ImGuiInputTextFlags_EnterReturnsTrue);
+    auto openWithPolicy = [&](const std::filesystem::path& sourcePath) {
+        const auto workingPath = resolveRead ? resolveRead(sourcePath) : sourcePath;
+        Open(sourcePath, workingPath);
+    };
     ImGui::SameLine();
-    if (ImGui::Button(L("Öffnen", "Open")) || enter) Open(std::filesystem::u8path(path_));
+    if (ImGui::Button(L("Öffnen", "Open")) || enter) openWithPolicy(std::filesystem::u8path(path_));
     if (browse) {
         ImGui::SameLine();
         if (ImGui::Button(L("Durchsuchen...", "Browse...")))
-            if (auto p = browse()) Open(std::filesystem::u8path(*p));
+            if (auto p = browse()) openWithPolicy(std::filesystem::u8path(*p));
     }
     ImGui::EndChild();
 
@@ -348,11 +358,21 @@ void KfmPanel::Draw(const std::function<std::optional<std::string>()>& browse) {
     ImGui::InputText("##kfm-copy", exportPath_, sizeof(exportPath_));
     ImGui::SameLine();
     if (ImGui::Button(L("Kopie exportieren", "Export copy"))) {
-        auto saved = core::SaveKfmFile(f, std::filesystem::u8path(exportPath_));
-        message_ = saved
-            ? L(dirty_ ? "Bearbeitete KFM-Kopie gespeichert." : "KFM-Kopie gespeichert.",
-                dirty_ ? "Edited KFM copy saved." : "KFM copy saved.")
-            : saved.error();
+        const auto requested = std::filesystem::u8path(exportPath_);
+        if (!resolveWrite) {
+            message_ = L("KFM-Export blockiert: kein Projekt-Ausgabepfad konfiguriert.",
+                         "KFM export blocked: no project output path is configured.");
+        } else if (auto target = resolveWrite(requested); !target) {
+            message_ = L("KFM-Export blockiert: ", "KFM export blocked: ") + target.error();
+        } else {
+            auto saved = core::SaveKfmFile(f, *target);
+            message_ = saved
+                ? (L(dirty_ ? "Bearbeitete KFM-Kopie als Projekt-Override gespeichert: "
+                            : "KFM-Kopie als Projekt-Override gespeichert: ",
+                     dirty_ ? "Edited KFM copy saved as project override: "
+                            : "KFM copy saved as project override: ") + target->string())
+                : saved.error();
+        }
     }
 
     if (references_) {
