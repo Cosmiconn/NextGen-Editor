@@ -10265,6 +10265,8 @@ static void RunCreateCreature(EditorState& state) {
                 for (int i = 0; i < 19; ++i) SetShnCellText(f, nr, kAvatarSlotColumns[i], w.equ[static_cast<std::size_t>(i)].empty() ? "-" : w.equ[static_cast<std::size_t>(i)]);
                 doc.dirty = true;
                 EnsureCellStatusSize(doc);
+                if (nr < doc.cellDirty.size())
+                    std::fill(doc.cellDirty[nr].begin(), doc.cellDirty[nr].end(), 1);
                 ++state.shnEditCounter;
                 w.report.push_back("+ Client NPCViewInfo.shn: Avatar-Zeile TypeIndex " + std::to_string(typeIdx) + " angelegt");
                 for (const auto src : {EditorState::ShnSource::Client, EditorState::ShnSource::Server}) {
@@ -10288,9 +10290,13 @@ static void RunCreateCreature(EditorState& state) {
                 if (ShnCellText(doc.file, r, "MobIDX") != w.templateInx) continue;
                 core::legacy::ShnRow row = doc.file.rows[r];
                 doc.file.rows.push_back(std::move(row));
-                SetShnCellText(doc.file, doc.file.rows.size() - 1, "MobIDX", newInx);
+                const std::size_t nr = doc.file.rows.size() - 1;
+                SetShnCellText(doc.file, nr, "MobIDX", newInx);
                 doc.dirty = true;
                 EnsureCellStatusSize(doc);
+                if (nr < doc.cellDirty.size())
+                    std::fill(doc.cellDirty[nr].begin(), doc.cellDirty[nr].end(), 1);
+                ++state.shnEditCounter;
                 w.report.push_back("+ Client NpcDialogData.shn: Dialog der Vorlage kopiert");
                 break;
             }
@@ -11389,16 +11395,22 @@ static int ScaleSkillSeries(EditorState& state, const SkillDocs& d, const std::s
         if (di < 0) continue;
         auto& doc = state.shnFiles[static_cast<std::size_t>(di)];
         auto& f = doc.file;
+        EnsureCellStatusSize(doc);
         for (std::size_t r = 0; r < f.rows.size(); ++r) {
             std::string inx = ShnCellText(f, r, "InxName");
             while (!inx.empty() && std::isdigit(static_cast<unsigned char>(inx.back()))) inx.pop_back();
             if (inx != seriesKey) continue;
             for (const char* col : columns) {
+                const int ci = ShnColumnIndexByName(f, col);
+                if (ci < 0 || static_cast<std::size_t>(ci) >= f.rows[r].values.size()) continue;
                 const std::string cur = ShnCellText(f, r, col);
                 if (cur.empty()) continue;
                 const long long v = std::atoll(cur.c_str());
                 const long long nv = static_cast<long long>(std::llround(static_cast<double>(v) * percent / 100.0));
-                if (nv != v && SetShnCellText(f, r, col, std::to_string(nv))) { doc.dirty = true; ++changed; }
+                if (nv == v || !SetShnCellText(f, r, col, std::to_string(nv))) continue;
+                doc.dirty = true;
+                doc.cellDirty[r][static_cast<std::size_t>(ci)] = 1;
+                ++changed;
             }
         }
     }
