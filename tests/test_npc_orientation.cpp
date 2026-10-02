@@ -252,6 +252,113 @@ int main() {
               "Peer-Zeile markiert nur ID grün und alle übrigen Zellen als manuell zu prüfen");
     }
 
+    std::printf("\n== Unified Undo/Redo: Chronologie, Objekt-Transaktion und Layer ==\n");
+    {
+        EditorState st;
+        st.heightmap = core::Heightmap(5, 5, 10.0f, 10.0f);
+        st.walkGrid.Resize(1, 8);
+        st.textureStack = core::TextureLayerStack(4, 4);
+        st.textureStack.AddLayer("Base", "base.dds", 1.0f);
+        const auto rock = st.textureStack.AddLayer("Rock", "rock.dds", 2.0f);
+        st.selectedLayer = static_cast<int>(rock);
+
+        core::PlacedObject obj;
+        obj.modelPath = "missing-test-model.nif";
+        obj.posX = 10.0f;
+        st.placementSet.AddObject(obj);
+        st.selectedObjects = {0};
+        st.selectedObject = 0;
+        SyncObjectEditorMetadata(st);
+        ClearMapHistory(st);
+
+        core::BrushSettings brush;
+        brush.radius = 15.0f;
+        brush.strength = 4.0f;
+        auto heightPatch = core::ApplyBrush(st.heightmap, core::BrushMode::Raise, brush, 20.0f, 20.0f);
+        PushHeightmapHistory(st, std::move(heightPatch));
+        const float raised = st.heightmap.At(2, 2);
+        Check(raised > 0.0f, "Terrain-Aktion ist in der gemeinsamen History registriert");
+
+        BeginObjectEditTransaction(st);
+        MoveSelectedObjectsBy(st, 3.0f, 0.0f, 0.0f);
+        MoveSelectedObjectsBy(st, 2.0f, 0.0f, 0.0f);
+        CommitObjectEditTransaction(st);
+        Check(std::fabs(st.placementSet.At(0).posX - 15.0f) < 1e-4f,
+              "Mehrere Objekt-Deltas einer Drag-Transaktion werden angewendet");
+        Check(st.mapHistoryUndo.size() == 2 &&
+              st.mapHistoryUndo.back() == MapHistoryDomain::Objects,
+              "Kompletter Objekt-Drag erzeugt genau einen chronologischen Undo-Schritt");
+
+        core::WalkUndoPatch walkPatch =
+            core::ApplyWalkBitStamp(st.walkGrid, 8.0f, 6.25f, 6.25f, true);
+        PushWalkHistory(st, std::move(walkPatch));
+        Check(st.walkGrid.IsCellBlocked(1, 1),
+              "Walk-Aktion folgt als dritter History-Schritt");
+
+        Check(UndoMapEdit(st) && !st.walkGrid.IsCellBlocked(1, 1),
+              "Undo #1 nimmt die zuletzt ausgeführte Walk-Aktion zurück");
+        Check(std::fabs(st.placementSet.At(0).posX - 15.0f) < 1e-4f,
+              "Walk-Undo verändert den davorliegenden Objektzustand nicht");
+
+        Check(UndoMapEdit(st) && std::fabs(st.placementSet.At(0).posX - 10.0f) < 1e-4f,
+              "Undo #2 nimmt die gesamte Objekt-Drag-Transaktion in einem Schritt zurück");
+        Check(UndoMapEdit(st) && std::fabs(st.heightmap.At(2, 2)) < 1e-4f,
+              "Undo #3 nimmt die Terrain-Aktion zurück");
+
+        Check(RedoMapEdit(st) && std::fabs(st.heightmap.At(2, 2) - raised) < 1e-4f,
+              "Redo #1 stellt Terrain chronologisch wieder her");
+        Check(RedoMapEdit(st) && std::fabs(st.placementSet.At(0).posX - 15.0f) < 1e-4f,
+              "Redo #2 stellt die Objekt-Transaktion wieder her");
+        Check(RedoMapEdit(st) && st.walkGrid.IsCellBlocked(1, 1),
+              "Redo #3 stellt die Walk-Aktion wieder her");
+
+        const int selectedBefore = st.selectedLayer;
+        auto removed = st.textureStack.TakeLayer(rock);
+        st.selectedLayer = 0;
+        Check(removed.has_value(), "Layer für History-Test gezielt entfernt");
+        if (removed)
+            RecordTextureLayerRemoved(st, rock, std::move(*removed), selectedBefore);
+        Check(st.textureStack.LayerCount() == 1 &&
+              st.mapHistoryUndo.back() == MapHistoryDomain::TextureLayers,
+              "Layer-Entfernung hängt an derselben chronologischen Timeline");
+
+        Check(UndoMapEdit(st) && st.textureStack.LayerCount() == 2 &&
+              st.textureStack.Layer(1).name == "Rock" && st.selectedLayer == 1,
+              "Layer-Undo stellt Inhalt, Reihenfolge und Auswahl wieder her");
+        Check(CanRedoMapEdit(st), "Layer-Undo erzeugt einen Redo-Schritt");
+
+        MoveSelectedObjectsBy(st, 1.0f, 0.0f, 0.0f);
+        Check(!CanRedoMapEdit(st),
+              "Neue Kartenaktion nach Undo invalidiert den gesamten Redo-Zweig domainübergreifend");
+    }
+
+    std::printf("\n== Map-Scanner: eigenständige NIF-Karte ohne INI/HTD ==\n");
+    {
+        const auto root = std::filesystem::temp_directory_path() / "nextgen_nif_only_map_scan_test";
+        std::error_code ec;
+        std::filesystem::remove_all(root, ec);
+        const auto nifMapDir = root / "field" / "MeshOnly";
+        const auto modelDir = root / "object" / "Chair";
+        std::filesystem::create_directories(nifMapDir, ec);
+        std::filesystem::create_directories(modelDir, ec);
+        { std::ofstream out(nifMapDir / "MeshOnly.nif", std::ios::binary); out << "fixture"; }
+        { std::ofstream out(modelDir / "Chair.nif", std::ios::binary); out << "not-a-map"; }
+
+        const auto maps = ScanForMaps(root);
+        const auto it = std::find_if(maps.begin(), maps.end(), [](const DiscoveredMap& m) {
+            return m.name == "MeshOnly";
+        });
+        Check(it != maps.end() && it->standaloneNif &&
+              std::filesystem::path(it->iniPath).filename() == "MeshOnly.nif",
+              "Scanner erkennt <field>/<Map>/<Map>.nif ohne INI als NIF-only-Karte");
+        Check(std::none_of(maps.begin(), maps.end(), [](const DiscoveredMap& m) {
+                  return m.name == "Chair";
+              }),
+              "Normale resmap-NIF-Modellordner außerhalb field werden nicht als Karten fehlklassifiziert");
+
+        std::filesystem::remove_all(root, ec);
+    }
+
     std::printf("\n== Map-Projekt-Override: Read-Priorität und Save-Grenzen ==\n");
     {
         const auto root = std::filesystem::temp_directory_path() / "nextgen_editor_map_project_override_test";
