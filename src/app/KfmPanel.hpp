@@ -4,12 +4,20 @@
 #include "mapeditor/core/NifModel.hpp"
 #include "mapeditor/core/NifAnimationPose.hpp"
 #include <functional>
+#include <expected>
+#include <string>
 
 namespace theseed::mapeditor::app {
 class KfmPanel {
 public:
-    void Draw(const std::function<std::optional<std::string>()>& browse);
+    using ReadPathResolver = std::function<std::filesystem::path(const std::filesystem::path&)>;
+    using WritePathResolver = std::function<std::expected<std::filesystem::path, std::string>(const std::filesystem::path&)>;
+
+    void Draw(const std::function<std::optional<std::string>()>& browse,
+              const ReadPathResolver& resolveRead = {},
+              const WritePathResolver& resolveWrite = {});
     bool Open(const std::filesystem::path& path);
+    bool Open(const std::filesystem::path& sourcePath, const std::filesystem::path& workingPath);
 private:
     void Filter();
     void LoadSelectedKfPreview();
