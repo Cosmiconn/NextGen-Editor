@@ -22,7 +22,7 @@ void AddIssue(LegacyMapOpenReport* report, const std::string& msg) {
 std::expected<LegacyMapProject, std::string> OpenLegacyMap(
     const std::filesystem::path& iniPath, LegacyMapOpenReport* report) {
 
-    auto iniResult = ParseLegacyMapIni(iniPath);
+    auto iniResult = ParseLegacyMapIni(iniPath, false);
     if (!iniResult) {
         return std::unexpected(iniResult.error());
     }
@@ -32,6 +32,11 @@ std::expected<LegacyMapProject, std::string> OpenLegacyMap(
 
     const std::filesystem::path mapDir = iniPath.parent_path();
     const std::string stem = iniPath.stem().string();
+
+    if (project.ini.heightmapWidth == 0 || project.ini.heightmapHeight == 0) {
+        AddIssue(report,
+            "Keine Heightmap-Dimensionen in der .ini; Karte wird ohne erfundenes Terrain als SHMD/NIF-Szene geöffnet.");
+    }
 
     // --- Heightmap: primär über #HeightFileName aus der ini auflösen (deckt den Fall ab, dass
     // der Dateiname vom ini-Stamm abweicht, z.B. RouVal01 -> "darkVally.HTD"). ---
@@ -56,16 +61,19 @@ std::expected<LegacyMapProject, std::string> OpenLegacyMap(
         AddIssue(report, "Keine .HTD-Datei gefunden (weder \u00fcber HeightFileName noch \u00fcber Namens-Konvention) - diese Karte nutzt m\u00f6glicherweise ein anderes Format, siehe docs/MAP_FORMAT.md (z.B. 'Eld').");
     }
 
-    // --- Texturing: nutzt bereits eigene, robuste Pfadaufl\u00f6sung (siehe LegacyTextureSetIO). ---
-    TextureSetImportReport texReport;
-    auto texResult = ImportLegacyTextureSet(iniPath, &texReport);
-    if (texResult) {
-        project.textureStack = std::move(*texResult);
-    } else {
-        AddIssue(report, "Texturing: " + texResult.error());
-    }
-    for (const auto& msg : texReport.missingBlendFiles) {
-        AddIssue(report, "Texturing: " + msg);
+    // --- Texturing. Empty/minimal INIs used by SHMD/NIF-backed maps intentionally have
+    // no terrain layers. Do not create a synthetic fallback texture grid for those maps.
+    if (!project.ini.layers.empty()) {
+        TextureSetImportReport texReport;
+        auto texResult = ImportLegacyTextureSet(iniPath, &texReport);
+        if (texResult) {
+            project.textureStack = std::move(*texResult);
+        } else {
+            AddIssue(report, "Texturing: " + texResult.error());
+        }
+        for (const auto& msg : texReport.missingBlendFiles) {
+            AddIssue(report, "Texturing: " + msg);
+        }
     }
 
     // --- Block&Walk: Aufl\u00f6sung bevorzugt DIREKT aus dem Datei-Header lesen (zweites
@@ -221,10 +229,15 @@ std::expected<void, std::string> SaveLegacyMap(
         project.ini.layers = std::move(newLayers);
     }
 
-    // Texturing (schreibt auch die .ini - siehe ExportLegacyTextureSet).
-    auto texResult = ExportLegacyTextureSet(project.textureStack, project.ini, outDir, mapStem + ".ini");
-    if (!texResult) {
-        return std::unexpected(texResult.error());
+    // Texturing writes the ini plus Blend-BMPs only for actual terrain-layer maps.
+    // A mesh/NIF-backed map without terrain keeps its source ini byte-exactly, including
+    // the valid case of a completely empty ini file.
+    if (project.textureStack.LayerCount() > 0 || !project.ini.layers.empty()) {
+        auto texResult = ExportLegacyTextureSet(project.textureStack, project.ini, outDir, mapStem + ".ini");
+        if (!texResult) return std::unexpected(texResult.error());
+    } else {
+        auto iniResult = SerializeLegacyMapIni(project.ini, outDir / (mapStem + ".ini"));
+        if (!iniResult) return std::unexpected(iniResult.error());
     }
 
     if (project.hasWalkGrid) {
