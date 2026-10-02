@@ -63,6 +63,63 @@ void TestIniPreservation() {
     std::filesystem::remove(path);
 }
 
+void TestUnknownCompanionPreservation() {
+    const auto root = std::filesystem::temp_directory_path() / "nextgen-map-companion-preservation";
+    const auto out = root / "out";
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
+    std::filesystem::create_directories(root, ec);
+
+    const auto ini = root / "CompanionMap.ini";
+    { std::ofstream empty(ini, std::ios::binary); }
+
+    const std::vector<unsigned char> opaque{0x00,0x7f,0xff,0x21,0x00,0x42};
+    {
+        std::ofstream sidecar(root / "CompanionMap.customsidecar", std::ios::binary);
+        sidecar.write(reinterpret_cast<const char*>(opaque.data()),
+                      static_cast<std::streamsize>(opaque.size()));
+    }
+    {
+        // Render assets intentionally stay in the read-only source tree unless explicitly
+        // overridden by an asset workflow.
+        std::ofstream nif(root / "CompanionMap.nif", std::ios::binary);
+        nif << "not-a-real-nif";
+    }
+    {
+        std::ofstream tmp(root / "CompanionMap.tmp", std::ios::binary);
+        tmp << "transient";
+    }
+
+    auto project = legacy::OpenLegacyMap(ini);
+    Check(project.has_value(), "Map with unknown opaque companion opens");
+    if (!project) {
+        std::filesystem::remove_all(root, ec);
+        return;
+    }
+
+    const auto it = std::find_if(project->preservedFiles.begin(), project->preservedFiles.end(),
+        [](const auto& file) { return file.fileName == "CompanionMap.customsidecar"; });
+    Check(it != project->preservedFiles.end() &&
+              std::vector<unsigned char>(it->bytes.begin(), it->bytes.end()) == opaque,
+          "Unknown non-asset companion is captured byte-exactly");
+
+    Check(legacy::SaveLegacyMap(*project, out, "CompanionMap").has_value(),
+          "Map with unknown companion saves successfully");
+
+    std::ifstream saved(out / "CompanionMap.customsidecar", std::ios::binary);
+    const std::vector<unsigned char> savedBytes(
+        std::istreambuf_iterator<char>(saved), std::istreambuf_iterator<char>());
+    Check(savedBytes == opaque,
+          "Unknown companion survives source -> project save byte-exactly");
+
+    Check(!std::filesystem::exists(out / "CompanionMap.nif"),
+          "Unedited NIF asset is not duplicated into project output");
+    Check(!std::filesystem::exists(out / "CompanionMap.tmp"),
+          "Transient temp file is not copied as a map companion");
+
+    std::filesystem::remove_all(root, ec);
+}
+
 void TestMeshBackedMapWithoutHtd() {
     const auto root = std::filesystem::temp_directory_path() / "nextgen-mesh-backed-map-test";
     const auto out = root / "out";
@@ -115,6 +172,7 @@ void TestMeshBackedMapWithoutHtd() {
 
 int main(int argc, char** argv) {
     TestIniPreservation();
+    TestUnknownCompanionPreservation();
     TestMeshBackedMapWithoutHtd();
     if (argc < 2) {
         std::printf("(Test \u00fcbersprungen - Aufruf mit: %s <pfad/zu/karte.ini>)\n", argv[0]);
