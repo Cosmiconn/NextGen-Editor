@@ -6083,16 +6083,28 @@ void DrawScalableFieldEditor(EditorState& state, int docIndex, const std::vector
         ImGui::SameLine();
         if (UI::Button(("Auf '" + colName + "' anwenden##scale" + colName).c_str())) {
             const double factor = 1.0 + static_cast<double>(scalePercent) / 100.0;
-            for (auto& row : file.rows) {
+            EnsureCellStatusSize(doc);
+            std::size_t changedCells = 0;
+            for (std::size_t ri = 0; ri < file.rows.size(); ++ri) {
+                auto& row = file.rows[ri];
                 if (static_cast<std::size_t>(colIdx) >= row.values.size()) continue;
                 long long v;
                 if (!ShnValueAsInt(row.values[static_cast<std::size_t>(colIdx)], v)) continue;
                 auto scaled = std::llround(static_cast<double>(v) * factor);
-                auto parsed = core::legacy::ParseShnValue(file.columns[static_cast<std::size_t>(colIdx)], std::to_string(scaled));
-                if (parsed) row.values[static_cast<std::size_t>(colIdx)] = std::move(*parsed);
+                auto parsed = core::legacy::ParseShnValue(
+                    file.columns[static_cast<std::size_t>(colIdx)], std::to_string(scaled));
+                if (!parsed || row.values[static_cast<std::size_t>(colIdx)] == *parsed) continue;
+                row.values[static_cast<std::size_t>(colIdx)] = std::move(*parsed);
+                doc.cellDirty[ri][static_cast<std::size_t>(colIdx)] = 1;
+                ++changedCells;
             }
-            doc.dirty = true;
-            state.shnStatus = title + std::string(": '") + colName + "' um " + std::to_string(scalePercent) + "% skaliert (noch nicht gespeichert).";
+            if (changedCells > 0) {
+                doc.dirty = true;
+                ++state.shnEditCounter;
+            }
+            state.shnStatus = title + std::string(": '") + colName + "' um " +
+                std::to_string(scalePercent) + "% skaliert · " +
+                std::to_string(changedCells) + " Zellen geändert (noch nicht gespeichert).";
         }
     }
     ImGui::Separator();
