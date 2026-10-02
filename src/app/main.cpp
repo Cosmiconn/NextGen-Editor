@@ -2708,7 +2708,7 @@ void ApplyProjectToState(EditorState& state, core::legacy::LegacyMapProject&& pr
     state.heightmap = std::move(project.heightmap);
     state.htdHeader = project.htdHeader;
     state.htdTrailingBytes = project.htdTrailingBytes;
-    state.undo.Clear();
+    ClearMapHistory(state);
     state.meshDirty = true;
 
     // Terrain maps are framed from the real height grid. Terrain-less SHMD/NIF maps are
@@ -2731,14 +2731,14 @@ void ApplyProjectToState(EditorState& state, core::legacy::LegacyMapProject&& pr
     state.view2dCenterU = state.view2dCenterV = 0.5f;
 
     state.textureStack = std::move(project.textureStack);
-    state.textureUndo.Clear();
+    ClearMapHistory(state);
     state.selectedLayer = state.textureStack.LayerCount() > 0 ? 0 : -1;
     state.layerPreviewDirty = true;
     state.renderer.LoadTerrainTextures(state.textureStack, mapDir);
 
     state.walkGrid = std::move(project.walkGrid);
     state.shbdHeader = project.shbdHeader;
-    state.walkUndo.Clear();
+    ClearMapHistory(state);
     state.walkPreviewDirty = true;
 
     state.placementSet = std::move(project.objects);
@@ -2884,7 +2884,7 @@ void SyncWalkGridSize(EditorState& state) {
     const std::uint32_t gridWidth = quadsW / 2;
     const std::uint32_t gridHeight = quadsW * 8;
     state.walkGrid.Resize(gridWidth, gridHeight, -1);
-    state.walkUndo.Clear();
+    ClearMapHistory(state);
     state.walkPreviewDirty = true;
 }
 
@@ -3374,7 +3374,7 @@ void DrawAdvancedFileOps(EditorState& state) {
         ImGui::TextDisabled("Einzelne Module (fortgeschritten)");
         if (UI::MenuItem("Neu (257x257)")) {
             state.heightmap = core::Heightmap(257, 257, 50.0f, 50.0f);
-            state.undo.Clear();
+            ClearMapHistory(state);
             state.meshDirty = true;
             SyncWalkGridSize(state);
             state.selectedLayer = -1;
@@ -3400,7 +3400,7 @@ void DrawAdvancedFileOps(EditorState& state) {
                     state.legacyBlockWidth, state.legacyBlockHeight, &state.htdHeader, &state.htdTrailingBytes);
                 if (result) {
                     state.heightmap = std::move(*result);
-                    state.undo.Clear();
+                    ClearMapHistory(state);
                     state.meshDirty = true;
                     SyncWalkGridSize(state);
                     state.statusMessage = "Legacy-Datei importiert: " + std::string(state.legacyPath);
@@ -3434,7 +3434,7 @@ void DrawAdvancedFileOps(EditorState& state) {
             auto metaResult = core::legacy::ParseLegacyMapIni(inputPath);
             if (result && metaResult) {
                 state.textureStack = std::move(*result);
-                state.textureUndo.Clear();
+                ClearMapHistory(state);
                 state.selectedLayer = state.textureStack.LayerCount() > 0 ? 0 : -1;
                 state.layerPreviewDirty = true;
                 state.legacyIniMeta = std::move(*metaResult);
@@ -3479,7 +3479,7 @@ void DrawAdvancedFileOps(EditorState& state) {
                     static_cast<std::uint32_t>(state.walkLegacyHeight), &state.shbdHeader);
                 if (result) {
                     state.walkGrid = std::move(*result);
-                    state.walkUndo.Clear();
+                    ClearMapHistory(state);
                     state.walkPreviewDirty = true;
                     state.statusMessage = "Legacy-shbd importiert: " + std::string(state.walkLegacyPath);
                 } else {
@@ -4349,33 +4349,11 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
 
     auto canMapHistory = [&](bool redo) {
         if (!mapWorkspace) return false;
-        switch (state.editMode) {
-            case EditMode::Heightmap: return redo ? state.undo.CanRedo() : state.undo.CanUndo();
-            case EditMode::TexturePaint: return redo ? state.textureUndo.CanRedo() : state.textureUndo.CanUndo();
-            case EditMode::BlockWalk: return redo ? state.walkUndo.CanRedo() : state.walkUndo.CanUndo();
-            default: return false;
-        }
+        return redo ? CanRedoMapEdit(state) : CanUndoMapEdit(state);
     };
     auto applyMapHistory = [&](bool redo) {
-        switch (state.editMode) {
-            case EditMode::Heightmap:
-                if (redo ? state.undo.Redo(state.heightmap) : state.undo.Undo(state.heightmap)) {
-                    state.meshDirty = true; state.mapDirty = true;
-                }
-                break;
-            case EditMode::TexturePaint:
-                if (redo ? state.textureUndo.Redo(state.textureStack) : state.textureUndo.Undo(state.textureStack)) {
-                    state.layerPreviewDirty = true; state.mapDirty = true;
-                    state.renderer.UpdateBlendTextures(state.textureStack);
-                }
-                break;
-            case EditMode::BlockWalk:
-                if (redo ? state.walkUndo.Redo(state.walkGrid) : state.walkUndo.Undo(state.walkGrid)) {
-                    state.walkPreviewDirty = true; state.mapDirty = true;
-                }
-                break;
-            default: break;
-        }
+        if (redo) RedoMapEdit(state);
+        else UndoMapEdit(state);
     };
     auto selectMapTool = [&](EditMode mode) {
         if (!mapLoaded) return;
@@ -7084,7 +7062,7 @@ void DrawMapEditorLauncher(EditorState& state) {
             const int w = std::max(2, state.newMapWidth);
             const int h = std::max(2, state.newMapHeight);
             state.heightmap = core::Heightmap(static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h), 50.0f, 50.0f);
-            state.undo.Clear();
+            ClearMapHistory(state);
             state.meshDirty = true;
             SyncWalkGridSize(state);
             state.textureStack = core::TextureLayerStack(1024u, 1024u);
@@ -12406,29 +12384,8 @@ void HandleGlobalShortcuts(EditorState& state) {
         (ImGui::IsKeyPressed(ImGuiKey_Y, false) || (io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z, false)));
     if (!undo && !redo) return;
 
-    switch (state.editMode) {
-        case EditMode::Heightmap:
-            if (undo ? state.undo.Undo(state.heightmap) : state.undo.Redo(state.heightmap)) {
-                state.meshDirty = true;
-                state.mapDirty = true;
-            }
-            break;
-        case EditMode::TexturePaint:
-            if (undo ? state.textureUndo.Undo(state.textureStack) : state.textureUndo.Redo(state.textureStack)) {
-                state.layerPreviewDirty = true;
-                state.mapDirty = true;
-                state.renderer.UpdateBlendTextures(state.textureStack);
-            }
-            break;
-        case EditMode::BlockWalk:
-            if (undo ? state.walkUndo.Undo(state.walkGrid) : state.walkUndo.Redo(state.walkGrid)) {
-                state.walkPreviewDirty = true;
-                state.mapDirty = true;
-            }
-            break;
-        default:
-            break;
-    }
+    if (undo) UndoMapEdit(state);
+    else RedoMapEdit(state);
 }
 
 void DrawSettingsWindow(EditorState& state) {
@@ -12755,16 +12712,12 @@ void DrawToolsContent(EditorState& state) {
         }
 
         ImGui::Separator();
-        ImGui::BeginDisabled(!state.undo.CanUndo());
-        if (UI::Button(L("Rückgängig (Strg+Z)","Undo (Ctrl+Z)"))) {
-            if (state.undo.Undo(state.heightmap)) { state.meshDirty = true; state.mapDirty = true; }
-        }
+        ImGui::BeginDisabled(!CanUndoMapEdit(state));
+        if (UI::Button(L("Rückgängig (Strg+Z)","Undo (Ctrl+Z)"))) UndoMapEdit(state);
         ImGui::EndDisabled();
         ImGui::SameLine();
-        ImGui::BeginDisabled(!state.undo.CanRedo());
-        if (UI::Button(L("Wiederholen (Strg+Y)","Redo (Ctrl+Y)"))) {
-            if (state.undo.Redo(state.heightmap)) { state.meshDirty = true; state.mapDirty = true; }
-        }
+        ImGui::BeginDisabled(!CanRedoMapEdit(state));
+        if (UI::Button(L("Wiederholen (Strg+Y)","Redo (Ctrl+Y)"))) RedoMapEdit(state);
         ImGui::EndDisabled();
 
         ImGui::Separator();
@@ -12785,7 +12738,7 @@ void DrawToolsContent(EditorState& state) {
                 state.textureStack.Height() != static_cast<std::uint32_t>(state.textureResolutionHeight)) {
                 state.textureStack.Resize(static_cast<std::uint32_t>(state.textureResolutionWidth),
                                           static_cast<std::uint32_t>(state.textureResolutionHeight));
-                state.textureUndo.Clear();
+                ClearMapHistory(state);
                 state.layerPreviewDirty = true;
                 state.renderer.UpdateBlendTextures(state.textureStack);
             }
@@ -12814,22 +12767,12 @@ void DrawToolsContent(EditorState& state) {
         }
 
         ImGui::Separator();
-        ImGui::BeginDisabled(!state.textureUndo.CanUndo());
-        if (UI::Button(L("Rückgängig (Textur)","Undo (texture)"))) {
-            if (state.textureUndo.Undo(state.textureStack)) {
-                state.layerPreviewDirty = true;
-                state.renderer.UpdateBlendTextures(state.textureStack);
-            }
-        }
+        ImGui::BeginDisabled(!CanUndoMapEdit(state));
+        if (UI::Button(L("Rückgängig","Undo"))) UndoMapEdit(state);
         ImGui::EndDisabled();
         ImGui::SameLine();
-        ImGui::BeginDisabled(!state.textureUndo.CanRedo());
-        if (UI::Button(L("Wiederholen (Textur)","Redo (texture)"))) {
-            if (state.textureUndo.Redo(state.textureStack)) {
-                state.layerPreviewDirty = true;
-                state.renderer.UpdateBlendTextures(state.textureStack);
-            }
-        }
+        ImGui::BeginDisabled(!CanRedoMapEdit(state));
+        if (UI::Button(L("Wiederholen","Redo"))) RedoMapEdit(state);
         ImGui::EndDisabled();
 
         if (state.selectedLayer >= 0) {
@@ -12913,17 +12856,17 @@ void DrawToolsContent(EditorState& state) {
 
         ImGui::SeparatorText(L("Historie","History"));
         if (DrawCompactIconTextButton("walkUndo", L("Rückgängig","Undo"), DrawIconUndo,
-                                      "history.undo", state.walkUndo.CanUndo(),
-                                      L("Letzte Walk-/Block-Aktion rückgängig machen",
-                                        "Undo last Walk/Block action"))) {
-            if (state.walkUndo.Undo(state.walkGrid)) { state.walkPreviewDirty = true; state.mapDirty = true; }
+                                      "history.undo", CanUndoMapEdit(state),
+                                      L("Letzte Kartenaktion rückgängig machen",
+                                        "Undo last map action"))) {
+            UndoMapEdit(state);
         }
         ImGui::SameLine();
         if (DrawCompactIconTextButton("walkRedo", L("Wiederholen","Redo"), DrawIconRedo,
-                                      "history.redo", state.walkUndo.CanRedo(),
-                                      L("Letzte Walk-/Block-Aktion wiederholen",
-                                        "Redo last Walk/Block action"))) {
-            if (state.walkUndo.Redo(state.walkGrid)) { state.walkPreviewDirty = true; state.mapDirty = true; }
+                                      "history.redo", CanRedoMapEdit(state),
+                                      L("Letzte rückgängig gemachte Kartenaktion wiederholen",
+                                        "Redo last undone map action"))) {
+            RedoMapEdit(state);
         }
     } else if (state.editMode == EditMode::ObjectPlacement) {
         ImGui::Text("%s",L("Klick im Editor (2D) unten:","Click in the 2D editor below:"));
@@ -13593,7 +13536,7 @@ static void StampObjectFootprints(EditorState& state, bool blocked) {
     if (!patch.entries.empty()) {
         // All visible footprints are deliberately aggregated into one patch: Apply is one
         // semantic user action and therefore exactly one undo step.
-        state.walkUndo.Push(std::move(patch));
+        PushWalkHistory(state, std::move(patch));
         state.walkPreviewDirty = true;
         state.mapDirty = true;
         state.statusMessage = std::to_string(polygons.size()) +
@@ -14371,7 +14314,7 @@ void DrawEditor2DContent(EditorState& state) {
                 std::vector<std::uint64_t> seenWords;
                 core::ApplyWalkConvexPolygon(state.walkGrid,polygon,state.walkBlockMode,patch,seenWords);
                 if(!patch.entries.empty()) {
-                    state.walkUndo.Push(std::move(patch));
+                    PushWalkHistory(state, std::move(patch));
                     state.walkPreviewDirty=true;
                     state.mapDirty=true;
                 }
@@ -14553,7 +14496,7 @@ void DrawEditor2DContent(EditorState& state) {
             } else if (state.editMode == EditMode::Heightmap) {
                 core::UndoPatch patch = core::ApplyBrush(state.heightmap, state.brushMode, state.brush, worldX, worldZ);
                 if (!patch.entries.empty()) {
-                    state.undo.Push(std::move(patch));
+                    PushHeightmapHistory(state, std::move(patch));
                     state.meshDirty = true;
                     state.mapDirty = true;
                 }
@@ -14591,7 +14534,7 @@ void DrawEditor2DContent(EditorState& state) {
                     state.textureStack, static_cast<std::size_t>(state.selectedLayer), state.paintMode,
                     paintSettings, paintX, paintZ, texCellW, texCellH);
                 if (!patch.entries.empty()) {
-                    state.textureUndo.Push(std::move(patch));
+                    PushTexturePaintHistory(state, std::move(patch));
                     state.layerPreviewDirty = true;
                     state.mapDirty = true;
                     state.renderer.UpdateBlendTextures(state.textureStack);
@@ -14603,7 +14546,7 @@ void DrawEditor2DContent(EditorState& state) {
                 core::WalkUndoPatch patch = core::ApplyWalkBitStamp(
                     state.walkGrid, state.walkSettings.radius, worldX, worldZ, state.walkBlockMode, changed);
                 if (!patch.entries.empty()) {
-                    state.walkUndo.Push(std::move(patch));
+                    PushWalkHistory(state, std::move(patch));
                     state.mapDirty = true;
                     if (!state.walkPreviewDirty) UpdateWalkPreviewRect(state, changed[0], changed[1], changed[2], changed[3]);
                 }
@@ -15494,58 +15437,10 @@ void DrawWorkspaceTabBar(EditorState& state) {
             mode == EditMode::Mobs || mode == EditMode::Portals)
             ImGui::SetWindowFocus("Szene##sceneOutliner");
     };
-    auto undoAvailable = [&]() {
-        switch (state.editMode) {
-            case EditMode::Heightmap: return state.undo.CanUndo();
-            case EditMode::TexturePaint: return state.textureUndo.CanUndo();
-            case EditMode::BlockWalk: return state.walkUndo.CanUndo();
-            default: return false;
-        }
-    };
-    auto redoAvailable = [&]() {
-        switch (state.editMode) {
-            case EditMode::Heightmap: return state.undo.CanRedo();
-            case EditMode::TexturePaint: return state.textureUndo.CanRedo();
-            case EditMode::BlockWalk: return state.walkUndo.CanRedo();
-            default: return false;
-        }
-    };
-    auto doUndo = [&]() {
-        switch (state.editMode) {
-            case EditMode::Heightmap:
-                if (state.undo.Undo(state.heightmap)) { state.meshDirty = true; state.mapDirty = true; }
-                break;
-            case EditMode::TexturePaint:
-                if (state.textureUndo.Undo(state.textureStack)) {
-                    state.mapDirty = true;
-                    state.layerPreviewDirty = true;
-                    state.renderer.UpdateBlendTextures(state.textureStack);
-                }
-                break;
-            case EditMode::BlockWalk:
-                if (state.walkUndo.Undo(state.walkGrid)) { state.walkPreviewDirty = true; state.mapDirty = true; }
-                break;
-            default: break;
-        }
-    };
-    auto doRedo = [&]() {
-        switch (state.editMode) {
-            case EditMode::Heightmap:
-                if (state.undo.Redo(state.heightmap)) { state.meshDirty = true; state.mapDirty = true; }
-                break;
-            case EditMode::TexturePaint:
-                if (state.textureUndo.Redo(state.textureStack)) {
-                    state.mapDirty = true;
-                    state.layerPreviewDirty = true;
-                    state.renderer.UpdateBlendTextures(state.textureStack);
-                }
-                break;
-            case EditMode::BlockWalk:
-                if (state.walkUndo.Redo(state.walkGrid)) { state.walkPreviewDirty = true; state.mapDirty = true; }
-                break;
-            default: break;
-        }
-    };
+    auto undoAvailable = [&]() { return CanUndoMapEdit(state); };
+    auto redoAvailable = [&]() { return CanRedoMapEdit(state); };
+    auto doUndo = [&]() { UndoMapEdit(state); };
+    auto doRedo = [&]() { RedoMapEdit(state); };
 
     ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::PanelDeep);
     ImGui::PushStyleColor(ImGuiCol_Border, UiTheme::Border);
