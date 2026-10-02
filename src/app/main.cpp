@@ -3536,12 +3536,18 @@ std::size_t MergeProjectOnlyMaps(
     if (!projectResmap) return 0;
 
     auto projectMaps = ScanForMaps(*projectResmap, true);
+    const auto mapNameKey = [](std::string value) {
+        std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+            return static_cast<char>(std::tolower(c));
+        });
+        return value;
+    };
     std::unordered_set<std::string> knownNames;
-    for (const auto& map : maps) knownNames.insert(LowerAscii(map.name));
+    for (const auto& map : maps) knownNames.insert(mapNameKey(map.name));
 
     std::size_t added = 0;
     for (auto& map : projectMaps) {
-        if (!knownNames.insert(LowerAscii(map.name)).second) {
+        if (!knownNames.insert(mapNameKey(map.name)).second) {
             // Existing source maps keep their immutable source identity. Their opener already
             // prefers the matching project override path.
             continue;
