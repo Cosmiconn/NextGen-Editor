@@ -200,6 +200,80 @@ int main() {
         std::filesystem::remove_all(projectRoot,ec);
     }
 
+    std::printf("\n== SHN Reload: Projekt-Override gewinnt nachträglich ==\n");
+    {
+        const auto base = std::filesystem::temp_directory_path() / "nextgen_shn_reload_override_test";
+        const auto clientRoot = base / "ClientSource";
+        const auto projectRoot = base / "Project";
+        const auto sourcePath = clientRoot / "ressystem" / "ChrBasicEquip.shn";
+        const auto overridePath = projectRoot / "Client" / "ressystem" / "ChrBasicEquip.shn";
+        const auto fixture = std::filesystem::path(__FILE__).parent_path() /
+            "fixtures" / "data" / "ChrBasicEquip.shn";
+        std::error_code ec;
+        std::filesystem::remove_all(base, ec);
+        std::filesystem::create_directories(sourcePath.parent_path(), ec);
+        std::filesystem::create_directories(overridePath.parent_path(), ec);
+        std::filesystem::copy_file(fixture, sourcePath,
+            std::filesystem::copy_options::overwrite_existing, ec);
+        Check(!ec && std::filesystem::is_regular_file(sourcePath),
+              "SHN-Reload-Testquelle aus Fixture angelegt");
+
+        auto source = core::legacy::LoadShnFile(sourcePath);
+        Check(source.has_value(), "SHN-Testquelle geladen");
+        if (source && !source->rows.empty()) {
+            auto edited = *source;
+            bool changed = false;
+            std::size_t changedColumn = 0;
+            for (std::size_t ci = 0; ci < edited.rows.front().values.size() && !changed; ++ci) {
+                auto& value = edited.rows.front().values[ci];
+                if (auto* u16 = std::get_if<std::uint16_t>(&value)) {
+                    ++*u16; changed = true; changedColumn = ci;
+                } else if (auto* u32 = std::get_if<std::uint32_t>(&value)) {
+                    ++*u32; changed = true; changedColumn = ci;
+                } else if (auto* textValue = std::get_if<std::string>(&value)) {
+                    const std::string before = *textValue;
+                    *textValue += "_x";
+                    if (edited.columns[ci].length > 0 &&
+                        textValue->size() >= edited.columns[ci].length)
+                        textValue->resize(edited.columns[ci].length - 1);
+                    changed = *textValue != before;
+                    if (changed) changedColumn = ci;
+                }
+            }
+            Check(changed, "SHN-Projekt-Override unterscheidet sich gezielt in einer Zelle");
+            if (changed) {
+                const std::string expected =
+                    core::legacy::ShnValueToString(edited.rows.front().values[changedColumn]);
+                Check(core::legacy::SaveShnFile(edited, overridePath).has_value(),
+                      "Nachträglicher SHN-Projekt-Override gespeichert");
+
+                EditorState st;
+                std::snprintf(st.project.projectFolder, sizeof(st.project.projectFolder), "%s",
+                              projectRoot.string().c_str());
+                std::snprintf(st.project.clientFolder, sizeof(st.project.clientFolder), "%s",
+                              clientRoot.string().c_str());
+
+                EditorState::ShnDocument doc;
+                doc.source = EditorState::ShnSource::Client;
+                doc.sourcePath = sourcePath;
+                doc.file = *source;
+                doc.file.path = sourcePath;
+                st.shnFiles.push_back(std::move(doc));
+
+                Check(ReloadShnDocument(st, 0),
+                      "SHN-Reload erfolgreich nachdem ein Projekt-Override entstanden ist");
+                Check(st.shnFiles[0].sourcePath == sourcePath,
+                      "SHN-sourcePath bleibt auf der read-only Clientquelle");
+                Check(st.shnFiles[0].file.path == overridePath,
+                      "SHN-Reload wechselt die Arbeitskopie auf <Project>/Client");
+                Check(core::legacy::ShnValueToString(
+                          st.shnFiles[0].file.rows.front().values[changedColumn]) == expected,
+                      "SHN-Reload liest den nachträglichen Projekt-Override statt der Quelle");
+            }
+        }
+        std::filesystem::remove_all(base, ec);
+    }
+
     std::printf("\n== SHN-Familien: ausschließlich ID automatisch propagieren ==\n");
     {
         auto makeDoc = [](const char* fileName, EditorState::ShnSource source,
