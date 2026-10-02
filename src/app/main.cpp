@@ -537,6 +537,9 @@ struct TextureLayerHistoryPatch {
 struct EditorState {
     app::KfmPanel kfmPanel;
     core::Heightmap heightmap{257, 257, 50.0f, 50.0f};
+    // Explicit capability flag: the editor has a historical preview grid by default, but
+    // that grid is NOT evidence that the currently opened map owns HTD/HTDG terrain data.
+    bool mapHasHeightmap = false;
     core::UndoStack undo;
     std::vector<MapHistoryDomain> mapHistoryUndo;
     std::vector<MapHistoryDomain> mapHistoryRedo;
@@ -1184,7 +1187,8 @@ std::filesystem::path NextGenUserSettingsDir() {
 }
 
 bool MapSupportsTerrainEditing(const EditorState& state) {
-    return state.heightmap.Width() > 0 && state.heightmap.Height() > 0;
+    return state.mapHasHeightmap &&
+           state.heightmap.Width() > 0 && state.heightmap.Height() > 0;
 }
 
 const char* MapWorkspacePresetName(int preset) {
@@ -1691,7 +1695,7 @@ core::legacy::LegacyMapProject BuildProjectFromState(const EditorState& state) {
     project.ini = state.legacyIniMeta;
     project.preservedFiles = state.preservedMapFiles;
     project.heightmap = state.heightmap;
-    project.hasHeightmap = state.heightmap.Width() > 0 && state.heightmap.Height() > 0;
+    project.hasHeightmap = MapSupportsTerrainEditing(state);
     project.htdHeader = state.htdHeader;
     project.htdTrailingBytes = state.htdTrailingBytes;
     project.textureStack = state.textureStack;
@@ -2539,7 +2543,7 @@ void DuplicateSelectedObjects(EditorState& state) {
 
 void GroundSelectedObjects(EditorState& state) {
     if (state.selectedObjects.empty()) return;
-    if (state.heightmap.Width() == 0 || state.heightmap.Height() == 0) {
+    if (!MapSupportsTerrainEditing(state)) {
         state.statusMessage = L("Auf Terrain setzen ist für eine NIF-only-Karte ohne HTD nicht verfügbar.",
                                 "Drop to terrain is unavailable for a NIF-only map without HTD.");
         return;
@@ -2918,6 +2922,7 @@ void ApplyProjectToState(EditorState& state, core::legacy::LegacyMapProject&& pr
         project.heightmap.Width() > 0 && project.heightmap.Height() > 0;
     state.preservedMapFiles = std::move(project.preservedFiles);
     state.heightmap = std::move(project.heightmap);
+    state.mapHasHeightmap = hasHeightmap;
     state.htdHeader = project.htdHeader;
     state.htdTrailingBytes = project.htdTrailingBytes;
     ClearMapHistory(state);
@@ -3635,6 +3640,7 @@ void DrawAdvancedFileOps(EditorState& state) {
         ImGui::TextDisabled("Einzelne Module (fortgeschritten)");
         if (UI::MenuItem("Neu (257x257)")) {
             state.heightmap = core::Heightmap(257, 257, 50.0f, 50.0f);
+            state.mapHasHeightmap = true;
             ClearMapHistory(state);
             state.meshDirty = true;
             SyncWalkGridSize(state);
@@ -3661,6 +3667,7 @@ void DrawAdvancedFileOps(EditorState& state) {
                     state.legacyBlockWidth, state.legacyBlockHeight, &state.htdHeader, &state.htdTrailingBytes);
                 if (result) {
                     state.heightmap = std::move(*result);
+                    state.mapHasHeightmap = true;
                     ClearMapHistory(state);
                     state.meshDirty = true;
                     SyncWalkGridSize(state);
@@ -7341,6 +7348,7 @@ void DrawMapEditorLauncher(EditorState& state) {
             const int w = std::max(2, state.newMapWidth);
             const int h = std::max(2, state.newMapHeight);
             state.heightmap = core::Heightmap(static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h), 50.0f, 50.0f);
+            state.mapHasHeightmap = true;
             ClearMapHistory(state);
             state.meshDirty = true;
             SyncWalkGridSize(state);
