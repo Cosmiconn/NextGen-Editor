@@ -125,7 +125,10 @@ verifizierten Familien freigegeben:
 - ActiveSkill
 
 Dabei werden alle geladenen Client-/Server-Kopien der verifizierten
-Familienmitglieder berücksichtigt. Andere Kandidaten werden nur angezeigt.
+Familienmitglieder berücksichtigt. **Automatisch übertragen wird dabei ausschließlich
+die verifizierte `ID`.** Gleichnamige weitere Spalten sind keine belegte Semantik und
+werden in neu angehängten Peer-Zeilen deshalb auf Format-Defaults belassen und als
+manuell zu prüfen markiert. Andere Kandidaten werden nur angezeigt.
 
 Eine Referenzbeziehung ist ebenfalls keine Mutationsbeziehung: Eine Quest, die eine
 Item-/Mob-ID benutzt, darf beispielsweise ItemInfo/MobInfo nicht verändern, solange
