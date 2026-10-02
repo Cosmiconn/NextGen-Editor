@@ -277,6 +277,29 @@ int main() {
         Check(LegacyMapWorkingIniPath(st, sourceIni, true) == overrideIni,
               "Map-Open bevorzugt vorhandenen <Project>/Client/resmap-Override");
 
+        auto mappedLegacyOutput = ProjectClientOutputForRequestedPath(st.project, sourceIni);
+        Check(mappedLegacyOutput && *mappedLegacyOutput == overrideIni,
+              "Legacy-Einzelexport mappt einen Client-Quellpfad ausschließlich in <Project>/Client");
+        auto alreadyProjectOutput = ProjectClientOutputForRequestedPath(st.project, overrideIni);
+        Check(alreadyProjectOutput && *alreadyProjectOutput == overrideIni,
+              "Legacy-Einzelexport akzeptiert ein bereits valides <Project>/Client-Ziel");
+        Check(!ProjectClientOutputForRequestedPath(st.project, outsideIni),
+              "Legacy-Einzelexport weist beliebige Ziele außerhalb Quelle und Projekt hart ab");
+        Check(!ProjectClientOutputForRequestedPath(
+                  st.project, clientRoot / "resmap" / ".." / "unsafe.bin"),
+              "Legacy-Einzelexport weist explizite '..'-Traversierung hart ab");
+        Check(InterfaceProjectOverridePath(st, "../escape.tga").empty(),
+              "resmenu-Projektpfad weist '..'-Escape hart ab");
+
+        ProjectConfig nestedCfg = st.project;
+        const auto nestedProject = clientRoot / "NestedEditorProject";
+        std::snprintf(nestedCfg.projectFolder, sizeof(nestedCfg.projectFolder), "%s",
+                      nestedProject.string().c_str());
+        std::string configError;
+        Check(!SaveProjectConfig(nestedCfg, &configError) &&
+              !std::filesystem::exists(nestedProject / "project.tsproj"),
+              "Projektkonfiguration darf keinen Projektordner innerhalb der Client-Quelle anlegen");
+
         std::filesystem::remove(overrideIni, ec);
         Check(LegacyMapWorkingIniPath(st, sourceIni, true) == sourceIni,
               "Map-Open fällt ohne Projekt-Override auf die read-only Quelle zurück");
