@@ -1183,6 +1183,10 @@ std::filesystem::path NextGenUserSettingsDir() {
     return base / "NextGen-Editor";
 }
 
+bool MapSupportsTerrainEditing(const EditorState& state) {
+    return state.heightmap.Width() > 0 && state.heightmap.Height() > 0;
+}
+
 const char* MapWorkspacePresetName(int preset) {
     switch (preset) {
         case 1: return "3D-Fokus";
@@ -4575,6 +4579,7 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
 
     const bool mapWorkspace = state.screen == AppScreen::MapEditorWorkspace;
     const bool mapLoaded = state.hasLegacyIniMeta || state.legacySaveStem[0] != '\0';
+    const bool terrainToolsAvailable = mapLoaded && MapSupportsTerrainEditing(state);
     const bool mapCanSave = state.legacySaveDir[0] != '\0' && state.legacySaveStem[0] != '\0';
 
     auto createNewProject = [&] {
@@ -4614,6 +4619,14 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
     };
     auto selectMapTool = [&](EditMode mode) {
         if (!mapLoaded) return;
+        const bool terrainOnly =
+            mode == EditMode::Heightmap || mode == EditMode::TexturePaint || mode == EditMode::BlockWalk;
+        if (terrainOnly && !terrainToolsAvailable) {
+            state.statusMessage = L(
+                "Diese NIF-/Mesh-Karte besitzt kein HTD/HTDG-Terrain. Terrain-, Textur- und Walk-Werkzeuge sind deaktiviert.",
+                "This NIF/mesh map has no HTD/HTDG terrain. Terrain, texture and walk tools are disabled.");
+            return;
+        }
         state.editMode = mode;
         state.screen = AppScreen::MapEditorWorkspace;
     };
@@ -4663,11 +4676,11 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu(L("Map","Map"))) {
-            if (ImGui::MenuItem(L("Terrain","Terrain"), nullptr, state.editMode==EditMode::Heightmap, mapLoaded))
+            if (ImGui::MenuItem(L("Terrain","Terrain"), nullptr, state.editMode==EditMode::Heightmap, terrainToolsAvailable))
                 selectMapTool(EditMode::Heightmap);
-            if (ImGui::MenuItem(L("Texturen","Textures"), nullptr, state.editMode==EditMode::TexturePaint, mapLoaded))
+            if (ImGui::MenuItem(L("Texturen","Textures"), nullptr, state.editMode==EditMode::TexturePaint, terrainToolsAvailable))
                 selectMapTool(EditMode::TexturePaint);
-            if (ImGui::MenuItem("Block & Walk", nullptr, state.editMode==EditMode::BlockWalk, mapLoaded))
+            if (ImGui::MenuItem("Block & Walk", nullptr, state.editMode==EditMode::BlockWalk, terrainToolsAvailable))
                 selectMapTool(EditMode::BlockWalk);
             if (ImGui::MenuItem(L("Objekte","Objects"), nullptr, state.editMode==EditMode::ObjectPlacement, mapLoaded))
                 selectMapTool(EditMode::ObjectPlacement);
@@ -4696,10 +4709,10 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu(L("Terrain","Terrain"))) {
-            if (ImGui::MenuItem(L("Terrain-Werkzeug öffnen","Open terrain tool"), nullptr, false, mapLoaded))
+            if (ImGui::MenuItem(L("Terrain-Werkzeug öffnen","Open terrain tool"), nullptr, false, terrainToolsAvailable))
                 selectMapTool(EditMode::Heightmap);
             ImGui::Separator();
-            const bool terrainEnabled = mapWorkspace && state.editMode==EditMode::Heightmap;
+            const bool terrainEnabled = terrainToolsAvailable && mapWorkspace && state.editMode==EditMode::Heightmap;
             if (ImGui::MenuItem(L("Anheben","Raise"), nullptr, state.brushMode==core::BrushMode::Raise, terrainEnabled))
                 state.brushMode=core::BrushMode::Raise;
             if (ImGui::MenuItem(L("Absenken","Lower"), nullptr, state.brushMode==core::BrushMode::Lower, terrainEnabled))
@@ -4711,7 +4724,7 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu(L("Layer","Layer"))) {
-            if (ImGui::MenuItem(L("Textur-/Layer-Werkzeug öffnen","Open texture/layer tool"), nullptr, false, mapLoaded))
+            if (ImGui::MenuItem(L("Textur-/Layer-Werkzeug öffnen","Open texture/layer tool"), nullptr, false, terrainToolsAvailable))
                 selectMapTool(EditMode::TexturePaint);
             ImGui::Separator();
             const int layerCount = static_cast<int>(state.textureStack.LayerCount());
@@ -12813,15 +12826,17 @@ void DrawCommandPalette(EditorState& state) {
     add(L("Einstellungen: Shortcuts & Workspace","Settings: Shortcuts & workspace"), "", [&] { state.settingsOpen = true; });
 
     if (state.hasLegacyIniMeta || state.legacySaveStem[0] != '\0') {
-        add(L("Karte: Terrain-Werkzeug","Map: Terrain tool"), "", [&] {
-            state.editMode = EditMode::Heightmap; state.screen = AppScreen::MapEditorWorkspace;
-        });
-        add(L("Karte: Textur-Werkzeug","Map: Texture tool"), "", [&] {
-            state.editMode = EditMode::TexturePaint; state.screen = AppScreen::MapEditorWorkspace;
-        });
-        add(L("Karte: Block & Walk","Map: Block & Walk"), "", [&] {
-            state.editMode = EditMode::BlockWalk; state.screen = AppScreen::MapEditorWorkspace;
-        });
+        if (MapSupportsTerrainEditing(state)) {
+            add(L("Karte: Terrain-Werkzeug","Map: Terrain tool"), "", [&] {
+                state.editMode = EditMode::Heightmap; state.screen = AppScreen::MapEditorWorkspace;
+            });
+            add(L("Karte: Textur-Werkzeug","Map: Texture tool"), "", [&] {
+                state.editMode = EditMode::TexturePaint; state.screen = AppScreen::MapEditorWorkspace;
+            });
+            add(L("Karte: Block & Walk","Map: Block & Walk"), "", [&] {
+                state.editMode = EditMode::BlockWalk; state.screen = AppScreen::MapEditorWorkspace;
+            });
+        }
         add(L("Karte: Objekte","Map: Objects"), "", [&] {
             state.editMode = EditMode::ObjectPlacement; state.objectPlaceMode = 0;
             state.screen = AppScreen::MapEditorWorkspace;
@@ -15805,8 +15820,9 @@ void DrawWorkspaceTabBar(EditorState& state) {
         ImGui::SetWindowFocus("3D-Ansicht##view3d");
     }
     ImGui::SameLine();
+    const bool terrainEditingAvailable = MapSupportsTerrainEditing(state);
     if (DrawIconButton("cmd.layers", L("Layer","Layers"), DrawIconLayers, false,
-                       ImVec2(64,58), true, "world.layers")) {
+                       ImVec2(64,58), terrainEditingAvailable, "world.layers")) {
         ImGui::SetWindowFocus("Layer##layerManager");
     }
 
@@ -15825,8 +15841,12 @@ void DrawWorkspaceTabBar(EditorState& state) {
         {"portals",L("Portale","Portals"),EditMode::Portals,DrawIconPortal,nullptr},
     };
     for (const auto& tool : tools) {
+        const bool terrainOnly =
+            tool.mode == EditMode::Heightmap || tool.mode == EditMode::TexturePaint ||
+            tool.mode == EditMode::BlockWalk;
+        const bool enabled = !terrainOnly || terrainEditingAvailable;
         if (DrawIconButton(tool.id, tool.label, tool.icon, state.editMode == tool.mode,
-                           ImVec2(74.0f,58.0f), true, tool.semanticIcon))
+                           ImVec2(74.0f,58.0f), enabled, tool.semanticIcon))
             setMode(tool.mode);
         ImGui::SameLine();
     }
