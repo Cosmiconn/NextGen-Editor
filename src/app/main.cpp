@@ -10072,14 +10072,12 @@ void DrawShopEditorPopup(EditorState& state) {
 // ============================================================================
 // Custom NPC / Mob Assistent (SHN-Editor-Tab "Custom NPC/Mob") - CHANGELOG [0.44.28].
 //
-// Datengrundlage (gegen NA2016 geprueft): ein NPC oder Monster steckt ueberall unter derselben ID
-// und demselben InxName in MobInfo (Client+Server), MobInfoServer, MobViewInfo (Client+Server),
-// MobSpecies, QuestSpecies und MobWeapon (Server, ggf. mehrere Zeilen). NPCs zusaetzlich in
-// NpcDialogData (Dialog) und World/NPC.txt (Platzierung/Rolle). Ein "Spieler mit Ruestung" ist
-// KEIN eigenes Modell, sondern eine Zeile in NPCViewInfo.shn (Klasse, Geschlecht, Gesicht,
-// Frisur, Haarfarbe, 19 Ausruestungs-Slots mit Item-InxNames), auf die MobViewInfo.NpcViewIndex
-// zeigt. Der Assistent klont eine Vorlage in alle Tabellen (neue Zeilen ans Ende - die Tabellen
-// haben dieselbe Zeilenanzahl/-reihenfolge) und vergibt die naechste freie ID.
+// Datengrundlage: nur die verifizierte Mob-ID-Pflichtfamilie wird automatisch geklont:
+// MobInfo (Client+Server), MobInfoServer und MobViewInfo (Client+Server). Tabellen wie
+// MobSpecies, QuestSpecies und MobWeapon sind laut docs/DATA_DEPENDENCY_MATRIX.md nur BEDINGT
+// und werden deshalb NICHT pauschal mutiert. NPCs koennen zusaetzlich NpcDialogData (Dialog),
+// World/NPC.txt (Platzierung/Rolle) und NPCViewInfo (Avatar-Look) benoetigen - jeweils nur wenn
+// der entsprechende Wizard-Schalter/Funktionspfad verwendet wird.
 // ============================================================================
 // Generische Auswahl-Liste im Popup (Suche + Liste), fuer Item-Namen und Modell-Dateinamen.
 static bool StringPickerPopup(const char* popupId, const std::vector<std::string>& options, char* filterBuf, std::size_t filterSize,
@@ -10167,13 +10165,15 @@ static void RunCreateCreature(EditorState& state) {
             if (ShnCellText(f, r, "InxName") == newInx) { w.report.push_back("InxName '" + newInx + "' existiert bereits in MobInfo.shn."); return; }
         }
     }
-    // Freie ID ueber ALLE beteiligten Tabellen (Client+Server) - dieselbe ID muss ueberall frei sein.
+    // Freie ID nur ueber die verifizierte Pflichtfamilie bestimmen. Unverifizierte/bedingte
+    // Tabellen duerfen weder die ID-Vergabe noch den Clone-Vorgang still beeinflussen.
     struct Spec { const char* file; EditorState::ShnSource src; const char* nameCol; };
     const Spec specs[] = {
-        {"MobInfo.shn", EditorState::ShnSource::Client, "InxName"},        {"MobInfo.shn", EditorState::ShnSource::Server, "InxName"},
-        {"MobInfoServer.shn", EditorState::ShnSource::Server, "InxName"},  {"MobViewInfo.shn", EditorState::ShnSource::Client, "InxName"},
-        {"MobViewInfo.shn", EditorState::ShnSource::Server, "InxName"},    {"MobSpecies.shn", EditorState::ShnSource::Server, "MobName"},
-        {"QuestSpecies.shn", EditorState::ShnSource::Server, "MobGroupName"}, {"MobWeapon.shn", EditorState::ShnSource::Server, "InxName"},
+        {"MobInfo.shn", EditorState::ShnSource::Client, "InxName"},
+        {"MobInfo.shn", EditorState::ShnSource::Server, "InxName"},
+        {"MobInfoServer.shn", EditorState::ShnSource::Server, "InxName"},
+        {"MobViewInfo.shn", EditorState::ShnSource::Client, "InxName"},
+        {"MobViewInfo.shn", EditorState::ShnSource::Server, "InxName"},
     };
     std::set<long long> used;
     const core::legacy::ShnColumn* idColumn = nullptr;
@@ -10317,6 +10317,10 @@ static void RunCreateCreature(EditorState& state) {
             w.report.push_back("- World/NPC.txt nicht geladen - nicht platziert.");
         }
     }
+    w.report.push_back(
+        "BEDINGT und deshalb nicht automatisch geändert: MobSpecies.shn, QuestSpecies.shn, "
+        "MobWeapon.shn, MobResist.shn, MobLifeTime.shn und AI/Roam-Dateien. "
+        "Nur bei tatsächlich genutzter Funktion im passenden Editor ergänzen.");
     w.report.push_back("Fertig. Die geänderten Tabellen sind noch NICHT gespeichert - unten 'Alle geänderten SHN speichern'.");
 }
 
