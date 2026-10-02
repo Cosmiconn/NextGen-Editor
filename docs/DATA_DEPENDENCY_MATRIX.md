@@ -59,21 +59,36 @@ freigegeben.
 | Client | `MapViewInfo.shn` | View-/Anzeigeinformationen |
 | Server | `9Data/Shine/View/MapViewInfo.shn` | Server-seitige View-Kopie |
 
-`MapInfo`/ `MapViewInfo` sind im untersuchten Bestand als gleich große,
-korrespondierende Map-Familie belegt. Automatische Erstellung neuer Rows soll erst
-nach expliziter Feldzuordnung erfolgen; bis dahin zeigt der Editor sie als Pflicht-
-Checkliste statt plausible Default-Semantik zu erfinden.
+`MapInfo` / `MapViewInfo` sind inzwischen stärker als nur über die Zeilenzahl
+belegt: beide Tabellen besitzen im NA2016-Referenzbestand **138 eindeutige IDs mit
+exakt identischer ID-Menge und identischer ID-Reihenfolge**. Zusätzlich sind die
+Client-/Server-Kopien von `MapInfo.shn` byte-identisch; dasselbe gilt für Client
+`MapViewInfo.shn` und Server `View/MapViewInfo.shn`.
+
+Das belegt die Pflichtfamilie, aber noch **nicht** die vollständige Semantik für das
+Erzeugen einer neuen Map-Zeile. Automatische Erstellung neuer Rows bleibt deshalb
+gesperrt, bis die konkreten Feldzuordnungen für neue Karten verifiziert sind. Der
+Editor zeigt diese Dateien bis dahin als Pflicht-Checkliste statt Defaults zu erfinden.
 
 ### BEDINGT
 
-- `MapLinkPoint.shn` — wenn Map-zu-Map/Gate-Links angelegt werden.
-- `MapWayPoint.shn` — wenn Wegpunkt-/Navigationsdaten gebraucht werden.
-- `TownPortal.shn` — wenn die Karte über TownPortal/Teleport-Auswahl erreichbar ist.
+- `MapWayPoint.shn` — echte Wegpunktdaten: 14.886 Rows, aber nur **72 verschiedene
+  MapID-Werte**, alle Teilmenge der 138 `MapInfo.ID`; 66 Karten besitzen keinen
+  MapWayPoint-Eintrag. Daher eindeutig nicht pauschal Pflicht.
+- `MapLinkPoint.shn` — Graphkanten zwischen MapWayPoint-Zeilen: die Spalten
+  `MLP_FromID`/`MLP_ToID` zeigen im Referenzbestand ausschließlich auf gültige
+  MapWayPoint-Zeilenindizes. Nur bei tatsächlich verwendeter Wegpunkt-/Link-Semantik.
+- `TownPortal.shn` — 8 Einträge; alle dort referenzierten `MapName` existieren in
+  `MapInfo`. Client- und Serverkopie sind byte-identisch. Nur ändern, wenn die Karte
+  über TownPortal/Teleport-Auswahl erreichbar sein soll.
 - `Server/9Data/Shine/World/RecallCoord.txt` — bei Recall-Ziel.
 - `Server/9Data/Shine/World/NPC.txt` — bei NPCs/Gates auf der Karte.
 - `Server/9Data/Shine/MobRegen/<Map>.txt` — bei Mob-Spawns.
 - `WorldMapAvatarInfo.shn`, `MobCoordinate.shn` und weitere Map-Referenztabellen
-  nur wenn deren konkrete Funktion verwendet wird.
+  nur wenn deren konkrete Funktion verwendet wird. Im Referenzbestand nutzen
+  `WorldMapAvatarInfo` nur 41 Map-Namen und `MobCoordinate` nur 51; beide Mengen
+  sind vollständige Teilmengen der `MapInfo.MapName`-Menge und daher keine
+  pauschalen Pflichtbegleiter jeder Karte.
 
 ---
 
@@ -212,8 +227,10 @@ Quests werden deshalb im Projekt transaktional auf Client **und** Server gespieg
 ### BEDINGT
 
 - Client `QuestDialog.shn` **und** die vorhandene Server-Kopie — wenn neue/geänderte Text-IDs benötigt werden.
-  Eine aus einer Vorlage geklonte Quest kann zunächst bestehende Text-IDs
-  referenzieren; dann darf der Editor `QuestDialog` nicht ungefragt ändern.
+  Beide NA2016-Kopien sind byte-identisch (25.222 Rows; SHA-1
+  `5d80525295f70f6f84c4e855f17754d3f257f3fd`). Eine aus einer Vorlage geklonte
+  Quest kann zunächst bestehende Text-IDs referenzieren; dann darf der Editor
+  `QuestDialog` nicht ungefragt ändern.
 - `QuestScript.shn` — nur wenn der verwendete Questpfad dort registrierte
   Scriptdaten benötigt.
 - `QuestSpecies.shn` — nur bei tatsächlich benötigter Species-Semantik;
@@ -250,7 +267,16 @@ Skillbuch-Items sind eine zusätzliche **bedingte** Item-Familie, wenn der Skill
 
 ## Shop / Drop / Portal
 
-Diese Dateien sind keine pauschalen Nebenwirkungen von Item/NPC/Map:
+Diese Dateien sind keine pauschalen Nebenwirkungen von Item/NPC/Map.
+
+Für die SHN-Shopfamilie ist zusätzlich eine echte 1:n-Beziehung belegt:
+`ItemShop.shn` enthält 3.930 Rows, aber nur **3.559 eindeutige `goodsNo`**.
+`ItemShopView.shn` enthält genau 3.559 Rows / 3.559 eindeutige `goodsNo`; seine
+`goodsNo`-Menge entspricht exakt der eindeutigen Menge aus `ItemShop`.
+371 zusätzliche Server-Rows teilen sich also bereits vorhandene `goodsNo`.
+Daraus folgt: niemals per Row-Index koppeln oder automatisch 1:1 propagieren;
+Lookup/Validierung muss über `goodsNo` erfolgen. Client- und Server-Viewkopie sind
+byte-identisch.
 
 - Shop: `Server/9Data/Shine/NPCItemList/<NPC>.txt`
 - Drop: `Server/9Data/Shine/World/ItemDropTable.txt`
