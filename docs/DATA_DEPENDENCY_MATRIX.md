@@ -266,7 +266,9 @@ wird.
 ## Implementierungsregel im Editor
 
 1. Picker/Validierung darf beliebig viele abhängige Dateien **lesen**.
-2. Automatische Mutation nur bei hier als verifiziert markierten Pflichtfamilien.
+2. Automatische Mutation nur bei hier als verifiziert markierten Pflichtfamilien; dabei
+   wird familienübergreifend ausschließlich die verifizierte `ID` automatisch gesetzt.
+   Weitere gleichnamige Spalten bleiben ohne separate Evidenz manuell.
 3. Bedingte Dateien werden erst verändert, wenn der Nutzer die zugehörige Funktion
    aktiviert oder einen konkreten Datensatz darin bearbeitet.
 4. Heuristische Kandidaten (Dateiname/Zeilenzahl) sind nur Warnung.
