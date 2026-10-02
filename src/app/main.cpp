@@ -7492,13 +7492,34 @@ bool SaveQuestDataProject(EditorState& state) {
         std::error_code ec;
         std::filesystem::remove(item.tempPath, ec);
     };
-    auto resetStaging = [&](const StagedQuestCopy& item) {
+    auto resetStaging = [&](const StagedQuestCopy& item) -> std::expected<void,std::string> {
         cleanupTemp(item);
         std::error_code ec;
-        std::filesystem::remove(item.backupPath, ec);
+        const bool backupExists = std::filesystem::is_regular_file(item.backupPath, ec);
+        if (ec) return std::unexpected("Backup-Status konnte nicht gelesen werden: " + ec.message());
+        ec.clear();
+        const bool finalExists = std::filesystem::is_regular_file(item.finalPath, ec);
+        if (ec) return std::unexpected("Ziel-Status konnte nicht gelesen werden: " + ec.message());
+        if (!backupExists) return {};
+        if (finalExists) {
+            std::filesystem::remove(item.backupPath, ec);
+            if (ec) return std::unexpected("Veraltetes Backup konnte nicht entfernt werden: " + ec.message());
+            return {};
+        }
+        std::filesystem::rename(item.backupPath, item.finalPath, ec);
+        if (ec) return std::unexpected(
+            "Vorheriges Projekt-Backup konnte nicht wiederhergestellt werden: " + ec.message() +
+            " (" + item.backupPath.string() + ")");
+        return {};
     };
-    resetStaging(client);
-    resetStaging(server);
+    if (auto recovered = resetStaging(client); !recovered) {
+        state.statusMessage = "QuestData.shn Client-Recovery: " + recovered.error();
+        return false;
+    }
+    if (auto recovered = resetStaging(server); !recovered) {
+        state.statusMessage = "QuestData.shn Server-Recovery: " + recovered.error();
+        return false;
+    }
 
     auto clientStaged = core::legacy::SaveQuestData(state.questDataFile, client.tempPath);
     if (!clientStaged) {
