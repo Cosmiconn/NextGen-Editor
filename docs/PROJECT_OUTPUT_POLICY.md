@@ -74,6 +74,17 @@ Output-Auflösung hart abgewiesen. Dadurch kann auch ein formal gültiger
 `<Project>/Client/...`-Pfad niemals versehentlich innerhalb der Fiesta-Quellinstallation
 liegen.
 
+Auch die fortgeschrittenen Einzel-Import/Export-Wege der Kartenmodule folgen
+dieser Policy. HTD/HTDG, Textur-Set, SHBD, SHMD, IDM und AID dürfen beim Export
+nicht mehr direkt in den eingegebenen Client-Quellpfad schreiben: Ein Quellpfad wird
+auf den korrespondierenden `<Project>/Client/...`-Pfad gemappt, ein bereits valides
+Projektziel bleibt erhalten, Fremdziele und explizite `..`-Traversierungen werden
+abgewiesen. Beim erneuten Import derselben Clientdatei gewinnt ein vorhandener
+Projekt-Override.
+
+Für `resmenu` werden relative Assetpfade zusätzlich vor dem Join geprüft; absolute
+Pfade und `..`-Komponenten können den Projekt-`resmenu`-Baum nicht verlassen.
+
 Die Ausgabe bleibt auch dann **kanonisch**, wenn als read-only Quelle ein tieferer
 Unterordner gewählt wurde:
 
