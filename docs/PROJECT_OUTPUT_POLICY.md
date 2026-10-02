@@ -67,6 +67,13 @@ Projektstand.
 Absolute Pfade, `..`-Escapes und Quelldateien außerhalb des konfigurierten
 Client-/Server-Roots werden als Save-Ziel abgewiesen.
 
+Zusätzlich muss der **Projektordner physisch von beiden read-only Quellen getrennt**
+sein. Ein Projektordner, der mit dem konfigurierten Client-/Server-Root identisch ist
+oder darunter liegt, wird bereits beim Konfigurations-Save und erneut in der zentralen
+Output-Auflösung hart abgewiesen. Dadurch kann auch ein formal gültiger
+`<Project>/Client/...`-Pfad niemals versehentlich innerhalb der Fiesta-Quellinstallation
+liegen.
+
 Die Ausgabe bleibt auch dann **kanonisch**, wenn als read-only Quelle ein tieferer
 Unterordner gewählt wurde:
 
