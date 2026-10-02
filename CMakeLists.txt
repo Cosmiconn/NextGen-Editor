@@ -66,6 +66,7 @@ add_library(mapeditor_core
     src/core/legacy/ShnFile.cpp
     src/core/legacy/ShineText.cpp
     src/core/legacy/QuestData.cpp
+    src/core/DataDependency.cpp
     src/core/ProjectOutput.cpp
     src/core/AvatarPreview.cpp
     src/core/Manual.cpp
@@ -258,6 +259,10 @@ target_link_libraries(test_questdata PRIVATE mapeditor_core)
 add_test(NAME shn_file COMMAND test_shn_file ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/data/ChrBasicEquip.shn)
 add_test(NAME shinetext COMMAND test_shinetext ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/data/NPC.txt)
 add_test(NAME questdata COMMAND test_questdata ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/data/QuestData.shn)
+
+add_executable(test_data_dependency tests/test_data_dependency.cpp)
+target_link_libraries(test_data_dependency PRIVATE mapeditor_core)
+add_test(NAME data_dependency COMMAND test_data_dependency)
 
 add_executable(test_project_output tests/test_project_output.cpp)
 target_link_libraries(test_project_output PRIVATE mapeditor_core)
