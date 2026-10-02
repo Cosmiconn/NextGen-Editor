@@ -152,6 +152,9 @@ int main() {
         }
 
         EditorState st;
+        const auto projectRoot = root / "_project";
+        std::snprintf(st.project.projectFolder, sizeof(st.project.projectFolder), "%s", projectRoot.string().c_str());
+        std::snprintf(st.project.serverFolder, sizeof(st.project.serverFolder), "%s", root.string().c_str());
         st.shnServerRoot=root.string();
         ScanAiWorkspace(st);
         Check(st.aiWorkspaceFiles.size()==2 && st.aiWorkspaceLabels.size()==2,
@@ -177,9 +180,17 @@ int main() {
               "Dirty-Schutz verhindert versehentlichen Skriptwechsel");
         Check(SaveAiScript(st) && !st.aiScriptDirty,
               "AI-Skript speichert Änderungen und löscht Dirty-State");
-        std::ifstream saved(luaPath,std::ios::binary);
+        const auto luaOverride = projectRoot / "Server" / "LuaScript" / "AIScript" / "TestMob.lua";
+        std::ifstream saved(luaOverride,std::ios::binary);
         const std::string savedText((std::istreambuf_iterator<char>(saved)),std::istreambuf_iterator<char>());
-        Check(savedText=="changed\n","Gespeicherter AI-Text entspricht dem Editorinhalt");
+        Check(savedText=="changed\n","Gespeicherter AI-Text entspricht dem Projekt-Override");
+        std::ifstream original(luaPath,std::ios::binary);
+        const std::string originalText((std::istreambuf_iterator<char>(original)),std::istreambuf_iterator<char>());
+        Check(originalText=="function AI()\n  return 1\nend\n",
+              "AI-Save lässt die Server-Quelldatei unverändert");
+        Check(LoadAiScriptFile(st,luaPath,"TestMob.lua",false) &&
+              st.aiScriptEditorText=="changed\n",
+              "AI-Reload bevorzugt den vorhandenen Projekt-Override");
         Check(LoadAiScriptFile(st,pinePath,"Guard.ps",false) &&
               st.aiScriptEditorText.find("state idle")!=std::string::npos,
               "Nach dem Speichern kann auf PineScript gewechselt werden");
