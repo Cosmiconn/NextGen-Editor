@@ -540,6 +540,9 @@ struct EditorState {
     // Explicit capability flag: the editor has a historical preview grid by default, but
     // that grid is NOT evidence that the currently opened map owns HTD/HTDG terrain data.
     bool mapHasHeightmap = false;
+    // Direct <Map>/<Map>.nif maps are renderable source scenes, but there is deliberately
+    // no NIF writer in the editor yet. Persistent scene-geometry edits must stay read-only.
+    bool standaloneNifMap = false;
     core::UndoStack undo;
     std::vector<MapHistoryDomain> mapHistoryUndo;
     std::vector<MapHistoryDomain> mapHistoryRedo;
@@ -1189,6 +1192,18 @@ std::filesystem::path NextGenUserSettingsDir() {
 bool MapSupportsTerrainEditing(const EditorState& state) {
     return state.mapHasHeightmap &&
            state.heightmap.Width() > 0 && state.heightmap.Height() > 0;
+}
+
+bool MapSupportsObjectGeometryEditing(const EditorState& state) {
+    return !state.standaloneNifMap;
+}
+
+bool RequireWritableMapGeometry(EditorState& state) {
+    if (MapSupportsObjectGeometryEditing(state)) return true;
+    state.statusMessage = L(
+        "Standalone-NIF-Karte: Geometrie ist read-only, solange kein verifizierter NIF-Writer existiert.",
+        "Standalone NIF map: geometry is read-only until a verified NIF writer exists.");
+    return false;
 }
 
 const char* MapWorkspacePresetName(int preset) {
@@ -2441,6 +2456,7 @@ ObjectSelectionPivot ComputeObjectSelectionPivot(const EditorState& state) {
 }
 
 void RotateSelectedObjectsAroundPivot(EditorState& state, const EditVec3& pivot, const EditQuat& delta) {
+    if (!RequireWritableMapGeometry(state)) return;
     auto historyBefore = BeginObjectMutation(state);
     bool changed = PromoteSelectedShmdObjectsToPlacements(state);
     SyncObjectEditorMetadata(state);
@@ -2459,6 +2475,7 @@ void RotateSelectedObjectsAroundPivot(EditorState& state, const EditVec3& pivot,
 }
 
 void ScaleSelectedObjectsAroundPivot(EditorState& state, const EditVec3& pivot, float factor) {
+    if (!RequireWritableMapGeometry(state)) return;
     if (!std::isfinite(factor) || factor <= 0.0f) return;
     auto historyBefore = BeginObjectMutation(state);
     bool changed = PromoteSelectedShmdObjectsToPlacements(state);
@@ -2493,6 +2510,7 @@ void CopySelectedObjects(EditorState& state) {
 }
 
 void PasteObjectClipboard(EditorState& state) {
+    if (!RequireWritableMapGeometry(state)) return;
     if (state.objectClipboard.empty()) return;
     auto historyBefore = BeginObjectMutation(state);
     SyncObjectEditorMetadata(state);
@@ -2515,6 +2533,7 @@ void PasteObjectClipboard(EditorState& state) {
 }
 
 void DuplicateSelectedObjects(EditorState& state) {
+    if (!RequireWritableMapGeometry(state)) return;
     if (state.selectedObjects.empty()) return;
     auto historyBefore = BeginObjectMutation(state);
     struct ObjectCopy { core::PlacedObject object; std::string label; std::string group; };
@@ -2542,6 +2561,7 @@ void DuplicateSelectedObjects(EditorState& state) {
 }
 
 void GroundSelectedObjects(EditorState& state) {
+    if (!RequireWritableMapGeometry(state)) return;
     if (state.selectedObjects.empty()) return;
     if (!MapSupportsTerrainEditing(state)) {
         state.statusMessage = L("Auf Terrain setzen ist für eine NIF-only-Karte ohne HTD nicht verfügbar.",
@@ -2659,6 +2679,7 @@ void EraseShmdCategorySources(EditorState& state,
 }
 
 void DeleteSelectedObjects(EditorState& state) {
+    if (!RequireWritableMapGeometry(state)) return;
     auto historyBefore = BeginObjectMutation(state);
     std::vector<int> placementIndices;
     std::vector<std::pair<std::size_t, std::size_t>> categorySources;
@@ -2708,6 +2729,7 @@ void DeleteSelectedObjects(EditorState& state) {
 }
 
 void DeleteAllNormalObjects(EditorState& state) {
+    if (!RequireWritableMapGeometry(state)) return;
     auto historyBefore = BeginObjectMutation(state);
     const std::size_t removed = state.placementSet.Count();
     state.placementSet.ClearObjects();
@@ -2726,6 +2748,7 @@ void DeleteAllNormalObjects(EditorState& state) {
 // solchen Eintrag verschiebt/dreht/skaliert, wird er deshalb automatisch aus der Kategorie-
 // Pfadliste entfernt und als normales Placement mit exakt diesem Transform gespeichert.
 bool PromoteSelectedShmdObjectsToPlacements(EditorState& state, std::optional<int> onlySelection) {
+    if (!MapSupportsObjectGeometryEditing(state)) return false;
     struct Promotion {
         int oldId = kNoObjectSelection;
         core::PlacedObject object;
@@ -2798,6 +2821,7 @@ bool PromoteSelectedShmdObjectsToPlacements(EditorState& state, std::optional<in
 }
 
 void MoveSelectedObjectsBy(EditorState& state, float dx, float dy, float dz) {
+    if (!RequireWritableMapGeometry(state)) return;
     if (state.selectedObjects.empty()) return;
     const bool changed = dx != 0.0f || dy != 0.0f || dz != 0.0f;
     if (!changed) return;
@@ -2815,6 +2839,7 @@ void MoveSelectedObjectsBy(EditorState& state, float dx, float dy, float dz) {
 }
 
 void RotateSelectedObjectsYawBy(EditorState& state, float deltaRadians) {
+    if (!RequireWritableMapGeometry(state)) return;
     if (state.selectedObjects.empty() || std::abs(deltaRadians) < 1.0e-8f) return;
     auto historyBefore = BeginObjectMutation(state);
     bool changed = PromoteSelectedShmdObjectsToPlacements(state);
@@ -2839,6 +2864,7 @@ void RotateSelectedObjectsYawBy(EditorState& state, float deltaRadians) {
 }
 
 void ScaleSelectedObjectsBy(EditorState& state, float factor) {
+    if (!RequireWritableMapGeometry(state)) return;
     if (state.selectedObjects.empty() || !std::isfinite(factor) || factor <= 0.0f) return;
     auto historyBefore = BeginObjectMutation(state);
     bool changed = PromoteSelectedShmdObjectsToPlacements(state);
@@ -2868,6 +2894,7 @@ void SyncSelectedObjectModelPath(EditorState& state) {
 }
 
 void ApplySelectedObjectModelPath(EditorState& state, const std::string& modelPath) {
+    if (!RequireWritableMapGeometry(state)) return;
     if (modelPath.empty() || state.selectedObject == kNoObjectSelection) return;
     auto historyBefore = BeginObjectMutation(state);
     bool changed = false;
@@ -2924,6 +2951,7 @@ void ApplyProjectToState(EditorState& state, core::legacy::LegacyMapProject&& pr
     state.preservedMapFiles = std::move(project.preservedFiles);
     state.heightmap = std::move(project.heightmap);
     state.mapHasHeightmap = hasHeightmap;
+    state.standaloneNifMap = false;
     state.htdHeader = project.htdHeader;
     state.htdTrailingBytes = project.htdTrailingBytes;
     ClearMapHistory(state);
@@ -3066,6 +3094,7 @@ bool OpenStandaloneNifMapIntoState(EditorState& state, const std::filesystem::pa
     // Keep the immutable source identity while rendering from the project working copy.
     std::snprintf(state.legacyMapIniPath, sizeof(state.legacyMapIniPath), "%s", nifPath.string().c_str());
     ApplyProjectToState(state, std::move(project), workingPath.parent_path());
+    state.standaloneNifMap = true;
     state.hasLegacyIniMeta = false;
     state.legacySaveDir[0] = '\0';
     std::snprintf(state.legacySaveStem, sizeof(state.legacySaveStem), "%s", nifPath.stem().string().c_str());
@@ -7353,6 +7382,7 @@ void DrawMapEditorLauncher(EditorState& state) {
             const int h = std::max(2, state.newMapHeight);
             state.heightmap = core::Heightmap(static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h), 50.0f, 50.0f);
             state.mapHasHeightmap = true;
+            state.standaloneNifMap = false;
             ClearMapHistory(state);
             state.meshDirty = true;
             SyncWalkGridSize(state);
@@ -13178,8 +13208,16 @@ void DrawToolsContent(EditorState& state) {
             RedoMapEdit(state);
         }
     } else if (state.editMode == EditMode::ObjectPlacement) {
+        if (state.standaloneNifMap) {
+            state.objectPlaceMode = 0;
+            ImGui::TextColored(UiTheme::Warning, "%s", L(
+                "NIF-only: Szenengeometrie ist read-only. Auswahl/Fokus bleiben verfügbar.",
+                "NIF-only: scene geometry is read-only. Selection/focus remain available."));
+        }
         ImGui::Text("%s",L("Klick im Editor (2D) unten:","Click in the 2D editor below:"));
+        ImGui::BeginDisabled(state.standaloneNifMap);
         UI::RadioButton(L("Platzieren","Place"), &state.objectPlaceMode, 1);
+        ImGui::EndDisabled();
         ImGui::SameLine();
         UI::RadioButton(L("Auswählen","Select"), &state.objectPlaceMode, 0);
 
@@ -14683,7 +14721,7 @@ void DrawEditor2DContent(EditorState& state) {
                     // Objekte ihre individuellen Höhen/Offsets nicht beim ersten Pixel verlieren.
                     MoveSelectedObjectsBy(state, dx, 0.0f, dz);
                 }
-                if (state.objectPlaceMode) {
+                if (state.objectPlaceMode && MapSupportsObjectGeometryEditing(state)) {
                     auto historyBefore = BeginObjectMutation(state);
                     core::PlacedObject obj;
                     obj.modelPath = state.newObjectModelPath;
@@ -15208,6 +15246,7 @@ std::optional<EditVec3> PickTerrainFrom3D(EditorState& state, const ImVec2& imag
 }
 
 int PlaceObjectAtWorld(EditorState& state, const std::string& modelPath, float x, float y, float z) {
+    if (!RequireWritableMapGeometry(state)) return kNoObjectSelection;
     if(modelPath.empty()) return kNoObjectSelection;
     auto historyBefore = BeginObjectMutation(state);
     core::PlacedObject obj;
