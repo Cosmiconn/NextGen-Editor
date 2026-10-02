@@ -73,8 +73,8 @@ void TestMeshBackedMapWithoutHtd() {
     const auto ini = root / "MeshMap.ini";
     { std::ofstream empty(ini, std::ios::binary); }
 
-    core::ObjectPlacementSet objects;
-    core::ObjectCategoryList ground;
+    ObjectPlacementSet objects;
+    ObjectCategoryList ground;
     ground.name = "GroundObject";
     ground.modelPaths.push_back("resmap\\field\\MeshMap\\MeshMapGround.nif");
     objects.categories.push_back(std::move(ground));
