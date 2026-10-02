@@ -6010,10 +6010,13 @@ int FindOrLoadShnDoc(EditorState& state, const std::string& fileName, EditorStat
         if (ec) { ec.clear(); continue; }
         if (!it->is_regular_file(ec) || ec) { ec.clear(); continue; }
         if (LowerAscii(it->path().filename().string()) != LowerAscii(fileName)) continue;
-        auto result = core::legacy::LoadShnFile(it->path());
+        const auto sourcePath = it->path();
+        const auto workingPath = ShnWorkingPath(state, sourcePath, source);
+        auto result = core::legacy::LoadShnFile(workingPath);
         if (!result) return -1;
         EditorState::ShnDocument doc;
         doc.file = std::move(*result);
+        doc.sourcePath = sourcePath;
         doc.source = source;
         state.shnFiles.push_back(std::move(doc));
         return static_cast<int>(state.shnFiles.size()) - 1;
@@ -7185,7 +7188,10 @@ void EnsureItemInfoLoadedForQuests(EditorState& state) {
     for (auto src : {EditorState::ShnSource::Server, EditorState::ShnSource::Client}) {
         const std::string& root = src == EditorState::ShnSource::Client ? state.shnClientRoot : state.shnServerRoot;
         if (root.empty()) continue;
-        auto path = std::filesystem::path(root) / "ItemInfo.shn";
+        const auto sourcePath = std::filesystem::path(root) / "ItemInfo.shn";
+        const auto side = src == EditorState::ShnSource::Client
+            ? core::ProjectOutputSide::Client : core::ProjectOutputSide::Server;
+        const auto path = PreferProjectOverride(state.project, side, sourcePath);
         auto result = core::legacy::LoadShnFile(path);
         if (result) { state.itemInfoShn = std::move(*result); state.itemInfoLoaded = true; return; }
     }
@@ -8251,10 +8257,15 @@ std::string TrimAscii(const std::string& in) {
 void EnsureMapInfoLoaded(EditorState& state) {
     if (state.mapInfoLoaded) return;
     EnsureNpcDialogRoot(state);
-    std::vector<std::filesystem::path> candidates;
-    if (!state.npcDialogRessystemRoot.empty()) candidates.push_back(std::filesystem::path(state.npcDialogRessystemRoot) / "MapInfo.shn");
-    if (const auto srv = PortalServerRoot(state); !srv.empty()) candidates.push_back(std::filesystem::path(srv) / "MapInfo.shn");
-    for (const auto& path : candidates) {
+    std::vector<std::pair<std::filesystem::path, core::ProjectOutputSide>> candidates;
+    if (!state.npcDialogRessystemRoot.empty())
+        candidates.emplace_back(std::filesystem::path(state.npcDialogRessystemRoot) / "MapInfo.shn",
+                                core::ProjectOutputSide::Client);
+    if (const auto srv = PortalServerRoot(state); !srv.empty())
+        candidates.emplace_back(std::filesystem::path(srv) / "MapInfo.shn",
+                                core::ProjectOutputSide::Server);
+    for (const auto& [sourcePath, side] : candidates) {
+        const auto path = PreferProjectOverride(state.project, side, sourcePath);
         auto result = core::legacy::LoadShnFile(path);
         if (result) { state.mapInfoShn = std::move(*result); state.mapInfoLoaded = true; return; }
     }
@@ -9187,7 +9198,8 @@ int FindDialogRowForNpc(EditorState& state, const std::string& npcName) {
 // sucht die passende Zeile per MobIDX und befüllt die Bearbeitungs-Buffer.
 void EnsureMobViewInfoLoaded(EditorState& state) {
     if (state.mobViewInfoLoaded || state.npcDialogRessystemRoot.empty()) return;
-    auto path = std::filesystem::path(state.npcDialogRessystemRoot) / "MobViewInfo.shn";
+    const auto sourcePath = std::filesystem::path(state.npcDialogRessystemRoot) / "MobViewInfo.shn";
+    const auto path = PreferProjectOverride(state.project, core::ProjectOutputSide::Client, sourcePath);
     auto result = core::legacy::LoadShnFile(path);
     if (result) { state.mobViewInfoShn = std::move(*result); state.mobViewInfoLoaded = true; }
 }
@@ -13990,7 +14002,8 @@ void DrawEditor2DContent(EditorState& state) {
 std::optional<EditorState::RoamOverlayRoute> LoadRoamOverlayRoute(
     const EditorState& state, const std::string& name) {
     if (name.empty() || state.shnServerRoot.empty()) return std::nullopt;
-    const auto path = std::filesystem::path(state.shnServerRoot) / "MobRoam" / (name + ".txt");
+    const auto sourcePath = std::filesystem::path(state.shnServerRoot) / "MobRoam" / (name + ".txt");
+    const auto path = PreferProjectOverride(state.project, core::ProjectOutputSide::Server, sourcePath);
     std::error_code ec;
     if (!std::filesystem::exists(path, ec)) return std::nullopt;
     auto loaded = core::legacy::LoadShineTextFile(path);
