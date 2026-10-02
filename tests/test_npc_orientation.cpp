@@ -415,8 +415,16 @@ int main() {
 
         EditorState terrainMap;
         terrainMap.heightmap = core::Heightmap(2, 2, 50.0f, 50.0f);
+        terrainMap.mapHasHeightmap = true;
         Check(MapSupportsTerrainEditing(terrainMap),
               "Karte mit echter Heightmap aktiviert Terrain/Textur/Walk-Capability");
+
+        const auto nifProject = BuildProjectFromState(nifOnly);
+        const auto terrainProject = BuildProjectFromState(terrainMap);
+        Check(!nifProject.hasHeightmap,
+              "NIF-only-Zustand erzeugt beim Projekt-Save keine künstliche HTD/HTDG-Capability");
+        Check(terrainProject.hasHeightmap,
+              "Echte Terrain-Karte behält Heightmap-Capability beim Projekt-Save");
     }
 
     std::printf("\n== Map-Scanner: Source + Projekt-only + NIF ohne INI/HTD ==\n");
