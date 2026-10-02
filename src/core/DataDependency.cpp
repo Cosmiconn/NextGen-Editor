@@ -96,7 +96,8 @@ constexpr std::array kNewMob = {
 };
 
 constexpr std::array kNewQuest = {
-    DataDependencyRule{T::Server, C::Required,    "9Data/Shine/QuestData.shn",          "Eigentlicher Quest-Datensatz"},
+    DataDependencyRule{T::Client, C::Required,    "ressystem/QuestData.shn",             "Client-Kopie des Quest-Datensatzes; im NA2016-Bestand byte-identisch zur Server-Kopie"},
+    DataDependencyRule{T::Server, C::Required,    "9Data/Shine/QuestData.shn",          "Server-Kopie des Quest-Datensatzes; im NA2016-Bestand byte-identisch zur Client-Kopie"},
     DataDependencyRule{T::Client, C::Conditional, "ressystem/QuestDialog.shn",          "Nur für neue/geänderte Text-IDs"},
     DataDependencyRule{T::Server, C::Conditional, "9Data/Shine/QuestDialog.shn",       "Nur wenn die Server-Kopie mitgeführt wird"},
     DataDependencyRule{T::Server, C::Conditional, "9Data/Shine/QuestScript.shn",       "Nur wenn der Questpfad registrierte Scriptdaten benötigt"},
