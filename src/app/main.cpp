@@ -1918,6 +1918,8 @@ void RestoreObjectEditSnapshot(EditorState& state, ObjectEditSnapshot snapshot) 
     state.mapDirty = true;
 }
 
+void RegisterMapHistoryAction(EditorState& state, MapHistoryDomain domain);
+
 TextureLayerMetadata CaptureTextureLayerMetadata(const core::TextureLayer& layer) {
     return {layer.name, layer.diffuseFileName, layer.uvScaleDiffuse,
             layer.regionStartX, layer.regionStartY, layer.regionWidth, layer.regionHeight};
@@ -2431,7 +2433,7 @@ ObjectSelectionPivot ComputeObjectSelectionPivot(const EditorState& state) {
 
 void RotateSelectedObjectsAroundPivot(EditorState& state, const EditVec3& pivot, const EditQuat& delta) {
     auto historyBefore = BeginObjectMutation(state);
-    PromoteSelectedShmdObjectsToPlacements(state);
+    bool changed = PromoteSelectedShmdObjectsToPlacements(state);
     SyncObjectEditorMetadata(state);
     for (const int id : state.selectedObjects) {
         if (id < 0 || static_cast<std::size_t>(id) >= state.placementSet.Count() || IsObjectEditorLocked(state,id)) continue;
@@ -2442,14 +2444,15 @@ void RotateSelectedObjectsAroundPivot(EditorState& state, const EditVec3& pivot,
         const EditQuat oq{obj.rotX,obj.rotY,obj.rotZ,obj.rotW};
         const EditQuat nq=MulEditQuat(delta,oq);
         obj.rotX=nq.x; obj.rotY=nq.y; obj.rotZ=nq.z; obj.rotW=nq.w;
+        changed = true;
     }
-    FinishObjectMutation(state, std::move(historyBefore));
+    FinishObjectMutation(state, std::move(historyBefore), changed);
 }
 
 void ScaleSelectedObjectsAroundPivot(EditorState& state, const EditVec3& pivot, float factor) {
     if (!std::isfinite(factor) || factor <= 0.0f) return;
     auto historyBefore = BeginObjectMutation(state);
-    PromoteSelectedShmdObjectsToPlacements(state);
+    bool changed = PromoteSelectedShmdObjectsToPlacements(state);
     SyncObjectEditorMetadata(state);
     for (const int id : state.selectedObjects) {
         if (id < 0 || static_cast<std::size_t>(id) >= state.placementSet.Count() || IsObjectEditorLocked(state,id)) continue;
@@ -2457,9 +2460,11 @@ void ScaleSelectedObjectsAroundPivot(EditorState& state, const EditVec3& pivot, 
         obj.posX=pivot.x+(obj.posX-pivot.x)*factor;
         obj.posY=pivot.y+(obj.posY-pivot.y)*factor;
         obj.posZ=pivot.z+(obj.posZ-pivot.z)*factor;
+        const float oldScale = obj.scale;
         obj.scale=std::clamp(obj.scale*factor,0.01f,100.0f);
+        changed = changed || std::abs(obj.scale-oldScale) > 1.0e-8f;
     }
-    FinishObjectMutation(state, std::move(historyBefore));
+    FinishObjectMutation(state, std::move(historyBefore), changed);
 }
 
 void CopySelectedObjects(EditorState& state) {
@@ -2535,15 +2540,17 @@ void GroundSelectedObjects(EditorState& state) {
         return;
     }
     auto historyBefore = BeginObjectMutation(state);
-    PromoteSelectedShmdObjectsToPlacements(state);
+    bool changed = PromoteSelectedShmdObjectsToPlacements(state);
     SyncObjectEditorMetadata(state);
     for (const int id : state.selectedObjects) {
         if (id < 0 || static_cast<std::size_t>(id) >= state.placementSet.Count() || IsObjectEditorLocked(state,id)) continue;
         auto& obj=state.placementSet.At(static_cast<std::size_t>(id));
-        obj.posY=state.heightmap.SampleWorld(obj.posX,obj.posZ);
+        const float grounded = state.heightmap.SampleWorld(obj.posX,obj.posZ);
+        changed = changed || std::abs(obj.posY-grounded) > 1.0e-6f;
+        obj.posY=grounded;
     }
     state.statusMessage="Auswahl auf Terrain gesetzt.";
-    FinishObjectMutation(state, std::move(historyBefore));
+    FinishObjectMutation(state, std::move(historyBefore), changed);
 }
 
 void FocusSelectedObjects(EditorState& state) {
@@ -2683,9 +2690,9 @@ void DeleteSelectedObjects(EditorState& state) {
         state.shmdEditorLabels.erase(key);
         state.shmdEditorGroups.erase(key);
     }
+    const bool changed = !placementIndices.empty() || !categorySources.empty() || !categoryEditorKeys.empty();
     EraseShmdCategorySources(state, std::move(categorySources));
 
-    const bool changed = !placementIndices.empty() || !categorySources.empty() || !categoryEditorKeys.empty();
     ClearObjectSelection(state);
     ReloadObjectRenderers(state);
     FinishObjectMutation(state, std::move(historyBefore), changed);
@@ -2786,21 +2793,22 @@ void MoveSelectedObjectsBy(EditorState& state, float dx, float dy, float dz) {
     const bool changed = dx != 0.0f || dy != 0.0f || dz != 0.0f;
     if (!changed) return;
     auto historyBefore = BeginObjectMutation(state);
-    PromoteSelectedShmdObjectsToPlacements(state);
+    bool applied = PromoteSelectedShmdObjectsToPlacements(state);
     for (const int id : state.selectedObjects) {
         if (id < 0 || static_cast<std::size_t>(id) >= state.placementSet.Count() || IsObjectEditorLocked(state,id)) continue;
         auto& object = state.placementSet.At(static_cast<std::size_t>(id));
         object.posX += dx;
         object.posY += dy;
         object.posZ += dz;
+        applied = true;
     }
-    FinishObjectMutation(state, std::move(historyBefore));
+    FinishObjectMutation(state, std::move(historyBefore), applied);
 }
 
 void RotateSelectedObjectsYawBy(EditorState& state, float deltaRadians) {
     if (state.selectedObjects.empty() || std::abs(deltaRadians) < 1.0e-8f) return;
     auto historyBefore = BeginObjectMutation(state);
-    PromoteSelectedShmdObjectsToPlacements(state);
+    bool changed = PromoteSelectedShmdObjectsToPlacements(state);
     const float sy = std::sin(deltaRadians * 0.5f);
     const float cy = std::cos(deltaRadians * 0.5f);
     for (const int id : state.selectedObjects) {
@@ -2816,20 +2824,23 @@ void RotateSelectedObjectsYawBy(EditorState& state, float deltaRadians) {
         if (length > 1.0e-8f) {
             object.rotX /= length; object.rotY /= length; object.rotZ /= length; object.rotW /= length;
         }
+        changed = true;
     }
-    FinishObjectMutation(state, std::move(historyBefore));
+    FinishObjectMutation(state, std::move(historyBefore), changed);
 }
 
 void ScaleSelectedObjectsBy(EditorState& state, float factor) {
     if (state.selectedObjects.empty() || !std::isfinite(factor) || factor <= 0.0f) return;
     auto historyBefore = BeginObjectMutation(state);
-    PromoteSelectedShmdObjectsToPlacements(state);
+    bool changed = PromoteSelectedShmdObjectsToPlacements(state);
     for (const int id : state.selectedObjects) {
         if (id < 0 || static_cast<std::size_t>(id) >= state.placementSet.Count() || IsObjectEditorLocked(state,id)) continue;
         auto& object = state.placementSet.At(static_cast<std::size_t>(id));
+        const float oldScale = object.scale;
         object.scale = std::clamp(object.scale * factor, 0.01f, 100.0f);
+        changed = changed || std::abs(object.scale-oldScale) > 1.0e-8f;
     }
-    FinishObjectMutation(state, std::move(historyBefore));
+    FinishObjectMutation(state, std::move(historyBefore), changed);
 }
 
 void SyncSelectedObjectModelPath(EditorState& state) {
@@ -2850,8 +2861,12 @@ void SyncSelectedObjectModelPath(EditorState& state) {
 void ApplySelectedObjectModelPath(EditorState& state, const std::string& modelPath) {
     if (modelPath.empty() || state.selectedObject == kNoObjectSelection) return;
     auto historyBefore = BeginObjectMutation(state);
+    bool changed = false;
     if (state.selectedObject >= 0) {
-        if (auto* object = EditableObject(state, state.selectedObject)) object->modelPath = modelPath;
+        if (auto* object = EditableObject(state, state.selectedObject)) {
+            changed = object->modelPath != modelPath;
+            object->modelPath = modelPath;
+        }
         state.nifMeshRenderer.LoadModelsForSet(state.placementSet, CurrentObjectAssetMapDir(state));
     } else {
         const auto renderIndex = ShmdRenderIndex(state.selectedObject);
@@ -2861,6 +2876,7 @@ void ApplySelectedObjectModelPath(EditorState& state, const std::string& modelPa
         if (categoryIndex >= state.placementSet.categories.size()) return;
         auto& paths = state.placementSet.categories[categoryIndex].modelPaths;
         if (pathIndex >= paths.size()) return;
+        changed = paths[pathIndex] != modelPath;
         paths[pathIndex] = modelPath;
         RebuildShmdCategoryRenderSet(state, CurrentObjectAssetMapDir(state));
         TransferShmdEditorMetadataKey(state,oldEditorKey,
@@ -2869,7 +2885,7 @@ void ApplySelectedObjectModelPath(EditorState& state, const std::string& modelPa
     state.footprintCache.erase(modelPath);
     state.selectedObjectModelPathFor = kNoObjectSelection;
     SyncSelectedObjectModelPath(state);
-    FinishObjectMutation(state, std::move(historyBefore));
+    FinishObjectMutation(state, std::move(historyBefore), changed);
 }
 
 void RefreshShmdCategoryVisibility(EditorState& state) {
@@ -2922,14 +2938,12 @@ void ApplyProjectToState(EditorState& state, core::legacy::LegacyMapProject&& pr
     state.view2dCenterU = state.view2dCenterV = 0.5f;
 
     state.textureStack = std::move(project.textureStack);
-    ClearMapHistory(state);
     state.selectedLayer = state.textureStack.LayerCount() > 0 ? 0 : -1;
     state.layerPreviewDirty = true;
     state.renderer.LoadTerrainTextures(state.textureStack, mapDir);
 
     state.walkGrid = std::move(project.walkGrid);
     state.shbdHeader = project.shbdHeader;
-    ClearMapHistory(state);
     state.walkPreviewDirty = true;
 
     state.placementSet = std::move(project.objects);
