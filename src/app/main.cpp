@@ -18637,10 +18637,19 @@ int main() {
                 DrawPanelHeader("kfmWorkspaceHeader", "Animationen / KFM",
                                 DrawIconClapper, "module.kfm",
                                 "Katalog · Übergänge · Dateiverweise · Kopie-Export");
+                const auto resolveKfmRead = [&](const std::filesystem::path& sourcePath) {
+                    return PreferProjectOverride(
+                        state.project, core::ProjectOutputSide::Client, sourcePath);
+                };
+                const auto resolveKfmWrite = [&](const std::filesystem::path& requestedPath) {
+                    return PrepareProjectClientRequestedOutput(state.project, requestedPath);
+                };
 #ifdef _WIN32
-                state.kfmPanel.Draw([] { return BrowseForShnFileWindows("Fiesta KFM", true); });
+                state.kfmPanel.Draw(
+                    [] { return BrowseForShnFileWindows("Fiesta KFM", true); },
+                    resolveKfmRead, resolveKfmWrite);
 #else
-                state.kfmPanel.Draw({});
+                state.kfmPanel.Draw({}, resolveKfmRead, resolveKfmWrite);
 #endif
                 ImGui::EndChild();
                 ImGui::PopStyleColor();
