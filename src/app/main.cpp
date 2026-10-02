@@ -18630,7 +18630,7 @@ int main() {
             case AppScreen::MapEditorLauncher: DrawMapEditorLauncher(state); break;
             case AppScreen::MapEditorWorkspace: DrawMapEditorWorkspace(state); break;
             case AppScreen::ShnEditor: DrawShnEditor(state); break;
-            case AppScreen::KfmBrowser:
+            case AppScreen::KfmBrowser: {
                 DrawTopNav(state, L("Animationen","Animations"));
                 ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
                 ImGui::BeginChild("##kfmWorkspace", ImVec2(0,0), false);
@@ -18654,6 +18654,7 @@ int main() {
                 ImGui::EndChild();
                 ImGui::PopStyleColor();
                 break;
+            }
             case AppScreen::ComingSoon: DrawComingSoon(state); break;
         }
 
