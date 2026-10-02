@@ -66,6 +66,17 @@ int main() {
         project, client, serverFile, ProjectOutputSide::Client);
     assert(!escapedSource);
 
+    // The writable project tree itself must never live inside either read-only
+    // installation. Otherwise valid project-relative writes would still modify the source.
+    assert(ValidateProjectOutputRoots(project, client, server));
+    assert(!ValidateProjectOutputRoots(client, client, server));
+    assert(!ValidateProjectOutputRoots(client / "EditorProject", client, server));
+    assert(!ValidateProjectOutputRoots(server / "EditorProject", client, server));
+
+    auto nestedProjectSource = ProjectOutputForSource(
+        client / "EditorProject", client, clientFile, ProjectOutputSide::Client);
+    assert(!nestedProjectSource);
+
     auto parent = EnsureProjectOutputParent(*npcOut);
     assert(parent);
     assert(std::filesystem::is_directory(npcOut->parent_path()));
