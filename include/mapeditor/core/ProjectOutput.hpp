@@ -11,6 +11,15 @@ enum class ProjectOutputSide {
     Server
 };
 
+// Enforces physical separation between the writable project root and the configured
+// read-only Fiesta source installations. Empty source roots are ignored so a project can
+// be configured incrementally. The project root itself may never equal or live below a
+// configured Client/Server source root.
+std::expected<void, std::string> ValidateProjectOutputRoots(
+    const std::filesystem::path& projectRoot,
+    const std::filesystem::path& clientSourceRoot,
+    const std::filesystem::path& serverSourceRoot);
+
 // Resolve a source file to its non-destructive project override location.
 // Example:
 //   sourceRoot = C:/Fiesta/Client
