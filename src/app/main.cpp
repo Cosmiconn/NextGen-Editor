@@ -5703,7 +5703,8 @@ void DrawShnMultiProfiles(EditorState& state) {
     std::vector<const char*> profileLabels;
     profileLabels.reserve(profiles.size());
     for (const auto& profile : profiles)
-        profileLabels.push_back((T("language.current") == std::string("en") ? profile.labelEn : profile.labelDe).data());
+        profileLabels.push_back((app::CurrentLanguage() == app::Language::English
+            ? profile.labelEn : profile.labelDe).data());
 
     ImGui::SetNextItemWidth(280.0f);
     UI::Combo(L("Aufgabe","Task"), &state.shnMultiProfile, profileLabels.data(),
@@ -5740,7 +5741,7 @@ void DrawShnMultiProfiles(EditorState& state) {
         }
 
         ImGui::TextColored(roleColor, "%s",
-            (app::Localization::Get().Language() == app::Language::English
+            (app::CurrentLanguage() == app::Language::English
                 ? core::DataDependencyClassNameEn(rule.dependencyClass)
                 : core::DataDependencyClassNameDe(rule.dependencyClass)).data());
         ImGui::SameLine(92.0f);
