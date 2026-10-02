@@ -198,6 +198,58 @@ int main() {
         std::filesystem::remove_all(root,ec);
     }
 
+    std::printf("\n== SHN-Familien: ausschließlich ID automatisch propagieren ==\n");
+    {
+        auto makeDoc = [](const char* fileName, EditorState::ShnSource source,
+                          const char* namePrefix, std::uint16_t level) {
+            EditorState::ShnDocument doc;
+            doc.source = source;
+            doc.sourcePath = fileName;
+            doc.file.path = fileName;
+            doc.file.columns = {
+                core::legacy::ShnColumn{"ID", 0, 2, core::legacy::ShnValueKind::UInt16, false},
+                core::legacy::ShnColumn{"InxName", 0, 32, core::legacy::ShnValueKind::String, false},
+                core::legacy::ShnColumn{"Level", 0, 2, core::legacy::ShnValueKind::UInt16, false},
+            };
+            for (std::uint16_t id = 1; id <= 21; ++id) {
+                core::legacy::ShnRow row;
+                row.values = {
+                    core::legacy::ShnValue{id},
+                    core::legacy::ShnValue{std::string(namePrefix) + std::to_string(id)},
+                    core::legacy::ShnValue{level},
+                };
+                doc.file.rows.push_back(std::move(row));
+            }
+            return doc;
+        };
+
+        EditorState st;
+        st.shnFiles.push_back(makeDoc("ItemInfo.shn", EditorState::ShnSource::Client, "ClientItem", 7));
+        st.shnFiles.push_back(makeDoc("ItemInfoServer.shn", EditorState::ShnSource::Server, "ServerItem", 9));
+        st.shnFiles.push_back(makeDoc("OtherInfo.shn", EditorState::ShnSource::Server, "Other", 11));
+
+        AddRowWithPropagation(st, 0);
+
+        Check(st.shnFiles[0].file.rows.size() == 22,
+              "Quell-SHN erhält genau eine neue Zeile");
+        Check(st.shnFiles[1].file.rows.size() == 22,
+              "Verifiziertes Item-Familienmitglied erhält genau eine neue Zeile");
+        Check(st.shnFiles[2].file.rows.size() == 21,
+              "Gleiche Zeilenzahl/Namensheuristik mutiert keine unverifizierte SHN");
+
+        const auto& peer = st.shnFiles[1];
+        Check(ShnCellText(peer.file, 21, "ID") == "22",
+              "Nur die verifizierte Familien-ID wird automatisch übernommen");
+        Check(ShnCellText(peer.file, 21, "InxName").empty() &&
+              ShnCellText(peer.file, 21, "Level") == "0",
+              "Gleichnamige Nicht-ID-Spalten werden nicht semantisch erfunden");
+        Check(peer.cellStatus.size() == 22 && peer.cellStatus.back().size() == 3 &&
+              peer.cellStatus.back()[0] == kShnCellAutoFilled &&
+              peer.cellStatus.back()[1] == kShnCellNeedsInput &&
+              peer.cellStatus.back()[2] == kShnCellNeedsInput,
+              "Peer-Zeile markiert nur ID grün und alle übrigen Zellen als manuell zu prüfen");
+    }
+
     std::printf("\n== Map-Projekt-Override: Read-Priorität und Save-Grenzen ==\n");
     {
         const auto root = std::filesystem::temp_directory_path() / "nextgen_editor_map_project_override_test";
