@@ -107,8 +107,8 @@ void TestUnknownCompanionPreservation() {
           "Map with unknown companion saves successfully");
 
     std::ifstream saved(out / "CompanionMap.customsidecar", std::ios::binary);
-    const std::vector<unsigned char> savedBytes(
-        std::istreambuf_iterator<char>(saved), std::istreambuf_iterator<char>());
+    const std::vector<unsigned char> savedBytes{
+        std::istreambuf_iterator<char>(saved), std::istreambuf_iterator<char>{}};
     Check(savedBytes == opaque,
           "Unknown companion survives source -> project save byte-exactly");
 
