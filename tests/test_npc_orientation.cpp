@@ -292,10 +292,10 @@ int main() {
         core::WalkUndoPatch walkPatch =
             core::ApplyWalkBitStamp(st.walkGrid, 8.0f, 6.25f, 6.25f, true);
         PushWalkHistory(st, std::move(walkPatch));
-        Check(st.walkGrid.IsCellBlocked(1, 1),
+        Check(st.walkGrid.CellBlocked(1, 1),
               "Walk-Aktion folgt als dritter History-Schritt");
 
-        Check(UndoMapEdit(st) && !st.walkGrid.IsCellBlocked(1, 1),
+        Check(UndoMapEdit(st) && !st.walkGrid.CellBlocked(1, 1),
               "Undo #1 nimmt die zuletzt ausgeführte Walk-Aktion zurück");
         Check(std::fabs(st.placementSet.At(0).posX - 15.0f) < 1e-4f,
               "Walk-Undo verändert den davorliegenden Objektzustand nicht");
@@ -309,7 +309,7 @@ int main() {
               "Redo #1 stellt Terrain chronologisch wieder her");
         Check(RedoMapEdit(st) && std::fabs(st.placementSet.At(0).posX - 15.0f) < 1e-4f,
               "Redo #2 stellt die Objekt-Transaktion wieder her");
-        Check(RedoMapEdit(st) && st.walkGrid.IsCellBlocked(1, 1),
+        Check(RedoMapEdit(st) && st.walkGrid.CellBlocked(1, 1),
               "Redo #3 stellt die Walk-Aktion wieder her");
 
         const int selectedBefore = st.selectedLayer;
