@@ -1595,8 +1595,13 @@ bool SaveLegacyMapProject(EditorState& state) {
 
     std::filesystem::path outputDir;
     const std::filesystem::path requested(state.legacySaveDir);
-    if (!requested.empty() &&
-        IsProjectSidePath(state.project, core::ProjectOutputSide::Client, requested)) {
+    if (!requested.empty()) {
+        if (!IsProjectSidePath(state.project, core::ProjectOutputSide::Client, requested)) {
+            state.statusMessage = L(
+                "Karte speichern blockiert: Ausgabeverzeichnis liegt außerhalb von <Projekt>/Client.",
+                "Map save blocked: output directory is outside <Project>/Client.");
+            return false;
+        }
         outputDir = requested;
     }
 
@@ -1604,8 +1609,13 @@ bool SaveLegacyMapProject(EditorState& state) {
         const std::filesystem::path workingOrSource(state.legacyMapIniPath);
         if (IsProjectSidePath(state.project, core::ProjectOutputSide::Client, workingOrSource)) {
             outputDir = workingOrSource.parent_path();
-        } else if (auto target = ProjectPathForSource(
-                       state.project, core::ProjectOutputSide::Client, workingOrSource)) {
+        } else {
+            auto target = ProjectPathForSource(
+                state.project, core::ProjectOutputSide::Client, workingOrSource);
+            if (!target) {
+                state.statusMessage = L("Karte speichern blockiert: ","Map save blocked: ") + target.error();
+                return false;
+            }
             outputDir = target->parent_path();
         }
     }
@@ -2464,17 +2474,32 @@ void ApplyProjectToState(EditorState& state, core::legacy::LegacyMapProject&& pr
     state.mapDirty = false;
 }
 
+std::filesystem::path LegacyMapWorkingIniPath(
+    const EditorState& state,
+    const std::filesystem::path& iniPath,
+    bool preferProjectOutput = true) {
+
+    if (!preferProjectOutput || state.project.projectFolder[0] == '\0' ||
+        IsProjectSidePath(state.project, core::ProjectOutputSide::Client, iniPath)) {
+        return iniPath;
+    }
+    return PreferProjectOverride(state.project, core::ProjectOutputSide::Client, iniPath);
+}
+
 bool OpenLegacyMapIntoState(EditorState& state, const std::filesystem::path& iniPath,
                             bool preferProjectOutput = true) {
+    const auto workingIniPath = LegacyMapWorkingIniPath(state, iniPath, preferProjectOutput);
     core::legacy::LegacyMapOpenReport report;
-    auto result = core::legacy::OpenLegacyMap(iniPath, &report);
+    auto result = core::legacy::OpenLegacyMap(workingIniPath, &report);
     if (!result) {
         state.statusMessage = "Karte öffnen fehlgeschlagen: " + result.error();
         return false;
     }
 
+    // Keep the selected source path as stable identity. The actual working copy may live
+    // below <Project>/Client/resmap/... and must win for reads once it exists.
     std::snprintf(state.legacyMapIniPath, sizeof(state.legacyMapIniPath), "%s", iniPath.string().c_str());
-    ApplyProjectToState(state, std::move(*result), iniPath.parent_path());
+    ApplyProjectToState(state, std::move(*result), workingIniPath.parent_path());
     if (preferProjectOutput && state.project.projectFolder[0] != '\0') {
         std::filesystem::path outputDir;
         if (IsProjectSidePath(state.project, core::ProjectOutputSide::Client, iniPath)) {
@@ -2490,7 +2515,9 @@ bool OpenLegacyMapIntoState(EditorState& state, const std::filesystem::path& ini
     std::snprintf(state.legacySaveStem, sizeof(state.legacySaveStem), "%s", iniPath.stem().string().c_str());
 
     TouchRecentMap(state, iniPath.string());
-    state.statusMessage = "Karte geöffnet (" + std::to_string(report.issues.size()) + " Hinweis(e)) - " +
+    state.statusMessage = "Karte geöffnet" +
+                          std::string(workingIniPath != iniPath ? " (Projekt-Override)" : "") +
+                          " (" + std::to_string(report.issues.size()) + " Hinweis(e)) - " +
                           std::to_string(state.placementSet.Count() + state.shmdCategoryRenderSet.Count()) +
                           " Objekte, " + std::to_string(state.textureStack.LayerCount()) + " Textur-Layer.";
     for (const auto& issue : report.issues) state.statusMessage += "\n- " + issue;
@@ -2948,23 +2975,7 @@ void DrawAdvancedFileOps(EditorState& state) {
 
         UI::InputText("Karte-.ini##project", state.legacyMapIniPath, sizeof(state.legacyMapIniPath));
         if (UI::Button("Karte öffnen")) {
-            core::legacy::LegacyMapOpenReport report;
-            auto result = core::legacy::OpenLegacyMap(state.legacyMapIniPath, &report);
-            if (result) {
-                const std::filesystem::path iniPath(state.legacyMapIniPath);
-                ApplyProjectToState(state, std::move(*result), iniPath.parent_path());
-                std::snprintf(state.legacySaveDir, sizeof(state.legacySaveDir), "%s", iniPath.parent_path().string().c_str());
-                std::snprintf(state.legacySaveStem, sizeof(state.legacySaveStem), "%s", iniPath.stem().string().c_str());
-                state.statusMessage = "Karte ge\u00f6ffnet (" + std::to_string(report.issues.size()) + " Hinweis(e)) - " +
-                                       std::to_string(state.placementSet.Count() + state.shmdCategoryRenderSet.Count()) +
-                                       " Objekte (" + std::to_string(state.shmdCategoryRenderSet.Count()) + " SHMD-Szenenmodelle), " +
-                                       std::to_string(state.textureStack.LayerCount()) + " Textur-Layer.";
-                for (const auto& issue : report.issues) {
-                    state.statusMessage += "\n- " + issue;
-                }
-            } else {
-                state.statusMessage = "Karte \u00f6ffnen fehlgeschlagen: " + result.error();
-            }
+            OpenLegacyMapIntoState(state, std::filesystem::path(state.legacyMapIniPath), true);
         }
         UI::InputText("Ausgabeverzeichnis##project", state.legacySaveDir, sizeof(state.legacySaveDir));
 #ifdef _WIN32
