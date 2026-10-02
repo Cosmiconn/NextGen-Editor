@@ -202,11 +202,16 @@ Die Mob-/View-SHN bleiben unverändert.
 
 ### PFLICHT
 
+- `Client/ressystem/QuestData.shn`
 - `Server/9Data/Shine/QuestData.shn`
+
+Beide `QuestData.shn` sind im NA2016-Referenzbestand derselbe Git-Blob
+(`c4a1464c04f423df5ff51404f161238c002a02b1`, 2.140.480 Bytes). Neue/geänderte
+Quests werden deshalb im Projekt transaktional auf Client **und** Server gespiegelt.
 
 ### BEDINGT
 
-- Client `QuestDialog.shn` — wenn neue/geänderte Text-IDs benötigt werden.
+- Client `QuestDialog.shn` **und** die vorhandene Server-Kopie — wenn neue/geänderte Text-IDs benötigt werden.
   Eine aus einer Vorlage geklonte Quest kann zunächst bestehende Text-IDs
   referenzieren; dann darf der Editor `QuestDialog` nicht ungefragt ändern.
 - `QuestScript.shn` — nur wenn der verwendete Questpfad dort registrierte
