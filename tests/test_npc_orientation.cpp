@@ -198,6 +198,49 @@ int main() {
         std::filesystem::remove_all(root,ec);
     }
 
+    std::printf("\n== Map-Projekt-Override: Read-Priorität und Save-Grenzen ==\n");
+    {
+        const auto root = std::filesystem::temp_directory_path() / "nextgen_editor_map_project_override_test";
+        std::error_code ec;
+        std::filesystem::remove_all(root, ec);
+
+        const auto clientRoot = root / "ClientSource";
+        const auto projectRoot = root / "Project";
+        const auto sourceIni = clientRoot / "resmap" / "Rou" / "Rou.ini";
+        const auto overrideIni = projectRoot / "Client" / "resmap" / "Rou" / "Rou.ini";
+        const auto outsideIni = root / "Outside" / "Rou.ini";
+        std::filesystem::create_directories(sourceIni.parent_path(), ec);
+        std::filesystem::create_directories(overrideIni.parent_path(), ec);
+        std::filesystem::create_directories(outsideIni.parent_path(), ec);
+        { std::ofstream out(sourceIni, std::ios::binary); out << "source"; }
+        { std::ofstream out(overrideIni, std::ios::binary); out << "override"; }
+        { std::ofstream out(outsideIni, std::ios::binary); out << "outside"; }
+
+        EditorState st;
+        std::snprintf(st.project.projectFolder, sizeof(st.project.projectFolder), "%s", projectRoot.string().c_str());
+        std::snprintf(st.project.clientFolder, sizeof(st.project.clientFolder), "%s", clientRoot.string().c_str());
+
+        Check(LegacyMapWorkingIniPath(st, sourceIni, true) == overrideIni,
+              "Map-Open bevorzugt vorhandenen <Project>/Client/resmap-Override");
+
+        std::filesystem::remove(overrideIni, ec);
+        Check(LegacyMapWorkingIniPath(st, sourceIni, true) == sourceIni,
+              "Map-Open fällt ohne Projekt-Override auf die read-only Quelle zurück");
+
+        std::snprintf(st.legacySaveStem, sizeof(st.legacySaveStem), "Rou");
+        std::snprintf(st.legacyMapIniPath, sizeof(st.legacyMapIniPath), "%s", outsideIni.string().c_str());
+        st.legacySaveDir[0] = '\0';
+        Check(!SaveLegacyMapProject(st),
+              "Map-Save weist eine bestehende Quellkarte außerhalb des konfigurierten Client-Roots hart ab");
+
+        st.legacyMapIniPath[0] = '\0';
+        std::snprintf(st.legacySaveDir, sizeof(st.legacySaveDir), "%s", (root / "UnsafeOutput").string().c_str());
+        Check(!SaveLegacyMapProject(st),
+              "Map-Save weist ein explizites Ausgabeverzeichnis außerhalb <Project>/Client hart ab");
+
+        std::filesystem::remove_all(root, ec);
+    }
+
     std::printf("\n%d Fehler.\n", g_failures);
     return g_failures == 0 ? 0 : 1;
 }
