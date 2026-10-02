@@ -488,6 +488,7 @@ struct DiscoveredMap {
     // <Map>/<Map>.nif and intentionally have no HTD/HTDG terrain files.
     std::string iniPath;
     bool standaloneNif = false;
+    bool projectOnly = false;
 };
 
 enum class MapHistoryDomain {
@@ -3028,12 +3029,15 @@ bool OpenLegacyMapIntoState(EditorState& state, const std::filesystem::path& ini
 }
 
 bool OpenStandaloneNifMapIntoState(EditorState& state, const std::filesystem::path& nifPath) {
+    const auto workingPath = IsProjectSidePath(state.project, core::ProjectOutputSide::Client, nifPath)
+        ? nifPath
+        : PreferProjectOverride(state.project, core::ProjectOutputSide::Client, nifPath);
     std::error_code ec;
-    if (!std::filesystem::is_regular_file(nifPath, ec)) {
+    if (!std::filesystem::is_regular_file(workingPath, ec)) {
         state.statusMessage = "NIF-Karte nicht gefunden: " + nifPath.string();
         return false;
     }
-    auto parsed = core::LoadNifMesh(nifPath);
+    auto parsed = core::LoadNifMesh(workingPath);
     if (!parsed) {
         state.statusMessage = "NIF-Karte konnte nicht gelesen werden: " + parsed.error();
         return false;
@@ -3042,14 +3046,13 @@ bool OpenStandaloneNifMapIntoState(EditorState& state, const std::filesystem::pa
     core::legacy::LegacyMapProject project;
     core::ObjectCategoryList ground;
     ground.name = "GroundObject";
-    ground.modelPaths.push_back(nifPath.filename().string());
+    ground.modelPaths.push_back(workingPath.filename().string());
     project.objects.categories.push_back(std::move(ground));
     project.hasObjects = true;
 
-    // A standalone NIF is a read-only source scene, not a fabricated INI/HTD map. The normal
-    // NIF renderer resolves its textures relative to the source map folder.
+    // Keep the immutable source identity while rendering from the project working copy.
     std::snprintf(state.legacyMapIniPath, sizeof(state.legacyMapIniPath), "%s", nifPath.string().c_str());
-    ApplyProjectToState(state, std::move(project), nifPath.parent_path());
+    ApplyProjectToState(state, std::move(project), workingPath.parent_path());
     state.hasLegacyIniMeta = false;
     state.legacySaveDir[0] = '\0';
     std::snprintf(state.legacySaveStem, sizeof(state.legacySaveStem), "%s", nifPath.stem().string().c_str());
@@ -3058,7 +3061,9 @@ bool OpenStandaloneNifMapIntoState(EditorState& state, const std::filesystem::pa
     state.showTerrain = false;
     state.mapDirty = false;
     TouchRecentMap(state, nifPath.string());
-    state.statusMessage = "NIF-Karte geöffnet (ohne HTD/HTDG): " + nifPath.string() +
+    state.statusMessage = "NIF-Karte geöffnet (ohne HTD/HTDG)" +
+                          std::string(workingPath != nifPath ? " (Projekt-Override): " : ": ") +
+                          nifPath.string() +
                           "\nTerrain-/Textur-/Walk-Werkzeuge bleiben deaktiviert; die NIF-Szene wird direkt gerendert.";
     return true;
 }
@@ -3398,7 +3403,9 @@ void FindAllResmapCandidates(const std::filesystem::path& root, int depthRemaini
 // Kategorie-Ordner (UNTERORDNER) liegen könnten und fälschlich als "Karte" auftauchten.
 // Steigt bewusst NICHT in "fieldTexture"/"fieldtexture" ab (dort liegen nur geteilte
 // Texturen, keine Karten-inis, aber potenziell sehr viele Dateien).
-std::vector<DiscoveredMap> ScanForMaps(const std::filesystem::path& root) {
+std::vector<DiscoveredMap> ScanForMaps(
+    const std::filesystem::path& root,
+    bool allowDirectNifMapFolders = false) {
     std::vector<DiscoveredMap> found;
     std::error_code ec;
     if (!std::filesystem::exists(root, ec) || !std::filesystem::is_directory(root, ec)) {
@@ -3440,20 +3447,24 @@ std::vector<DiscoveredMap> ScanForMaps(const std::filesystem::path& root) {
         std::transform(parentKey.begin(), parentKey.end(), parentKey.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         if (ext == ".ini") {
             legacyMapDirs.insert(parentKey);
-            found.push_back({folderName, path.string(), false});
+            found.push_back({folderName, path.string(), false, allowDirectNifMapFolders});
             continue;
         }
 
-        // Standalone mesh maps are conservatively recognized only below a "field" tree and
-        // only when <folder>/<folder>.nif exists. Ordinary resmap model-library NIFs therefore
-        // do not become fake maps.
+        // Source trees are conservative: only the established "field" hierarchy counts as
+        // a standalone NIF map. The project tree additionally permits the documented new-map
+        // layout <Project>/Client/resmap/<Map>/<Map>.nif.
         bool belowField = false;
         for (const auto& component : path.parent_path()) {
             std::string c = component.string();
             std::transform(c.begin(), c.end(), c.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
             if (c == "field") { belowField = true; break; }
         }
-        if (belowField) nifOnlyCandidates.push_back({folderName, path.string(), true});
+        const bool directChildMap =
+            allowDirectNifMapFolders &&
+            path.parent_path().parent_path().lexically_normal() == root.lexically_normal();
+        if (belowField || directChildMap)
+            nifOnlyCandidates.push_back({folderName, path.string(), true, allowDirectNifMapFolders});
     }
 
     for (auto& candidate : nifOnlyCandidates) {
@@ -3515,6 +3526,38 @@ ResmapResolution ResolveMapSearchRootAndScan(const std::filesystem::path& client
     return result;
 }
 
+std::size_t MergeProjectOnlyMaps(
+    const ProjectConfig& cfg,
+    std::vector<DiscoveredMap>& maps) {
+
+    if (cfg.projectFolder[0] == '\0') return 0;
+    auto projectResmap = ProjectPathForRelative(
+        cfg, core::ProjectOutputSide::Client, std::filesystem::path("resmap"));
+    if (!projectResmap) return 0;
+
+    auto projectMaps = ScanForMaps(*projectResmap, true);
+    std::unordered_set<std::string> knownNames;
+    for (const auto& map : maps) knownNames.insert(LowerAscii(map.name));
+
+    std::size_t added = 0;
+    for (auto& map : projectMaps) {
+        if (!knownNames.insert(LowerAscii(map.name)).second) {
+            // Existing source maps keep their immutable source identity. Their opener already
+            // prefers the matching project override path.
+            continue;
+        }
+        map.projectOnly = true;
+        maps.push_back(std::move(map));
+        ++added;
+    }
+    std::sort(maps.begin(), maps.end(), [](const DiscoveredMap& a, const DiscoveredMap& b) {
+        if (a.name != b.name) return a.name < b.name;
+        if (a.projectOnly != b.projectOnly) return a.projectOnly < b.projectOnly;
+        return a.standaloneNif < b.standaloneNif;
+    });
+    return added;
+}
+
 // Enthält die komplette, bereits bestehende "Karte öffnen/speichern"- und
 // Einzelmodul-Import/Export-Logik (früher Inhalt des "Datei"-Menüs) - jetzt als
 // eigenständiger Inhalt statt Menü-Dropdown, damit er sich in die neue "Datei"-Spalte
@@ -3528,6 +3571,7 @@ void DrawAdvancedFileOps(EditorState& state) {
             if (auto picked = BrowseForFolderWindows("Client-Ordner mit den Karten w\u00e4hlen (enth\u00e4lt z.B. 'field\\')")) {
                 std::snprintf(state.resmapRootPath, sizeof(state.resmapRootPath), "%s", picked->c_str());
                 state.discoveredMaps = ScanForMaps(state.resmapRootPath);
+                MergeProjectOnlyMaps(state.project, state.discoveredMaps);
                 state.selectedMapIndex = -1;
                 state.statusMessage = std::to_string(state.discoveredMaps.size()) + " Karte(n) gefunden in: " + std::string(state.resmapRootPath);
             }
@@ -3542,7 +3586,9 @@ void DrawAdvancedFileOps(EditorState& state) {
             for (int i = 0; i < static_cast<int>(state.discoveredMaps.size()); ++i) {
                 const bool selected = state.selectedMapIndex == i;
                 const auto& discovered = state.discoveredMaps[static_cast<std::size_t>(i)];
-                const std::string label = discovered.name + (discovered.standaloneNif ? " [NIF-only]##advancedMap" : "##advancedMap");
+                const std::string label = discovered.name +
+                    (discovered.projectOnly ? " [Project]" : "") +
+                    (discovered.standaloneNif ? " [NIF-only]##advancedMap" : "##advancedMap");
                 if (UI::Selectable(label.c_str(), selected)) {
                     state.selectedMapIndex = i;
                     std::snprintf(state.legacyMapIniPath, sizeof(state.legacyMapIniPath), "%s",
@@ -7197,6 +7243,7 @@ void DrawMapEditorLauncher(EditorState& state) {
         if (clientFolderStr != state.lastScannedMapRoot) {
             const auto resolution = ResolveMapSearchRootAndScan(state.project.clientFolder);
             state.discoveredMaps = resolution.maps;
+            MergeProjectOnlyMaps(state.project, state.discoveredMaps);
             state.lastResmapCandidateCount = resolution.candidateCount;
             state.lastResmapFound = resolution.root.has_value();
             state.lastResmapResolvedPath = resolution.root
@@ -7349,6 +7396,7 @@ void DrawMapEditorLauncher(EditorState& state) {
                 const bool selected = state.selectedMapIndex == i;
                 const auto& map = state.discoveredMaps[static_cast<std::size_t>(i)];
                 const std::string mapLabel = map.name +
+                    (map.projectOnly ? L("  [Projekt]","  [Project]") : "") +
                     (map.standaloneNif ? L("  [NIF-only]##map","  [NIF-only]##map") : "##map");
                 if (UI::Selectable(mapLabel.c_str(), selected)) {
                     state.selectedMapIndex = i;
@@ -9204,6 +9252,7 @@ bool NavigateToPortalTarget(EditorState& state, const PortalMarker& marker) {
     if (mapIndex < 0 && state.project.clientFolder[0] != '\0') {
         const auto resolution = ResolveMapSearchRootAndScan(state.project.clientFolder);
         state.discoveredMaps = resolution.maps;
+        MergeProjectOnlyMaps(state.project, state.discoveredMaps);
         state.lastResmapCandidateCount = resolution.candidateCount;
         state.lastResmapFound = resolution.root.has_value();
         state.lastResmapResolvedPath = resolution.root ? resolution.root->string() : std::string();
