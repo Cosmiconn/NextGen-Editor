@@ -2253,6 +2253,7 @@ ObjectSelectionPivot ComputeObjectSelectionPivot(const EditorState& state) {
 }
 
 void RotateSelectedObjectsAroundPivot(EditorState& state, const EditVec3& pivot, const EditQuat& delta) {
+    auto historyBefore = BeginObjectMutation(state);
     PromoteSelectedShmdObjectsToPlacements(state);
     SyncObjectEditorMetadata(state);
     for (const int id : state.selectedObjects) {
@@ -2265,11 +2266,12 @@ void RotateSelectedObjectsAroundPivot(EditorState& state, const EditVec3& pivot,
         const EditQuat nq=MulEditQuat(delta,oq);
         obj.rotX=nq.x; obj.rotY=nq.y; obj.rotZ=nq.z; obj.rotW=nq.w;
     }
-    state.mapDirty = true;
+    FinishObjectMutation(state, std::move(historyBefore));
 }
 
 void ScaleSelectedObjectsAroundPivot(EditorState& state, const EditVec3& pivot, float factor) {
     if (!std::isfinite(factor) || factor <= 0.0f) return;
+    auto historyBefore = BeginObjectMutation(state);
     PromoteSelectedShmdObjectsToPlacements(state);
     SyncObjectEditorMetadata(state);
     for (const int id : state.selectedObjects) {
@@ -2280,7 +2282,7 @@ void ScaleSelectedObjectsAroundPivot(EditorState& state, const EditVec3& pivot, 
         obj.posZ=pivot.z+(obj.posZ-pivot.z)*factor;
         obj.scale=std::clamp(obj.scale*factor,0.01f,100.0f);
     }
-    state.mapDirty = true;
+    FinishObjectMutation(state, std::move(historyBefore));
 }
 
 void CopySelectedObjects(EditorState& state) {
@@ -2301,6 +2303,7 @@ void CopySelectedObjects(EditorState& state) {
 
 void PasteObjectClipboard(EditorState& state) {
     if (state.objectClipboard.empty()) return;
+    auto historyBefore = BeginObjectMutation(state);
     SyncObjectEditorMetadata(state);
     const float offset=state.objectGizmoSnap ? std::max(1.0f,state.objectMoveSnap) : 50.0f;
     std::vector<int> ids;
@@ -2317,11 +2320,12 @@ void PasteObjectClipboard(EditorState& state) {
     state.selectedObject=state.selectedObjects.empty()?kNoObjectSelection:state.selectedObjects.back();
     ReloadObjectRenderers(state);
     state.statusMessage=std::to_string(state.selectedObjects.size())+" Objekt(e) eingefügt.";
-    state.mapDirty = true;
+    FinishObjectMutation(state, std::move(historyBefore));
 }
 
 void DuplicateSelectedObjects(EditorState& state) {
     if (state.selectedObjects.empty()) return;
+    auto historyBefore = BeginObjectMutation(state);
     struct ObjectCopy { core::PlacedObject object; std::string label; std::string group; };
     std::vector<ObjectCopy> copies;
     for (const int id : state.selectedObjects)
@@ -2343,7 +2347,7 @@ void DuplicateSelectedObjects(EditorState& state) {
     state.selectedObject=state.selectedObjects.back();
     ReloadObjectRenderers(state);
     state.statusMessage=std::to_string(state.selectedObjects.size())+" Objekt(e) dupliziert.";
-    state.mapDirty = true;
+    FinishObjectMutation(state, std::move(historyBefore));
 }
 
 void GroundSelectedObjects(EditorState& state) {
@@ -2353,6 +2357,7 @@ void GroundSelectedObjects(EditorState& state) {
                                 "Drop to terrain is unavailable for a NIF-only map without HTD.");
         return;
     }
+    auto historyBefore = BeginObjectMutation(state);
     PromoteSelectedShmdObjectsToPlacements(state);
     SyncObjectEditorMetadata(state);
     for (const int id : state.selectedObjects) {
@@ -2361,7 +2366,7 @@ void GroundSelectedObjects(EditorState& state) {
         obj.posY=state.heightmap.SampleWorld(obj.posX,obj.posZ);
     }
     state.statusMessage="Auswahl auf Terrain gesetzt.";
-    state.mapDirty = true;
+    FinishObjectMutation(state, std::move(historyBefore));
 }
 
 void FocusSelectedObjects(EditorState& state) {
@@ -2461,6 +2466,7 @@ void EraseShmdCategorySources(EditorState& state,
 }
 
 void DeleteSelectedObjects(EditorState& state) {
+    auto historyBefore = BeginObjectMutation(state);
     std::vector<int> placementIndices;
     std::vector<std::pair<std::size_t, std::size_t>> categorySources;
     std::vector<std::string> categoryEditorKeys;
@@ -2502,12 +2508,14 @@ void DeleteSelectedObjects(EditorState& state) {
     }
     EraseShmdCategorySources(state, std::move(categorySources));
 
+    const bool changed = !placementIndices.empty() || !categorySources.empty() || !categoryEditorKeys.empty();
     ClearObjectSelection(state);
     ReloadObjectRenderers(state);
-    state.mapDirty = true;
+    FinishObjectMutation(state, std::move(historyBefore), changed);
 }
 
 void DeleteAllNormalObjects(EditorState& state) {
+    auto historyBefore = BeginObjectMutation(state);
     const std::size_t removed = state.placementSet.Count();
     state.placementSet.ClearObjects();
     state.objectEditorHidden.clear();
@@ -2518,7 +2526,7 @@ void DeleteAllNormalObjects(EditorState& state) {
     ReloadObjectRenderers(state);
     state.statusMessage = std::to_string(removed) +
         " normale Placement-Objekte entfernt. Sky/Water/GroundObject bleiben unverändert.";
-    if (removed > 0) state.mapDirty = true;
+    FinishObjectMutation(state, std::move(historyBefore), removed > 0);
 }
 
 // SHMD-Kategorieeinträge besitzen im Dateiformat KEINEN Transform. Sobald der Benutzer einen
@@ -2598,6 +2606,9 @@ bool PromoteSelectedShmdObjectsToPlacements(EditorState& state, std::optional<in
 
 void MoveSelectedObjectsBy(EditorState& state, float dx, float dy, float dz) {
     if (state.selectedObjects.empty()) return;
+    const bool changed = dx != 0.0f || dy != 0.0f || dz != 0.0f;
+    if (!changed) return;
+    auto historyBefore = BeginObjectMutation(state);
     PromoteSelectedShmdObjectsToPlacements(state);
     for (const int id : state.selectedObjects) {
         if (id < 0 || static_cast<std::size_t>(id) >= state.placementSet.Count() || IsObjectEditorLocked(state,id)) continue;
@@ -2606,11 +2617,12 @@ void MoveSelectedObjectsBy(EditorState& state, float dx, float dy, float dz) {
         object.posY += dy;
         object.posZ += dz;
     }
-    if (dx != 0.0f || dy != 0.0f || dz != 0.0f) state.mapDirty = true;
+    FinishObjectMutation(state, std::move(historyBefore));
 }
 
 void RotateSelectedObjectsYawBy(EditorState& state, float deltaRadians) {
     if (state.selectedObjects.empty() || std::abs(deltaRadians) < 1.0e-8f) return;
+    auto historyBefore = BeginObjectMutation(state);
     PromoteSelectedShmdObjectsToPlacements(state);
     const float sy = std::sin(deltaRadians * 0.5f);
     const float cy = std::cos(deltaRadians * 0.5f);
@@ -2628,18 +2640,19 @@ void RotateSelectedObjectsYawBy(EditorState& state, float deltaRadians) {
             object.rotX /= length; object.rotY /= length; object.rotZ /= length; object.rotW /= length;
         }
     }
-    state.mapDirty = true;
+    FinishObjectMutation(state, std::move(historyBefore));
 }
 
 void ScaleSelectedObjectsBy(EditorState& state, float factor) {
     if (state.selectedObjects.empty() || !std::isfinite(factor) || factor <= 0.0f) return;
+    auto historyBefore = BeginObjectMutation(state);
     PromoteSelectedShmdObjectsToPlacements(state);
     for (const int id : state.selectedObjects) {
         if (id < 0 || static_cast<std::size_t>(id) >= state.placementSet.Count() || IsObjectEditorLocked(state,id)) continue;
         auto& object = state.placementSet.At(static_cast<std::size_t>(id));
         object.scale = std::clamp(object.scale * factor, 0.01f, 100.0f);
     }
-    state.mapDirty = true;
+    FinishObjectMutation(state, std::move(historyBefore));
 }
 
 void SyncSelectedObjectModelPath(EditorState& state) {
@@ -2659,6 +2672,7 @@ void SyncSelectedObjectModelPath(EditorState& state) {
 
 void ApplySelectedObjectModelPath(EditorState& state, const std::string& modelPath) {
     if (modelPath.empty() || state.selectedObject == kNoObjectSelection) return;
+    auto historyBefore = BeginObjectMutation(state);
     if (state.selectedObject >= 0) {
         if (auto* object = EditableObject(state, state.selectedObject)) object->modelPath = modelPath;
         state.nifMeshRenderer.LoadModelsForSet(state.placementSet, CurrentObjectAssetMapDir(state));
@@ -2678,7 +2692,7 @@ void ApplySelectedObjectModelPath(EditorState& state, const std::string& modelPa
     state.footprintCache.erase(modelPath);
     state.selectedObjectModelPathFor = kNoObjectSelection;
     SyncSelectedObjectModelPath(state);
-    state.mapDirty = true;
+    FinishObjectMutation(state, std::move(historyBefore));
 }
 
 void RefreshShmdCategoryVisibility(EditorState& state) {
@@ -13003,9 +13017,11 @@ void DrawToolsContent(EditorState& state) {
                 const float oldX = obj->posX, oldY = obj->posY, oldZ = obj->posZ;
                 float position[3] = {oldX, oldY, oldZ};
                 if (ImGui::InputFloat3(multipleSelection ? L("Position (aktives Objekt)","Position (active object)") : "Position", position, "%.1f")) {
+                    BeginObjectEditTransaction(state);
                     MoveSelectedObjectsBy(state, position[0] - oldX, position[1] - oldY, position[2] - oldZ);
                     obj = EditableObject(state, state.selectedObject);
                 }
+                if (ImGui::IsItemDeactivatedAfterEdit()) CommitObjectEditTransaction(state);
 
                 if (obj) {
                     const EditQuat oldQ=NormalizeEditQuat({obj->rotX,obj->rotY,obj->rotZ,obj->rotW});
@@ -13014,6 +13030,7 @@ void DrawToolsContent(EditorState& state) {
                     ImGuizmo::DecomposeMatrixToComponents(matrix.m,tr,rot,sc);
                     float editedRot[3]={rot[0],rot[1],rot[2]};
                     if (ImGui::InputFloat3("Rotation XYZ (°)",editedRot,"%.1f")) {
+                        BeginObjectEditTransaction(state);
                         float uniformScale[3]={std::max(0.001f,obj->scale),std::max(0.001f,obj->scale),std::max(0.001f,obj->scale)};
                         app::Mat4 changed=app::Mat4::Identity();
                         ImGuizmo::RecomposeMatrixFromComponents(tr,editedRot,uniformScale,changed.m);
@@ -13024,6 +13041,7 @@ void DrawToolsContent(EditorState& state) {
                         state.objectGizmoMatrixValid=false;
                         obj=EditableObject(state,state.selectedObject);
                     }
+                    if (ImGui::IsItemDeactivatedAfterEdit()) CommitObjectEditTransaction(state);
                 }
 
                 if (obj) {
@@ -13031,11 +13049,13 @@ void DrawToolsContent(EditorState& state) {
                     float scale = oldScale;
                     if (UI::SliderFloat(L("Skalierung","Scale"), &scale, 0.01f, 100.0f, "%.3f",
                                         ImGuiSliderFlags_Logarithmic)) {
+                        BeginObjectEditTransaction(state);
                         const float factor = oldScale > 1.0e-6f ? scale / oldScale : 1.0f;
                         ScaleSelectedObjectsBy(state, factor);
                         state.objectGizmoMatrixValid=false;
                         obj = EditableObject(state, state.selectedObject);
                     }
+                    if (ImGui::IsItemDeactivatedAfterEdit()) CommitObjectEditTransaction(state);
                 }
             }
 
@@ -14087,7 +14107,10 @@ void DrawEditor2DContent(EditorState& state) {
     }
 
     const bool hovered = hoveredView;
-    if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) state.objectDragActive = false;
+    if (!ImGui::IsMouseDown(ImGuiMouseButton_Left) && state.objectDragActive) {
+        state.objectDragActive = false;
+        CommitObjectEditTransaction(state);
+    }
 
     // Shift + Ziehen = Rechteckauswahl. Alt+Shift + Ziehen = Lasso.
     // Strg erweitert jeweils die bestehende Auswahl.
@@ -14362,6 +14385,7 @@ void DrawEditor2DContent(EditorState& state) {
                     MoveSelectedObjectsBy(state, dx, 0.0f, dz);
                 }
                 if (state.objectPlaceMode) {
+                    auto historyBefore = BeginObjectMutation(state);
                     core::PlacedObject obj;
                     obj.modelPath = state.newObjectModelPath;
                     obj.posX = worldX;
@@ -14378,6 +14402,7 @@ void DrawEditor2DContent(EditorState& state) {
                     state.selectedObjectModelPathFor = kNoObjectSelection;
                     state.objectListRangeAnchor = -1;
                     ReloadObjectRenderers(state);
+                    FinishObjectMutation(state, std::move(historyBefore));
                 } else if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
                     // Auswahl wird ausschließlich auf dem initialen Klick geändert. Danach darf
                     // der gehaltene Klick nur noch die bereits ausgewählten Objekte verschieben.
@@ -14436,6 +14461,7 @@ void DrawEditor2DContent(EditorState& state) {
                     if (bestIdx != kNoObjectSelection) {
                         state.objectDragActive =
                             std::find(state.selectedObjects.begin(), state.selectedObjects.end(), bestIdx) != state.selectedObjects.end();
+                        if (state.objectDragActive) BeginObjectEditTransaction(state);
                     }
                 }
             } else if (state.editMode == EditMode::Npcs && state.npcTextLoaded) {
@@ -14884,6 +14910,7 @@ std::optional<EditVec3> PickTerrainFrom3D(EditorState& state, const ImVec2& imag
 
 int PlaceObjectAtWorld(EditorState& state, const std::string& modelPath, float x, float y, float z) {
     if(modelPath.empty()) return kNoObjectSelection;
+    auto historyBefore = BeginObjectMutation(state);
     core::PlacedObject obj;
     obj.modelPath=modelPath; obj.posX=x; obj.posY=y; obj.posZ=z; obj.scale=state.newObjectScale;
     const float half=state.newObjectRotDeg*3.14159265f/180.0f*0.5f;
@@ -14893,7 +14920,7 @@ int PlaceObjectAtWorld(EditorState& state, const std::string& modelPath, float x
     state.selectedObjects={id}; state.selectedObject=id; state.objectPlaceMode=0;
     state.objectGizmoMatrixValid=false;
     ReloadObjectRenderers(state);
-    state.mapDirty = true;
+    FinishObjectMutation(state, std::move(historyBefore));
     return id;
 }
 
@@ -15086,6 +15113,7 @@ bool DrawObjectTransformGizmo(EditorState& state, const ImVec2& imageScreenPos, 
     const bool overGizmo = ImGuizmo::IsOver();
 
     if (usingGizmo) {
+        if (!state.objectGizmoWasUsing) BeginObjectEditTransaction(state);
         app::Mat4 after{};
         std::copy(state.objectGizmoMatrix.begin(), state.objectGizmoMatrix.end(), std::begin(after.m));
         const EditVec3 oldPivot{before.m[12], before.m[13], before.m[14]};
@@ -15110,7 +15138,10 @@ bool DrawObjectTransformGizmo(EditorState& state, const ImVec2& imageScreenPos, 
         }
     }
 
-    if (state.objectGizmoWasUsing && !usingGizmo) state.objectGizmoMatrixValid = false;
+    if (state.objectGizmoWasUsing && !usingGizmo) {
+        state.objectGizmoMatrixValid = false;
+        CommitObjectEditTransaction(state);
+    }
     state.objectGizmoWasUsing = usingGizmo;
     return usingGizmo || overGizmo;
 }
