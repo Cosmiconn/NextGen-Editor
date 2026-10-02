@@ -490,10 +490,37 @@ struct DiscoveredMap {
     bool standaloneNif = false;
 };
 
+enum class MapHistoryDomain {
+    Heightmap,
+    TexturePaint,
+    Walk,
+    Objects,
+};
+
+struct ObjectEditSnapshot {
+    core::ObjectPlacementSet placementSet;
+    std::vector<int> selectedObjects;
+    int selectedObject = -1;
+    std::vector<char> editorHidden;
+    std::vector<char> editorLocked;
+    std::vector<std::string> editorLabels;
+    std::vector<std::string> editorGroups;
+    std::unordered_set<std::string> shmdHiddenKeys;
+    std::unordered_set<std::string> shmdLockedKeys;
+    std::unordered_map<std::string,std::string> shmdLabels;
+    std::unordered_map<std::string,std::string> shmdGroups;
+};
+
 struct EditorState {
     app::KfmPanel kfmPanel;
     core::Heightmap heightmap{257, 257, 50.0f, 50.0f};
     core::UndoStack undo;
+    std::vector<MapHistoryDomain> mapHistoryUndo;
+    std::vector<MapHistoryDomain> mapHistoryRedo;
+    std::vector<ObjectEditSnapshot> objectUndo;
+    std::vector<ObjectEditSnapshot> objectRedo;
+    std::optional<ObjectEditSnapshot> pendingObjectEdit;
+    bool pendingObjectEditChanged = false;
     core::BrushMode brushMode = core::BrushMode::Raise;
     core::BrushSettings brush;
 
@@ -1830,6 +1857,193 @@ void ReloadObjectRenderers(EditorState& state) {
     state.objectVisKey.clear();
 }
 
+
+ObjectEditSnapshot CaptureObjectEditSnapshot(const EditorState& state) {
+    ObjectEditSnapshot snapshot;
+    snapshot.placementSet = state.placementSet;
+    snapshot.selectedObjects = state.selectedObjects;
+    snapshot.selectedObject = state.selectedObject;
+    snapshot.editorHidden = state.objectEditorHidden;
+    snapshot.editorLocked = state.objectEditorLocked;
+    snapshot.editorLabels = state.objectEditorLabels;
+    snapshot.editorGroups = state.objectEditorGroups;
+    snapshot.shmdHiddenKeys = state.shmdEditorHiddenKeys;
+    snapshot.shmdLockedKeys = state.shmdEditorLockedKeys;
+    snapshot.shmdLabels = state.shmdEditorLabels;
+    snapshot.shmdGroups = state.shmdEditorGroups;
+    return snapshot;
+}
+
+void RestoreObjectEditSnapshot(EditorState& state, ObjectEditSnapshot snapshot) {
+    state.placementSet = std::move(snapshot.placementSet);
+    state.selectedObjects = std::move(snapshot.selectedObjects);
+    state.selectedObject = snapshot.selectedObject;
+    state.objectEditorHidden = std::move(snapshot.editorHidden);
+    state.objectEditorLocked = std::move(snapshot.editorLocked);
+    state.objectEditorLabels = std::move(snapshot.editorLabels);
+    state.objectEditorGroups = std::move(snapshot.editorGroups);
+    state.shmdEditorHiddenKeys = std::move(snapshot.shmdHiddenKeys);
+    state.shmdEditorLockedKeys = std::move(snapshot.shmdLockedKeys);
+    state.shmdEditorLabels = std::move(snapshot.shmdLabels);
+    state.shmdEditorGroups = std::move(snapshot.shmdGroups);
+    state.selectedObjectModelPathFor = kNoObjectSelection;
+    state.selectedObjectModelPathDirty = false;
+    state.objectListRangeAnchor = -1;
+    state.objectGizmoMatrixValid = false;
+    ReloadObjectRenderers(state);
+    state.mapDirty = true;
+}
+
+void InvalidateMapHistoryRedo(EditorState& state) {
+    state.mapHistoryRedo.clear();
+    state.undo.ClearRedo();
+    state.textureUndo.ClearRedo();
+    state.walkUndo.ClearRedo();
+    state.objectRedo.clear();
+}
+
+void RegisterMapHistoryAction(EditorState& state, MapHistoryDomain domain) {
+    InvalidateMapHistoryRedo(state);
+    state.mapHistoryUndo.push_back(domain);
+}
+
+void ClearMapHistory(EditorState& state) {
+    state.undo.Clear();
+    state.textureUndo.Clear();
+    state.walkUndo.Clear();
+    state.mapHistoryUndo.clear();
+    state.mapHistoryRedo.clear();
+    state.objectUndo.clear();
+    state.objectRedo.clear();
+    state.pendingObjectEdit.reset();
+    state.pendingObjectEditChanged = false;
+}
+
+void PushHeightmapHistory(EditorState& state, core::UndoPatch patch) {
+    if (patch.entries.empty()) return;
+    RegisterMapHistoryAction(state, MapHistoryDomain::Heightmap);
+    state.undo.Push(std::move(patch));
+}
+
+void PushTexturePaintHistory(EditorState& state, core::TexturePaintPatch patch) {
+    if (patch.entries.empty()) return;
+    RegisterMapHistoryAction(state, MapHistoryDomain::TexturePaint);
+    state.textureUndo.Push(std::move(patch));
+}
+
+void PushWalkHistory(EditorState& state, core::WalkUndoPatch patch) {
+    if (patch.entries.empty()) return;
+    RegisterMapHistoryAction(state, MapHistoryDomain::Walk);
+    state.walkUndo.Push(std::move(patch));
+}
+
+void PushObjectHistory(EditorState& state, ObjectEditSnapshot before) {
+    RegisterMapHistoryAction(state, MapHistoryDomain::Objects);
+    state.objectUndo.push_back(std::move(before));
+}
+
+void BeginObjectEditTransaction(EditorState& state) {
+    if (state.pendingObjectEdit) return;
+    state.pendingObjectEdit = CaptureObjectEditSnapshot(state);
+    state.pendingObjectEditChanged = false;
+}
+
+void CommitObjectEditTransaction(EditorState& state) {
+    if (!state.pendingObjectEdit) return;
+    if (state.pendingObjectEditChanged)
+        PushObjectHistory(state, std::move(*state.pendingObjectEdit));
+    state.pendingObjectEdit.reset();
+    state.pendingObjectEditChanged = false;
+}
+
+std::optional<ObjectEditSnapshot> BeginObjectMutation(EditorState& state) {
+    if (state.pendingObjectEdit) return std::nullopt;
+    return CaptureObjectEditSnapshot(state);
+}
+
+void FinishObjectMutation(EditorState& state, std::optional<ObjectEditSnapshot> before, bool changed = true) {
+    if (!changed) return;
+    if (state.pendingObjectEdit) state.pendingObjectEditChanged = true;
+    else if (before) PushObjectHistory(state, std::move(*before));
+    state.mapDirty = true;
+}
+
+bool CanUndoMapEdit(const EditorState& state) { return !state.mapHistoryUndo.empty(); }
+bool CanRedoMapEdit(const EditorState& state) { return !state.mapHistoryRedo.empty(); }
+
+bool UndoMapEdit(EditorState& state) {
+    if (state.mapHistoryUndo.empty()) return false;
+    const auto domain = state.mapHistoryUndo.back();
+    bool ok = false;
+    switch (domain) {
+        case MapHistoryDomain::Heightmap:
+            ok = state.undo.Undo(state.heightmap);
+            if (ok) state.meshDirty = true;
+            break;
+        case MapHistoryDomain::TexturePaint:
+            ok = state.textureUndo.Undo(state.textureStack);
+            if (ok) {
+                state.layerPreviewDirty = true;
+                state.renderer.UpdateBlendTextures(state.textureStack);
+            }
+            break;
+        case MapHistoryDomain::Walk:
+            ok = state.walkUndo.Undo(state.walkGrid);
+            if (ok) state.walkPreviewDirty = true;
+            break;
+        case MapHistoryDomain::Objects:
+            if (!state.objectUndo.empty()) {
+                auto before = std::move(state.objectUndo.back());
+                state.objectUndo.pop_back();
+                state.objectRedo.push_back(CaptureObjectEditSnapshot(state));
+                RestoreObjectEditSnapshot(state, std::move(before));
+                ok = true;
+            }
+            break;
+    }
+    if (!ok) return false;
+    state.mapHistoryUndo.pop_back();
+    state.mapHistoryRedo.push_back(domain);
+    state.mapDirty = true;
+    return true;
+}
+
+bool RedoMapEdit(EditorState& state) {
+    if (state.mapHistoryRedo.empty()) return false;
+    const auto domain = state.mapHistoryRedo.back();
+    bool ok = false;
+    switch (domain) {
+        case MapHistoryDomain::Heightmap:
+            ok = state.undo.Redo(state.heightmap);
+            if (ok) state.meshDirty = true;
+            break;
+        case MapHistoryDomain::TexturePaint:
+            ok = state.textureUndo.Redo(state.textureStack);
+            if (ok) {
+                state.layerPreviewDirty = true;
+                state.renderer.UpdateBlendTextures(state.textureStack);
+            }
+            break;
+        case MapHistoryDomain::Walk:
+            ok = state.walkUndo.Redo(state.walkGrid);
+            if (ok) state.walkPreviewDirty = true;
+            break;
+        case MapHistoryDomain::Objects:
+            if (!state.objectRedo.empty()) {
+                auto after = std::move(state.objectRedo.back());
+                state.objectRedo.pop_back();
+                state.objectUndo.push_back(CaptureObjectEditSnapshot(state));
+                RestoreObjectEditSnapshot(state, std::move(after));
+                ok = true;
+            }
+            break;
+    }
+    if (!ok) return false;
+    state.mapHistoryRedo.pop_back();
+    state.mapHistoryUndo.push_back(domain);
+    state.mapDirty = true;
+    return true;
+}
 
 void SyncObjectEditorMetadata(EditorState& state) {
     state.objectEditorHidden.resize(state.placementSet.Count(), 0);
