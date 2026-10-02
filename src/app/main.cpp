@@ -493,6 +493,7 @@ struct DiscoveredMap {
 enum class MapHistoryDomain {
     Heightmap,
     TexturePaint,
+    TextureLayers,
     Walk,
     Objects,
 };
@@ -511,6 +512,27 @@ struct ObjectEditSnapshot {
     std::unordered_map<std::string,std::string> shmdGroups;
 };
 
+struct TextureLayerMetadata {
+    std::string name;
+    std::string diffuseFileName;
+    float uvScaleDiffuse = 1.0f;
+    float regionStartX = 0.0f;
+    float regionStartY = 0.0f;
+    float regionWidth = 0.0f;
+    float regionHeight = 0.0f;
+};
+
+struct TextureLayerHistoryPatch {
+    enum class Kind { Remove, Insert, Move, Metadata, ReplaceStack };
+    Kind kind = Kind::Remove;
+    std::size_t a = 0;
+    std::size_t b = 0;
+    std::optional<core::TextureLayer> layer;
+    TextureLayerMetadata metadata;
+    std::optional<core::TextureLayerStack> stack;
+    int selectedLayer = -1;
+};
+
 struct EditorState {
     app::KfmPanel kfmPanel;
     core::Heightmap heightmap{257, 257, 50.0f, 50.0f};
@@ -519,6 +541,8 @@ struct EditorState {
     std::vector<MapHistoryDomain> mapHistoryRedo;
     std::vector<ObjectEditSnapshot> objectUndo;
     std::vector<ObjectEditSnapshot> objectRedo;
+    std::vector<TextureLayerHistoryPatch> textureLayerUndo;
+    std::vector<TextureLayerHistoryPatch> textureLayerRedo;
     std::optional<ObjectEditSnapshot> pendingObjectEdit;
     bool pendingObjectEditChanged = false;
     core::BrushMode brushMode = core::BrushMode::Raise;
@@ -1894,12 +1918,143 @@ void RestoreObjectEditSnapshot(EditorState& state, ObjectEditSnapshot snapshot) 
     state.mapDirty = true;
 }
 
+TextureLayerMetadata CaptureTextureLayerMetadata(const core::TextureLayer& layer) {
+    return {layer.name, layer.diffuseFileName, layer.uvScaleDiffuse,
+            layer.regionStartX, layer.regionStartY, layer.regionWidth, layer.regionHeight};
+}
+
+void RestoreTextureLayerMetadata(core::TextureLayer& layer, const TextureLayerMetadata& meta) {
+    layer.name = meta.name;
+    layer.diffuseFileName = meta.diffuseFileName;
+    layer.uvScaleDiffuse = meta.uvScaleDiffuse;
+    layer.regionStartX = meta.regionStartX;
+    layer.regionStartY = meta.regionStartY;
+    layer.regionWidth = meta.regionWidth;
+    layer.regionHeight = meta.regionHeight;
+}
+
+void RefreshTextureLayerHistoryState(EditorState& state, int selectedLayer) {
+    if (state.textureStack.LayerCount() == 0) state.selectedLayer = -1;
+    else state.selectedLayer = std::clamp(selectedLayer, 0,
+        static_cast<int>(state.textureStack.LayerCount()) - 1);
+    state.layerHidden.resize(state.textureStack.LayerCount(), 0);
+    state.renderer.LoadTerrainTextures(
+        state.textureStack,
+        !state.textureAssetRoot.empty() ? state.textureAssetRoot : CurrentObjectAssetMapDir(state));
+    state.layerPreviewDirty = true;
+    state.mapDirty = true;
+}
+
+std::optional<TextureLayerHistoryPatch> ApplyTextureLayerHistoryPatch(
+    EditorState& state, TextureLayerHistoryPatch patch) {
+
+    TextureLayerHistoryPatch inverse;
+    inverse.selectedLayer = state.selectedLayer;
+
+    switch (patch.kind) {
+        case TextureLayerHistoryPatch::Kind::Remove: {
+            if (patch.a >= state.textureStack.LayerCount()) return std::nullopt;
+            auto removed = state.textureStack.TakeLayer(patch.a);
+            if (!removed) return std::nullopt;
+            inverse.kind = TextureLayerHistoryPatch::Kind::Insert;
+            inverse.a = patch.a;
+            inverse.layer = std::move(*removed);
+            break;
+        }
+        case TextureLayerHistoryPatch::Kind::Insert: {
+            if (!patch.layer) return std::nullopt;
+            inverse.kind = TextureLayerHistoryPatch::Kind::Remove;
+            inverse.a = patch.a;
+            state.textureStack.InsertLayer(patch.a, std::move(*patch.layer));
+            break;
+        }
+        case TextureLayerHistoryPatch::Kind::Move: {
+            if (patch.a >= state.textureStack.LayerCount() || patch.b >= state.textureStack.LayerCount())
+                return std::nullopt;
+            inverse.kind = TextureLayerHistoryPatch::Kind::Move;
+            inverse.a = patch.b;
+            inverse.b = patch.a;
+            state.textureStack.MoveLayer(patch.a, patch.b);
+            break;
+        }
+        case TextureLayerHistoryPatch::Kind::Metadata: {
+            if (patch.a >= state.textureStack.LayerCount()) return std::nullopt;
+            inverse.kind = TextureLayerHistoryPatch::Kind::Metadata;
+            inverse.a = patch.a;
+            inverse.metadata = CaptureTextureLayerMetadata(state.textureStack.Layer(patch.a));
+            RestoreTextureLayerMetadata(state.textureStack.Layer(patch.a), patch.metadata);
+            break;
+        }
+        case TextureLayerHistoryPatch::Kind::ReplaceStack: {
+            if (!patch.stack) return std::nullopt;
+            inverse.kind = TextureLayerHistoryPatch::Kind::ReplaceStack;
+            inverse.stack = std::move(state.textureStack);
+            state.textureStack = std::move(*patch.stack);
+            break;
+        }
+    }
+
+    RefreshTextureLayerHistoryState(state, patch.selectedLayer);
+    return inverse;
+}
+
+void PushTextureLayerHistory(EditorState& state, TextureLayerHistoryPatch patch) {
+    RegisterMapHistoryAction(state, MapHistoryDomain::TextureLayers);
+    state.textureLayerUndo.push_back(std::move(patch));
+}
+
+void RecordTextureLayerAdded(EditorState& state, std::size_t index, int selectedBefore) {
+    TextureLayerHistoryPatch patch;
+    patch.kind = TextureLayerHistoryPatch::Kind::Remove;
+    patch.a = index;
+    patch.selectedLayer = selectedBefore;
+    PushTextureLayerHistory(state, std::move(patch));
+}
+
+void RecordTextureLayerRemoved(EditorState& state, std::size_t index,
+                               core::TextureLayer layer, int selectedBefore) {
+    TextureLayerHistoryPatch patch;
+    patch.kind = TextureLayerHistoryPatch::Kind::Insert;
+    patch.a = index;
+    patch.layer = std::move(layer);
+    patch.selectedLayer = selectedBefore;
+    PushTextureLayerHistory(state, std::move(patch));
+}
+
+void RecordTextureLayerMove(EditorState& state, std::size_t from, std::size_t to, int selectedBefore) {
+    TextureLayerHistoryPatch patch;
+    patch.kind = TextureLayerHistoryPatch::Kind::Move;
+    patch.a = to;
+    patch.b = from;
+    patch.selectedLayer = selectedBefore;
+    PushTextureLayerHistory(state, std::move(patch));
+}
+
+void RecordTextureLayerMetadata(EditorState& state, std::size_t index,
+                                TextureLayerMetadata before, int selectedBefore) {
+    TextureLayerHistoryPatch patch;
+    patch.kind = TextureLayerHistoryPatch::Kind::Metadata;
+    patch.a = index;
+    patch.metadata = std::move(before);
+    patch.selectedLayer = selectedBefore;
+    PushTextureLayerHistory(state, std::move(patch));
+}
+
+void RecordTextureStackReplacement(EditorState& state, core::TextureLayerStack before, int selectedBefore) {
+    TextureLayerHistoryPatch patch;
+    patch.kind = TextureLayerHistoryPatch::Kind::ReplaceStack;
+    patch.stack = std::move(before);
+    patch.selectedLayer = selectedBefore;
+    PushTextureLayerHistory(state, std::move(patch));
+}
+
 void InvalidateMapHistoryRedo(EditorState& state) {
     state.mapHistoryRedo.clear();
     state.undo.ClearRedo();
     state.textureUndo.ClearRedo();
     state.walkUndo.ClearRedo();
     state.objectRedo.clear();
+    state.textureLayerRedo.clear();
 }
 
 void RegisterMapHistoryAction(EditorState& state, MapHistoryDomain domain) {
@@ -1915,6 +2070,8 @@ void ClearMapHistory(EditorState& state) {
     state.mapHistoryRedo.clear();
     state.objectUndo.clear();
     state.objectRedo.clear();
+    state.textureLayerUndo.clear();
+    state.textureLayerRedo.clear();
     state.pendingObjectEdit.reset();
     state.pendingObjectEditChanged = false;
 }
@@ -1987,6 +2144,16 @@ bool UndoMapEdit(EditorState& state) {
                 state.renderer.UpdateBlendTextures(state.textureStack);
             }
             break;
+        case MapHistoryDomain::TextureLayers:
+            if (!state.textureLayerUndo.empty()) {
+                auto patch = std::move(state.textureLayerUndo.back());
+                state.textureLayerUndo.pop_back();
+                if (auto inverse = ApplyTextureLayerHistoryPatch(state, std::move(patch))) {
+                    state.textureLayerRedo.push_back(std::move(*inverse));
+                    ok = true;
+                }
+            }
+            break;
         case MapHistoryDomain::Walk:
             ok = state.walkUndo.Undo(state.walkGrid);
             if (ok) state.walkPreviewDirty = true;
@@ -2022,6 +2189,16 @@ bool RedoMapEdit(EditorState& state) {
             if (ok) {
                 state.layerPreviewDirty = true;
                 state.renderer.UpdateBlendTextures(state.textureStack);
+            }
+            break;
+        case MapHistoryDomain::TextureLayers:
+            if (!state.textureLayerRedo.empty()) {
+                auto patch = std::move(state.textureLayerRedo.back());
+                state.textureLayerRedo.pop_back();
+                if (auto inverse = ApplyTextureLayerHistoryPatch(state, std::move(patch))) {
+                    state.textureLayerUndo.push_back(std::move(*inverse));
+                    ok = true;
+                }
             }
             break;
         case MapHistoryDomain::Walk:
@@ -12750,11 +12927,25 @@ void DrawToolsContent(EditorState& state) {
         if (UI::Button(L("Auflösung anwenden##texResolution","Apply resolution##texResolution"))) {
             if (state.textureStack.Width() != static_cast<std::uint32_t>(state.textureResolutionWidth) ||
                 state.textureStack.Height() != static_cast<std::uint32_t>(state.textureResolutionHeight)) {
-                state.textureStack.Resize(static_cast<std::uint32_t>(state.textureResolutionWidth),
-                                          static_cast<std::uint32_t>(state.textureResolutionHeight));
-                ClearMapHistory(state);
+                const int selectedBefore = state.selectedLayer;
+                core::TextureLayerStack before = std::move(state.textureStack);
+                core::TextureLayerStack resized(
+                    static_cast<std::uint32_t>(state.textureResolutionWidth),
+                    static_cast<std::uint32_t>(state.textureResolutionHeight));
+                for (std::size_t i = 0; i < before.LayerCount(); ++i) {
+                    const auto& src = before.Layer(i);
+                    const auto index = resized.AddLayer(src.name, src.diffuseFileName, src.uvScaleDiffuse);
+                    auto& dst = resized.Layer(index);
+                    dst.regionStartX = src.regionStartX;
+                    dst.regionStartY = src.regionStartY;
+                    dst.regionWidth = src.regionWidth;
+                    dst.regionHeight = src.regionHeight;
+                }
+                state.textureStack = std::move(resized);
+                RecordTextureStackReplacement(state, std::move(before), selectedBefore);
                 state.layerPreviewDirty = true;
                 state.renderer.UpdateBlendTextures(state.textureStack);
+                state.mapDirty = true;
             }
         }
         ImGui::TextDisabled("%s",L("Hinweis: Anwenden setzt die Layer-Gewichte auf dem neuen Raster zurück.","Note: applying the resolution resets layer weights on the new grid."));
@@ -16347,7 +16538,10 @@ void DrawLayerManagerPanel(EditorState& state) {
                                               ImGuiInputTextFlags_EnterReturnsTrue);
             if (enter || ImGui::IsItemDeactivatedAfterEdit()) {
                 if (state.layerRenameBuffer[0] != '\0' && layer.name != state.layerRenameBuffer) {
+                    const auto before = CaptureTextureLayerMetadata(layer);
+                    const int selectedBefore = state.selectedLayer;
                     layer.name=state.layerRenameBuffer;
+                    RecordTextureLayerMetadata(state, i, before, selectedBefore);
                     state.mapDirty=true;
                 }
                 state.layerRenameIndex=-1;
@@ -16373,7 +16567,10 @@ void DrawLayerManagerPanel(EditorState& state) {
         if (ImGui::BeginDragDropTarget()) {
             if (const ImGuiPayload* payload=ImGui::AcceptDragDropPayload("NEXTGEN_DDS_ASSET")) {
                 const char* rel=static_cast<const char*>(payload->Data);
+                const auto before = CaptureTextureLayerMetadata(layer);
+                const int selectedBefore = state.selectedLayer;
                 layer.diffuseFileName=rel;
+                RecordTextureLayerMetadata(state, i, before, selectedBefore);
                 state.renderer.LoadTerrainTextures(state.textureStack,
                     !state.textureAssetRoot.empty()?state.textureAssetRoot:CurrentObjectAssetMapDir(state));
                 state.layerPreviewDirty=true;
@@ -16384,10 +16581,13 @@ void DrawLayerManagerPanel(EditorState& state) {
                 const int from=*static_cast<const int*>(payload->Data);
                 const int to=static_cast<int>(i);
                 if(from>=0 && from<static_cast<int>(state.textureStack.LayerCount()) && from!=to) {
+                    const int selectedBefore = state.selectedLayer;
                     state.textureStack.MoveLayer(static_cast<std::size_t>(from),static_cast<std::size_t>(to));
                     if (state.selectedLayer==from) state.selectedLayer=to;
                     else if (from<state.selectedLayer && state.selectedLayer<=to) --state.selectedLayer;
                     else if (to<=state.selectedLayer && state.selectedLayer<from) ++state.selectedLayer;
+                    RecordTextureLayerMove(state, static_cast<std::size_t>(from),
+                                           static_cast<std::size_t>(to), selectedBefore);
                     state.layerHidden.assign(state.textureStack.LayerCount(),0);
                     state.renderer.LoadTerrainTextures(state.textureStack,
                         !state.textureAssetRoot.empty()?state.textureAssetRoot:CurrentObjectAssetMapDir(state));
@@ -16409,11 +16609,14 @@ void DrawLayerManagerPanel(EditorState& state) {
                 std::snprintf(state.layerRenameBuffer,sizeof(state.layerRenameBuffer),"%s",label.c_str());
             }
             if (UI::MenuItem(L("Duplizieren","Duplicate"))) {
+                const int selectedBefore = state.selectedLayer;
                 const auto copy=layer;
                 const std::size_t ni=state.textureStack.AddLayer(copy.name+" Kopie",copy.diffuseFileName,copy.uvScaleDiffuse);
                 state.textureStack.Layer(ni)=copy;
                 state.textureStack.Layer(ni).name=copy.name+" Kopie";
                 state.selectedLayer=static_cast<int>(ni);
+                RecordTextureLayerAdded(state, ni, selectedBefore);
+                if (removedLayer) RecordTextureLayerRemoved(state, i, std::move(*removedLayer), selectedBefore);
                 state.layerHidden.resize(state.textureStack.LayerCount(),0);
                 state.renderer.LoadTerrainTextures(state.textureStack,
                     !state.textureAssetRoot.empty()?state.textureAssetRoot:CurrentObjectAssetMapDir(state));
@@ -16422,7 +16625,8 @@ void DrawLayerManagerPanel(EditorState& state) {
             }
             ImGui::Separator();
             if (UI::MenuItem(L("Entfernen","Remove"),nullptr,false,state.textureStack.LayerCount()>1)) {
-                state.textureStack.RemoveLayer(i);
+                const int selectedBefore = state.selectedLayer;
+                auto removedLayer = state.textureStack.TakeLayer(i);
                 state.selectedLayer=state.textureStack.LayerCount()==0?-1:
                     std::min(state.selectedLayer,static_cast<int>(state.textureStack.LayerCount())-1);
                 state.layerHidden.resize(state.textureStack.LayerCount(),0);
@@ -16451,8 +16655,10 @@ void DrawLayerManagerPanel(EditorState& state) {
         if (const ImGuiPayload* payload=ImGui::AcceptDragDropPayload("NEXTGEN_DDS_ASSET")) {
             const char* rel=static_cast<const char*>(payload->Data);
             std::filesystem::path rp(rel);
+            const int selectedBefore = state.selectedLayer;
             const std::size_t ni=state.textureStack.AddLayer(rp.stem().string(),rel,1.0f);
             state.selectedLayer=static_cast<int>(ni);
+            RecordTextureLayerAdded(state, ni, selectedBefore);
             state.layerHidden.resize(state.textureStack.LayerCount(),0);
             state.renderer.LoadTerrainTextures(state.textureStack,
                 !state.textureAssetRoot.empty()?state.textureAssetRoot:CurrentObjectAssetMapDir(state));
@@ -16480,10 +16686,17 @@ void DrawLayerManagerPanel(EditorState& state) {
 
     ImGui::BeginDisabled(state.textureStack.LayerCount() >= static_cast<std::size_t>(app::HeightmapRenderer::kMaxTextureLayers));
     if (UI::Button(L("Layer hinzufügen##layerDock","Add layer##layerDock"), ImVec2(-1,0))) {
-        if (state.textureStack.Width() == 0)
+        const int selectedBefore = state.selectedLayer;
+        const bool createdStack = state.textureStack.Width() == 0;
+        core::TextureLayerStack emptyBefore;
+        if (createdStack) {
+            emptyBefore = std::move(state.textureStack);
             state.textureStack = core::TextureLayerStack(1024u, 1024u);
+        }
         const auto newIndex = state.textureStack.AddLayer(state.newLayerName, state.newLayerDiffuse, state.newLayerUvScale);
         state.selectedLayer = static_cast<int>(newIndex);
+        if (createdStack) RecordTextureStackReplacement(state, std::move(emptyBefore), selectedBefore);
+        else RecordTextureLayerAdded(state, newIndex, selectedBefore);
         state.editMode = EditMode::TexturePaint;
         state.layerPreviewDirty = true;
         state.mapDirty = true;
@@ -16492,11 +16705,13 @@ void DrawLayerManagerPanel(EditorState& state) {
 
     ImGui::BeginDisabled(state.selectedLayer < 0);
     if (UI::Button(L("Layer duplizieren##layerDock","Duplicate layer##layerDock"), ImVec2(-1,0))) {
+        const int selectedBefore = state.selectedLayer;
         const auto copy=state.textureStack.Layer(static_cast<std::size_t>(state.selectedLayer));
         const std::size_t ni=state.textureStack.AddLayer(copy.name+" Kopie",copy.diffuseFileName,copy.uvScaleDiffuse);
         state.textureStack.Layer(ni)=copy;
         state.textureStack.Layer(ni).name=copy.name+" Kopie";
         state.selectedLayer=static_cast<int>(ni);
+        RecordTextureLayerAdded(state, ni, selectedBefore);
         state.layerHidden.resize(state.textureStack.LayerCount(),0);
         state.renderer.LoadTerrainTextures(state.textureStack,
             !state.textureAssetRoot.empty()?state.textureAssetRoot:CurrentObjectAssetMapDir(state));
@@ -16504,9 +16719,12 @@ void DrawLayerManagerPanel(EditorState& state) {
         state.mapDirty=true;
     }
     if (UI::Button(L("Ausgewählten Layer entfernen##layerDock","Remove selected layer##layerDock"), ImVec2(-1,0))) {
-        state.textureStack.RemoveLayer(static_cast<std::size_t>(state.selectedLayer));
+        const int selectedBefore = state.selectedLayer;
+        const auto removeIndex = static_cast<std::size_t>(state.selectedLayer);
+        auto removedLayer = state.textureStack.TakeLayer(removeIndex);
         if (state.textureStack.LayerCount() == 0) state.selectedLayer = -1;
         else state.selectedLayer = std::min(state.selectedLayer, static_cast<int>(state.textureStack.LayerCount()) - 1);
+        if (removedLayer) RecordTextureLayerRemoved(state, removeIndex, std::move(*removedLayer), selectedBefore);
         state.layerPreviewDirty = true;
         state.mapDirty = true;
     }
