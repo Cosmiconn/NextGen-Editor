@@ -406,6 +406,101 @@ int main() {
               "Neue Kartenaktion nach Undo invalidiert den gesamten Redo-Zweig domainübergreifend");
     }
 
+    std::printf("\n== ShineText COW: NPC.txt und MobRegen bleiben source-read-only ==\n");
+    {
+        const auto base = std::filesystem::temp_directory_path() / "nextgen_editor_shinetext_cow_test";
+        const auto serverRoot = base / "ServerSource";
+        const auto shineRoot = serverRoot / "9Data" / "Shine";
+        const auto npcSource = shineRoot / "World" / "NPC.txt";
+        const auto mobSource = shineRoot / "MobRegen" / "TestMap.txt";
+        const auto projectRoot = base / "Project";
+        std::error_code ec;
+        std::filesystem::remove_all(base, ec);
+        std::filesystem::create_directories(npcSource.parent_path(), ec);
+        std::filesystem::create_directories(mobSource.parent_path(), ec);
+
+        auto writeMiniShine = [](const std::filesystem::path& path,
+                                 const char* tableName,
+                                 const char* firstValue) {
+            std::ofstream out(path, std::ios::binary | std::ios::trunc);
+            out << "#TABLE\t" << tableName << "\r\n"
+                << "#COLUMNTYPE\tString\tString\r\n"
+                << "#COLUMNNAME\tName\tValue\r\n"
+                << "#RECORD\t" << firstValue << "\tSOURCE\r\n";
+        };
+        writeMiniShine(npcSource, "ShineNPC", "NpcA");
+        writeMiniShine(mobSource, "MobRegen", "ZoneA");
+
+        auto readBytes = [](const std::filesystem::path& path) {
+            std::ifstream in(path, std::ios::binary);
+            return std::vector<char>((std::istreambuf_iterator<char>(in)),
+                                     std::istreambuf_iterator<char>());
+        };
+        const auto npcSourceBefore = readBytes(npcSource);
+        const auto mobSourceBefore = readBytes(mobSource);
+
+        EditorState st;
+        std::snprintf(st.project.projectFolder, sizeof(st.project.projectFolder), "%s",
+                      projectRoot.string().c_str());
+        std::snprintf(st.project.serverFolder, sizeof(st.project.serverFolder), "%s",
+                      serverRoot.string().c_str());
+        st.shineTextRoot = shineRoot.string();
+        std::snprintf(st.legacySaveStem, sizeof(st.legacySaveStem), "TestMap");
+
+        EnsureNpcTextLoaded(st);
+        Check(st.npcTextLoaded && !st.npcTextFile.tables.empty(),
+              "World/NPC.txt wird aus der read-only Serverquelle geladen");
+        if (st.npcTextLoaded && !st.npcTextFile.tables.empty() &&
+            !st.npcTextFile.tables[0].records.empty()) {
+            st.npcTextFile.tables[0].records[0].values[1] = "PROJECT";
+        }
+        auto npcSaved = SaveProjectShineOverride(
+            st.npcTextFile,
+            ProjectServerShinePath(st.project, std::filesystem::path("World") / "NPC.txt"));
+        const auto npcProject = projectRoot / "Server" / "9Data" / "Shine" / "World" / "NPC.txt";
+        Check(npcSaved && std::filesystem::is_regular_file(npcProject),
+              "NPC.txt schreibt ausschließlich einen Projekt-Override");
+        Check(readBytes(npcSource) == npcSourceBefore,
+              "NPC.txt-Source bleibt nach Save byte-identisch");
+
+        st.npcTextLoaded = false;
+        st.npcTextFile = core::legacy::ShineTextFile{};
+        EnsureNpcTextLoaded(st);
+        Check(st.npcTextLoaded && !st.npcTextFile.tables.empty() &&
+              !st.npcTextFile.tables[0].records.empty() &&
+              st.npcTextFile.tables[0].records[0].values[1] == "PROJECT",
+              "NPC.txt-Reload bevorzugt den Projekt-Override");
+
+        EnsureMobRegenLoaded(st);
+        Check(st.mobRegenTextLoaded && !st.mobRegenTextFile.tables.empty(),
+              "MobRegen/TestMap.txt wird aus der read-only Serverquelle geladen");
+        if (st.mobRegenTextLoaded && !st.mobRegenTextFile.tables.empty() &&
+            !st.mobRegenTextFile.tables[0].records.empty()) {
+            st.mobRegenTextFile.tables[0].records[0].values[1] = "PROJECT";
+        }
+        auto mobSaved = SaveProjectShineOverride(
+            st.mobRegenTextFile,
+            ProjectServerShinePath(
+                st.project, std::filesystem::path("MobRegen") / "TestMap.txt"));
+        const auto mobProject =
+            projectRoot / "Server" / "9Data" / "Shine" / "MobRegen" / "TestMap.txt";
+        Check(mobSaved && std::filesystem::is_regular_file(mobProject),
+              "MobRegen schreibt ausschließlich einen Projekt-Override");
+        Check(readBytes(mobSource) == mobSourceBefore,
+              "MobRegen-Source bleibt nach Save byte-identisch");
+
+        st.mobRegenTextLoaded = false;
+        st.mobRegenLoadedForMap.clear();
+        st.mobRegenTextFile = core::legacy::ShineTextFile{};
+        EnsureMobRegenLoaded(st);
+        Check(st.mobRegenTextLoaded && !st.mobRegenTextFile.tables.empty() &&
+              !st.mobRegenTextFile.tables[0].records.empty() &&
+              st.mobRegenTextFile.tables[0].records[0].values[1] == "PROJECT",
+              "MobRegen-Reload bevorzugt den Projekt-Override");
+
+        std::filesystem::remove_all(base, ec);
+    }
+
     std::printf("\n== Map-Capability: Terrain-Werkzeuge nur mit echter Heightmap ==\n");
     {
         EditorState nifOnly;
