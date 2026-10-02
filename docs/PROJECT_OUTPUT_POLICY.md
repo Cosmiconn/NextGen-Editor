@@ -43,6 +43,12 @@ Beim Lesen gilt:
 Dadurch bleibt die ursprüngliche Installation unverändert und ein Projekt kann
 jederzeit als Patch-/Override-Satz betrachtet werden.
 
+Diese Priorität gilt nicht nur für die Haupteditoren, sondern auch für
+Hilfs-/Referenz-Lader: dynamisch nachgeladene SHNs, Quest-Item-Lookups,
+`MapInfo.shn`, `MobViewInfo.shn` und `MobRoam/*.txt` lesen vorhandene
+Projekt-Overrides vor der Basisinstallation. So sieht jede Editoransicht denselben
+Projektstand.
+
 ## Pfadregeln
 
 - Client-Quelle `<Client>/ressystem/ItemInfo.shn`
@@ -60,6 +66,17 @@ jederzeit als Patch-/Override-Satz betrachtet werden.
 
 Absolute Pfade, `..`-Escapes und Quelldateien außerhalb des konfigurierten
 Client-/Server-Roots werden als Save-Ziel abgewiesen.
+
+Die Ausgabe bleibt auch dann **kanonisch**, wenn als read-only Quelle ein tieferer
+Unterordner gewählt wurde:
+
+- gewählte Quelle `<Client>/ressystem` → weiterhin `<Project>/Client/ressystem/...`
+- gewählte Quelle `<Server>/9Data` → weiterhin `<Project>/Server/9Data/Shine/...`
+- gewählte Quelle `<Server>/9Data/Shine` → weiterhin `<Project>/Server/9Data/Shine/...`
+
+Der Projektbaum hängt damit nicht davon ab, wie tief der Nutzer beim Konfigurieren
+der Originalquelle eingestiegen ist. Diese Fälle sind durch `test_project_output`
+abgedeckt.
 
 ## Minimal-invasive Änderungen
 
@@ -109,6 +126,13 @@ Das gilt unter anderem für:
 `QuestData.shn` besitzt einen eigenen Roundtrip-Test. Eine unveränderte Datei bleibt
 byte-identisch; beim Test einer bearbeiteten Quest bleiben alle anderen Quest-
 Datensätze logisch unverändert.
+
+Im NA2016-Referenzbestand sind Client- und Server-`QuestData.shn` byte-identisch.
+Der Quest-Editor staged deshalb beide Projektkopien und aktiviert sie gemeinsam:
+`<Project>/Client/ressystem/QuestData.shn` und
+`<Project>/Server/9Data/Shine/QuestData.shn`. Schlägt das zweite Commit fehl,
+wird die erste Projektkopie zurückgerollt; die Originalinstallation wird zu keinem
+Zeitpunkt beschrieben.
 
 ### Karten
 
