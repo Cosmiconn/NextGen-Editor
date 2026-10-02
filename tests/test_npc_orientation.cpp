@@ -256,7 +256,7 @@ int main() {
     {
         EditorState st;
         st.heightmap = core::Heightmap(5, 5, 10.0f, 10.0f);
-        st.walkGrid.Resize(1, 8);
+        st.walkGrid.Resize(1, 8, 0); // 0 = alle Testzellen initial begehbar
         st.textureStack = core::TextureLayerStack(4, 4);
         st.textureStack.AddLayer("Base", "base.dds", 1.0f);
         const auto rock = st.textureStack.AddLayer("Rock", "rock.dds", 2.0f);
