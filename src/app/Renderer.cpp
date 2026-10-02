@@ -370,6 +370,13 @@ void HeightmapRenderer::RebuildMesh(const core::Heightmap& heightmap) {
 }
 
 void HeightmapRenderer::LoadTerrainTextures(const core::TextureLayerStack& stack, const std::filesystem::path& mapDir) {
+    // History/core tests intentionally run without an OpenGL context. A default-constructed
+    // renderer has no shader program and must keep all CPU-side editor operations headless-safe.
+    if (shaderProgram_ == 0) {
+        textureLayerCount_ = 0;
+        return;
+    }
+
     ClearTerrainTextures();
 
     const int count = std::min(static_cast<int>(stack.LayerCount()), kMaxTextureLayers);
@@ -416,6 +423,7 @@ void HeightmapRenderer::LoadTerrainTextures(const core::TextureLayerStack& stack
 }
 
 void HeightmapRenderer::UpdateBlendTextures(const core::TextureLayerStack& stack) {
+    if (shaderProgram_ == 0 || textureLayerCount_ <= 0) return;
     const int count = std::min(static_cast<int>(stack.LayerCount()), textureLayerCount_);
     for (int i = 0; i < count; ++i) {
         UploadBlendTexture(blendTex_[i], stack.Layer(static_cast<std::size_t>(i)).blend);
