@@ -17,6 +17,27 @@ Die einzige abweichende gleichnamige Datei ist `ColorInfo.shn`.
 Daraus folgt ausdrücklich **nicht**, dass alle gleichnamigen Dateien automatisch
 synchronisiert werden dürfen. Synchronisation wird nur für belegte Familien aktiviert.
 
+## Implementierungs- und Strukturbeleg
+
+Die Matrix ist zusätzlich als typisierter Katalog in
+`include/mapeditor/core/DataDependency.hpp` / `src/core/DataDependency.cpp` hinterlegt.
+Der Multi-SHN-Workspace verwendet diesen Katalog direkt; die frühere reine
+Dateinamen-Keyword-Suche ist für diese Aufgabenprofile nicht mehr die Quelle der Wahrheit.
+
+Am 02.10.2026 wurden **80 konkrete, nicht-parametrisierte Client-/Server-Pfade** aus
+diesem Katalog direkt gegen die NA2016-Struktur
+(`Client/ressystem` und `Server/9Data/Shine`) geprüft:
+
+- 80/80 vorhanden
+- 0 fehlende Pfade
+- Platzhalterpfade wie `MobRegen/<Map>.txt`, `MobRoam/<Mob>.txt` und Assetordner
+  wurden dabei bewusst nicht als konkrete Datei gewertet.
+
+Wichtig: „Pfad existiert“ beweist noch keine fachliche Pflichtbeziehung. Die Einstufung
+PFLICHT/BEDINGT/REFERENZ folgt weiterhin den unten dokumentierten ID-/Familien- und
+Runtime-Belegen. Nur Item, Mob und ActiveSkill sind für automatische Mehrdatei-Propagation
+freigegeben.
+
 ## Legende
 
 - **PFLICHT**: gehört bei dieser Art neuer Identität/Funktion zum selben Datensatz.
