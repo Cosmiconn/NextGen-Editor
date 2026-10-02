@@ -37,11 +37,16 @@ struct LegacyMapIni {
     std::uint32_t quadsWide = 0;
     std::uint32_t quadsHigh = 0;
     std::vector<LegacyLayerDef> layers;
+    // Distinguishes an actually loaded but empty .ini (used by mesh/NIF-backed maps) from
+    // a programmatically constructed LegacyMapIni with no source text.
+    bool hasOriginalText = false;
     std::string originalText;
     std::string originalCanonical;
 };
 
-std::expected<LegacyMapIni, std::string> ParseLegacyMapIni(const std::filesystem::path& file);
+std::expected<LegacyMapIni, std::string> ParseLegacyMapIni(
+    const std::filesystem::path& file,
+    bool requireHeightmapDimensions = true);
 
 // Unedited imports retain their bytes; edits patch known values and retain unknown lines.
 std::expected<void, std::string> SerializeLegacyMapIni(const LegacyMapIni& ini, const std::filesystem::path& file);
