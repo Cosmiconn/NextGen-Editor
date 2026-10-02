@@ -48,6 +48,7 @@
 
 #include "mapeditor/core/AvatarPreview.hpp"
 #include "mapeditor/core/DdsImage.hpp"
+#include "mapeditor/core/DataDependency.hpp"
 #include "mapeditor/core/Manual.hpp"
 #include "mapeditor/core/EditOps.hpp"
 #include "mapeditor/core/Heightmap.hpp"
@@ -4367,25 +4368,35 @@ std::vector<int> MatchShnColumnsByName(const core::legacy::ShnFile& source,
     return result;
 }
 
-bool ShnProfileMatch(const std::string& filename, int profile) {
-    const std::string n = LowerAscii(filename);
-    static const std::array<std::vector<std::string>, 7> tokens = {{
-        {"item", "money", "sell", "buy", "price", "icon"},
-        {"npc", "shop", "dialog", "merchant"},
-        {"mob", "monster", "drop"},
-        {"skill", "ability"},
-        {"shop", "money", "price", "buy", "sell"},
-        {"quest", "dialog", "condition", "reward"},
-        {"exp", "xp", "rate"}
-    }};
-    if (profile < 0 || profile >= static_cast<int>(tokens.size())) return false;
-    return std::any_of(tokens[static_cast<std::size_t>(profile)].begin(), tokens[static_cast<std::size_t>(profile)].end(),
-                       [&](const std::string& token) { return n.find(token) != std::string::npos; });
+const core::DataDependencyProfile& ShnDependencyProfile(int profile) {
+    const auto profiles = core::DataDependencyProfiles();
+    if (profiles.empty()) throw std::logic_error("No data dependency profiles");
+    const auto index = static_cast<std::size_t>(std::clamp(profile, 0, static_cast<int>(profiles.size()) - 1));
+    return profiles[index];
+}
+
+bool ShnDependencyRuleMatchesDocument(const core::DataDependencyRule& rule,
+                                      const EditorState::ShnDocument& doc) {
+    const bool sideMatches =
+        (rule.tree == core::DataTree::Client && doc.source == EditorState::ShnSource::Client) ||
+        (rule.tree == core::DataTree::Server && doc.source == EditorState::ShnSource::Server);
+    if (!sideMatches) return false;
+
+    const std::filesystem::path configuredPath(std::string(rule.relativePath));
+    if (LowerAscii(configuredPath.extension().string()) != ".shn") return false;
+    return LowerAscii(configuredPath.filename().string()) == LowerAscii(doc.file.FileName());
+}
+
+bool ShnProfileMatch(const EditorState::ShnDocument& doc, int profile) {
+    const auto& selected = ShnDependencyProfile(profile);
+    return std::any_of(selected.rules.begin(), selected.rules.end(),
+                       [&](const core::DataDependencyRule& rule) {
+                           return ShnDependencyRuleMatchesDocument(rule, doc);
+                       });
 }
 
 const char* ShnProfileName(int profile) {
-    static const char* names[] = {"Neues Item", "Neuer NPC", "Neuer Mob", "Neuer Skill", "Shop / Preis", "Neue Quest", "XP / Rate"};
-    return (profile >= 0 && profile < 7) ? names[profile] : names[0];
+    return ShnDependencyProfile(profile).labelDe.data();
 }
 
 // Extrahiert einen Integer-Wert aus einer ShnValue, falls die Spalte ein ganzzahliger Typ ist -
@@ -5678,16 +5689,74 @@ void DrawShnSourceList(EditorState& state, EditorState::ShnSource source, const 
 void DrawShnMultiProfiles(EditorState& state) {
     DrawPanelHeader("multiShnHeader", "MULTI SHN", DrawIconLayers,
                     "module.shn.multi", L("Client / Server vergleichen","Compare client / server"));
-    ImGui::TextWrapped("Die Aufgabe filtert passende Tabellen. Dateien mit gleichem Namen werden "
-                       "paarweise gegenübergestellt; Schema- und Zellabweichungen sind nur Hinweise "
-                       "und werden nicht automatisch überschrieben.");
+    ImGui::TextWrapped("%s", L(
+        "Die Aufgabe verwendet die verifizierte Daten-Abhängigkeitsmatrix. PFLICHT/BEDINGT/"
+        "REFERENZ ersetzt die frühere Dateinamen-Keyword-Heuristik. Nur belegte ID-Familien "
+        "dürfen automatisch mutiert werden.",
+        "This task uses the verified data dependency matrix. REQUIRED/CONDITIONAL/REFERENCE "
+        "replaces the former filename-keyword heuristic. Only evidenced ID families may be "
+        "mutated automatically."));
 
-    const char* profiles[] = {"Neues Item", "Neuer NPC", "Neuer Mob", "Neuer Skill",
-                              "Shop / Preis", "Neue Quest", "XP / Rate"};
-    ImGui::SetNextItemWidth(260.0f);
-    UI::Combo("Aufgabe", &state.shnMultiProfile, profiles, static_cast<int>(std::size(profiles)));
+    const auto profiles = core::DataDependencyProfiles();
+    state.shnMultiProfile = std::clamp(
+        state.shnMultiProfile, 0, std::max(0, static_cast<int>(profiles.size()) - 1));
+    std::vector<const char*> profileLabels;
+    profileLabels.reserve(profiles.size());
+    for (const auto& profile : profiles)
+        profileLabels.push_back((T("language.current") == std::string("en") ? profile.labelEn : profile.labelDe).data());
+
+    ImGui::SetNextItemWidth(280.0f);
+    UI::Combo(L("Aufgabe","Task"), &state.shnMultiProfile, profileLabels.data(),
+              static_cast<int>(profileLabels.size()));
     ImGui::SameLine();
-    ImGui::TextDisabled("Geladene Dateien: %zu", state.shnFiles.size());
+    ImGui::TextDisabled("%s %zu", L("Geladene Dateien:","Loaded files:"), state.shnFiles.size());
+    ImGui::Separator();
+
+    const auto& selectedProfile = ShnDependencyProfile(state.shnMultiProfile);
+    ImGui::BeginChild("##dependencyMatrix", ImVec2(0, 185.0f), true);
+    ImGui::TextColored(UiTheme::AccentCyan, "%s", L("BETROFFENE DATEIEN","AFFECTED FILES"));
+    ImGui::SameLine();
+    ImGui::TextDisabled("· %s", L(
+        "nur konkrete Funktion aktivieren = BEDINGT ändern",
+        "change CONDITIONAL only when that feature is actually used"));
+
+    for (const auto& rule : selectedProfile.rules) {
+        const bool isRequired = rule.dependencyClass == core::DataDependencyClass::Required;
+        const bool isConditional = rule.dependencyClass == core::DataDependencyClass::Conditional;
+        const bool isReference = rule.dependencyClass == core::DataDependencyClass::Reference;
+        const ImVec4 roleColor = isRequired ? ImVec4(1.0f,0.48f,0.34f,1.0f)
+                               : isConditional ? ImVec4(1.0f,0.78f,0.28f,1.0f)
+                               : isReference ? ImVec4(0.45f,0.75f,1.0f,1.0f)
+                               : UiTheme::TextSecondary;
+
+        bool shnLoaded = false;
+        const std::filesystem::path configuredPath(std::string(rule.relativePath));
+        const bool isShn = LowerAscii(configuredPath.extension().string()) == ".shn";
+        if (isShn) {
+            shnLoaded = std::any_of(state.shnFiles.begin(), state.shnFiles.end(),
+                [&](const EditorState::ShnDocument& doc) {
+                    return ShnDependencyRuleMatchesDocument(rule, doc);
+                });
+        }
+
+        ImGui::TextColored(roleColor, "%s",
+            (app::Localization::Get().Language() == app::Language::English
+                ? core::DataDependencyClassNameEn(rule.dependencyClass)
+                : core::DataDependencyClassNameDe(rule.dependencyClass)).data());
+        ImGui::SameLine(92.0f);
+        ImGui::TextDisabled("%s", core::DataTreeName(rule.tree).data());
+        ImGui::SameLine(160.0f);
+        if (isShn) {
+            ImGui::TextColored(shnLoaded ? UiTheme::Success : UiTheme::TextSecondary,
+                               "%s %s", shnLoaded ? "✓" : "·",
+                               std::string(rule.relativePath).c_str());
+        } else {
+            ImGui::TextUnformatted(std::string(rule.relativePath).c_str());
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", std::string(rule.reason).c_str());
+    }
+    ImGui::EndChild();
     ImGui::Separator();
 
     struct Pair {
@@ -5698,7 +5767,7 @@ void DrawShnMultiProfiles(EditorState& state) {
     std::map<std::string, Pair> pairs;
     for (std::size_t i = 0; i < state.shnFiles.size(); ++i) {
         auto& doc = state.shnFiles[i];
-        if (!ShnProfileMatch(doc.file.FileName(), state.shnMultiProfile)) continue;
+        if (!ShnProfileMatch(doc, state.shnMultiProfile)) continue;
         const std::string key = LowerAscii(doc.file.FileName());
         auto& pair = pairs[key];
         pair.fileName = doc.file.FileName();
