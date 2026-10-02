@@ -7488,26 +7488,29 @@ bool SaveQuestDataProject(EditorState& state) {
     auto client = makeStage(clientPath);
     auto server = makeStage(serverPath);
 
-    auto cleanupStageFiles = [](const StagedQuestCopy& item) {
+    auto cleanupTemp = [](const StagedQuestCopy& item) {
         std::error_code ec;
         std::filesystem::remove(item.tempPath, ec);
-        ec.clear();
-        if (!item.committed) std::filesystem::remove(item.backupPath, ec);
     };
-    cleanupStageFiles(client);
-    cleanupStageFiles(server);
+    auto resetStaging = [&](const StagedQuestCopy& item) {
+        cleanupTemp(item);
+        std::error_code ec;
+        std::filesystem::remove(item.backupPath, ec);
+    };
+    resetStaging(client);
+    resetStaging(server);
 
     auto clientStaged = core::legacy::SaveQuestData(state.questDataFile, client.tempPath);
     if (!clientStaged) {
-        cleanupStageFiles(client);
-        cleanupStageFiles(server);
+        cleanupTemp(client);
+        cleanupTemp(server);
         state.statusMessage = "QuestData.shn Client-Staging: " + clientStaged.error();
         return false;
     }
     auto serverStaged = core::legacy::SaveQuestData(state.questDataFile, server.tempPath);
     if (!serverStaged) {
-        cleanupStageFiles(client);
-        cleanupStageFiles(server);
+        cleanupTemp(client);
+        cleanupTemp(server);
         state.statusMessage = "QuestData.shn Server-Staging: " + serverStaged.error();
         return false;
     }
@@ -7528,6 +7531,9 @@ bool SaveQuestDataProject(EditorState& state) {
             if (item.hadOriginal) {
                 std::error_code restoreEc;
                 std::filesystem::rename(item.backupPath, item.finalPath, restoreEc);
+                if (restoreEc)
+                    return std::unexpected(message + " | Backup-Restore fehlgeschlagen: " + restoreEc.message() +
+                                           " (Backup bleibt erhalten: " + item.backupPath.string() + ")");
             }
             return std::unexpected(message);
         }
@@ -7549,16 +7555,16 @@ bool SaveQuestDataProject(EditorState& state) {
 
     auto clientCommit = commitStage(client);
     if (!clientCommit) {
-        cleanupStageFiles(client);
-        cleanupStageFiles(server);
+        cleanupTemp(client);
+        cleanupTemp(server);
         state.statusMessage = "QuestData.shn Client-Commit: " + clientCommit.error();
         return false;
     }
     auto serverCommit = commitStage(server);
     if (!serverCommit) {
         const std::string rollbackError = rollbackStage(client);
-        cleanupStageFiles(client);
-        cleanupStageFiles(server);
+        cleanupTemp(client);
+        cleanupTemp(server);
         state.statusMessage = "QuestData.shn Server-Commit: " + serverCommit.error();
         if (!rollbackError.empty()) state.statusMessage += " | " + rollbackError;
         return false;
