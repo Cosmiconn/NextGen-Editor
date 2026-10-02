@@ -7469,21 +7469,108 @@ bool SaveQuestDataProject(EditorState& state) {
         return false;
     }
 
-    auto clientSaved = core::legacy::SaveQuestData(state.questDataFile, clientPath);
-    if (!clientSaved) {
-        state.statusMessage = "QuestData.shn Client: " + clientSaved.error();
+    struct StagedQuestCopy {
+        std::filesystem::path finalPath;
+        std::filesystem::path tempPath;
+        std::filesystem::path backupPath;
+        bool hadOriginal = false;
+        bool committed = false;
+    };
+    auto makeStage = [](const std::filesystem::path& finalPath) {
+        StagedQuestCopy out;
+        out.finalPath = finalPath;
+        out.tempPath = finalPath;
+        out.tempPath += ".nextgen-tmp";
+        out.backupPath = finalPath;
+        out.backupPath += ".nextgen-bak";
+        return out;
+    };
+    auto client = makeStage(clientPath);
+    auto server = makeStage(serverPath);
+
+    auto cleanupStageFiles = [](const StagedQuestCopy& item) {
+        std::error_code ec;
+        std::filesystem::remove(item.tempPath, ec);
+        ec.clear();
+        if (!item.committed) std::filesystem::remove(item.backupPath, ec);
+    };
+    cleanupStageFiles(client);
+    cleanupStageFiles(server);
+
+    auto clientStaged = core::legacy::SaveQuestData(state.questDataFile, client.tempPath);
+    if (!clientStaged) {
+        cleanupStageFiles(client);
+        cleanupStageFiles(server);
+        state.statusMessage = "QuestData.shn Client-Staging: " + clientStaged.error();
         return false;
     }
-    auto serverSaved = core::legacy::SaveQuestData(state.questDataFile, serverPath);
-    if (!serverSaved) {
-        state.statusMessage = "QuestData.shn Server: " + serverSaved.error() +
-            " (Client-Projektkopie wurde geschrieben; Dirty-State bleibt gesetzt.)";
+    auto serverStaged = core::legacy::SaveQuestData(state.questDataFile, server.tempPath);
+    if (!serverStaged) {
+        cleanupStageFiles(client);
+        cleanupStageFiles(server);
+        state.statusMessage = "QuestData.shn Server-Staging: " + serverStaged.error();
         return false;
     }
 
+    auto commitStage = [](StagedQuestCopy& item) -> std::expected<void,std::string> {
+        std::error_code ec;
+        std::filesystem::remove(item.backupPath, ec);
+        ec.clear();
+        item.hadOriginal = std::filesystem::is_regular_file(item.finalPath, ec);
+        if (ec) return std::unexpected("Status des Projektziels konnte nicht gelesen werden: " + ec.message());
+        if (item.hadOriginal) {
+            std::filesystem::rename(item.finalPath, item.backupPath, ec);
+            if (ec) return std::unexpected("Bestehender Projektstand konnte nicht gesichert werden: " + ec.message());
+        }
+        std::filesystem::rename(item.tempPath, item.finalPath, ec);
+        if (ec) {
+            const std::string message = "Staging-Datei konnte nicht aktiviert werden: " + ec.message();
+            if (item.hadOriginal) {
+                std::error_code restoreEc;
+                std::filesystem::rename(item.backupPath, item.finalPath, restoreEc);
+            }
+            return std::unexpected(message);
+        }
+        item.committed = true;
+        return {};
+    };
+    auto rollbackStage = [](StagedQuestCopy& item) -> std::string {
+        if (!item.committed) return {};
+        std::error_code ec;
+        std::filesystem::remove(item.finalPath, ec);
+        ec.clear();
+        if (item.hadOriginal) {
+            std::filesystem::rename(item.backupPath, item.finalPath, ec);
+            if (ec) return "Rollback fehlgeschlagen: " + ec.message();
+        }
+        item.committed = false;
+        return {};
+    };
+
+    auto clientCommit = commitStage(client);
+    if (!clientCommit) {
+        cleanupStageFiles(client);
+        cleanupStageFiles(server);
+        state.statusMessage = "QuestData.shn Client-Commit: " + clientCommit.error();
+        return false;
+    }
+    auto serverCommit = commitStage(server);
+    if (!serverCommit) {
+        const std::string rollbackError = rollbackStage(client);
+        cleanupStageFiles(client);
+        cleanupStageFiles(server);
+        state.statusMessage = "QuestData.shn Server-Commit: " + serverCommit.error();
+        if (!rollbackError.empty()) state.statusMessage += " | " + rollbackError;
+        return false;
+    }
+
+    std::error_code ec;
+    std::filesystem::remove(client.backupPath, ec);
+    ec.clear();
+    std::filesystem::remove(server.backupPath, ec);
     state.questDirty = false;
     state.statusMessage =
-        "QuestData.shn als Client+Server Projekt-Override gespeichert.";
+        "QuestData.shn transaktional als Client+Server Projekt-Override gespeichert.";
     return true;
 }
 
