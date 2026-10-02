@@ -50,6 +50,8 @@ int main() {
     assert(Has(DataChangeKind::NewMob, DataTree::Server, DataDependencyClass::Conditional,
                "9Data/Shine/MobRoam/<Mob>.txt"));
 
+    assert(Has(DataChangeKind::NewQuest, DataTree::Client, DataDependencyClass::Required,
+               "ressystem/QuestData.shn"));
     assert(Has(DataChangeKind::NewQuest, DataTree::Server, DataDependencyClass::Required,
                "9Data/Shine/QuestData.shn"));
     assert(Has(DataChangeKind::NewQuest, DataTree::Client, DataDependencyClass::Reference,
