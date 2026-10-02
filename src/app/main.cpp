@@ -279,10 +279,20 @@ struct ProjectConfig {
     bool hasProject = false;
 };
 
+std::expected<void, std::string> ValidateProjectConfigOutputRoots(const ProjectConfig& cfg) {
+    return core::ValidateProjectOutputRoots(
+        std::filesystem::path(cfg.projectFolder),
+        std::filesystem::path(cfg.clientFolder),
+        std::filesystem::path(cfg.serverFolder));
+}
+
 std::expected<std::filesystem::path, std::string> ProjectPathForSource(
     const ProjectConfig& cfg,
     core::ProjectOutputSide side,
     const std::filesystem::path& sourcePath) {
+
+    auto roots = ValidateProjectConfigOutputRoots(cfg);
+    if (!roots) return std::unexpected(roots.error());
 
     const std::filesystem::path projectRoot(cfg.projectFolder);
     const std::filesystem::path sourceRoot(
@@ -295,6 +305,8 @@ std::expected<std::filesystem::path, std::string> ProjectPathForRelative(
     core::ProjectOutputSide side,
     const std::filesystem::path& relativePath) {
 
+    auto roots = ValidateProjectConfigOutputRoots(cfg);
+    if (!roots) return std::unexpected(roots.error());
     return core::ProjectOutputForRelative(
         std::filesystem::path(cfg.projectFolder), side, relativePath);
 }
@@ -376,6 +388,11 @@ bool IsProjectSidePath(
 bool SaveProjectConfig(const ProjectConfig& cfg, std::string* errorOut) {
     if (cfg.projectFolder[0] == '\0') {
         if (errorOut) *errorOut = "Kein Projekt-Ordner angegeben.";
+        return false;
+    }
+    auto roots = ValidateProjectConfigOutputRoots(cfg);
+    if (!roots) {
+        if (errorOut) *errorOut = roots.error();
         return false;
     }
     std::error_code ec;
@@ -5566,9 +5583,9 @@ void AddRowWithPropagation(EditorState& state, int docIndex) {
         }
     }
 
-    // Automatische, freie ID (statt 0): hoechster Wert ueber die Quelldatei UND alle VERIFIZIERTEN Familien-
-    // Dateien + 1, damit die neue Zeile in allen zusammengehoerigen Dateien dieselbe ID bekommt.
-    const int idCol = FindShnIdColumn(srcDoc.file);
+    // Automatische freie ID wird ausschließlich über die verifizierte Familien-ID bestimmt.
+    // Andere Spaltenbeziehungen sind NICHT belegt und dürfen nicht automatisch übertragen werden.
+    const int idCol = ExactShnColumnIndex(srcDoc.file, "ID");
     long long newId = -1;
     if (idCol >= 0) {
         const auto& idColumn = srcDoc.file.columns[static_cast<std::size_t>(idCol)];
@@ -5609,31 +5626,23 @@ void AddRowWithPropagation(EditorState& state, int docIndex) {
         auto& peerDoc = state.shnFiles[static_cast<std::size_t>(p)];
         core::legacy::ShnRow peerRow;
         std::vector<std::uint8_t> peerRowStatus;
-        for (auto& peerCol : peerDoc.file.columns) {
-            // Spalte mit demselben Namen in der Quelldatei suchen (Groß-/Kleinschreibung exakt,
-            // wie auch sonst im Editor üblich) - wenn gefunden, Wert übernehmen und grün
-            // markieren, sonst Default-Wert + rot markieren.
-            bool matched = false;
-            for (std::size_t sc = 0; sc < srcDoc.file.columns.size(); ++sc) {
-                if (srcDoc.file.columns[sc].name == peerCol.name && sc < newRow.values.size()) {
-                    // Nur übernehmen, wenn der Zieltyp den Quellwert als Text darstellen und
-                    // zurückparsen kann - unterschiedliche Spaltentypen gleichen Namens bleiben
-                    // sonst einfach rot (braucht manuelle Eingabe).
-                    auto asText = core::legacy::ShnValueToString(newRow.values[sc]);
-                    auto parsed = core::legacy::ParseShnValue(peerCol, asText);
-                    if (parsed) {
-                        peerRow.values.push_back(std::move(*parsed));
-                        peerRowStatus.push_back(kShnCellAutoFilled);
-                        matched = true;
-                    }
-                    break;
+        const int peerIdCol = ExactShnColumnIndex(peerDoc.file, "ID");
+        for (std::size_t pc = 0; pc < peerDoc.file.columns.size(); ++pc) {
+            const auto& peerCol = peerDoc.file.columns[pc];
+
+            // Die NA2016-Evidenz verifiziert die gemeinsame ID-Menge, nicht die Semantik
+            // gleichnamiger sonstiger Spalten. Deshalb wird NUR ID automatisch übertragen.
+            if (static_cast<int>(pc) == peerIdCol && newId >= 0) {
+                if (auto parsed = core::legacy::ParseShnValue(peerCol, std::to_string(newId))) {
+                    peerRow.values.push_back(std::move(*parsed));
+                    peerRowStatus.push_back(kShnCellAutoFilled);
+                    continue;
                 }
             }
-            if (!matched) {
-                auto v = core::legacy::ParseShnValue(peerCol, DefaultShnValueText(peerCol));
-                peerRow.values.push_back(v ? std::move(*v) : core::legacy::ShnValue(std::uint32_t{0}));
-                peerRowStatus.push_back(kShnCellNeedsInput);
-            }
+
+            auto v = core::legacy::ParseShnValue(peerCol, DefaultShnValueText(peerCol));
+            peerRow.values.push_back(v ? std::move(*v) : core::legacy::ShnValue(std::uint32_t{0}));
+            peerRowStatus.push_back(kShnCellNeedsInput);
         }
         peerDoc.file.rows.push_back(peerRow);
         peerDoc.dirty = true;
@@ -5648,7 +5657,7 @@ void AddRowWithPropagation(EditorState& state, int docIndex) {
     state.shnSelectedRow = static_cast<int>(newRowIdx);
     state.shnSelectedColumn = 0;
     state.shnStatus = "Neue Zeile angelegt" + (newId >= 0 ? " (freie ID " + std::to_string(newId) + " automatisch vergeben)" : std::string()) + (propagated > 0
-        ? (" und in " + std::to_string(propagated) + " verifizierte(n) Familienkopie(n) propagiert (grün=übernommen, rot=braucht Eingabe).")
+        ? (" und die ID in " + std::to_string(propagated) + " verifizierte(n) Familienkopie(n) propagiert (nur ID grün; übrige Peer-Zellen rot=manuell prüfen).")
         : std::string(" (keine geladene verifizierte Mutationsfamilie gefunden; Heuristiken wurden nicht verändert)."));
 }
 
@@ -17524,7 +17533,9 @@ void DrawDropTableEditor(EditorState& state) {
 
 std::filesystem::path InterfaceProjectOverrideRoot(const EditorState& state) {
     if (state.project.projectFolder[0] == '\0') return {};
-    return std::filesystem::path(state.project.projectFolder) / "Client" / "resmenu";
+    auto root = ProjectPathForRelative(
+        state.project, core::ProjectOutputSide::Client, std::filesystem::path("resmenu"));
+    return root ? *root : std::filesystem::path{};
 }
 
 std::filesystem::path InterfaceProjectOverridePath(const EditorState& state, const std::string& rel) {
