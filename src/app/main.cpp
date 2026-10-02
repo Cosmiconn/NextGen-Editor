@@ -5418,7 +5418,15 @@ std::pair<std::size_t,std::size_t> SaveAllDirtyShnDocuments(EditorState& state) 
 bool ReloadShnDocument(EditorState& state,int document) {
     if (document < 0 || document >= static_cast<int>(state.shnFiles.size())) return false;
     auto& doc=state.shnFiles[static_cast<std::size_t>(document)];
-    const auto path=doc.file.path;
+
+    // Reload follows the same copy-on-write read rule as initial loading. sourcePath remains
+    // the immutable Client/Server identity even after doc.file.path switches to a project
+    // working copy. This also picks up an override that was created after the document was
+    // first opened instead of blindly re-reading the original installation.
+    const auto side = doc.source == EditorState::ShnSource::Client
+        ? core::ProjectOutputSide::Client : core::ProjectOutputSide::Server;
+    const auto sourcePath = doc.sourcePath.empty() ? doc.file.path : doc.sourcePath;
+    const auto path = PreferProjectOverride(state.project, side, sourcePath);
     auto loaded=core::legacy::LoadShnFile(path);
     if (!loaded) {
         state.shnStatus="Neu laden fehlgeschlagen: "+loaded.error();
