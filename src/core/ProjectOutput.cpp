@@ -1,5 +1,7 @@
 #include "mapeditor/core/ProjectOutput.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <system_error>
 
 namespace theseed::mapeditor::core {
@@ -25,6 +27,58 @@ std::filesystem::path StableAbsolute(const std::filesystem::path& path) {
     ec.clear();
     auto absolute = std::filesystem::absolute(path, ec);
     return (ec ? path : absolute).lexically_normal();
+}
+
+std::string LowerAscii(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return value;
+}
+
+std::filesystem::path TailFromComponent(
+    const std::filesystem::path& source,
+    std::initializer_list<const char*> componentNames) {
+
+    std::filesystem::path tail;
+    bool copying = false;
+    for (const auto& component : source) {
+        if (!copying) {
+            const std::string lower = LowerAscii(component.string());
+            for (const char* name : componentNames) {
+                if (lower == LowerAscii(name)) {
+                    copying = true;
+                    break;
+                }
+            }
+        }
+        if (copying) tail /= component;
+    }
+    return tail;
+}
+
+std::filesystem::path CanonicalRuntimeRelative(
+    const std::filesystem::path& source,
+    const std::filesystem::path& sourceRelative,
+    ProjectOutputSide side) {
+
+    if (side == ProjectOutputSide::Client) {
+        auto anchored = TailFromComponent(
+            source, {"ressystem", "resmap", "resmenu", "resitem", "reschar"});
+        if (!anchored.empty()) return anchored.lexically_normal();
+        return sourceRelative;
+    }
+
+    // Standard Fiesta server project layout is always Server/9Data/Shine/...
+    // even when the user selected 9Data or Shine itself as the read-only source root.
+    auto from9Data = TailFromComponent(source, {"9data"});
+    if (!from9Data.empty()) return from9Data.lexically_normal();
+
+    auto fromShine = TailFromComponent(source, {"shine"});
+    if (!fromShine.empty())
+        return (std::filesystem::path("9Data") / fromShine).lexically_normal();
+
+    return sourceRelative;
 }
 
 } // namespace
@@ -63,7 +117,10 @@ std::expected<std::filesystem::path, std::string> ProjectOutputForSource(
             "Quelldatei liegt ausserhalb des konfigurierten " +
             std::string(SideName(side)) + "-Ordners: " + sourcePath.string());
     }
-    return ProjectOutputForRelative(projectRoot, side, relative);
+    const auto canonicalRelative = CanonicalRuntimeRelative(source, relative, side);
+    if (!IsSafeRelative(canonicalRelative))
+        return std::unexpected("Unsicherer kanonischer Projektpfad fuer Quelle: " + sourcePath.string());
+    return ProjectOutputForRelative(projectRoot, side, canonicalRelative);
 }
 
 std::expected<void, std::string> EnsureProjectOutputParent(
