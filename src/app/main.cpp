@@ -267,10 +267,10 @@ enum class AppScreen { ProjectHub, NewProjectConfig, MapEditorLauncher, MapEdito
 // Projekt-Ebene (NEU): getrennt von den Client-/Server-Ordnern, siehe die Erläuterung im
 // Mockup ("Neues Projekt konfigurieren") - im Projekt-Ordner werden geänderte Dateien mit
 // der korrekten Ordnerstruktur für Client/Server abgelegt, NIE direkt im Client- oder
-// Server-Ordner. Die Spiegelung wird schrittweise pro Editor eingeführt: der Interface-
-// Workspace nutzt bereits <Projekt>/Client/resmenu/... als non-destruktiven Override-Pfad;
-// andere Editoren folgen weiterhin ihren bestehenden Save-Workflows. Die Client-Ordner-
-// Angabe bleibt zusätzlich Suchwurzel für "Map Öffnen" und read-only Asset-Quellen.
+// Server-Ordner. Client und Server sind ausschließlich read-only Quellen; alle schreibenden
+// Workflows müssen über den zentralen Projekt-Output-Layer nach <Projekt>/Client bzw.
+// <Projekt>/Server gehen. Die Client-Ordner-Angabe bleibt zusätzlich Suchwurzel für
+// "Map Öffnen" und read-only Asset-Quellen.
 struct ProjectConfig {
     char name[256] = "";
     char projectFolder[512] = "";
@@ -380,6 +380,53 @@ bool IsProjectSidePath(
     if (ec || relative.empty() || relative.is_absolute()) return false;
     for (const auto& part : relative) if (part == "..") return false;
     return true;
+}
+
+
+bool HasParentTraversal(const std::filesystem::path& path) {
+    for (const auto& part : path) {
+        if (part == "..") return true;
+    }
+    return false;
+}
+
+// A legacy/export UI may contain either the original Client source path or an already
+// project-side destination. Both are accepted, but arbitrary third-party destinations and
+// explicit ".." traversals are rejected: edited/generated Fiesta data belongs to the project.
+std::expected<std::filesystem::path, std::string> ProjectClientOutputForRequestedPath(
+    const ProjectConfig& cfg,
+    const std::filesystem::path& requestedPath) {
+
+    if (requestedPath.empty())
+        return std::unexpected("Leerer Client-Ausgabepfad.");
+    if (HasParentTraversal(requestedPath))
+        return std::unexpected("Unsicherer Client-Ausgabepfad mit '..': " + requestedPath.string());
+
+    auto roots = ValidateProjectConfigOutputRoots(cfg);
+    if (!roots) return std::unexpected(roots.error());
+
+    if (IsProjectSidePath(cfg, core::ProjectOutputSide::Client, requestedPath))
+        return requestedPath.lexically_normal();
+
+    auto mapped = ProjectPathForSource(
+        cfg, core::ProjectOutputSide::Client, requestedPath);
+    if (!mapped) {
+        return std::unexpected(
+            "Client-Ausgabe muss innerhalb der konfigurierten Client-Quelle oder unter "
+            "<Projekt>/Client liegen: " + mapped.error());
+    }
+    return *mapped;
+}
+
+std::expected<std::filesystem::path, std::string> PrepareProjectClientRequestedOutput(
+    const ProjectConfig& cfg,
+    const std::filesystem::path& requestedPath) {
+
+    auto target = ProjectClientOutputForRequestedPath(cfg, requestedPath);
+    if (!target) return std::unexpected(target.error());
+    auto parent = core::EnsureProjectOutputParent(*target);
+    if (!parent) return std::unexpected(parent.error());
+    return *target;
 }
 
 // Schreibt die Projekt-Konfiguration als einfache "schlüssel=wert"-Datei (bewusst kein
@@ -3033,8 +3080,11 @@ void DrawAdvancedFileOps(EditorState& state) {
         UI::InputFloat("Blockhöhe", &state.legacyBlockHeight);
         if (UI::Button("Importieren##htd")) {
             if (state.legacyWidth > 0 && state.legacyHeight > 0) {
+                const auto inputPath = PreferProjectOverride(
+                    state.project, core::ProjectOutputSide::Client,
+                    std::filesystem::path(state.legacyPath));
                 auto result = core::ImportLegacyHtd(
-                    state.legacyPath,
+                    inputPath,
                     static_cast<std::uint32_t>(state.legacyWidth),
                     static_cast<std::uint32_t>(state.legacyHeight),
                     state.legacyBlockWidth, state.legacyBlockHeight, &state.htdHeader, &state.htdTrailingBytes);
@@ -3051,9 +3101,15 @@ void DrawAdvancedFileOps(EditorState& state) {
         }
         ImGui::SameLine();
         if (UI::Button("Exportieren##htd")) {
-            auto result = core::ExportLegacyHtd(state.heightmap, state.legacyPath, state.htdHeader, state.htdTrailingBytes);
-            state.statusMessage = result ? "Legacy-HTD exportiert nach: " + std::string(state.legacyPath)
-                                          : "Export fehlgeschlagen: " + result.error();
+            auto target = PrepareProjectClientRequestedOutput(
+                state.project, std::filesystem::path(state.legacyPath));
+            if (!target) state.statusMessage = "Export blockiert: " + target.error();
+            else {
+                auto result = core::ExportLegacyHtd(
+                    state.heightmap, *target, state.htdHeader, state.htdTrailingBytes);
+                state.statusMessage = result ? "Legacy-HTD als Projekt-Override exportiert nach: " + target->string()
+                                             : "Export fehlgeschlagen: " + result.error();
+            }
         }
 
         ImGui::Separator();
@@ -3061,8 +3117,11 @@ void DrawAdvancedFileOps(EditorState& state) {
         UI::InputText("ini-Pfad##legacyTex", state.legacyIniPath, sizeof(state.legacyIniPath));
         if (UI::Button("Legacy-Set importieren")) {
             core::legacy::TextureSetImportReport report;
-            auto result = core::legacy::ImportLegacyTextureSet(state.legacyIniPath, &report);
-            auto metaResult = core::legacy::ParseLegacyMapIni(state.legacyIniPath);
+            const auto inputPath = PreferProjectOverride(
+                state.project, core::ProjectOutputSide::Client,
+                std::filesystem::path(state.legacyIniPath));
+            auto result = core::legacy::ImportLegacyTextureSet(inputPath, &report);
+            auto metaResult = core::legacy::ParseLegacyMapIni(inputPath);
             if (result && metaResult) {
                 state.textureStack = std::move(*result);
                 state.textureUndo.Clear();
@@ -3079,9 +3138,15 @@ void DrawAdvancedFileOps(EditorState& state) {
         UI::InputText("Export-Verzeichnis##legacyTex", state.legacyExportDir, sizeof(state.legacyExportDir));
         ImGui::BeginDisabled(!state.hasLegacyIniMeta);
         if (UI::Button("Legacy-Set exportieren")) {
-            auto result = core::legacy::ExportLegacyTextureSet(state.textureStack, state.legacyIniMeta, state.legacyExportDir, "Rou.ini");
-            state.statusMessage = result ? "Legacy-Set exportiert nach: " + std::string(state.legacyExportDir)
-                                          : "Export fehlgeschlagen: " + result.error();
+            auto target = PrepareProjectClientRequestedOutput(
+                state.project, std::filesystem::path(state.legacyExportDir));
+            if (!target) state.statusMessage = "Export blockiert: " + target.error();
+            else {
+                auto result = core::legacy::ExportLegacyTextureSet(
+                    state.textureStack, state.legacyIniMeta, *target, "Rou.ini");
+                state.statusMessage = result ? "Legacy-Set als Projekt-Override exportiert nach: " + target->string()
+                                             : "Export fehlgeschlagen: " + result.error();
+            }
         }
         ImGui::EndDisabled();
         if (!state.hasLegacyIniMeta) {
@@ -3095,8 +3160,11 @@ void DrawAdvancedFileOps(EditorState& state) {
         UI::InputInt("Höhe##walkLegacy", &state.walkLegacyHeight);
         if (UI::Button("Importieren##shbd")) {
             if (state.walkLegacyWidth > 0 && state.walkLegacyHeight > 0) {
+                const auto inputPath = PreferProjectOverride(
+                    state.project, core::ProjectOutputSide::Client,
+                    std::filesystem::path(state.walkLegacyPath));
                 auto result = core::ImportLegacyShbd(
-                    state.walkLegacyPath,
+                    inputPath,
                     static_cast<std::uint32_t>(state.walkLegacyWidth),
                     static_cast<std::uint32_t>(state.walkLegacyHeight), &state.shbdHeader);
                 if (result) {
@@ -3111,16 +3179,24 @@ void DrawAdvancedFileOps(EditorState& state) {
         }
         ImGui::SameLine();
         if (UI::Button("Exportieren##shbd")) {
-            auto result = core::ExportLegacyShbd(state.walkGrid, state.walkLegacyPath, state.shbdHeader);
-            state.statusMessage = result ? "Legacy-shbd exportiert nach: " + std::string(state.walkLegacyPath)
-                                          : "Export fehlgeschlagen: " + result.error();
+            auto target = PrepareProjectClientRequestedOutput(
+                state.project, std::filesystem::path(state.walkLegacyPath));
+            if (!target) state.statusMessage = "Export blockiert: " + target.error();
+            else {
+                auto result = core::ExportLegacyShbd(state.walkGrid, *target, state.shbdHeader);
+                state.statusMessage = result ? "Legacy-shbd als Projekt-Override exportiert nach: " + target->string()
+                                             : "Export fehlgeschlagen: " + result.error();
+            }
         }
 
         ImGui::Separator();
         ImGui::TextDisabled("Legacy-Objekt-Placement (.shmd)");
         UI::InputText("Pfad##shmd", state.legacyShmdPath, sizeof(state.legacyShmdPath));
         if (UI::Button("Importieren##shmd")) {
-            auto result = core::legacy::ParseLegacyShmd(state.legacyShmdPath);
+            const auto inputPath = PreferProjectOverride(
+                state.project, core::ProjectOutputSide::Client,
+                std::filesystem::path(state.legacyShmdPath));
+            auto result = core::legacy::ParseLegacyShmd(inputPath);
             if (result) {
                 state.placementSet = std::move(*result);
                 state.selectedObject = kNoObjectSelection;
@@ -3136,7 +3212,7 @@ void DrawAdvancedFileOps(EditorState& state) {
                 state.shmdEditorLockedKeys.clear();
                 state.shmdEditorLabels.clear();
                 state.shmdEditorGroups.clear();
-                const std::filesystem::path shmdMapDir = std::filesystem::path(state.legacyShmdPath).parent_path();
+                const std::filesystem::path shmdMapDir = inputPath.parent_path();
                 state.nifMeshRenderer.LoadModelsForSet(state.placementSet, shmdMapDir);
                 RebuildShmdCategoryRenderSet(state, shmdMapDir);
                 state.statusMessage = "Legacy-shmd importiert (" + std::to_string(state.placementSet.Count()) +
@@ -3148,15 +3224,23 @@ void DrawAdvancedFileOps(EditorState& state) {
         }
         ImGui::SameLine();
         if (UI::Button("Exportieren##shmd")) {
-            auto result = core::legacy::SerializeLegacyShmd(state.placementSet, state.legacyShmdPath);
-            state.statusMessage = result ? "Legacy-shmd exportiert nach: " + std::string(state.legacyShmdPath)
-                                          : "Export fehlgeschlagen: " + result.error();
+            auto target = PrepareProjectClientRequestedOutput(
+                state.project, std::filesystem::path(state.legacyShmdPath));
+            if (!target) state.statusMessage = "Export blockiert: " + target.error();
+            else {
+                auto result = core::legacy::SerializeLegacyShmd(state.placementSet, *target);
+                state.statusMessage = result ? "Legacy-shmd als Projekt-Override exportiert nach: " + target->string()
+                                             : "Export fehlgeschlagen: " + result.error();
+            }
         }
 
         ImGui::TextDisabled("Legacy räumlicher Index (.idm) - reiner Pass-Through, Semantik ungeklärt");
         UI::InputText("Pfad##idm", state.legacyIdmPath, sizeof(state.legacyIdmPath));
         if (UI::Button("Importieren##idm")) {
-            auto result = core::legacy::ParseLegacyIdm(state.legacyIdmPath);
+            const auto inputPath = PreferProjectOverride(
+                state.project, core::ProjectOutputSide::Client,
+                std::filesystem::path(state.legacyIdmPath));
+            auto result = core::legacy::ParseLegacyIdm(inputPath);
             if (result) {
                 state.legacySpatialIndex = std::move(*result);
                 state.hasLegacySpatialIndex = true;
@@ -3168,16 +3252,24 @@ void DrawAdvancedFileOps(EditorState& state) {
         ImGui::SameLine();
         ImGui::BeginDisabled(!state.hasLegacySpatialIndex);
         if (UI::Button("Exportieren##idm")) {
-            auto result = core::legacy::SerializeLegacyIdm(state.legacySpatialIndex, state.legacyIdmPath);
-            state.statusMessage = result ? "Legacy-idm exportiert nach: " + std::string(state.legacyIdmPath)
-                                          : "Export fehlgeschlagen: " + result.error();
+            auto target = PrepareProjectClientRequestedOutput(
+                state.project, std::filesystem::path(state.legacyIdmPath));
+            if (!target) state.statusMessage = "Export blockiert: " + target.error();
+            else {
+                auto result = core::legacy::SerializeLegacyIdm(state.legacySpatialIndex, *target);
+                state.statusMessage = result ? "Legacy-idm als Projekt-Override exportiert nach: " + target->string()
+                                             : "Export fehlgeschlagen: " + result.error();
+            }
         }
         ImGui::EndDisabled();
 
         ImGui::TextDisabled("Legacy-Zonen-Metadaten (.aid)");
         UI::InputText("Pfad##aid", state.legacyAidPath, sizeof(state.legacyAidPath));
         if (UI::Button("Importieren##aid")) {
-            auto result = core::legacy::ParseLegacyAid(state.legacyAidPath);
+            const auto inputPath = PreferProjectOverride(
+                state.project, core::ProjectOutputSide::Client,
+                std::filesystem::path(state.legacyAidPath));
+            auto result = core::legacy::ParseLegacyAid(inputPath);
             if (result) {
                 state.legacyZoneMetadata = *result;
                 state.selectedZone = 0;
@@ -3191,9 +3283,14 @@ void DrawAdvancedFileOps(EditorState& state) {
         ImGui::SameLine();
         ImGui::BeginDisabled(!state.hasLegacyZoneMetadata);
         if (UI::Button("Exportieren##aid")) {
-            auto result = core::legacy::SerializeLegacyAid(state.legacyZoneMetadata, state.legacyAidPath);
-            state.statusMessage = result ? "Legacy-aid exportiert nach: " + std::string(state.legacyAidPath)
-                                          : "Export fehlgeschlagen: " + result.error();
+            auto target = PrepareProjectClientRequestedOutput(
+                state.project, std::filesystem::path(state.legacyAidPath));
+            if (!target) state.statusMessage = "Export blockiert: " + target.error();
+            else {
+                auto result = core::legacy::SerializeLegacyAid(state.legacyZoneMetadata, *target);
+                state.statusMessage = result ? "Legacy-aid als Projekt-Override exportiert nach: " + target->string()
+                                             : "Export fehlgeschlagen: " + result.error();
+            }
         }
         ImGui::EndDisabled();
         if (state.hasLegacyZoneMetadata) {
@@ -17539,8 +17636,13 @@ std::filesystem::path InterfaceProjectOverrideRoot(const EditorState& state) {
 }
 
 std::filesystem::path InterfaceProjectOverridePath(const EditorState& state, const std::string& rel) {
-    const auto root = InterfaceProjectOverrideRoot(state);
-    return root.empty() ? std::filesystem::path{} : root / std::filesystem::path(rel);
+    const std::filesystem::path relative(rel);
+    if (relative.empty() || relative.is_absolute() || relative.has_root_name() ||
+        relative.has_root_directory() || HasParentTraversal(relative)) return {};
+    auto target = ProjectPathForRelative(
+        state.project, core::ProjectOutputSide::Client,
+        std::filesystem::path("resmenu") / relative);
+    return target ? *target : std::filesystem::path{};
 }
 
 bool IsRegularFileNoThrow(const std::filesystem::path& path) {
