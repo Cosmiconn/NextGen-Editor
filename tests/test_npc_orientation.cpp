@@ -152,7 +152,8 @@ int main() {
         }
 
         EditorState st;
-        const auto projectRoot = root / "_project";
+        const auto projectRoot = root.parent_path() / "nextgen_editor_ai_workspace_project_test";
+        std::filesystem::remove_all(projectRoot, ec);
         std::snprintf(st.project.projectFolder, sizeof(st.project.projectFolder), "%s", projectRoot.string().c_str());
         std::snprintf(st.project.serverFolder, sizeof(st.project.serverFolder), "%s", root.string().c_str());
         st.shnServerRoot=root.string();
@@ -196,6 +197,7 @@ int main() {
               "Nach dem Speichern kann auf PineScript gewechselt werden");
 
         std::filesystem::remove_all(root,ec);
+        std::filesystem::remove_all(projectRoot,ec);
     }
 
     std::printf("\n== SHN-Familien: ausschließlich ID automatisch propagieren ==\n");
