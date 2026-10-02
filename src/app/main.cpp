@@ -16630,7 +16630,6 @@ void DrawLayerManagerPanel(EditorState& state) {
                 state.textureStack.Layer(ni).name=copy.name+" Kopie";
                 state.selectedLayer=static_cast<int>(ni);
                 RecordTextureLayerAdded(state, ni, selectedBefore);
-                if (removedLayer) RecordTextureLayerRemoved(state, i, std::move(*removedLayer), selectedBefore);
                 state.layerHidden.resize(state.textureStack.LayerCount(),0);
                 state.renderer.LoadTerrainTextures(state.textureStack,
                     !state.textureAssetRoot.empty()?state.textureAssetRoot:CurrentObjectAssetMapDir(state));
@@ -16643,6 +16642,7 @@ void DrawLayerManagerPanel(EditorState& state) {
                 auto removedLayer = state.textureStack.TakeLayer(i);
                 state.selectedLayer=state.textureStack.LayerCount()==0?-1:
                     std::min(state.selectedLayer,static_cast<int>(state.textureStack.LayerCount())-1);
+                if (removedLayer) RecordTextureLayerRemoved(state, i, std::move(*removedLayer), selectedBefore);
                 state.layerHidden.resize(state.textureStack.LayerCount(),0);
                 state.renderer.LoadTerrainTextures(state.textureStack,
                     !state.textureAssetRoot.empty()?state.textureAssetRoot:CurrentObjectAssetMapDir(state));
