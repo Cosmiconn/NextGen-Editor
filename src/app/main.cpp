@@ -2918,6 +2918,7 @@ void RefreshShmdCategoryVisibility(EditorState& state) {
 // Verteilt ein frisch geöffnetes LegacyMapProject auf die einzelnen Editor-Zustandsfelder -
 // setzt außerdem alle Undo-Stacks/Auswahl/Dirty-Flags zurück (neue Karte, alte Historie ungültig).
 void ApplyProjectToState(EditorState& state, core::legacy::LegacyMapProject&& project, const std::filesystem::path& mapDir) {
+    const bool hadHeightmap = state.mapHasHeightmap;
     const bool hasHeightmap = project.hasHeightmap &&
         project.heightmap.Width() > 0 && project.heightmap.Height() > 0;
     state.preservedMapFiles = std::move(project.preservedFiles);
@@ -2931,6 +2932,9 @@ void ApplyProjectToState(EditorState& state, core::legacy::LegacyMapProject&& pr
     // Terrain maps are framed from the real height grid. Terrain-less SHMD/NIF maps are
     // framed later from actual NIF mesh bounds; never invent a 50x50 pseudo-heightmap.
     if (hasHeightmap) {
+        // NIF-only maps force terrain visibility off. When returning to a real terrain map,
+        // restore it once; terrain-to-terrain switches still preserve a user's manual hide.
+        if (!hadHeightmap) state.showTerrain = true;
         const float spanX = static_cast<float>(state.heightmap.Width() - 1) * state.heightmap.BlockWidth();
         const float spanZ = static_cast<float>(state.heightmap.Height() - 1) * state.heightmap.BlockHeight();
         const auto [lo, hi] = state.heightmap.MinMax();
@@ -13710,7 +13714,11 @@ static bool IsObjectHidden(const EditorState& state, std::size_t i) {
 // Bereich "Sichtbarkeit" im Werkzeug-Panel des Map-Editors.
 static void DrawVisibilityPanel(EditorState& state) {
     RefreshObjectVisibility(state);
+    const bool terrainAvailable = MapSupportsTerrainEditing(state);
+    if (!terrainAvailable) state.showTerrain = false;
+    ImGui::BeginDisabled(!terrainAvailable);
     UI::Checkbox("Terrain", &state.showTerrain);
+    ImGui::EndDisabled();
     UI::Checkbox(L("Objekt-Modelle (3D)","Object models (3D)"), &state.showObjectMeshes);
     UI::Checkbox(L("Objekt-Platzhalter (3D)","Object markers (3D)"), &state.showObjectMarkers);
 
@@ -19003,7 +19011,10 @@ void DrawMapEditorWorkspace(EditorState& state) {
     if (state.legacySaveDir[0]) ImGui::TextDisabled("%s", state.legacySaveDir);
     ImGui::Dummy(ImVec2(0,4));
     ImGui::TextDisabled("%s",L("Größe","Size"));
-    ImGui::Text("%u × %u", state.heightmap.Width(), state.heightmap.Height());
+    if (MapSupportsTerrainEditing(state))
+        ImGui::Text("%u × %u", state.heightmap.Width(), state.heightmap.Height());
+    else
+        ImGui::TextDisabled("%s", L("NIF-Szene · kein HTD/HTDG","NIF scene · no HTD/HTDG"));
     ImGui::TextDisabled("%s",L("Textur-Layer","Texture layers"));
     ImGui::Text("%zu", state.textureStack.LayerCount());
     ImGui::TextDisabled("%s",L("Objekte","Objects"));
@@ -19049,10 +19060,15 @@ void DrawMapEditorWorkspace(EditorState& state) {
     ImGui::SeparatorText(L("Ansicht","View"));
     UI::Checkbox(T("workspace.wireframe"), &state.wireframe);
     if (UI::Button(T("workspace.centercamera"), ImVec2(-1,0))) {
-        const float spanX = static_cast<float>(state.heightmap.Width() > 1 ? state.heightmap.Width() - 1 : 1) * state.heightmap.BlockWidth();
-        const float spanZ = static_cast<float>(state.heightmap.Height() > 1 ? state.heightmap.Height() - 1 : 1) * state.heightmap.BlockHeight();
-        const auto [lo, hi] = state.heightmap.MinMax();
-        state.camera.SetTarget(spanX * 0.5f, (lo + hi) * 0.5f, spanZ * 0.5f);
+        if (MapSupportsTerrainEditing(state)) {
+            const float spanX = static_cast<float>(state.heightmap.Width() - 1) * state.heightmap.BlockWidth();
+            const float spanZ = static_cast<float>(state.heightmap.Height() - 1) * state.heightmap.BlockHeight();
+            const auto [lo, hi] = state.heightmap.MinMax();
+            state.camera.SetTarget(spanX * 0.5f, (lo + hi) * 0.5f, spanZ * 0.5f);
+        } else if (!FocusLoadedNifSceneFromBounds(state)) {
+            state.statusMessage = L("Keine renderbare NIF-Geometrie zum Zentrieren gefunden.",
+                                    "No renderable NIF geometry was found to center.");
+        }
     }
     ImGui::End();
     ImGui::PopStyleColor();
