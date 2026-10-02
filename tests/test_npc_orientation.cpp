@@ -332,31 +332,75 @@ int main() {
               "Neue Kartenaktion nach Undo invalidiert den gesamten Redo-Zweig domainübergreifend");
     }
 
-    std::printf("\n== Map-Scanner: eigenständige NIF-Karte ohne INI/HTD ==\n");
+    std::printf("\n== Map-Scanner: Source + Projekt-only + NIF ohne INI/HTD ==\n");
     {
-        const auto root = std::filesystem::temp_directory_path() / "nextgen_nif_only_map_scan_test";
+        const auto base = std::filesystem::temp_directory_path() / "nextgen_nif_only_map_scan_test";
+        const auto clientRoot = base / "ClientSource";
+        const auto root = clientRoot / "resmap";
+        const auto projectRoot = base / "Project";
         std::error_code ec;
-        std::filesystem::remove_all(root, ec);
+        std::filesystem::remove_all(base, ec);
+
         const auto nifMapDir = root / "field" / "MeshOnly";
         const auto modelDir = root / "object" / "Chair";
+        const auto projectIniDir = projectRoot / "Client" / "resmap" / "ProjectOnly";
+        const auto projectNifDir = projectRoot / "Client" / "resmap" / "ProjectMesh";
+        const auto projectOverrideNifDir =
+            projectRoot / "Client" / "resmap" / "field" / "MeshOnly";
         std::filesystem::create_directories(nifMapDir, ec);
         std::filesystem::create_directories(modelDir, ec);
-        { std::ofstream out(nifMapDir / "MeshOnly.nif", std::ios::binary); out << "fixture"; }
-        { std::ofstream out(modelDir / "Chair.nif", std::ios::binary); out << "not-a-map"; }
+        std::filesystem::create_directories(projectIniDir, ec);
+        std::filesystem::create_directories(projectNifDir, ec);
+        std::filesystem::create_directories(projectOverrideNifDir, ec);
 
-        const auto maps = ScanForMaps(root);
-        const auto it = std::find_if(maps.begin(), maps.end(), [](const DiscoveredMap& m) {
+        const auto sourceNif = nifMapDir / "MeshOnly.nif";
+        const auto overrideNif = projectOverrideNifDir / "MeshOnly.nif";
+        { std::ofstream out(sourceNif, std::ios::binary); out << "source-nif"; }
+        { std::ofstream out(overrideNif, std::ios::binary); out << "override-nif"; }
+        { std::ofstream out(modelDir / "Chair.nif", std::ios::binary); out << "not-a-map"; }
+        { std::ofstream out(projectIniDir / "ProjectOnly.ini", std::ios::binary); out << ""; }
+        { std::ofstream out(projectNifDir / "ProjectMesh.nif", std::ios::binary); out << "project-nif"; }
+
+        auto maps = ScanForMaps(root);
+        const auto sourceIt = std::find_if(maps.begin(), maps.end(), [](const DiscoveredMap& m) {
             return m.name == "MeshOnly";
         });
-        Check(it != maps.end() && it->standaloneNif &&
-              std::filesystem::path(it->iniPath).filename() == "MeshOnly.nif",
-              "Scanner erkennt <field>/<Map>/<Map>.nif ohne INI als NIF-only-Karte");
+        Check(sourceIt != maps.end() && sourceIt->standaloneNif && !sourceIt->projectOnly &&
+              std::filesystem::path(sourceIt->iniPath).filename() == "MeshOnly.nif",
+              "Source-Scanner erkennt <field>/<Map>/<Map>.nif ohne INI als NIF-only-Karte");
         Check(std::none_of(maps.begin(), maps.end(), [](const DiscoveredMap& m) {
                   return m.name == "Chair";
               }),
               "Normale resmap-NIF-Modellordner außerhalb field werden nicht als Karten fehlklassifiziert");
 
-        std::filesystem::remove_all(root, ec);
+        ProjectConfig cfg;
+        std::snprintf(cfg.projectFolder, sizeof(cfg.projectFolder), "%s", projectRoot.string().c_str());
+        std::snprintf(cfg.clientFolder, sizeof(cfg.clientFolder), "%s", clientRoot.string().c_str());
+
+        const std::size_t added = MergeProjectOnlyMaps(cfg, maps);
+        Check(added == 2,
+              "Projekt-Katalog ergänzt genau die beiden wirklich projekt-only Karten und dupliziert keinen Source-Override");
+        Check(std::count_if(maps.begin(), maps.end(), [](const DiscoveredMap& m) {
+                  return m.name == "MeshOnly";
+              }) == 1,
+              "Vorhandene Source-Karte bleibt einmalig im Katalog; Projekt-Override erzeugt keinen Doppeleintrag");
+
+        const auto projectIni = std::find_if(maps.begin(), maps.end(), [](const DiscoveredMap& m) {
+            return m.name == "ProjectOnly";
+        });
+        Check(projectIni != maps.end() && projectIni->projectOnly && !projectIni->standaloneNif,
+              "Projekt-only <Project>/Client/resmap/<Map>/<Map>.ini wird nach Neustart auffindbar");
+
+        const auto projectNif = std::find_if(maps.begin(), maps.end(), [](const DiscoveredMap& m) {
+            return m.name == "ProjectMesh";
+        });
+        Check(projectNif != maps.end() && projectNif->projectOnly && projectNif->standaloneNif,
+              "Projekt-only <Project>/Client/resmap/<Map>/<Map>.nif wird als NIF-only-Karte auffindbar");
+
+        Check(PreferProjectOverride(cfg, core::ProjectOutputSide::Client, sourceNif) == overrideNif,
+              "Standalone-NIF-Quelle löst einen vorhandenen Projekt-NIF-Override vor der Source auf");
+
+        std::filesystem::remove_all(base, ec);
     }
 
     std::printf("\n== Map-Projekt-Override: Read-Priorität und Save-Grenzen ==\n");
