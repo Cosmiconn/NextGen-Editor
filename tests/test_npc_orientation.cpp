@@ -406,6 +406,19 @@ int main() {
               "Neue Kartenaktion nach Undo invalidiert den gesamten Redo-Zweig domainübergreifend");
     }
 
+    std::printf("\n== Map-Capability: Terrain-Werkzeuge nur mit echter Heightmap ==\n");
+    {
+        EditorState nifOnly;
+        std::snprintf(nifOnly.legacySaveStem, sizeof(nifOnly.legacySaveStem), "MeshOnly");
+        Check(!MapSupportsTerrainEditing(nifOnly),
+              "NIF-only-Karte ohne Heightmap deaktiviert Terrain/Textur/Walk-Capability");
+
+        EditorState terrainMap;
+        terrainMap.heightmap = core::Heightmap(2, 2, 50.0f, 50.0f);
+        Check(MapSupportsTerrainEditing(terrainMap),
+              "Karte mit echter Heightmap aktiviert Terrain/Textur/Walk-Capability");
+    }
+
     std::printf("\n== Map-Scanner: Source + Projekt-only + NIF ohne INI/HTD ==\n");
     {
         const auto base = std::filesystem::temp_directory_path() / "nextgen_nif_only_map_scan_test";
