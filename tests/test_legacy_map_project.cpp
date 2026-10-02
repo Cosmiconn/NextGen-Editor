@@ -6,6 +6,7 @@
 // hochgeladenen Kartensets sind nicht Teil des Repos.
 
 #include "mapeditor/core/legacy/LegacyMapProject.hpp"
+#include "mapeditor/core/ObjectPlacementIO.hpp"
 
 #include <cmath>
 #include <algorithm>
@@ -62,10 +63,59 @@ void TestIniPreservation() {
     std::filesystem::remove(path);
 }
 
+void TestMeshBackedMapWithoutHtd() {
+    const auto root = std::filesystem::temp_directory_path() / "nextgen-mesh-backed-map-test";
+    const auto out = root / "out";
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
+    std::filesystem::create_directories(root, ec);
+
+    const auto ini = root / "MeshMap.ini";
+    { std::ofstream empty(ini, std::ios::binary); }
+
+    core::ObjectPlacementSet objects;
+    core::ObjectCategoryList ground;
+    ground.name = "GroundObject";
+    ground.modelPaths.push_back("resmap\\field\\MeshMap\\MeshMapGround.nif");
+    objects.categories.push_back(std::move(ground));
+    Check(legacy::SerializeLegacyShmd(objects, root / "MeshMap.shmd").has_value(),
+          "Mesh-backed fixture SHMD written");
+
+    legacy::LegacyMapOpenReport report;
+    auto project = legacy::OpenLegacyMap(ini, &report);
+    Check(project.has_value(), "Mesh/NIF-backed map opens with empty ini and no HTD");
+    if (!project) {
+        std::filesystem::remove_all(root, ec);
+        return;
+    }
+    Check(!project->hasHeightmap, "Mesh/NIF-backed map does not invent a heightmap");
+    Check(project->hasObjects && !project->objects.categories.empty() &&
+              project->objects.categories[0].name == "GroundObject" &&
+              project->objects.categories[0].modelPaths.size() == 1,
+          "Mesh/NIF-backed map keeps SHMD GroundObject NIF scene references");
+
+    Check(legacy::SaveLegacyMap(*project, out, "MeshMap").has_value(),
+          "Mesh/NIF-backed map saves without synthesizing terrain");
+    Check(std::filesystem::is_regular_file(out / "MeshMap.ini") &&
+              std::filesystem::file_size(out / "MeshMap.ini") == 0,
+          "Empty source ini remains byte-exactly empty");
+    Check(!std::filesystem::exists(out / "MeshMap.HTD"),
+          "Save does not invent an HTD for a mesh/NIF-backed map");
+    Check(std::filesystem::is_regular_file(out / "MeshMap.shmd"),
+          "Mesh/NIF-backed SHMD scene is retained");
+
+    auto reopened = legacy::OpenLegacyMap(out / "MeshMap.ini");
+    Check(reopened && !reopened->hasHeightmap && reopened->hasObjects,
+          "Saved mesh/NIF-backed map reopens without HTD");
+
+    std::filesystem::remove_all(root, ec);
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
     TestIniPreservation();
+    TestMeshBackedMapWithoutHtd();
     if (argc < 2) {
         std::printf("(Test \u00fcbersprungen - Aufruf mit: %s <pfad/zu/karte.ini>)\n", argv[0]);
         return 0;
