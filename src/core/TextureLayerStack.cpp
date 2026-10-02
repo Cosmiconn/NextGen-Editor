@@ -33,6 +33,20 @@ void TextureLayerStack::RemoveLayer(std::size_t index) {
     layers_.erase(layers_.begin() + static_cast<std::ptrdiff_t>(index));
 }
 
+std::optional<TextureLayer> TextureLayerStack::TakeLayer(std::size_t index) {
+    if (index >= layers_.size()) return std::nullopt;
+    TextureLayer layer = std::move(layers_[index]);
+    layers_.erase(layers_.begin() + static_cast<std::ptrdiff_t>(index));
+    return layer;
+}
+
+void TextureLayerStack::InsertLayer(std::size_t index, TextureLayer layer) {
+    index = std::min(index, layers_.size());
+    // A history patch always comes from the same stack resolution. Keep the exact BlendMap
+    // payload instead of reallocating/normalizing it.
+    layers_.insert(layers_.begin() + static_cast<std::ptrdiff_t>(index), std::move(layer));
+}
+
 void TextureLayerStack::MoveLayer(std::size_t fromIndex, std::size_t toIndex) {
     if (fromIndex >= layers_.size() || toIndex >= layers_.size() || fromIndex == toIndex) return;
     TextureLayer moved = std::move(layers_[fromIndex]);
