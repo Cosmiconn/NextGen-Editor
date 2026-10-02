@@ -57,6 +57,22 @@ std::filesystem::path TailFromComponent(
     return tail;
 }
 
+bool IsSameOrDescendant(
+    const std::filesystem::path& candidate,
+    const std::filesystem::path& root) {
+
+    if (candidate.empty() || root.empty()) return false;
+    const auto stableCandidate = StableAbsolute(candidate);
+    const auto stableRoot = StableAbsolute(root);
+    std::error_code ec;
+    const auto relative = std::filesystem::relative(stableCandidate, stableRoot, ec);
+    if (ec || relative.is_absolute()) return false;
+    for (const auto& component : relative) {
+        if (component == "..") return false;
+    }
+    return true;
+}
+
 std::filesystem::path CanonicalRuntimeRelative(
     const std::filesystem::path& source,
     const std::filesystem::path& sourceRelative,
@@ -83,6 +99,27 @@ std::filesystem::path CanonicalRuntimeRelative(
 
 } // namespace
 
+std::expected<void, std::string> ValidateProjectOutputRoots(
+    const std::filesystem::path& projectRoot,
+    const std::filesystem::path& clientSourceRoot,
+    const std::filesystem::path& serverSourceRoot) {
+
+    if (projectRoot.empty())
+        return std::unexpected("Kein Projekt-Ordner konfiguriert.");
+
+    for (const auto& [label, sourceRoot] : {
+             std::pair<const char*, std::filesystem::path>{"Client", clientSourceRoot},
+             std::pair<const char*, std::filesystem::path>{"Server", serverSourceRoot}}) {
+        if (sourceRoot.empty()) continue;
+        if (IsSameOrDescendant(projectRoot, sourceRoot)) {
+            return std::unexpected(
+                "Projektordner liegt innerhalb der read-only " + std::string(label) +
+                "-Quelle: " + projectRoot.string());
+        }
+    }
+    return {};
+}
+
 std::expected<std::filesystem::path, std::string> ProjectOutputForRelative(
     const std::filesystem::path& projectRoot,
     ProjectOutputSide side,
@@ -107,6 +144,12 @@ std::expected<std::filesystem::path, std::string> ProjectOutputForSource(
         return std::unexpected("Kein Quellordner fuer " + std::string(SideName(side)) + " konfiguriert.");
     if (sourcePath.empty())
         return std::unexpected("Leerer Quelldateipfad.");
+
+    const auto separated = ValidateProjectOutputRoots(
+        projectRoot,
+        side == ProjectOutputSide::Client ? sourceRoot : std::filesystem::path{},
+        side == ProjectOutputSide::Server ? sourceRoot : std::filesystem::path{});
+    if (!separated) return std::unexpected(separated.error());
 
     const auto root = StableAbsolute(sourceRoot);
     const auto source = StableAbsolute(sourcePath);
