@@ -43,7 +43,10 @@ Automatisierungs-Hook (`NEXTGEN_EDITOR_SCRIPT`) für reproduzierbare Viewport-Sc
 Inzwischen ergänzt: Vertex-Snap (V beim Ziehen), Kartenlicht/Nebel aus der SHMD, IDM-Pflege beim
 Export, Blendmaps in Originalauflösung.
 
-Weiterhin ehrlich offen: per-Viewport-Show-Flags, Actor-Snap, Pivot-Bearbeitung, Debug-Viewmodes, 2D-Marquee auf Kontaktgeometrie, Windows-Build dieser Stufe.
+Ebenfalls ergänzt: Pivot-Modus (Auswahlmitte / aktives Objekt), Debug-Ansichten Vertexfarbe/UV0/Alpha,
+KFM-Animationen duplizieren/löschen.
+
+Weiterhin ehrlich offen: per-Viewport-Show-Flags, Actor-Snap, frei verschiebbarer Pivot, Debug-Viewmodes, 2D-Marquee auf Kontaktgeometrie, Windows-Build dieser Stufe.
 
 ---
 

@@ -623,6 +623,7 @@ struct EditorState {
     bool unrealNavigation = true;
     int cameraSpeedSetting = core::level::kDefaultCameraSpeedSetting;
     bool surfaceSnap = false;         // Verschieben setzt Objekte laufend auf das HTD-Terrain
+    bool pivotAtActiveObject = false; // Gizmo-Pivot: false = Auswahlmitte, true = aktives (zuletzt gewähltes) Objekt
     bool gameView = false;            // G: alle Editor-Helfer im Viewport ausblenden
     bool showViewportStats = true;
     bool showViewportGrid = false;
@@ -1520,6 +1521,7 @@ void SaveViewportSettings(EditorState& state) {
     out << "unreal_navigation=" << (state.unrealNavigation ? 1 : 0) << "\n"
         << "camera_speed=" << state.cameraSpeedSetting << "\n"
         << "surface_snap=" << (state.surfaceSnap ? 1 : 0) << "\n"
+        << "pivot_active=" << (state.pivotAtActiveObject ? 1 : 0) << "\n"
         << "show_stats=" << (state.showViewportStats ? 1 : 0) << "\n"
         << "show_grid=" << (state.showViewportGrid ? 1 : 0) << "\n"
         << "show_axes=" << (state.showViewportAxes ? 1 : 0) << "\n"
@@ -1557,6 +1559,7 @@ void LoadViewportSettings(EditorState& state) {
             state.cameraSpeedSetting = std::clamp(std::atoi(value), core::level::kMinCameraSpeedSetting,
                                                   core::level::kMaxCameraSpeedSetting);
         else if (key == "surface_snap") state.surfaceSnap = b;
+        else if (key == "pivot_active") state.pivotAtActiveObject = b;
         else if (key == "show_stats") state.showViewportStats = b;
         else if (key == "show_grid") state.showViewportGrid = b;
         else if (key == "show_axes") state.showViewportAxes = b;
@@ -2640,6 +2643,17 @@ ObjectSelectionPivot ComputeObjectSelectionPivot(const EditorState& state) {
     if (p.editableCount == 0 || !orientationSource) return p;
     const float inv = 1.0f/static_cast<float>(p.editableCount);
     p.position.x*=inv; p.position.y*=inv; p.position.z*=inv;
+    if (state.pivotAtActiveObject) {
+        // Wie in Unreal: Pivot und Ausrichtung des aktiven (zuletzt gewählten) Objekts.
+        for (auto it = state.selectedObjects.rbegin(); it != state.selectedObjects.rend(); ++it) {
+            if (IsObjectEditorLocked(state,*it)) continue;
+            if (const auto* active = EditableObject(state,*it)) {
+                p.position = {active->posX, active->posY, active->posZ};
+                orientationSource = active;
+                break;
+            }
+        }
+    }
     p.rotation = NormalizeEditQuat({orientationSource->rotX,orientationSource->rotY,
                                     orientationSource->rotZ,orientationSource->rotW});
     p.scale = p.editableCount == 1 ? std::max(0.001f,orientationSource->scale) : 1.0f;
@@ -16529,6 +16543,15 @@ bool DrawViewportToolbar(EditorState& state, const ImVec2& imageScreenPos, float
             state.objectGizmoMatrixValid = false;
         }
         viewport_ui::Tooltip(L("Koordinatensystem des Gizmos (Welt/Lokal)", "Gizmo coordinate space (world/local)"));
+        ImGui::SameLine(0.0f, 4.0f);
+        if (ImGui::SmallButton(state.pivotAtActiveObject ? L("Pivot: Aktiv##vpPivot", "Pivot: active##vpPivot")
+                                                         : L("Pivot: Mitte##vpPivot", "Pivot: center##vpPivot"))) {
+            state.pivotAtActiveObject = !state.pivotAtActiveObject;
+            state.objectGizmoMatrixValid = false;
+            state.viewportSettingsDirty = true;
+        }
+        viewport_ui::Tooltip(L("Drehen/Skalieren um die Auswahlmitte oder um das aktive (zuletzt gewählte) Objekt",
+                               "Rotate/scale around the selection center or the active (last selected) object"));
         ImGui::SameLine(0.0f, 6.0f);
         if (viewport_ui::ToggleChip(L("Boden", "Surface"), &state.surfaceSnap,
                                     L("Surface Snap: verschobene Objekte folgen dem begehbaren Boden (HTD + SHMD-GroundObject)",

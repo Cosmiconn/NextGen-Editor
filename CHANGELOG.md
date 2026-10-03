@@ -1,3 +1,6 @@
+## Level Editor — pivot mode
+- Viewport toolbar "Pivot: center/active": multi-selections rotate and scale around the selection center (default) or around the active (last selected) object with its orientation, like Unreal. Persisted in `viewport.txt`.
+
 ## Renderer — vertex color, UV0 and alpha debug views
 - View modes now also include vertex colors, UV0 (red = U, green = V) and effective alpha for NIF meshes; terrain shows its vertex colors, tile UVs and is opaque in the alpha view. Verified on Roumen (semi-transparent water stands out in the alpha view).
 
