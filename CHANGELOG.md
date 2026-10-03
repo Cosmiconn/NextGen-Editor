@@ -1,3 +1,6 @@
+## Level Editor — responsive viewport toolbar
+- Narrow viewports wrap the coordinate-space/pivot/snap controls into a second toolbar row; very narrow 2×2 cells put the transform buttons on the second row and leave snap values to the Properties panel. The stats overlay moves below the toolbar rows. Verified in the single and 2×2 layouts, and with the Windows build under Wine.
+
 ## Windows build check (MinGW cross-compile + Wine)
 - Fixed a Windows-only compile error: `SceneLighting.hpp` used a local named `far`, which `<windows.h>` defines as a macro (renamed to `viewDistance`).
 - Cross-built the complete project for Windows with MinGW-w64 GCC 13 (Editor.exe with the `_WIN32` dialog/WIC/icon paths, all tools and tests) and ran the 30 test binaries under Wine: 29/30 pass. `kfm_file` fails only at `SaveKfmFile`'s exclusive create (`std::ios::noreplace`), which MinGW maps to an fopen mode the msvcrt runtime under Wine lacks; MSVC's UCRT supports it. An MSVC build on the Windows machine remains the authoritative check.

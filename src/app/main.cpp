@@ -13248,7 +13248,7 @@ bool JumpToCameraBookmark(EditorState& state, int slot) {
 
 const char* ViewportPresetName(int preset) {
     switch (preset) {
-        case 1: return L("Oben (Nord oben)", "Top (north up)");
+        case 1: return L("Oben", "Top"); // Norden oben
         case 2: return L("Von Süden", "From south");
         case 3: return L("Von Norden", "From north");
         case 4: return L("Von Westen", "From west");
@@ -16603,11 +16603,15 @@ bool DrawViewportToolbar(EditorState& state, const ImVec2& imageScreenPos, float
     viewport_ui::Tooltip(L("Show Flags: was der Viewport zeichnet", "Show flags: what the viewport draws"));
     if (ImGui::BeginPopup("##viewportShowMenu")) { DrawViewportShowFlagsMenu(state); ImGui::EndPopup(); }
 
-    // Schmale Viewports (2er-/4er-Layout): Snap- und Pivot-Leiste ausblenden, damit sich linke und
-    // rechte Gruppe nicht überlappen; die Werte bleiben im Eigenschaften-Panel erreichbar.
-    const bool compactToolbar = width < 900.0f;
+    // Schmale Viewports: die Snap-/Pivot-Gruppe rückt in eine zweite Zeile, damit sich linke und
+    // rechte Gruppe nicht überlappen.
+    const bool compactToolbar = width < 1180.0f;
+    // Sehr schmale Viewports (2x2-Layout): Transform-Knöpfe in die zweite Zeile, Snap-Werte nur im
+    // Eigenschaften-Panel.
+    const bool tinyToolbar = width < 640.0f;
     if (state.editMode == EditMode::ObjectPlacement && !state.playtestActive) {
-        ImGui::SameLine(0.0f, 12.0f);
+        if (tinyToolbar) ImGui::NewLine();
+        else ImGui::SameLine(0.0f, 12.0f);
         auto opButton = [&](const char* id, const char* label, IconDrawFn fallbackIcon,
                             const char* semanticIcon, int op, const char* unrealKey,
                             const EditorState::ShortcutBinding& shortcut) {
@@ -16621,8 +16625,10 @@ bool DrawViewportToolbar(EditorState& state, const ImVec2& imageScreenPos, float
         opButton("viewportMove", L("Verschieben", "Move"), DrawIconMove, "transform.move", 0, "W", state.shortcutGizmoMove);
         opButton("viewportRotate", L("Rotieren", "Rotate"), DrawIconRotate, "transform.rotate", 1, "E", state.shortcutGizmoRotate);
         opButton("viewportScale", L("Skalieren", "Scale"), DrawIconScale, "transform.scale", 2, "R", state.shortcutGizmoScale);
-        if (!compactToolbar) {
-        ImGui::SameLine(0.0f, 6.0f);
+        if (!tinyToolbar) {
+        // Schmale Viewports: Koordinatensystem-, Pivot- und Snap-Steuerung in eine zweite Zeile.
+        if (compactToolbar) ImGui::NewLine();
+        else ImGui::SameLine(0.0f, 6.0f);
         if (ImGui::SmallButton(state.objectGizmoLocal ? "Local##vpSpace" : "World##vpSpace")) {
             state.objectGizmoLocal = !state.objectGizmoLocal;
             state.objectGizmoMatrixValid = false;
@@ -16666,7 +16672,7 @@ bool DrawViewportToolbar(EditorState& state, const ImVec2& imageScreenPos, float
         if (rotSnap != snapBefore) state.objectGizmoSnap = rotSnap;
         else if (scaleSnap != snapBefore) state.objectGizmoSnap = scaleSnap;
         if (changed) state.viewportSettingsDirty = true;
-        } // !compactToolbar
+        } // Steuerungsgruppe (ggf. zweite Zeile)
     }
     ImGui::EndGroup();
     capturing |= ImGui::IsMouseHoveringRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), false);
@@ -16868,7 +16874,9 @@ void DrawViewportStats(EditorState& state, const ImVec2& imagePos, int w) {
     float maxW = 0.0f;
     for (const auto& l : lines) maxW = std::max(maxW, ImGui::CalcTextSize(l.c_str()).x);
     const float lineH = ImGui::GetTextLineHeight();
-    const ImVec2 p0(imagePos.x + static_cast<float>(w) - maxW - 22.0f, imagePos.y + 42.0f);
+    // Unter der Viewport-Leiste (in schmalen Viewports zweizeilig, siehe DrawViewportToolbar).
+    const bool twoToolbarRows = state.editMode == EditMode::ObjectPlacement && !state.playtestActive && w < 1180;
+    const ImVec2 p0(imagePos.x + static_cast<float>(w) - maxW - 22.0f, imagePos.y + (twoToolbarRows ? 70.0f : 42.0f));
     const ImVec2 p1(p0.x + maxW + 12.0f, p0.y + lineH * static_cast<float>(lines.size()) + 10.0f);
     dl->AddRectFilled(p0, p1, IM_COL32(6, 14, 22, 175), 5.0f);
     float y = p0.y + 5.0f;
