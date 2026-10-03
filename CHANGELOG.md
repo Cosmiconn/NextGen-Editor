@@ -5,6 +5,7 @@
 - `test_item_drop_groups`: synthetic chain always; with `-DNEXTGEN_NA2016_DATA=<folder with Client/ and Shine/>` also the measured numbers of the real files (the data is not committed).
 - Quest rewards: type 4 is labelled "Fame?". It appears only in Guard Captain Shutian's daily boss quests, a kingdom quest and one event chain (checked with the real QuestDialog texts). With the real texts, quest 251 also shows that the corrected layout matches: title "Interpretation of the Ancient Book 4", start NPC 88 = RouWeaponTitleMctZach, drops Q_TornOldBook01-05 from Bat/IceViVi/FlyingStaff/Zombie, one choice helmet per class.
 - Automation: `project <client>|<server>` sets the project source folders.
+- `test_quest_layout` also checks the real texts when `NEXTGEN_NA2016_DATA` is set: all 2304 title IDs exist in QuestDialog.shn, quest 251's title and start NPC match, and in 98 of 136 quests whose description says "defeat N ..." a kill objective has exactly that count.
 
 ## UI — characters the editor font cannot draw
 - The editor uses ImGui's built-in font (Latin-1 only), so about 70 UI strings showed "?" for –, —, …, →, ←, ↓, ↗, •, ●, ✓, ✕ and ⚠ (on Windows too). They now use drawable equivalents (-, ..., ->, <, >, v, », ·, *, OK, ×, !). Verified in the quest flow view, which showed "?" for its navigation arrows, level range dash and script check marks.

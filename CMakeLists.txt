@@ -264,13 +264,13 @@ add_test(NAME shinetext COMMAND test_shinetext ${CMAKE_CURRENT_SOURCE_DIR}/tests
 add_test(NAME questdata COMMAND test_questdata ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/data/QuestData.shn)
 add_executable(test_quest_layout tests/test_quest_layout.cpp)
 target_link_libraries(test_quest_layout PRIVATE mapeditor_core)
-add_test(NAME quest_layout COMMAND test_quest_layout ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/data/QuestData.shn)
 add_executable(test_item_drop_groups tests/test_item_drop_groups.cpp)
 target_link_libraries(test_item_drop_groups PRIVATE mapeditor_core)
 # Optional: Ordner mit den echten NA2016-Daten (Unterordner Client/ und Shine/). Die Dateien
 # gehören nicht ins Repository; ist der Pfad gesetzt, laufen zusätzliche Prüfungen gegen sie.
 set(NEXTGEN_NA2016_DATA "" CACHE PATH "Folder with NA2016 Client/ and Shine/ for extra real-data tests")
 add_test(NAME item_drop_groups COMMAND test_item_drop_groups "${NEXTGEN_NA2016_DATA}")
+add_test(NAME quest_layout COMMAND test_quest_layout ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/data/QuestData.shn "${NEXTGEN_NA2016_DATA}")
 
 add_executable(test_data_dependency tests/test_data_dependency.cpp)
 target_link_libraries(test_data_dependency PRIVATE mapeditor_core)

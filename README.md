@@ -79,6 +79,15 @@ einen getrennten Recovery-Versuch. TSV-Ergebnisse werden nach jeder Datei geschr
 `UNRESEARCHED` im Inventar bedeutet: kein Codec im Auditor; dies ist keine Aussage über
 Windows-WIC oder sonstige separate Anzeigefunktionen des Editors.
 
+Echte NA2016-Daten in den Tests (optional, nicht im Repository): Ein Ordner mit `Client/`
+(mindestens `ressystem/`) und dem Server-`Shine/` aktiviert zusätzliche Prüfungen in
+`quest_layout` (Quest-Texte, Start-NPCs, Kill-Anzahlen) und `item_drop_groups` (Drop-Kette):
+
+```powershell
+cmake -S . -B build -DNEXTGEN_NA2016_DATA=D:\Fiesta\NA2016
+ctest --test-dir build -C Release
+```
+
 ## Umfang
 
 Karten: INI, HTD/HTDG, Blend-BMP, SHBD, SHMD, IDM und AID. Zusätzlich SHN,

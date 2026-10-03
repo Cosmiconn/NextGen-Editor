@@ -5,12 +5,16 @@
 // sowie Bearbeiten + Speichern + Neuladen von Belohnungen und Drops.
 
 #include "mapeditor/core/legacy/QuestData.hpp"
+#include "mapeditor/core/legacy/ShnFile.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <map>
+#include <regex>
 #include <set>
 
 using namespace theseed::mapeditor::core::legacy;
@@ -31,6 +35,52 @@ std::vector<char> ReadAll(const std::filesystem::path& p) {
 }
 bool AllZero(const auto& bytes) {
     return std::all_of(bytes.begin(), bytes.end(), [](std::uint8_t b) { return b == 0; });
+}
+// Optional: echte NA2016-Daten (Ordner mit Client/ressystem/QuestDialog.shn und MobInfo.shn).
+// Prüft die Byte-Lage gegen die Texte: Titel/Beschreibung, Start-NPC und Kill-Anzahlen.
+void RealData(const QuestDataFile& f, const std::filesystem::path& root) {
+    const auto ressystem = root / "Client" / "ressystem";
+    const auto dialog = LoadShnFile(ressystem / "QuestDialog.shn");
+    const auto mobs = LoadShnFile(ressystem / "MobInfo.shn");
+    Check(dialog && mobs, "NA2016: QuestDialog.shn und MobInfo.shn geladen");
+    if (!dialog || !mobs) return;
+    std::map<std::uint32_t, std::string> text;
+    for (const auto& row : dialog->rows)
+        if (row.values.size() >= 2) {
+            const std::string id = ShnValueToString(row.values[0]);
+            if (!id.empty() && std::all_of(id.begin(), id.end(), [](char c) { return c >= '0' && c <= '9'; }))
+                text[static_cast<std::uint32_t>(std::stoul(id))] = ShnValueToString(row.values[1]);
+        }
+    std::map<std::uint32_t, std::string> mobInx;
+    for (const auto& row : mobs->rows)
+        if (row.values.size() >= 2) {
+            const std::string id = ShnValueToString(row.values[0]);
+            if (!id.empty() && std::isdigit(static_cast<unsigned char>(id[0])))
+                mobInx[static_cast<std::uint32_t>(std::stoul(id))] = ShnValueToString(row.values[1]);
+        }
+    std::size_t titles = 0;
+    for (const auto& q : f.records) if (text.contains(q.title)) ++titles;
+    std::printf("         Titel-IDs in QuestDialog: %zu / %zu\n", titles, f.records.size());
+    Check(titles == f.records.size(), "NA2016: jede Titel-ID existiert in QuestDialog.shn");
+    if (const auto* q251 = FindQuest(f, 251)) {
+        Check(text[q251->title] == "Interpretation of the Ancient Book 4", "NA2016: Quest 251 = 'Interpretation of the Ancient Book 4'");
+        Check(mobInx[q251->startingNpc] == "RouWeaponTitleMctZach" &&
+              text[q251->description].find("Weapon Title Merchant Zach") != std::string::npos,
+              "NA2016: Start-NPC 88 = RouWeaponTitleMctZach, wie in der Beschreibung genannt");
+    }
+    const std::regex defeat(R"(defeat (\d+) [A-Z])");
+    std::size_t withCount = 0, countMatches = 0;
+    for (const auto& q : f.records) {
+        std::smatch m;
+        const std::string& d = text[q.description];
+        if (!std::regex_search(d, m, defeat)) continue;
+        ++withCount;
+        const int n = std::stoi(m[1].str());
+        for (const auto& mob : q.mobs)
+            if (mob.active && mob.hasToBeKilled && mob.amount == n) { ++countMatches; break; }
+    }
+    std::printf("         'defeat N ...' in der Beschreibung: %zu Quests, davon %zu mit Kill-Anzahl N\n", withCount, countMatches);
+    Check(withCount > 100 && countMatches * 10 >= withCount * 7, "NA2016: Kill-Anzahlen passen zu den Quest-Texten (>= 70 %)");
 }
 } // namespace
 
@@ -158,6 +208,9 @@ int main(int argc, char** argv) {
         }
         std::filesystem::remove(out);
     } else Check(false, "Quest 251 bearbeitbar");
+
+    if (argc > 2 && argv[2][0] != '\0') RealData(f, argv[2]);
+    else std::printf("         (ohne NA2016-Datenordner: keine Textprüfungen)\n");
 
     if (g_failures) { std::fprintf(stderr, "%d Fehler\n", g_failures); return 1; }
     std::printf("Alle QuestData-Layout-Tests bestanden.\n");
