@@ -52,4 +52,11 @@ struct KfmReferences {
 // Explicit relative references, resolved against the KFM directory. No recursive
 // basename guesses. Work is performed once per request, never per rendered row.
 KfmReferences InspectKfmReferences(const KfmFile& file, const std::filesystem::path& source);
+// Copy-on-write variant: resolve each relative NIF/KF reference against the working KFM
+// directory first (normally <Project>/Client/...), then fall back to the original read-only
+// source KFM directory. This keeps partial project overrides usable without copying every
+// referenced asset into the project.
+KfmReferences InspectKfmReferences(const KfmFile& file,
+                                   const std::filesystem::path& source,
+                                   const std::filesystem::path& workingSource);
 } // namespace theseed::mapeditor::core
