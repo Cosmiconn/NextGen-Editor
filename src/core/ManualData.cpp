@@ -199,18 +199,20 @@ Objects appear as a reference with their footprint; they cannot be clicked in th
      "Tab Objekt Platzierung", "Object placement tab",
      R"MAN(Objekte sind 3D-Modelle (Häuser, Bäume, Steine ...) mit Position, Drehung und Skalierung.
 - Platzieren: Modellpfad eintragen oder 'Durchsuchen...', Rotation und Skalierung einstellen, dann in die 2D-Ansicht klicken.
-- Mehrfachauswahl: Strg+Klick fügt einzelne Objekte hinzu/entfernt sie, Shift+Klick wählt einen Bereich in der Liste. 'Alle normalen auswählen' bzw. Strg+A markiert alle normalen Placements.
+- Mehrfachauswahl: Strg+Klick fügt einzelne Objekte hinzu/entfernt sie, Shift+Klick wählt einen Bereich in der Liste. In der 2D-Ansicht wählt Shift+Ziehen per Rechteck, Alt+Shift+Ziehen per Lasso; mit Strg wird die bestehende Auswahl erweitert. 'Alle normalen auswählen' bzw. Strg+A markiert alle normalen Placements.
 - Bewegen: Ein bereits ausgewähltes Objekt in der 2D-Ansicht mit links ziehen. Bei Mehrfachauswahl bewegt sich die ganze Gruppe gemeinsam; relative Abstände und Y-Höhen bleiben erhalten.
 - Koordinaten: X/Y/Z des aktiven Objekts direkt ändern. Bei Mehrfachauswahl wird dieselbe Positionsdifferenz auf alle ausgewählten Objekte angewandt. Rotation und Skalierung wirken ebenfalls relativ auf die Gruppe.
+- Szene-Outliner: Rechtsklick auf ein Objekt erlaubt ein freies Editor-Label und eine Gruppe/Ordner-Zuordnung. Gruppen erscheinen einklappbar; diese Organisation ist reine Editor-Metadaten und verändert die Fiesta-Dateien nicht.
 - 'Ausgewählte Objekte löschen' löscht die Auswahl. 'Alle normalen Objekte entfernen' entfernt nach Bestätigung alle normalen Placements, lässt Sky/Water/GroundObject aber bestehen.
 - Die Höhe wird beim Platzieren aus dem Gelände genommen.
 - Im 3D-Bild siehst Du die echten Modelle. Ausgewählte normale Objekte erhalten zusätzlich einen weißen Auswahl-Marker.
 Objekte lassen sich nach Kategorien (Bäume, Gebäude, Felsen ...) ein- und ausblenden (Bereich Sichtbarkeit) - hilfreich bei dichten Karten.)MAN",
      R"MAN(Objects are 3D models (houses, trees, stones ...) with position, rotation and scale.
 - Place: enter a model path or 'Browse...', set rotation and scale, then click into the 2D view.
-- Multi-select: Ctrl+click adds/removes individual objects, Shift+click selects a range in the list. 'Select all normal' or Ctrl+A selects all normal placements.
+- Multi-select: Ctrl+click adds/removes individual objects, Shift+click selects a range in the list. In the 2D view, Shift+drag selects by rectangle and Alt+Shift+drag selects by lasso; hold Ctrl to extend the existing selection. 'Select all normal' or Ctrl+A selects all normal placements.
 - Move: left-drag an already selected object in the 2D view. With multiple objects selected, the whole group moves together while relative spacing and Y heights are preserved.
 - Coordinates: edit X/Y/Z of the active object directly. With multiple objects selected, the same position delta is applied to every selected object. Rotation and scale are also applied relatively to the group.
+- Scene Outliner: right-click an object to assign a free editor label and a group/folder. Groups are collapsible; this organization is editor-only metadata and does not change Fiesta files.
 - 'Delete selected objects' deletes the selection. 'Remove all normal objects' removes all normal placements after confirmation while keeping Sky/Water/GroundObject.
 - Height is taken from the terrain when placing.
 - In the 3D image you see the real models. Selected normal objects also get a white selection marker.

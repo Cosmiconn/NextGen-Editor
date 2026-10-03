@@ -1,3 +1,54 @@
+## NIF rendering follow-up — shader texture descriptor audit
+- Preserve every NiTexturingProperty `ShaderTexDesc` on the public mesh part even when its shader semantics are not implemented: map ID, UV/sampler/texture-transform state, SourceTexture reference and resolved external/embedded source all remain available for diagnostics.
+- Keep renderer semantics strict: only the already verified `VCAlphaTextureBlender` maps 0/1/2 onto Texture1/Texture2/Detail. Unknown shader map IDs are not copied into plausible classic slots.
+- Extend `nif_material_inventory` with per-shader/map-ID descriptor counts, fixture paths, UV sets and transform methods. Fixture CI now fails on any NIF load regression or any embedded texture that was previously decodable but becomes undecoded.
+- Current fixture result remains 101/101 NIFs loaded, 413 embedded textures decoded and 0 undecoded. `FxSkinningBaseMap` and `NsPgToonNoAni` occur in five fixture files but expose no ShaderTexDesc entries in this corpus, so shader names alone do not justify new texture semantics.
+- Cross-tab the named shaders against classic material state: `FxSkinningBaseMap` is 3/3 parts with only embedded Base slot 0 + `APPLY_MODULATE`; `NsPgToonNoAni` is 44/44 parts with only Base slot 0 + `APPLY_MODULATE` (26 embedded, 18 external). No extra texture layer is evidenced by these fixtures; any remaining visual difference is shader/lighting behavior and stays diagnostic until a matching reference shader is verified.
+- The only non-default texture apply mode in the fixture corpus is three parts in `MapLinkGate2.nif` with mode 4 (`APPLY_HILIGHT2`). The material audit and NIF Inspector now expose that the current renderer intentionally uses its modulate fallback until Fiesta-specific visual behavior is verified.
+- Expand the read-only NIF Inspector to distinguish missing external textures, undecoded embedded PixelData, unresolved ShaderTexDesc sources, shader maps whose render semantics are still unverified, and non-materialized ApplyMode values.
+
+## NIF rendering follow-up — inherited NiProperty resolution
+- Preserve each parsed NiAVObject/NiNode property list in the internal scene graph instead of keeping only the geometry node's direct property refs.
+- Build the effective geometry property chain child-first: properties authored directly on NiTriShape/NiTriStrips win, then nearest parent NiNode properties, then higher ancestors.
+- Resolve material state authoritatively after geometry rebuilds through that effective chain; existing Texturing, Alpha, ZBuffer, Stencil/FaceDrawMode and Specular resolvers now receive inherited refs as well.
+- Expose the number of inherited property bindings in NifModel and the read-only NIF Inspector so problematic assets can be diagnosed without guessing.
+- NiTextureEffect remains diagnostic-only and is not claimed as implemented by this change.
+
+## NIF rendering follow-up — NiVertexColorProperty
+- Parse the existing 10-byte Fiesta property payload as flags(u16), vertex mode(u32), and lighting mode(u32) instead of discarding it.
+- Resolve NiVertexColorProperty through the same child-first inherited NiProperty chain used by material/texturing/depth state.
+- Render the documented classic modes: SRC_IGNORE, SRC_EMISSIVE, and SRC_AMB_DIF; the latter respects the emissive-only light mode and otherwise feeds ambient+diffuse.
+- Preserve the existing VCAlphaTextureBlender path unchanged because that shader has its own verified RGB/alpha contract.
+- Without an explicit NiVertexColorProperty, mesh vertex colors retain the classic ambient+diffuse default; meshes without vertex colors remain unchanged.
+- Report NiVertexColorProperty as rendered in the NIF Inspector and show the effective per-mesh vertex-color mode.
+
+## NIF rendering follow-up — embedded texture source fidelity
+- Treat `NiSourceTexture::Use External = 0` as a first-class material/flipbook source even when its file-name field is empty; preserve the PixelData block reference into runtime material slots.
+- Sanitize every authored UV set, not only the legacy base-UV alias. Invalid secondary sets are cleared so the existing deterministic UV0 fallback can render valid embedded Detail/Glow/Bump/Decal layers instead of sampling with corrupt coordinates.
+- Never reinterpret a failed embedded source as an external texture lookup. Renderer diagnostics now report the exact undecoded PixelData block instead.
+- Extend the NIF Inspector with separate external / embedded / embedded-failure counts, PixelData block IDs, missing-only filtering for embedded failures, and decoded/undecoded PixelData totals.
+- Expand `test_nif_model` coverage to all UV sets and all embedded material slots.
+- Fixture structure audit: 83 supplied NIFs, 81 containing NiPixelData; for those 81, NiPixelData and NiSourceTexture block counts match one-for-one.
+- Binary source audit: all 296 directly readable texture filename fields in the supplied fixture NIFs have `Use External = 0`; even names ending in `.dds` are metadata for embedded sources, not permission to fall back to disk.
+- Embedded payload audit: 293 directly readable PixelData payloads use supported formats (203 DXT1, 80 DXT3, 5 DXT5, 4 RGBA32, 1 RGB24). The older 10.2.0.0 fixtures use DXT1/DXT3 and are covered separately by CI.
+
+## UI Upgrade QA – Icon consistency, section chrome and viewport input capture
+- Keep semantic icon meanings strict: recent map history now uses `file.open`; the dedicated `system.recent_projects` asset remains reserved for actual project history.
+- Complete DE/EN coverage for the main entry flow: Project Hub cards/recent projects, project configuration help and Map Launcher creation/browse/rescan/error text now follow the global language switch.
+- Localize the Topbar unsaved-changes tooltip, including map/SHN/quest/portal/AI/drop-table dirty details.
+- Finish the semantic section-header pass: Quest Flow now uses the Quest package icon/header and the creature wizard preview switches between the approved Custom NPC / Custom Mob icons. Entity labels and specialist inline pickers remain intentionally compact.
+- Distinguish invalid semantic icon IDs from intentionally missing runtime rasters: `UiIconAssets` now exposes `IsKnownSemantic(...)` and logs each unknown ID once instead of silently treating a typo like a normal package-gap fallback.
+- Add `tools/ui/check_icon_consistency.py` and run it in Linux CI before the core build. It verifies the frozen 68 semantic IDs against `UiIconAssets.cpp`, approved size levels and every checked-in runtime PNG while explicitly allowing the intentional partial runtime subset.
+- Current audit result: 55 committed runtime PNGs cover 51/68 semantic IDs; the remaining IDs stay on functional DrawList fallbacks until the approved final icon package can be materialized/imported.
+- Align Map Launcher, Quest/Skill subpanels and Active Tool with the shared panel-header chrome; keep compact AI/NIF inline actions but attach their approved semantic package icons.
+- Extend the shared `panel.search` chrome across SHN, Quest, Skill, Drop Table, pickers, Manual and Command Palette while preserving popup/palette keyboard autofocus on the real input field; per-column SHN table filters intentionally stay icon-free.
+- Normalize editor context menus: SHN/Object/Layer route through the common menu wrapper, SHN actions are DE/EN-localized, and NPC/Mob/Portal focus actions display the current configurable Focus shortcut like the object outliner already does.
+- Prevent clicks and drags on the 3D transform toolbar and zoom overlay from leaking into object picking, orbit/pan or keyboard camera handling underneath the viewport image.
+- Unify SHN, NPC, Mob, Portal, Object and Layer context-menu headers with semantic package icons/fallbacks and separate destructive actions from ordinary edits.
+- Add Layer Rename to the context menu, select the right-clicked layer, and replace the unreliable window-appearance focus check with an explicit one-shot rename-input focus request.
+- Align toast behavior with the component spec: bottom-right placement, newest toast anchored at the bottom, upward stacking, maximum three visible messages, and localized error heading.
+- Move the raw Single/Multi SHN left workspace to the shared panel-header component with `module.shn.single` / `module.shn.multi` semantic icons.
+
 ## v0.44.35 / v14 — KFM-Codec und Animationskatalog
 - C++23-Reader/Writer für Fiesta-KFM 1.2.4b und 2.0.0.0b, einschließlich Textschlüsselpaaren und Zwischenanimationen; durch Dateigröße und Speicherbudget begrenzt.
 - 1.380/1.380 echte Dateien bytegleich rekonstruiert; Verweisbefunde getrennt von Codecfehlern.

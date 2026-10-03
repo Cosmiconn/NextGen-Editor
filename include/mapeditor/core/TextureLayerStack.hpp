@@ -7,6 +7,7 @@
 #include "mapeditor/core/BlendMap.hpp"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -42,6 +43,10 @@ public:
     // (Basis-Layer, sonst wäre die Normalisierung beim ersten Malen uneindeutig).
     std::size_t AddLayer(std::string name, std::string diffuseFileName, float uvScaleDiffuse = 1.0f);
     void RemoveLayer(std::size_t index);
+    // History-friendly structural primitives: move a layer out without copying its BlendMap
+    // and reinsert the exact layer at its original index.
+    [[nodiscard]] std::optional<TextureLayer> TakeLayer(std::size_t index);
+    void InsertLayer(std::size_t index, TextureLayer layer);
     void MoveLayer(std::size_t fromIndex, std::size_t toIndex);
 
     [[nodiscard]] std::size_t LayerCount() const noexcept { return layers_.size(); }

@@ -6,6 +6,7 @@
 // hochgeladenen Kartensets sind nicht Teil des Repos.
 
 #include "mapeditor/core/legacy/LegacyMapProject.hpp"
+#include "mapeditor/core/ObjectPlacementIO.hpp"
 
 #include <cmath>
 #include <algorithm>
@@ -62,10 +63,117 @@ void TestIniPreservation() {
     std::filesystem::remove(path);
 }
 
+void TestUnknownCompanionPreservation() {
+    const auto root = std::filesystem::temp_directory_path() / "nextgen-map-companion-preservation";
+    const auto out = root / "out";
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
+    std::filesystem::create_directories(root, ec);
+
+    const auto ini = root / "CompanionMap.ini";
+    { std::ofstream empty(ini, std::ios::binary); }
+
+    const std::vector<unsigned char> opaque{0x00,0x7f,0xff,0x21,0x00,0x42};
+    {
+        std::ofstream sidecar(root / "CompanionMap.customsidecar", std::ios::binary);
+        sidecar.write(reinterpret_cast<const char*>(opaque.data()),
+                      static_cast<std::streamsize>(opaque.size()));
+    }
+    {
+        // Render assets intentionally stay in the read-only source tree unless explicitly
+        // overridden by an asset workflow.
+        std::ofstream nif(root / "CompanionMap.nif", std::ios::binary);
+        nif << "not-a-real-nif";
+    }
+    {
+        std::ofstream tmp(root / "CompanionMap.tmp", std::ios::binary);
+        tmp << "transient";
+    }
+
+    auto project = legacy::OpenLegacyMap(ini);
+    Check(project.has_value(), "Map with unknown opaque companion opens");
+    if (!project) {
+        std::filesystem::remove_all(root, ec);
+        return;
+    }
+
+    const auto it = std::find_if(project->preservedFiles.begin(), project->preservedFiles.end(),
+        [](const auto& file) { return file.fileName == "CompanionMap.customsidecar"; });
+    Check(it != project->preservedFiles.end() &&
+              std::vector<unsigned char>(it->bytes.begin(), it->bytes.end()) == opaque,
+          "Unknown non-asset companion is captured byte-exactly");
+
+    Check(legacy::SaveLegacyMap(*project, out, "CompanionMap").has_value(),
+          "Map with unknown companion saves successfully");
+
+    std::ifstream saved(out / "CompanionMap.customsidecar", std::ios::binary);
+    const std::vector<unsigned char> savedBytes{
+        std::istreambuf_iterator<char>(saved), std::istreambuf_iterator<char>{}};
+    Check(savedBytes == opaque,
+          "Unknown companion survives source -> project save byte-exactly");
+
+    Check(!std::filesystem::exists(out / "CompanionMap.nif"),
+          "Unedited NIF asset is not duplicated into project output");
+    Check(!std::filesystem::exists(out / "CompanionMap.tmp"),
+          "Transient temp file is not copied as a map companion");
+
+    std::filesystem::remove_all(root, ec);
+}
+
+void TestMeshBackedMapWithoutHtd() {
+    const auto root = std::filesystem::temp_directory_path() / "nextgen-mesh-backed-map-test";
+    const auto out = root / "out";
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
+    std::filesystem::create_directories(root, ec);
+
+    const auto ini = root / "MeshMap.ini";
+    { std::ofstream empty(ini, std::ios::binary); }
+
+    ObjectPlacementSet objects;
+    ObjectCategoryList ground;
+    ground.name = "GroundObject";
+    ground.modelPaths.push_back("resmap\\field\\MeshMap\\MeshMapGround.nif");
+    objects.categories.push_back(std::move(ground));
+    Check(legacy::SerializeLegacyShmd(objects, root / "MeshMap.shmd").has_value(),
+          "Mesh-backed fixture SHMD written");
+
+    legacy::LegacyMapOpenReport report;
+    auto project = legacy::OpenLegacyMap(ini, &report);
+    Check(project.has_value(), "Mesh/NIF-backed map opens with empty ini and no HTD");
+    if (!project) {
+        std::filesystem::remove_all(root, ec);
+        return;
+    }
+    Check(!project->hasHeightmap, "Mesh/NIF-backed map does not invent a heightmap");
+    Check(project->hasObjects && !project->objects.categories.empty() &&
+              project->objects.categories[0].name == "GroundObject" &&
+              project->objects.categories[0].modelPaths.size() == 1,
+          "Mesh/NIF-backed map keeps SHMD GroundObject NIF scene references");
+
+    Check(legacy::SaveLegacyMap(*project, out, "MeshMap").has_value(),
+          "Mesh/NIF-backed map saves without synthesizing terrain");
+    Check(std::filesystem::is_regular_file(out / "MeshMap.ini") &&
+              std::filesystem::file_size(out / "MeshMap.ini") == 0,
+          "Empty source ini remains byte-exactly empty");
+    Check(!std::filesystem::exists(out / "MeshMap.HTD"),
+          "Save does not invent an HTD for a mesh/NIF-backed map");
+    Check(std::filesystem::is_regular_file(out / "MeshMap.shmd"),
+          "Mesh/NIF-backed SHMD scene is retained");
+
+    auto reopened = legacy::OpenLegacyMap(out / "MeshMap.ini");
+    Check(reopened && !reopened->hasHeightmap && reopened->hasObjects,
+          "Saved mesh/NIF-backed map reopens without HTD");
+
+    std::filesystem::remove_all(root, ec);
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
     TestIniPreservation();
+    TestUnknownCompanionPreservation();
+    TestMeshBackedMapWithoutHtd();
     if (argc < 2) {
         std::printf("(Test \u00fcbersprungen - Aufruf mit: %s <pfad/zu/karte.ini>)\n", argv[0]);
         return 0;

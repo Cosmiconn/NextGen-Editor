@@ -48,6 +48,34 @@ void TestLayerStackBasics() {
     Check(std::abs(stack.WeightSumAt(0, 0) - 1.0f) < 1e-6f, "Gewichtssumme direkt nach Anlage = 1.0");
 }
 
+void TestLayerTakeInsert() {
+    TextureLayerStack stack(4, 4);
+    stack.AddLayer("Base", "base.dds", 1.0f);
+    const auto rock = stack.AddLayer("Rock", "rock.dds", 3.0f);
+    stack.Layer(rock).regionStartX = 7.0f;
+    stack.Layer(rock).blend.Set(2, 1, 0.75f);
+
+    auto taken = stack.TakeLayer(rock);
+    Check(taken.has_value(), "TakeLayer liefert den entfernten Layer");
+    Check(stack.LayerCount() == 1, "TakeLayer entfernt exakt einen Layer");
+    if (taken) {
+        Check(taken->name == "Rock" && taken->diffuseFileName == "rock.dds" &&
+              std::abs(taken->blend.At(2, 1) - 0.75f) < 1e-6f,
+              "TakeLayer erhält Metadaten und BlendMap byte-logisch");
+        stack.InsertLayer(1, std::move(*taken));
+    }
+    Check(stack.LayerCount() == 2 && stack.Layer(1).name == "Rock",
+          "InsertLayer stellt Reihenfolge und Layer wieder her");
+    Check(std::abs(stack.Layer(1).blend.At(2, 1) - 0.75f) < 1e-6f,
+          "InsertLayer stellt die exakten Blend-Gewichte wieder her");
+
+    stack.MoveLayer(1, 0);
+    Check(stack.Layer(0).name == "Rock" && stack.Layer(1).name == "Base",
+          "MoveLayer verschiebt Layer deterministisch");
+    stack.MoveLayer(0, 1);
+    Check(stack.Layer(1).name == "Rock", "Inverse MoveLayer-Bewegung stellt Reihenfolge wieder her");
+}
+
 void TestPaintNormalization() {
     TextureLayerStack stack(9, 9);
     stack.AddLayer("Base", "base.dds");
@@ -171,6 +199,7 @@ void TestBmpRawRowOrder() {
 int main() {
     std::printf("== TextureLayerStack / TexturePaintOps /  Fiesta-BMP Tests ==\n");
     TestLayerStackBasics();
+    TestLayerTakeInsert();
     TestPaintNormalization();
     TestFiestaTextureRoundtrip();
     TestBmpRawRowOrder();

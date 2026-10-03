@@ -970,3 +970,8 @@ die 5 resmap-Zips für weitere `.nif`-Massentests - das komplette `Rou.*`-Kernse
 zufällig bereits in `resmap__3_.zip` unter `resmap/field/Rou/` enthalten, falls es nicht
 separat beiliegt). Die resmap-Zips enthalten auch echte Textur-Dateien (DDS/BMP) - nützlich für
 End-to-End-Texturierungs-Verifikation, siehe docs/MAP_FORMAT.md Abschnitt 5/6.
+
+
+## UI-Vision (verbindlich, 25.09.2026)
+
+Die visuelle Zielrichtung ist unter `docs/ui-vision/README.md` versioniert. Bei UI-Änderungen dort zuerst Branding, Theme-Tokens, Default-Layout, Komponenten, Icons und Modul-Sollbilder prüfen. Ziel: dunkler, cyan/blau akzentuierter Premium-World-Editor; keine lokalen Ad-hoc-Stile, die die Vision verwässern.
