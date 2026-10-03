@@ -17,7 +17,7 @@ on:
       - 'tools/maps/render_aurelia_reference.py'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-map-and-render:
@@ -96,3 +96,21 @@ jobs:
             build/aurelia-renders/README.txt
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish render evidence to this map branch
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          target=docs/maps/renders/aurelia75-v2
+          mkdir -p "$target"
+          cp build/aurelia-renders/*.png "$target"/
+          cp build/aurelia-renders/README.txt "$target"/RENDER_PROVENANCE.txt
+          cp build/AureliaProject/Client/resmap/field/Aurelia75/Aurelia75.layout.json "$target"/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$target"
+          if ! git diff --cached --quiet; then
+            git commit -m "Publish Aurelia v2 real-geometry renders [skip ci]"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
