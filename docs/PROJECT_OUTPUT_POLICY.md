@@ -116,6 +116,12 @@ Erlaubt sind damit ausschließlich:
 - explizit angehängte neue Records.
 
 Ein unverändertes SHN bleibt laut bestehendem Roundtrip-Test byte-identisch.
+
+**Client/Server-Kopplung:** Liegt dieselbe Tabelle in Client und Server (NA2016: 74 Dateien,
+73 davon bytegleich; Ausnahme `ColorInfo.shn`), speichert der Editor die Gegenseite mit, wenn
+ihr aktueller Stand bytegleich zum bisherigen Stand der bearbeiteten Datei ist und sie keine
+eigenen ungespeicherten Änderungen hat. Sonst wird nur die bearbeitete Seite geschrieben und
+die Statuszeile nennt den Grund.
 Bei längenändernden Strings oder angehängten Records kann sich wegen Dateilänge/
 Verschlüsselung die Binärposition nachfolgender Bytes verschieben; fachlich
 unveränderte Records und das Schema bleiben trotzdem unverändert.
@@ -157,6 +163,24 @@ Zeitpunkt beschrieben.
 `SaveLegacyMap` schreibt den vollständigen bearbeiteten Karten-Dateisatz in den
 Projekt-Clientbaum. Originale unbekannte/erhaltene Companion-Dateien werden in den
 Projektbaum übernommen, nicht in der Quelle verändert.
+
+Ini-Pfade wie `.\resmap\field\Rou\block.Bmp` oder `.\resmap\fieldtexture\L1_A.BMP`
+sind relativ zum Client-Ordner. Blend-BMPs werden deshalb unter `<Project>/Client/resmap/...`
+an genau diesem Pfad abgelegt, `#HeightFileName` bleibt client-relativ. Unveränderte
+Blend-BMPs werden mit ihren Originalbytes geschrieben; bemalte nur an den geänderten Pixeln
+gepatcht (Header, Füllbytes und Nicht-Grau-Pixel bleiben erhalten). Eine beim Laden fehlende,
+unbemalte Maske wird nicht angelegt.
+
+### End-to-End-Prüfung (NA2016)
+
+Mit den echten NA2016-Daten (Client-`ressystem`, Server-`Shine`) und Roumen im echten
+Client-Layout wurden alle Module über die normalen Speicherfunktionen in einen leeren
+Projektordner gespeichert (Automatisierung `saveall all`): 348 SHN, QuestData (Client +
+Server), ItemDropTable, TownPortal (Client + Server), RecallCoord, NPC.txt, MobRegen und die
+Karte. Ergebnis: 365 Projektdateien, alle bytegleich zur Quelle und alle am kanonischen Pfad
+(`Client/ressystem`, `Client/resmap/...`, `Server/9Data/Shine/...`); die Prüfsummen aller
+Quelldateien sind unverändert. Eine geänderte SHN-Zelle ändert genau ihre Bytes und wird nach
+einem Neustart aus dem Projekt geladen.
 
 ## Automatische Mehrdatei-Änderungen
 

@@ -122,5 +122,7 @@ Befehle: `open <pfad>`, `wait <frames>`, `mode terrain|texture|walk|objects|npcs
 `select <id>`, `selectall`, `focus`, `hide`, `isolate`, `showall`, `marquee x0 y0 x1 y1 [inside|crossing]`,
 `playtest`, `preset 0..5`, `camera tx ty tz yaw pitch dist`, `grid|stats|collision|gameview|surfacesnap on|off`,
 `status <text>`, `screenshot <datei.ppm>`, `quit`. Spieldaten: `shn <Unterreiter> <Server-Shine-Ordner>`
-(4 = Quest-Editor), `quest <id> [drops|rewards]` (Quest auswählen und optional zum Abschnitt scrollen), z. B.
+(4 = Quest-Editor), `project <Client>|<Server>`, `projectfolder <Ordner>`,
+`shnset <Client|Server> <Datei.shn> <Zeile> <Spalte> <Wert>`, `saveall [all]` (alle geänderten bzw. alle
+geladenen Module über die normalen Speicherfunktionen speichern), `quest <id> [drops|rewards]` (Quest auswählen und optional zum Abschnitt scrollen), z. B.
 `shn 4 $PWD/tests/fixtures/data; wait 10; quest 251 rewards; wait 10; screenshot quest.ppm; quit`.

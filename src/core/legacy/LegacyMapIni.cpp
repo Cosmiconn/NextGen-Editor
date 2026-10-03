@@ -193,7 +193,9 @@ TextBlocks SplitBlocks(const std::string& text) {
         if (token == "#END_FILE") tail = true;
         if (tail) { result.tail += bytes; continue; }
         if (token == "#Layer") { layer = true; result.layers.emplace_back(); }
-        (layer ? result.layers.back() : result.global) += bytes;
+        // Zeilen zwischen/nach den Layern (z. B. Leerzeilen vor #END_FILE) gehören zum vorigen
+        // Layer, damit sie beim Patchen an ihrer Stelle bleiben und nicht in den Kopf wandern.
+        (layer || !result.layers.empty() ? result.layers.back() : result.global) += bytes;
         if (token == "}") layer = false;
     }
     return result;

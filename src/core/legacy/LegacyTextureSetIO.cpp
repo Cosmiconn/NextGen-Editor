@@ -1,6 +1,8 @@
 #include "mapeditor/core/legacy/LegacyTextureSetIO.hpp"
 
 #include <algorithm>
+#include <fstream>
+#include <iterator>
 #include "mapeditor/core/legacy/BmpBlendMap.hpp"
 #include "mapeditor/core/legacy/LegacyPathResolve.hpp"
 
@@ -13,6 +15,29 @@ namespace {
 // Kartensets (Adl/Bera/RouVal01) beobachtete Blend-Auflösung, siehe docs/MAP_FORMAT.md.
 // Reine Verlegenheitslösung, KEIN aus dem Format hergeleiteter Wert.
 constexpr std::uint32_t kFallbackResolution = 512;
+
+std::vector<std::uint8_t> ReadAllBytes(const std::filesystem::path& file) {
+    std::ifstream in(file, std::ios::binary);
+    return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+}
+
+// Zielpfad einer Blend-BMP. Ini-Pfade mit "resmap\"-Präfix sind relativ zum Client-Ordner
+// (".\resmap\fieldtexture\L1_A.BMP" -> <Client>/resmap/fieldtexture/L1_A.BMP). Liegt das
+// Ausgabeverzeichnis unter einem resmap-Ordner, wird dort hinein geschrieben; sonst (Export in
+// einen beliebigen Ordner) wie bisher relativ zum Kartenordner ohne das Präfix.
+std::expected<std::filesystem::path, std::string> BlendOutputPath(
+    const std::filesystem::path& outDir, const std::string& legacyPath) {
+    const auto native = LegacyPathToNative(legacyPath);
+    for (const auto& part : native)
+        if (part == "..") return std::unexpected("Unsicherer Blend-Pfad: " + legacyPath);
+    if (native.is_absolute() || native.has_root_name())
+        return std::unexpected("Absoluter Blend-Pfad: " + legacyPath);
+    const auto stripped = StripResmapPrefix(native);
+    if (stripped != native) {
+        if (const auto resmap = FindResmapAncestor(outDir)) return (*resmap / stripped).lexically_normal();
+    }
+    return (outDir / stripped).lexically_normal();
+}
 
 } // namespace
 
@@ -63,6 +88,7 @@ std::expected<TextureLayerStack, std::string> ImportLegacyTextureSet(
             if (report != nullptr) {
                 report->missingBlendFiles.push_back(layerDef.name + " (nicht gefunden: " + layerDef.blendFileName + ")");
             }
+            stack.Layer(idx).blendMissingAtImport = true;
             continue;
         }
 
@@ -71,6 +97,7 @@ std::expected<TextureLayerStack, std::string> ImportLegacyTextureSet(
             if (report != nullptr) {
                 report->missingBlendFiles.push_back(layerDef.name + " (Lesefehler: " + blendResult.error() + ")");
             }
+            stack.Layer(idx).blendMissingAtImport = true;
             continue;
         }
         if (blendResult->Width() != stack.Width() || blendResult->Height() != stack.Height()) {
@@ -86,11 +113,19 @@ std::expected<TextureLayerStack, std::string> ImportLegacyTextureSet(
             }
             stack.Layer(idx).blend = ResampleBlendMap(*blendResult, stack.Width(), stack.Height());
             stack.Layer(idx).sourceBlend = std::move(*blendResult);
+            stack.Layer(idx).sourceBmpBytes = ReadAllBytes(*resolvedPath);
             continue;
         }
 
+        stack.Layer(idx).sourceBlend = *blendResult;
         stack.Layer(idx).blend = std::move(*blendResult);
+        stack.Layer(idx).sourceBmpBytes = ReadAllBytes(*resolvedPath);
     }
+
+    // Anfangszustand fehlender Masken merken (nach allen AddLayer-Aufrufen, die die Gewichte
+    // der übrigen Layer noch verändern können), damit der Export "unbemalt" erkennt.
+    for (std::size_t i = 0; i < stack.LayerCount(); ++i)
+        if (stack.Layer(i).blendMissingAtImport) stack.Layer(i).sourceBlend = stack.Layer(i).blend;
 
     if (usedFallback && report != nullptr) {
         report->missingBlendFiles.push_back(
@@ -137,32 +172,63 @@ std::expected<void, std::string> ExportLegacyTextureSet(
     }
 
     for (std::size_t i = 0; i < stack.LayerCount(); ++i) {
-        // Export schreibt NEUE Dateien - "resmap"-Präfix entfernen (symmetrisch zum Import,
-        // sonst findet ein nachfolgender Import der eigenen Export-Ausgabe die Dateien nicht).
-        const std::filesystem::path blendPath =
-            outDir / StripResmapPrefix(LegacyPathToNative(outIni.layers[i].blendFileName));
+        const auto blendTarget = BlendOutputPath(outDir, outIni.layers[i].blendFileName);
+        if (!blendTarget) return std::unexpected(blendTarget.error());
+        const std::filesystem::path& blendPath = *blendTarget;
         std::filesystem::create_directories(blendPath.parent_path(), ec);
         if (ec) {
             return std::unexpected("Konnte Verzeichnis f\u00fcr Blend-BMP nicht anlegen: " + blendPath.parent_path().string());
         }
-        // Abweichende Originalauflösung: unverändert -> Original schreiben, bearbeitet -> auf die
-        // Originalauflösung zurückresampeln (die Datei behält ihre Grösse).
+        // Unverändert -> Originalbytes. Bearbeitet -> Werte in Originalauflösung (bei abweichender
+        // Auflösung zurückresampelt) und, wenn möglich, nur die geänderten Pixel im Original patchen.
         const auto& layer = stack.Layer(i);
-        const BlendMap* toWrite = &layer.blend;
+        // Beim Import nicht gefundene Maske, nie bemalt: nicht anlegen. Eine leere Datei würde
+        // im Spiel die echte (für den Editor nur nicht auffindbare) Maske überdecken - bei
+        // gemeinsamen Masken unter resmap/fieldtexture sogar für alle Karten.
+        if (layer.blendMissingAtImport && layer.sourceBlend) {
+            const auto a = layer.sourceBlend->Data();
+            const auto b = layer.blend.Data();
+            if (a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin())) continue;
+        }
+        const BlendMap* values = &layer.blend;
         BlendMap restored;
+        bool unchanged = false;
         if (layer.sourceBlend && layer.sourceBlend->Width() > 0 && layer.sourceBlend->Height() > 0) {
-            const BlendMap reference = ResampleBlendMap(*layer.sourceBlend, layer.blend.Width(), layer.blend.Height());
+            const bool sameSize = layer.sourceBlend->Width() == layer.blend.Width() &&
+                                  layer.sourceBlend->Height() == layer.blend.Height();
+            const BlendMap reference = sameSize ? *layer.sourceBlend
+                : ResampleBlendMap(*layer.sourceBlend, layer.blend.Width(), layer.blend.Height());
             const auto a = reference.Data();
             const auto b = layer.blend.Data();
-            const bool unchanged = a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin());
+            unchanged = a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin());
             if (unchanged) {
-                toWrite = &*layer.sourceBlend;
-            } else {
-                restored = ResampleBlendMap(layer.blend, layer.sourceBlend->Width(), layer.sourceBlend->Height());
-                toWrite = &restored;
+                values = &*layer.sourceBlend;
+            } else if (!sameSize) {
+                // Zurück auf die Originalauflösung. Nur Pixel, die sich gegenüber dem ebenso
+                // zurückgerechneten Ausgangsstand ändern, bekommen den neuen Wert; alle anderen
+                // behalten exakt den Originalwert (Hin-und-zurück-Resampling ist nicht verlustfrei).
+                const auto sw = layer.sourceBlend->Width(), sh = layer.sourceBlend->Height();
+                restored = ResampleBlendMap(layer.blend, sw, sh);
+                const BlendMap baseline = ResampleBlendMap(reference, sw, sh);
+                auto q = [](float v) { return static_cast<int>(std::clamp(v, 0.0f, 1.0f) * 255.0f + 0.5f); };
+                for (std::uint32_t z = 0; z < sh; ++z)
+                    for (std::uint32_t x = 0; x < sw; ++x)
+                        if (q(restored.At(x, z)) == q(baseline.At(x, z))) restored.Set(x, z, layer.sourceBlend->At(x, z));
+                values = &restored;
             }
         }
-        auto writeResult = WriteBlendMapBmp(*toWrite, blendPath);
+        if (!layer.sourceBmpBytes.empty()) {
+            std::vector<std::uint8_t> bytes;
+            if (unchanged) bytes = layer.sourceBmpBytes;
+            else if (auto patched = PatchBlendMapBmp(layer.sourceBmpBytes, *values)) bytes = std::move(*patched);
+            if (!bytes.empty()) {
+                std::ofstream out(blendPath, std::ios::binary | std::ios::trunc);
+                out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+                if (!out) return std::unexpected("Fehler beim Schreiben der Blend-BMP: " + blendPath.string());
+                continue;
+            }
+        }
+        auto writeResult = WriteBlendMapBmp(*values, blendPath);
         if (!writeResult) {
             return std::unexpected(writeResult.error());
         }

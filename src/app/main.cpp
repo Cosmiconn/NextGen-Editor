@@ -5981,6 +5981,11 @@ std::expected<void, std::string> ValidateShnPatch(EditorState::ShnDocument& doc)
     return {};
 }
 
+std::vector<char> ReadFileBytes(const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+}
+
 std::expected<std::filesystem::path, std::string> ShnProjectTarget(
     const EditorState& state, const EditorState::ShnDocument& doc) {
     const auto side = doc.source == EditorState::ShnSource::Client
@@ -6006,6 +6011,23 @@ bool SaveShnDocument(EditorState& state,int document) {
         return false;
     }
 
+    // Gekoppelte Gegenseite: dieselbe Tabelle auf der anderen Seite (Client <-> Server). In NA2016
+    // sind 73 von 74 doppelt vorhandenen SHN bytegleich (Ausnahme ColorInfo.shn). Sie wird nur
+    // mitgeschrieben, wenn ihr aktueller Stand bytegleich zum bisherigen Stand dieser Datei ist
+    // und sie keine eigenen ungespeicherten Änderungen hat - sonst nur ein Hinweis.
+    int mirror = -1;
+    std::string mirrorNote;
+    for (int i = 0; i < static_cast<int>(state.shnFiles.size()); ++i) {
+        const auto& other = state.shnFiles[static_cast<std::size_t>(i)];
+        if (i == document || other.source == doc.source ||
+            LowerAscii(other.file.FileName()) != LowerAscii(doc.file.FileName())) continue;
+        const std::string sideName = ShnSourceName(other.source);
+        if (other.dirty) { mirrorNote = " · " + sideName + "-Kopie hat eigene Änderungen, nicht mitgespeichert"; break; }
+        if (ReadFileBytes(other.file.path) == ReadFileBytes(doc.file.path)) mirror = i;
+        else mirrorNote = " · " + sideName + "-Kopie weicht ab, nicht mitgespeichert";
+        break;
+    }
+
     auto result=core::legacy::SaveShnFile(doc.file,target);
     if (result) {
         doc.file.path=target;
@@ -6013,6 +6035,24 @@ bool SaveShnDocument(EditorState& state,int document) {
         ClearShnDirtyCells(doc);
         ++state.shnEditCounter;
         state.shnStatus=std::string(ShnSourceName(doc.source))+" Projekt-Override gespeichert: "+target.string();
+        if (mirror >= 0) {
+            auto& other = state.shnFiles[static_cast<std::size_t>(mirror)];
+            std::filesystem::path otherTarget;
+            std::string otherError;
+            if (PrepareProjectOutput(ShnProjectTarget(state, other), otherTarget, &otherError)) {
+                if (auto mirrored = core::legacy::SaveShnFile(doc.file, otherTarget)) {
+                    other.file = doc.file;
+                    other.file.path = otherTarget;
+                    ClearShnDirtyCells(other);
+                    state.shnStatus += " · " + std::string(ShnSourceName(other.source)) + "-Kopie gekoppelt mitgespeichert";
+                } else {
+                    state.shnStatus += " · " + std::string(ShnSourceName(other.source)) + "-Kopie FEHLER: " + mirrored.error();
+                }
+            } else {
+                state.shnStatus += " · " + std::string(ShnSourceName(other.source)) + "-Kopie blockiert: " + otherError;
+            }
+        }
+        state.shnStatus += mirrorNote;
         return true;
     }
     state.shnStatus="Speichern fehlgeschlagen: "+result.error();
@@ -7101,86 +7141,102 @@ void DrawShnMultiProfiles(EditorState& state) {
             const core::legacy::ShnFile* serverFile =
                 p.server >= 0 ? &state.shnFiles[static_cast<std::size_t>(p.server)].file : nullptr;
 
-            bool schemaEqual = false;
-            bool rowCountEqual = false;
-            std::size_t diffCells = 0;
-            std::size_t unmatchedRows = 0;
-            bool diffTruncated = false;
-            bool comparisonById = false;
+            // Vergleich nur nach Änderungen neu berechnen (ItemInfo: ~900k Zellen).
+            struct PairDiff { std::size_t revision = 0; bool schemaEqual = false, rowCountEqual = false,
+                              diffTruncated = false, comparisonById = false;
+                              std::size_t diffCells = 0, unmatchedRows = 0; };
+            static std::unordered_map<std::string, PairDiff> diffCache;
+            const std::size_t revision = state.shnEditCounter + 1;
+            auto& cached = diffCache[key + "|" + std::to_string(p.client) + "|" + std::to_string(p.server)];
+            if (cached.revision != revision) {
+                bool schemaEqual = false;
+                bool rowCountEqual = false;
+                std::size_t diffCells = 0;
+                std::size_t unmatchedRows = 0;
+                bool diffTruncated = false;
+                bool comparisonById = false;
 
-            if (clientFile && serverFile) {
-                rowCountEqual = clientFile->rows.size() == serverFile->rows.size();
-                schemaEqual = clientFile->columns.size() == serverFile->columns.size();
-                if (schemaEqual) {
-                    for (std::size_t ci = 0; ci < clientFile->columns.size(); ++ci) {
-                        if (clientFile->columns[ci].name != serverFile->columns[ci].name ||
-                            clientFile->columns[ci].kind != serverFile->columns[ci].kind) {
-                            schemaEqual = false;
-                            break;
+                if (clientFile && serverFile) {
+                    rowCountEqual = clientFile->rows.size() == serverFile->rows.size();
+                    schemaEqual = clientFile->columns.size() == serverFile->columns.size();
+                    if (schemaEqual) {
+                        for (std::size_t ci = 0; ci < clientFile->columns.size(); ++ci) {
+                            if (clientFile->columns[ci].name != serverFile->columns[ci].name ||
+                                clientFile->columns[ci].kind != serverFile->columns[ci].kind) {
+                                schemaEqual = false;
+                                break;
+                            }
+                        }
+                    }
+                    if (schemaEqual) {
+                        constexpr std::size_t kDiffScanLimit = 2000000;
+                        std::size_t scanned = 0;
+                        const int clientIdCol=FindShnIdColumn(*clientFile);
+                        const int serverIdCol=FindShnIdColumn(*serverFile);
+                        std::unordered_map<long long,std::size_t> clientById,serverById;
+                        bool uniqueIds=clientIdCol>=0 && serverIdCol>=0;
+                        if (uniqueIds) {
+                            for (std::size_t ri=0;ri<clientFile->rows.size();++ri) {
+                                long long id=0;
+                                if (static_cast<std::size_t>(clientIdCol)>=clientFile->rows[ri].values.size() ||
+                                    !ShnValueAsInt(clientFile->rows[ri].values[static_cast<std::size_t>(clientIdCol)],id) ||
+                                    !clientById.emplace(id,ri).second) { uniqueIds=false; break; }
+                            }
+                        }
+                        if (uniqueIds) {
+                            for (std::size_t ri=0;ri<serverFile->rows.size();++ri) {
+                                long long id=0;
+                                if (static_cast<std::size_t>(serverIdCol)>=serverFile->rows[ri].values.size() ||
+                                    !ShnValueAsInt(serverFile->rows[ri].values[static_cast<std::size_t>(serverIdCol)],id) ||
+                                    !serverById.emplace(id,ri).second) { uniqueIds=false; break; }
+                            }
+                        }
+
+                        comparisonById=uniqueIds && (!clientById.empty() || !serverById.empty());
+                        if (comparisonById) {
+                            for (const auto& [id,clientRow] : clientById) {
+                                const auto sit=serverById.find(id);
+                                if (sit==serverById.end()) { ++unmatchedRows; continue; }
+                                if (scanned>=kDiffScanLimit) { diffTruncated=true; continue; }
+                                const auto& cr=clientFile->rows[clientRow];
+                                const auto& sr=serverFile->rows[sit->second];
+                                const std::size_t colLimit=std::min(cr.values.size(),sr.values.size());
+                                for (std::size_t ci=0;ci<colLimit && scanned<kDiffScanLimit;++ci,++scanned) {
+                                    if (core::legacy::ShnValueToString(cr.values[ci]) !=
+                                        core::legacy::ShnValueToString(sr.values[ci])) ++diffCells;
+                                }
+                                if (scanned>=kDiffScanLimit) diffTruncated=true;
+                            }
+                            for (const auto& [id,serverRow] : serverById) {
+                                (void)serverRow;
+                                if (!clientById.contains(id)) ++unmatchedRows;
+                            }
+                        } else {
+                            const std::size_t rowLimit=std::min(clientFile->rows.size(),serverFile->rows.size());
+                            unmatchedRows=clientFile->rows.size()>serverFile->rows.size()
+                                ? clientFile->rows.size()-serverFile->rows.size()
+                                : serverFile->rows.size()-clientFile->rows.size();
+                            for (std::size_t ri=0;ri<rowLimit && scanned<kDiffScanLimit;++ri) {
+                                const auto& cr=clientFile->rows[ri];
+                                const auto& sr=serverFile->rows[ri];
+                                const std::size_t colLimit=std::min(cr.values.size(),sr.values.size());
+                                for (std::size_t ci=0;ci<colLimit && scanned<kDiffScanLimit;++ci,++scanned) {
+                                    if (core::legacy::ShnValueToString(cr.values[ci]) !=
+                                        core::legacy::ShnValueToString(sr.values[ci])) ++diffCells;
+                                }
+                            }
+                            diffTruncated=scanned>=kDiffScanLimit;
                         }
                     }
                 }
-                if (schemaEqual) {
-                    constexpr std::size_t kDiffScanLimit = 5000;
-                    std::size_t scanned = 0;
-                    const int clientIdCol=FindShnIdColumn(*clientFile);
-                    const int serverIdCol=FindShnIdColumn(*serverFile);
-                    std::unordered_map<long long,std::size_t> clientById,serverById;
-                    bool uniqueIds=clientIdCol>=0 && serverIdCol>=0;
-                    if (uniqueIds) {
-                        for (std::size_t ri=0;ri<clientFile->rows.size();++ri) {
-                            long long id=0;
-                            if (static_cast<std::size_t>(clientIdCol)>=clientFile->rows[ri].values.size() ||
-                                !ShnValueAsInt(clientFile->rows[ri].values[static_cast<std::size_t>(clientIdCol)],id) ||
-                                !clientById.emplace(id,ri).second) { uniqueIds=false; break; }
-                        }
-                    }
-                    if (uniqueIds) {
-                        for (std::size_t ri=0;ri<serverFile->rows.size();++ri) {
-                            long long id=0;
-                            if (static_cast<std::size_t>(serverIdCol)>=serverFile->rows[ri].values.size() ||
-                                !ShnValueAsInt(serverFile->rows[ri].values[static_cast<std::size_t>(serverIdCol)],id) ||
-                                !serverById.emplace(id,ri).second) { uniqueIds=false; break; }
-                        }
-                    }
-
-                    comparisonById=uniqueIds && (!clientById.empty() || !serverById.empty());
-                    if (comparisonById) {
-                        for (const auto& [id,clientRow] : clientById) {
-                            const auto sit=serverById.find(id);
-                            if (sit==serverById.end()) { ++unmatchedRows; continue; }
-                            if (scanned>=kDiffScanLimit) { diffTruncated=true; continue; }
-                            const auto& cr=clientFile->rows[clientRow];
-                            const auto& sr=serverFile->rows[sit->second];
-                            const std::size_t colLimit=std::min(cr.values.size(),sr.values.size());
-                            for (std::size_t ci=0;ci<colLimit && scanned<kDiffScanLimit;++ci,++scanned) {
-                                if (core::legacy::ShnValueToString(cr.values[ci]) !=
-                                    core::legacy::ShnValueToString(sr.values[ci])) ++diffCells;
-                            }
-                            if (scanned>=kDiffScanLimit) diffTruncated=true;
-                        }
-                        for (const auto& [id,serverRow] : serverById) {
-                            (void)serverRow;
-                            if (!clientById.contains(id)) ++unmatchedRows;
-                        }
-                    } else {
-                        const std::size_t rowLimit=std::min(clientFile->rows.size(),serverFile->rows.size());
-                        unmatchedRows=clientFile->rows.size()>serverFile->rows.size()
-                            ? clientFile->rows.size()-serverFile->rows.size()
-                            : serverFile->rows.size()-clientFile->rows.size();
-                        for (std::size_t ri=0;ri<rowLimit && scanned<kDiffScanLimit;++ri) {
-                            const auto& cr=clientFile->rows[ri];
-                            const auto& sr=serverFile->rows[ri];
-                            const std::size_t colLimit=std::min(cr.values.size(),sr.values.size());
-                            for (std::size_t ci=0;ci<colLimit && scanned<kDiffScanLimit;++ci,++scanned) {
-                                if (core::legacy::ShnValueToString(cr.values[ci]) !=
-                                    core::legacy::ShnValueToString(sr.values[ci])) ++diffCells;
-                            }
-                        }
-                        diffTruncated=scanned>=kDiffScanLimit;
-                    }
-                }
+                cached = {revision, schemaEqual, rowCountEqual, diffTruncated, comparisonById, diffCells, unmatchedRows};
             }
+            const bool schemaEqual = cached.schemaEqual;
+            const bool rowCountEqual = cached.rowCountEqual;
+            const bool diffTruncated = cached.diffTruncated;
+            const bool comparisonById = cached.comparisonById;
+            const std::size_t diffCells = cached.diffCells;
+            const std::size_t unmatchedRows = cached.unmatchedRows;
 
             ImGui::PushID(p.fileName.c_str());
             ImGui::TableNextRow();
@@ -7234,7 +7290,7 @@ void DrawShnMultiProfiles(EditorState& state) {
                 ImGui::TextDisabled("-");
             } else if (!schemaEqual) {
                 ImGui::TextDisabled("n/a");
-            } else if (diffCells == 0 && unmatchedRows == 0) {
+            } else if (diffCells == 0 && unmatchedRows == 0 && !diffTruncated) {
                 ImGui::TextColored(ImVec4(0.45f,0.85f,0.60f,1.0f), "0");
                 if (ImGui::IsItemHovered())
                     ImGui::SetTooltip("%s",comparisonById
@@ -7250,7 +7306,7 @@ void DrawShnMultiProfiles(EditorState& state) {
                         : L("Keine eindeutige ID-Spalte: Vergleich nach Zeilenposition.",
                             "No unique ID column: compared by row position."),
                         diffTruncated
-                            ? L("Maximal 5000 Zellen wurden inhaltlich verglichen.","At most 5000 cells were compared.")
+                            ? L("Maximal 2 Mio. Zellen wurden inhaltlich verglichen.","At most 2 million cells were compared.")
                             : L("Z = abweichende Zellen, R = nur auf einer Seite vorhandene Zeilen.",
                                 "Z = differing cells, R = rows present on only one side."));
                 }
@@ -8757,6 +8813,16 @@ void DrawQuestFlowView(EditorState& state,
     (void)avail;
 }
 
+// Existiert path als reguläre Datei? Eine fehlende Datei ist kein Fehler - libstdc++ (Linux,
+// MinGW) setzt bei is_regular_file(p, ec) für ENOENT trotzdem ec, MSVC nicht.
+std::expected<bool, std::string> RegularFileState(const std::filesystem::path& path) {
+    std::error_code ec;
+    const auto status = std::filesystem::status(path, ec);
+    if (status.type() == std::filesystem::file_type::not_found) return false;
+    if (ec) return std::unexpected(ec.message());
+    return status.type() == std::filesystem::file_type::regular;
+}
+
 bool SaveQuestDataProject(EditorState& state) {
     std::filesystem::path clientPath, serverPath;
     std::string error;
@@ -8799,11 +8865,12 @@ bool SaveQuestDataProject(EditorState& state) {
     auto resetStaging = [&](const StagedQuestCopy& item) -> std::expected<void,std::string> {
         cleanupTemp(item);
         std::error_code ec;
-        const bool backupExists = std::filesystem::is_regular_file(item.backupPath, ec);
-        if (ec) return std::unexpected("Backup-Status konnte nicht gelesen werden: " + ec.message());
-        ec.clear();
-        const bool finalExists = std::filesystem::is_regular_file(item.finalPath, ec);
-        if (ec) return std::unexpected("Ziel-Status konnte nicht gelesen werden: " + ec.message());
+        const auto backupState = RegularFileState(item.backupPath);
+        if (!backupState) return std::unexpected("Backup-Status konnte nicht gelesen werden: " + backupState.error());
+        const auto finalState = RegularFileState(item.finalPath);
+        if (!finalState) return std::unexpected("Ziel-Status konnte nicht gelesen werden: " + finalState.error());
+        const bool backupExists = *backupState;
+        const bool finalExists = *finalState;
         if (!backupExists) return {};
         if (finalExists) {
             std::filesystem::remove(item.backupPath, ec);
@@ -8844,8 +8911,9 @@ bool SaveQuestDataProject(EditorState& state) {
         std::error_code ec;
         std::filesystem::remove(item.backupPath, ec);
         ec.clear();
-        item.hadOriginal = std::filesystem::is_regular_file(item.finalPath, ec);
-        if (ec) return std::unexpected("Status des Projektziels konnte nicht gelesen werden: " + ec.message());
+        const auto finalState = RegularFileState(item.finalPath);
+        if (!finalState) return std::unexpected("Status des Projektziels konnte nicht gelesen werden: " + finalState.error());
+        item.hadOriginal = *finalState;
         if (item.hadOriginal) {
             std::filesystem::rename(item.finalPath, item.backupPath, ec);
             if (ec) return std::unexpected("Bestehender Projektstand konnte nicht gesichert werden: " + ec.message());
@@ -21274,6 +21342,62 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         std::string section; in >> section;
         state.automationQuestSection = section == "drops" ? 1 : section == "rewards" ? 2 : 0;
         state.questShowFlow = section == "flow";
+    }
+    else if (cmd == "projectfolder") {
+        // projectfolder <Ordner>: beschreibbarer Projektordner (Ausgabe für alle Speicherpfade).
+        std::string folder; std::getline(in >> std::ws, folder);
+        std::snprintf(state.project.projectFolder, sizeof(state.project.projectFolder), "%s", folder.c_str());
+        state.project.hasProject = true;
+    }
+    else if (cmd == "shnset") {
+        // shnset <Client|Server> <Datei.shn> <Zeile> <Spalte> <Wert>: setzt eine Zelle wie das Grid.
+        std::string side, file, value; int row = -1, column = -1;
+        in >> side >> file >> row >> column; std::getline(in >> std::ws, value);
+        const auto src = side == "Client" ? EditorState::ShnSource::Client : EditorState::ShnSource::Server;
+        for (int i = 0; i < static_cast<int>(state.shnFiles.size()); ++i) {
+            const auto& doc = state.shnFiles[static_cast<std::size_t>(i)];
+            if (doc.source == src && doc.file.FileName() == file) { ApplyShnCellText(state, i, row, column, value); break; }
+        }
+    }
+    else if (cmd == "saveall") {
+        // saveall [all]: speichert alle geänderten (mit "all": alle geladenen) Module über die
+        // normalen Speicherfunktionen - für den End-to-End-Test der Projektausgabe.
+        std::string mode; in >> mode;
+        const bool everything = mode == "all";
+        std::string report;
+        std::size_t shnSaved = 0, shnFailed = 0;
+        for (int i = 0; i < static_cast<int>(state.shnFiles.size()); ++i) {
+            if (!everything && !state.shnFiles[static_cast<std::size_t>(i)].dirty) continue;
+            if (SaveShnDocument(state, i)) ++shnSaved; else { ++shnFailed; report += " SHN-Fehler: " + state.shnStatus; }
+        }
+        report += "SHN " + std::to_string(shnSaved) + " gespeichert, " + std::to_string(shnFailed) + " Fehler";
+        if (everything) {
+            EnsureQuestDataLoaded(state);
+            if (state.questDataLoaded) report += SaveQuestDataProject(state) ? " · Quest ok" : " · Quest FEHLER " + state.statusMessage;
+            EnsureDropTableLoaded(state);
+            if (state.dropTableLoaded) report += SaveDropTable(state) ? " · Drops ok" : " · Drops FEHLER " + state.statusMessage;
+            EnsureTownPortalLoaded(state);
+            if (state.townPortalLoaded) { SaveTownPortalFiles(state); report += " · " + state.statusMessage; }
+            EnsureRecallCoordLoaded(state);
+            if (state.recallCoordLoaded) report += SaveRecallCoordFile(state) ? " · Recall ok" : " · Recall FEHLER " + state.statusMessage;
+            EnsureNpcTextLoaded(state);
+            if (state.npcTextLoaded) {
+                auto saved = SaveProjectShineOverride(state.npcTextFile,
+                    ProjectServerShinePath(state.project, std::filesystem::path("World") / "NPC.txt"));
+                report += saved ? " · NPC ok" : " · NPC FEHLER " + saved.error();
+            }
+            if (state.legacySaveStem[0] != '\0') {
+                EnsureMobRegenLoaded(state);
+                if (state.mobRegenTextLoaded) {
+                    auto saved = SaveProjectShineOverride(state.mobRegenTextFile,
+                        ProjectServerShinePath(state.project, std::filesystem::path("MobRegen") / (std::string(state.legacySaveStem) + ".txt")));
+                    report += saved ? " · MobRegen ok" : " · MobRegen FEHLER " + saved.error();
+                }
+                report += SaveLegacyMapProject(state) ? " · Karte ok" : " · Karte FEHLER " + state.statusMessage;
+            }
+        }
+        std::printf("[saveall] %s\n", report.c_str());
+        std::fflush(stdout);
     }
     else if (cmd == "selectall") SelectAllNormalObjects(state);
     else if (cmd == "select") { int id = -1; in >> id; state.selectedObjects = {id}; state.selectedObject = id; state.objectGizmoMatrixValid = false; }

@@ -264,6 +264,9 @@ add_test(NAME shinetext COMMAND test_shinetext ${CMAKE_CURRENT_SOURCE_DIR}/tests
 add_test(NAME questdata COMMAND test_questdata ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/data/QuestData.shn)
 add_executable(test_quest_layout tests/test_quest_layout.cpp)
 target_link_libraries(test_quest_layout PRIVATE mapeditor_core)
+add_executable(test_map_export_layout tests/test_map_export_layout.cpp)
+target_link_libraries(test_map_export_layout PRIVATE mapeditor_core)
+add_test(NAME map_export_layout COMMAND test_map_export_layout ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures)
 add_executable(test_item_drop_groups tests/test_item_drop_groups.cpp)
 target_link_libraries(test_item_drop_groups PRIVATE mapeditor_core)
 # Optional: Ordner mit den echten NA2016-Daten (Unterordner Client/ und Shine/). Die Dateien

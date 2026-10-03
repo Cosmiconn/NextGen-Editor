@@ -31,6 +31,12 @@ struct TextureLayer {
     // einen unveränderten Layer dann bytegleich in Originalauflösung bzw. resampelt einen bearbeiteten
     // Layer zurück auf diese Auflösung, statt die Datei stillschweigend umzuskalieren.
     std::optional<BlendMap> sourceBlend;
+    // Original-Dateibytes der Blend-BMP (beim Import gelesen). Der Export schreibt einen
+    // unveränderten Layer damit bytegleich und patcht einen bearbeiteten nur an geänderten Pixeln.
+    std::vector<std::uint8_t> sourceBmpBytes;
+    // Die Blend-BMP war beim Import nicht auffindbar/lesbar. sourceBlend hält dann den
+    // Anfangszustand; solange der Layer nicht bemalt wird, legt der Export keine Datei an.
+    bool blendMissingAtImport = false;
 };
 
 class TextureLayerStack {

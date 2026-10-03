@@ -92,6 +92,42 @@ std::expected<void, std::string> WriteBlendMapBmp(const BlendMap& blend, const s
 
 // Liest sowohl 24-bit RGB (reales Referenzformat) als auch 8-bit indiziert (Kompatibilität mit
 // v0.3.0-eigenen Dateien und ggf. anderen Tools).
+std::expected<std::vector<std::uint8_t>, std::string> PatchBlendMapBmp(
+    const std::vector<std::uint8_t>& originalFile, const BlendMap& blend) {
+    auto u16 = [&](std::size_t o) { return static_cast<std::uint16_t>(originalFile[o] | (originalFile[o + 1] << 8)); };
+    auto u32 = [&](std::size_t o) {
+        return static_cast<std::uint32_t>(originalFile[o]) | (static_cast<std::uint32_t>(originalFile[o + 1]) << 8) |
+               (static_cast<std::uint32_t>(originalFile[o + 2]) << 16) | (static_cast<std::uint32_t>(originalFile[o + 3]) << 24);
+    };
+    if (originalFile.size() < 54 || originalFile[0] != 'B' || originalFile[1] != 'M')
+        return std::unexpected("PatchBlendMapBmp: keine BMP-Datei");
+    const std::uint32_t dataOffset = u32(10);
+    const auto width = static_cast<std::int32_t>(u32(18));
+    const auto heightRaw = static_cast<std::int32_t>(u32(22));
+    if (u16(28) != 24 || u32(30) != 0)
+        return std::unexpected("PatchBlendMapBmp: nur 24-bit BI_RGB wird gepatcht");
+    if (width <= 0 || heightRaw == 0) return std::unexpected("PatchBlendMapBmp: ungültige Dimensionen");
+    const auto w = static_cast<std::uint32_t>(width);
+    const auto h = static_cast<std::uint32_t>(heightRaw < 0 ? -heightRaw : heightRaw);
+    if (blend.Width() != w || blend.Height() != h)
+        return std::unexpected("PatchBlendMapBmp: Grösse weicht vom Original ab");
+    const std::uint32_t rowSize = RowSizeBytes(w, 3);
+    if (static_cast<std::uint64_t>(dataOffset) + static_cast<std::uint64_t>(rowSize) * h > originalFile.size())
+        return std::unexpected("PatchBlendMapBmp: Pixeldaten unvollständig");
+
+    std::vector<std::uint8_t> out = originalFile;
+    for (std::uint32_t y = 0; y < h; ++y) {
+        const std::uint32_t z = y; // gleiche Zeilenzuordnung wie ReadBlendMapBmp (kein Flip)
+        for (std::uint32_t x = 0; x < w; ++x) {
+            const std::size_t o = dataOffset + static_cast<std::size_t>(y) * rowSize + x * 3u;
+            const auto gray = static_cast<std::uint8_t>(std::clamp(blend.At(x, z), 0.0f, 1.0f) * 255.0f + 0.5f);
+            if (out[o] == gray) continue;
+            out[o] = gray; out[o + 1] = gray; out[o + 2] = gray;
+        }
+    }
+    return out;
+}
+
 std::expected<BlendMap, std::string> ReadBlendMapBmp(const std::filesystem::path& file) {
     std::ifstream in(file, std::ios::binary);
     if (!in) {
@@ -183,8 +219,9 @@ std::expected<BlendMap, std::string> ReadBlendMapBmp(const std::filesystem::path
         for (std::uint32_t x = 0; x < w; ++x) {
             std::uint8_t gray = 0;
             if (bitCount == 24) {
-                // B, G, R (in dieser Reihenfolge im Dateiformat) - Graustufe: B-Kanal als Referenz
-                // (in allen gepr\u00fcften Referenzdateien gilt B==G==R exakt).
+                // B, G, R (in dieser Reihenfolge im Dateiformat) - Graustufe: B-Kanal als Referenz.
+                // B==G==R gilt NICHT überall (Roumen: block 539, rock 1774, grass 13496 Pixel);
+                // der Export patcht deshalb die Originalbytes statt neu zu schreiben.
                 gray = row[x * 3 + 0];
             } else {
                 const std::uint8_t index = row[x];

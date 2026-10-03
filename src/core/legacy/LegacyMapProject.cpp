@@ -247,7 +247,20 @@ std::expected<void, std::string> SaveLegacyMap(
         if (!htdResult) {
             return std::unexpected(htdResult.error());
         }
-        project.ini.heightFileName = ".\\" + mapStem + ".HTD";
+        // Den Original-Pfad behalten, wenn er schon auf <Karte>.HTD zeigt: Der Client löst ihn
+        // relativ zum Client-Ordner auf (".\\resmap\\field\\Rou\\Rou.HTD"); ein auf ".\\Rou.HTD"
+        // verkürzter Pfad würde die Heightmap im Spiel nicht mehr finden.
+        const auto currentName = LegacyPathToNative(project.ini.heightFileName).filename().string();
+        if (project.ini.heightFileName.empty() || !EqualsCaseInsensitive(currentName, mapStem + ".HTD")) {
+            std::string legacy = ".\\" + mapStem + ".HTD";
+            if (const auto resmap = FindResmapAncestor(outDir)) {
+                std::filesystem::path rel = std::filesystem::path("resmap") /
+                    std::filesystem::relative(outDir, *resmap) / (mapStem + ".HTD");
+                legacy = ".\\" + rel.lexically_normal().generic_string();
+                for (char& c : legacy) if (c == '/') c = '\\';
+            }
+            project.ini.heightFileName = legacy;
+        }
     }
 
     // ini.layers an den aktuellen TextureLayerStack angleichen (Layer können in der GUI
