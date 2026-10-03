@@ -1,0 +1,98 @@
+name: Aurelia Reference City + Real Geometry Renders
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tools/nif/generate_aurelia_landmarks.py'
+      - 'tools/maps/generate_aurelia_reference_city.py'
+      - 'tools/maps/render_aurelia_reference.py'
+      - '.github/workflows/aurelia-reference-render.yml'
+      - 'tools/nif/generate_original_fantasy_assets.py'
+      - 'tools/maps/generate_aurelia_75_125.py'
+  pull_request:
+    paths:
+      - 'tools/nif/generate_aurelia_landmarks.py'
+      - 'tools/maps/generate_aurelia_reference_city.py'
+      - 'tools/maps/render_aurelia_reference.py'
+
+permissions:
+  contents: read
+
+jobs:
+  build-map-and-render:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install deterministic image raster dependency
+        run: python3 -m pip install --disable-pip-version-check pillow
+
+      - name: Assemble verified Rou terrain template fixture
+        run: |
+          mkdir -p build/mock-source/Client/resmap/field/Rou
+          cp tests/fixtures/Rou.HTD build/mock-source/Client/resmap/field/Rou/Rou.HTD
+          cp tests/fixtures/Rou.HTDG build/mock-source/Client/resmap/field/Rou/Rou.HTDG
+          cp tests/fixtures/Rou.shbd build/mock-source/Client/resmap/field/Rou/Rou.shbd
+
+      - name: Generate complete Aurelia75 v2 map
+        run: |
+          python3 tools/maps/generate_aurelia_reference_city.py \
+            --source-client build/mock-source \
+            --project-root build/AureliaProject \
+            --force
+          test -s build/AureliaProject/Client/resmap/field/Aurelia75/Aurelia75.ini
+          test -s build/AureliaProject/Client/resmap/field/Aurelia75/Aurelia75.HTD
+          test -s build/AureliaProject/Client/resmap/field/Aurelia75/Aurelia75.HTDG
+          test -s build/AureliaProject/Client/resmap/field/Aurelia75/Aurelia75.shmd
+          test -s build/AureliaProject/Client/resmap/field/Aurelia75/Aurelia75.shbd
+          test "$(find build/AureliaProject/Client/resmap/field/Aurelia75/assets -maxdepth 1 -name '*.nif' | wc -l)" -eq 25
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('build/AureliaProject/Client/resmap/field/Aurelia75/Aurelia75.layout.json')
+          data=json.loads(p.read_text(encoding='utf-8'))
+          assert len(data['placements']) >= 180, len(data['placements'])
+          assert any('NG_Aurelia_Cathedral.nif' in x['model'] for x in data['placements'])
+          assert any('NG_Aurelia_GrandFountain.nif' in x['model'] for x in data['placements'])
+          assert any('NG_Aurelia_Lighthouse.nif' in x['model'] for x in data['placements'])
+          print('placements',len(data['placements']))
+          PY
+
+      - name: Build NextGen NIF parser probe
+        run: |
+          cmake -S . -B build/core -DNEXTGEN_EDITOR_CORE_ONLY=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/core --target nif_probe --config Release -j2
+
+      - name: Verify every generated NIF with the real NextGen parser
+        shell: bash
+        run: |
+          set -euo pipefail
+          count=0
+          for f in build/AureliaProject/Client/resmap/field/Aurelia75/assets/*.nif; do
+            first="$(build/core/nif_probe --inspect "$f" | head -n 1)"
+            echo "$(basename "$f"): $first"
+            [[ "$first" == OK_GEOMETRY* ]]
+            count=$((count+1))
+          done
+          test "$count" -eq 25
+
+      - name: Render exact map geometry from the generated NIF source meshes
+        run: |
+          python3 tools/maps/render_aurelia_reference.py --output build/aurelia-renders --width 1600 --height 900
+          test -s build/aurelia-renders/aurelia_aerial.png
+          test -s build/aurelia-renders/aurelia_harbor.png
+          test -s build/aurelia-renders/aurelia_plaza.png
+          test -s build/aurelia-renders/aurelia_citadel.png
+          test -s build/aurelia-renders/aurelia_contact_sheet.png
+
+      - name: Upload real map + render evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: Aurelia75-v2-real-map-and-renders
+          path: |
+            build/AureliaProject/Client/resmap/field/Aurelia75/
+            build/aurelia-renders/*.png
+            build/aurelia-renders/README.txt
+          if-no-files-found: error
+          retention-days: 30
