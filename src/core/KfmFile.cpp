@@ -152,32 +152,44 @@ std::expected<void,std::string> SaveKfmFile(const KfmFile& file,const std::files
     return {};
 }
 KfmReferences InspectKfmReferences(const KfmFile& file,const std::filesystem::path& source) {
+    return InspectKfmReferences(file, source, source);
+}
+KfmReferences InspectKfmReferences(const KfmFile& file,
+                                   const std::filesystem::path& source,
+                                   const std::filesystem::path& workingSource) {
     KfmReferences result;
     std::unordered_map<std::string,std::optional<std::filesystem::path>> paths;
+    const auto resolveFrom=[&](const std::filesystem::path& base,
+                               const std::filesystem::path& relative)
+        -> std::optional<std::filesystem::path> {
+        std::error_code ec;
+        try {
+            auto current=base.parent_path();bool found=true;
+            for(const auto& component:relative) {
+                if(std::filesystem::exists(current/component,ec)){current/=component;continue;}
+                std::optional<std::filesystem::path> match;
+                for(const auto& entry:std::filesystem::directory_iterator(current,ec)) {
+                    if(legacy::EqualsCaseInsensitive(entry.path().filename().string(),component.string())) {
+                        if(match){found=false;break;}match=entry.path();
+                    }
+                }
+                if(!found || !match){found=false;break;}current=*match;
+            }
+            if(found && std::filesystem::is_regular_file(current,ec))return current.lexically_normal();
+        }
+        catch(const std::filesystem::filesystem_error&) {}
+        return std::nullopt;
+    };
     const auto resolve=[&](const std::string& name) {
         if(const auto it=paths.find(name);it!=paths.end())return it->second;
         std::optional<std::filesystem::path> path;
         if(!name.empty() && name.find('\0')==std::string::npos) {
             const auto relative=legacy::LegacyPathToNative(name);
-            std::error_code ec;
             // Do not follow absolute paths embedded by an asset author.
             if(!relative.is_absolute() && !relative.has_root_name() && name.find(':')==std::string::npos) {
-                try {
-                    auto current=source.parent_path();bool found=true;
-                    for(const auto& component:relative) {
-                        if(std::filesystem::exists(current/component,ec)){current/=component;continue;}
-                        std::optional<std::filesystem::path> match;
-                        for(const auto& entry:std::filesystem::directory_iterator(current,ec)) {
-                            if(legacy::EqualsCaseInsensitive(entry.path().filename().string(),component.string())) {
-                                if(match){found=false;break;}match=entry.path();
-                            }
-                        }
-                        if(!found || !match){found=false;break;}current=*match;
-                    }
-                    if(found)path=current.lexically_normal();
-                }
-                catch(const std::filesystem::filesystem_error&) {}
-                if(path && !std::filesystem::is_regular_file(*path,ec))path.reset();
+                if(!workingSource.empty())path=resolveFrom(workingSource,relative);
+                if(!path && source.lexically_normal()!=workingSource.lexically_normal())
+                    path=resolveFrom(source,relative);
             }
         }
         paths.emplace(name,path);return path;
