@@ -6950,14 +6950,14 @@ void DrawShnSourceList(EditorState& state, EditorState::ShnSource source, const 
         const auto peers = FindDependencyPeers(state, i);
         if (!peers.empty()) {
             // Gelbes Warndreieck: möglicherweise abhängige Datei(en) gefunden (siehe oben).
-            ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.2f, 1.0f), "\xE2\x9A\xA0");
+            ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.2f, 1.0f), "!");
             ImGui::SameLine(0.0f, 3.0f);
         }
         std::string label = doc.file.FileName() + (doc.dirty ? " *" : "");
         if (UI::Selectable((label + "##" + std::to_string(i)).c_str(), selected)) SelectShnDocument(state, i);
         if (ImGui::IsItemHovered()) {
             if (!peers.empty()) {
-                std::string tip = doc.file.path.string() + "\n\n\xE2\x9A\xA0 Gleiche Zeilenanzahl (" +
+                std::string tip = doc.file.path.string() + "\n\n! Gleiche Zeilenanzahl (" +
                                    std::to_string(doc.file.rows.size()) + ") wie:\n";
                 for (int p : peers) tip += "  - " + state.shnFiles[static_cast<std::size_t>(p)].file.FileName() + "\n";
                 tip += "\nMögliche Abhängigkeit (Zeilenanzahl-Gleichschritt, siehe SHN_EDITOR.md) -\n"
@@ -21247,6 +21247,7 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         else if (m == "objects") state.editMode = EditMode::ObjectPlacement;
         else if (m == "npcs") state.editMode = EditMode::Npcs;
         else if (m == "portals") state.editMode = EditMode::Portals;
+        else if (m == "mobs") state.editMode = EditMode::Mobs;
     }
     else if (cmd == "project") {
         // project <Client-Ordner>|<Server-Ordner>: setzt die Projekt-Quellordner (read-only Quellen).
