@@ -8194,6 +8194,86 @@ std::uint32_t UploadThumbnailTexture(const std::vector<std::uint8_t>& rgba, std:
     return tex;
 }
 
+// Rendert ein NIF-Modell als Vorschaubild (eigener NifMeshRenderer + Offscreen-Framebuffer):
+// Kamera schräg von oben, an der Welt-AABB des Modells ausgerichtet. Gibt eine normale
+// RGBA-Thumbnail-Textur zurück (0 = Modell nicht ladbar/leer).
+struct NifPreviewRenderTarget {
+    app::NifMeshRenderer renderer;
+    bool initialized = false;
+    GLuint fbo = 0, color = 0, depth = 0;
+    int size = 0;
+};
+NifPreviewRenderTarget& NifPreviewTarget() {
+    static NifPreviewRenderTarget target;
+    return target;
+}
+
+std::uint32_t RenderNifPreviewThumbnail(const std::filesystem::path& nifPath, int size = 192,
+                                        std::vector<std::uint8_t>* pixelsOut = nullptr) {
+    auto& t = NifPreviewTarget();
+    if (!t.initialized) {
+        t.renderer.Init();
+        glGenFramebuffers(1, &t.fbo);
+        glGenTextures(1, &t.color);
+        glGenRenderbuffers(1, &t.depth);
+        t.initialized = true;
+    }
+    if (t.size != size) {
+        glBindTexture(GL_TEXTURE_2D, t.color);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, size, size, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glBindRenderbuffer(GL_RENDERBUFFER, t.depth);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, size, size);
+        t.size = size;
+    }
+    core::ObjectPlacementSet set;
+    core::PlacedObject obj;
+    obj.modelPath = nifPath.filename().string();
+    obj.rotW = 1.0f;
+    obj.scale = 1.0f;
+    set.AddObject(obj);
+    t.renderer.LoadModelsForSet(set, nifPath.parent_path());
+    const auto bounds = t.renderer.ObjectWorldBounds(set, 0);
+    if (!bounds) return 0;
+    const auto& [lo, hi] = *bounds;
+    const float dx = hi[0] - lo[0], dy = hi[1] - lo[1], dz = hi[2] - lo[2];
+    const float radius = std::max(0.5f * std::sqrt(dx * dx + dy * dy + dz * dz), 1.0f);
+    app::OrbitCamera camera;
+    camera.SetTarget((lo[0] + hi[0]) * 0.5f, (lo[1] + hi[1]) * 0.5f, (lo[2] + hi[2]) * 0.5f);
+    camera.SetOrientation(0.75f, 0.42f);
+    camera.SetDistance(radius / std::sin(app::OrbitCamera::kFovY * 0.5f) * 0.8f);
+
+    GLint previousFbo = 0, viewport[4] = {0, 0, 0, 0};
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFbo);
+    glGetIntegerv(GL_VIEWPORT, viewport);
+    glBindFramebuffer(GL_FRAMEBUFFER, t.fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, t.color, 0);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, t.depth);
+    std::uint32_t result = 0;
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE) {
+        glViewport(0, 0, size, size);
+        glClearColor(0.11f, 0.13f, 0.16f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glEnable(GL_DEPTH_TEST);
+        t.renderer.Draw(set, camera, size, size);
+        std::vector<std::uint8_t> pixels(static_cast<std::size_t>(size) * size * 4);
+        glReadPixels(0, 0, size, size, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+        // OpenGL liest von unten nach oben; Thumbnails erwarten die erste Zeile oben.
+        std::vector<std::uint8_t> flipped(pixels.size());
+        const std::size_t row = static_cast<std::size_t>(size) * 4;
+        for (int y = 0; y < size; ++y)
+            std::copy_n(pixels.begin() + static_cast<std::ptrdiff_t>(y * row), row,
+                        flipped.begin() + static_cast<std::ptrdiff_t>((size - 1 - y) * row));
+        for (std::size_t i = 3; i < flipped.size(); i += 4) flipped[i] = 255;
+        if (pixelsOut) *pixelsOut = flipped;
+        result = UploadThumbnailTexture(flipped, static_cast<std::uint32_t>(size), static_cast<std::uint32_t>(size));
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(previousFbo));
+    glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+    return result;
+}
+
 // Lädt (einmalig, gecacht in state.assetThumbnails) ein kleines Vorschaubild für einen
 // Asset-Picker-Eintrag oder Layer: entweder direkt eine Textur-Datei (isNif=false, z.B. .dds)
 // oder die erste Diffuse-Textur eines .nif-Modells (isNif=true - eingebettet über NiPixelData
@@ -8244,6 +8324,10 @@ EditorState::AssetThumbnail GetOrLoadAssetThumbnail(EditorState& state,
 
     if (!isNif) {
         loadTextureThumbnail(resolvedPath);
+    } else if (const auto rendered = RenderNifPreviewThumbnail(resolvedPath); rendered != 0) {
+        // Gerendertes Modell statt nur seiner ersten Textur.
+        thumb.tex = rendered;
+        thumb.aspect = 1.0f;
     } else if (auto model = core::LoadNifMesh(resolvedPath)) {
         // Zwei-Ebenen-tiefer "Fake"-Kartenordner unter resmapRoot: ResolveLegacyAssetPath leitet
         // den Asset-Root aus mapDir.parent_path().parent_path() her (Layout <AssetRoot>/field/
@@ -21661,6 +21745,28 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         state.paintSettings.radius = r; state.walkSettings.radius = r;
     }
     else if (cmd == "layer") { int l = 0; in >> l; state.selectedLayer = l; }
+    else if (cmd == "nifpreview") {
+        // nifpreview <out.ppm> <nif> [<nif> ...]: gerenderte Vorschauen nebeneinander als PPM.
+        std::string out; in >> out;
+        std::vector<std::string> nifs; std::string n;
+        while (in >> n) nifs.push_back(n);
+        const int size = 192;
+        std::vector<std::uint8_t> sheet(static_cast<std::size_t>(size) * size * 3 * nifs.size(), 40);
+        for (std::size_t k = 0; k < nifs.size(); ++k) {
+            std::vector<std::uint8_t> px;
+            const auto tex = RenderNifPreviewThumbnail(nifs[k], size, &px);
+            std::printf("[nifpreview] %s -> %s\n", nifs[k].c_str(), tex ? "ok" : "kein Modell");
+            for (int y = 0; y < size && !px.empty(); ++y)
+                for (int x = 0; x < size; ++x)
+                    for (int c = 0; c < 3; ++c)
+                        sheet[(static_cast<std::size_t>(y) * size * nifs.size() + k * size + x) * 3 + c] =
+                            px[(static_cast<std::size_t>(y) * size + x) * 4 + c];
+        }
+        std::ofstream f(out, std::ios::binary);
+        f << "P6\n" << size * nifs.size() << " " << size << "\n255\n";
+        f.write(reinterpret_cast<const char*>(sheet.data()), static_cast<std::streamsize>(sheet.size()));
+        std::fflush(stdout);
+    }
     else if (cmd == "footprintstats") {
         // Vergleicht jede Objekt-Grundfläche mit dem geladenen (Original-)SHBD: Anteil gesperrter
         // Zellen innerhalb der Grundfläche, je Modell aggregiert.

@@ -59,6 +59,10 @@ public:
     // (aktuell zeichnet ObjectMarkerRenderer weiterhin alle Objekte - siehe main.cpp für die
     // Kombination beider Renderer).
     [[nodiscard]] bool HasRealMesh(std::size_t objectIndex) const;
+    // Welt-AABB des geladenen Meshes eines Objekts (nächste LOD-Stufe, ohne Billboard-Drehung),
+    // z. B. um eine Vorschaukamera auszurichten.
+    [[nodiscard]] std::optional<std::pair<std::array<float, 3>, std::array<float, 3>>> ObjectWorldBounds(
+        const core::ObjectPlacementSet& set, std::size_t objectIndex) const;
     [[nodiscard]] std::size_t RealMeshCount() const;
 
     // Exaktes Editor-Picking gegen die geladenen NIF-Dreiecke. Liefert die Entfernung

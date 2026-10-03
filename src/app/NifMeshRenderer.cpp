@@ -2100,6 +2100,39 @@ Mat4 ApplyBillboard(const Mat4& objectModel, float objectScale,
 }
 } // namespace
 
+std::optional<std::pair<std::array<float,3>,std::array<float,3>>> NifMeshRenderer::ObjectWorldBounds(
+    const core::ObjectPlacementSet& set, std::size_t objectIndex) const {
+    if(objectIndex>=perObjectModel_.size()||objectIndex>=set.Count()) return std::nullopt;
+    const LoadedModel* model=perObjectModel_[objectIndex];
+    if(model==nullptr) return std::nullopt;
+    const auto& obj=set.At(objectIndex);
+    Mat4 modelMat=QuatToMat4Local(obj.rotX,obj.rotY,obj.rotZ,obj.rotW);
+    for(int col=0;col<3;++col) {
+        modelMat.m[col*4+0]*=obj.scale;
+        modelMat.m[col*4+1]*=obj.scale;
+        modelMat.m[col*4+2]*=obj.scale;
+    }
+    modelMat.m[12]=obj.posX; modelMat.m[13]=obj.posY; modelMat.m[14]=obj.posZ;
+    std::array<float,3> lo{std::numeric_limits<float>::max(),std::numeric_limits<float>::max(),std::numeric_limits<float>::max()};
+    std::array<float,3> hi{std::numeric_limits<float>::lowest(),std::numeric_limits<float>::lowest(),std::numeric_limits<float>::lowest()};
+    bool any=false;
+    for(const auto& sub:model->subMeshes) {
+        if(sub.lodControlled && sub.lodNear>0.0f) continue; // nur die nächste LOD-Stufe
+        if(!(sub.localBoundsMin[0]<=sub.localBoundsMax[0])) continue;
+        for(int mask=0;mask<8;++mask) {
+            const std::array<float,3> local{
+                (mask&1)?sub.localBoundsMax[0]:sub.localBoundsMin[0],
+                (mask&2)?sub.localBoundsMax[1]:sub.localBoundsMin[1],
+                (mask&4)?sub.localBoundsMax[2]:sub.localBoundsMin[2]};
+            const auto p=TransformPoint(modelMat,local);
+            for(int axis=0;axis<3;++axis) { lo[axis]=std::min(lo[axis],p[axis]); hi[axis]=std::max(hi[axis],p[axis]); }
+            any=true;
+        }
+    }
+    if(!any) return std::nullopt;
+    return std::make_pair(lo,hi);
+}
+
 std::optional<float> NifMeshRenderer::RaycastObject(
     const core::ObjectPlacementSet& set, std::size_t objectIndex, const OrbitCamera& camera,
     const std::array<float,3>& rayOrigin, const std::array<float,3>& rayDirection) const {

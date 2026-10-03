@@ -1,3 +1,7 @@
+## Asset browser — rendered object previews
+- NIF thumbnails in the asset browser and the object properties showed only the model's first diffuse texture. They are now rendered models: a separate `NifMeshRenderer` draws the object into an offscreen framebuffer, the camera framed at an angle from above on the model's world bounds (`NifMeshRenderer::ObjectWorldBounds`, nearest LOD). If a model cannot be loaded, the old texture thumbnail is used. Example: `screenshots/object_previews.png` (lighthouse, tree, market stall, ship, fountain, Uruga airship).
+- Automation `nifpreview <out.ppm> <nif>...` writes previews as an image.
+
 ## Block&Walk — object footprints checked against the original SHBD
 - Measured on Roumen: inside the footprints the editor derives, 92-99 % of the cells are blocked in the original SHBD for buildings and props (house02 97.5 %, shops 93-99 %, GuildHall 95.5 %, boxes 99.9 %). Decoration and floating objects are walkable in the game: weed 23 %, wool 2 %, the ship on the sea 16 %, Uruga's airship 9 %. "Block visible footprints" used to block them anyway.
 - New option, on by default: "Only block models that block in the original". Models whose footprints are mostly walkable in the SHBD loaded with the map are excluded; models without a comparison (newly placed) are still blocked. Cells blocked by the editor that are also blocked in the original: Roumen 74.8 % -> 86.1 %, Uruga 61.6 % -> 84.4 %. The tooltip lists the excluded models with their percentage.
