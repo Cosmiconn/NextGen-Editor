@@ -61,7 +61,7 @@ Weiterhin offen – jeweils mit dem, was dafür fehlt:
 | Bedeutung der IDM-Gruppen (Neuberechnung statt Abbildung) | weitere Karten mit IDM + Client-Verhalten bei veränderten Gruppen |
 | SHBD-Bitsemantik jenseits „gesetzt = blockiert“, Spielnavigation | Server-/Client-Verhalten an Testkarten |
 | Skill-Editor: physische Existenz von KF/NIF/Effekt-Dateien | vollständiger Client-Datenbestand (ActiveSkillView-/Effekt-Tabellen + `resEffect`) |
-| Windows/MSVC-Build dieser Stufe | MSVC-Build auf dem Windows-Rechner. Bereits geprüft: Linux/GCC 13 (30/30 Tests) und Windows-Cross-Build mit MinGW-w64 inkl. Editor.exe, Tests unter Wine 29/30 (einzige Abweichung: `std::ios::noreplace` im MinGW-Laufzeitpfad) |
+| Windows/MSVC-Build dieser Stufe | MSVC-Build auf dem Windows-Rechner. Bereits geprüft: Linux/GCC 13 (30/30 Tests) und Windows-Cross-Build mit MinGW-w64; Editor.exe rendert Roumen unter Wine (inkl. WIC-Icons), Tests unter Wine 29/30 (einzige Abweichung: `std::ios::noreplace` im MinGW-Laufzeitpfad) |
 
 ---
 
