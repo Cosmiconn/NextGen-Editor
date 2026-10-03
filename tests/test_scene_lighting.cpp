@@ -7,6 +7,8 @@
 
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
+#include <string>
 
 using namespace theseed::mapeditor;
 
@@ -44,6 +46,27 @@ int main(int argc, char** argv) {
     // Ohne Licht-Fußteil (SHMD-Variante): Sonne neutral, nur GlobalLight.
     const auto noFooter = app::SceneLightingFromEnvironment(env, false);
     Check(Near(noFooter.sun[1], 1.0f) && Near(noFooter.ambient[1], 0.792157f), "Variante ohne Licht-Fußteil");
+
+    // Weitere echte NA2016-Karten (optional als weitere Argumente): Nebelfarbe = Hintergrundfarbe
+    // bei SwaDn01 exakt und bei Bera bis auf eine 8-Bit-Stufe (Beleg, dass Fog-Werte 2..4 eine Horizontfarbe sind); SwaDn01 ist die
+    // SHMD-Variante ohne Licht-Fußteil.
+    for (int a = 2; a < argc; ++a) {
+        const auto other = core::legacy::ParseLegacyShmd(argv[a]);
+        Check(other.has_value(), "weitere SHMD geladen");
+        if (!other) continue;
+        const auto ol = app::SceneLightingFromEnvironment(other->environment, other->hasLightingFooter);
+        const std::string name = std::filesystem::path(argv[a]).stem().string();
+        std::printf("         %s: Fog-Farbe %.3f %.3f %.3f | Hintergrund %.3f %.3f %.3f | Nebel %.0f..%.0f | Fußteil %s\n",
+                    name.c_str(), ol.fogColor[0], ol.fogColor[1], ol.fogColor[2], ol.background[0], ol.background[1],
+                    ol.background[2], ol.fogStart, ol.fogEnd, other->hasLightingFooter ? "ja" : "nein");
+        if (name == "bera" || name == "SwaDn01") {
+            bool same = true;
+            // Bera: 199/255 gegen 198/255 im Rotkanal - gleich bis auf eine 8-Bit-Stufe.
+            for (int c = 0; c < 3; ++c) same = same && Near(ol.fogColor[c], ol.background[c], 1.5f / 255.0f);
+            Check(same, (name + ": Nebelfarbe = BackGroundColor (höchstens eine 8-Bit-Stufe Abweichung)").c_str());
+        }
+        if (name == "SwaDn01") Check(!other->hasLightingFooter && Near(ol.sun[0], 1.0f), "SwaDn01: ohne Licht-Fußteil -> neutrale Sonne");
+    }
 
     // Grenzfälle: ungültiges Frustum, Tiefe 0.
     core::SceneEnvironment odd;

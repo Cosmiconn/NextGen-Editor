@@ -29,6 +29,11 @@ Behauptung über die Client-Formel.
 | Hintergrund | `.shmd` `BackGroundColor` – Rou: 0 / 0,502 / 1,0 | **gelesen**, Löschfarbe des Viewports |
 | Nebel | `.shmd` `Fog` (Tiefe + Farbe, Rou: 0,57 · 0,071 / 0,541 / 0,929) und `Frustum` (5000) | **gelesen**, Nebel als Näherung (s. u.) |
 
+Beleg für die Farbdeutung von `Fog` 2–4 über vier echte Karten: Bei SwaDn01 ist die Nebelfarbe
+exakt `BackGroundColor`, bei Bera bis auf eine 8-Bit-Stufe (199/255 zu 198/255), bei Roumen nahe
+daran; nur der Dungeon Mem_UA weicht ab (dunkles Blaugrün auf fast schwarzem Grund). SwaDn01 ist
+die SHMD-Variante ohne Licht-Fußteil (`test_scene_lighting` mit allen vier Dateien).
+
 Kern: `core/legacy/MapRenderSettings` + `test_map_render_settings` (gegen die echten Dateien
 `Rou.conf` und `Rouvertexcolor2.bmp`); SHMD-Umgebung: `src/app/SceneLighting.hpp` +
 `test_scene_lighting` (gegen die echte `Rou.shmd`).

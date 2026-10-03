@@ -328,7 +328,10 @@ add_test(NAME map_render_settings COMMAND test_map_render_settings ${CMAKE_CURRE
 add_executable(test_scene_lighting tests/test_scene_lighting.cpp)
 target_include_directories(test_scene_lighting PRIVATE src/app)
 target_link_libraries(test_scene_lighting PRIVATE mapeditor_core)
-add_test(NAME scene_lighting COMMAND test_scene_lighting ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/Rou.shmd)
+add_test(NAME scene_lighting COMMAND test_scene_lighting ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/Rou.shmd
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/data/bera.shmd
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/data/SwaDn01.shmd
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/data/Mem_UA.shmd)
 
 add_executable(test_idm_remap tests/test_idm_remap.cpp)
 target_link_libraries(test_idm_remap PRIVATE mapeditor_core)
