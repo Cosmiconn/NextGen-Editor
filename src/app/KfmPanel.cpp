@@ -1,4 +1,6 @@
 #include "KfmPanel.hpp"
+
+#include <array>
 #include "mapeditor/app/Localization.hpp"
 #include "imgui.h"
 #include <algorithm>
@@ -345,9 +347,24 @@ void KfmPanel::Draw(const std::function<std::optional<std::string>()>& browse,
     ImGui::SameLine();
     ImGui::TextDisabled("| %zu %s | %zu %s", f.animations.size(), L("Animationen", "animations"),
                         transitionCount_, L("Übergänge", "transitions"));
-    ImGui::TextWrapped("NIF: %s", f.nifFileName.c_str());
-    ImGui::SameLine();
-    ImGui::TextDisabled("| %s: %s", L("Wurzel", "Root"), f.master.c_str());
+    {
+        // NIF-Datei und Wurzelknoten sind editierbar (Strings im KFM-Kopf, bytegenau kodiert).
+        std::array<char, 512> nifBuf{};
+        std::snprintf(nifBuf.data(), nifBuf.size(), "%s", f.nifFileName.c_str());
+        ImGui::SetNextItemWidth(std::max(160.0f, ImGui::GetContentRegionAvail().x * 0.55f));
+        if (ImGui::InputText("NIF##kfmNif", nifBuf.data(), nifBuf.size())) {
+            f.nifFileName = nifBuf.data();
+            MarkEdited(true);
+        }
+        ImGui::SameLine();
+        std::array<char, 256> rootBuf{};
+        std::snprintf(rootBuf.data(), rootBuf.size(), "%s", f.master.c_str());
+        ImGui::SetNextItemWidth(std::max(100.0f, ImGui::GetContentRegionAvail().x - 70.0f));
+        if (ImGui::InputText(L("Wurzel##kfmRoot", "Root##kfmRoot"), rootBuf.data(), rootBuf.size())) {
+            f.master = rootBuf.data();
+            MarkEdited(false);
+        }
+    }
     ImGui::EndChild();
 
     // Action row
@@ -454,6 +471,36 @@ void KfmPanel::Draw(const std::function<std::optional<std::string>()>& browse,
     ImGui::BeginChild("##kfmDetails", ImVec2(0,0), true);
     ImGui::TextColored(ImVec4(0.35f,0.75f,1.0f,1.0f), "%s", L("DETAILS", "DETAILS"));
     ImGui::Separator();
+
+    if (selected_ < f.animations.size()) {
+        // Animationsliste: duplizieren / entfernen (core::KfmDuplicateAnimation / KfmRemoveAnimation).
+        if (ImGui::Button(L("Duplizieren", "Duplicate"))) {
+            selected_ = core::KfmDuplicateAnimation(f, selected_);
+            MarkEdited(true);
+            message_ = std::string(L("Animation dupliziert, neue Event-ID ", "Animation duplicated, new event ID ")) +
+                       std::to_string(f.animations[selected_].eventCode);
+        }
+        ImGui::SameLine();
+        ImGui::Checkbox(L("Löschen erlauben", "Allow delete"), &deleteArmed_);
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!deleteArmed_);
+        if (ImGui::Button(L("Animation löschen", "Delete animation"))) {
+            const auto report = core::KfmRemoveAnimation(f, selected_);
+            deleteArmed_ = false;
+            if (selected_ >= f.animations.size() && !f.animations.empty()) selected_ = f.animations.size() - 1;
+            previewKf_.reset();
+            previewAnimationIndex_ = static_cast<std::size_t>(-1);
+            MarkEdited(true);
+            message_ = std::string(L("Animation gelöscht", "Animation deleted"));
+            if (report.danglingTransitions + report.danglingIntermediates > 0)
+                message_ += std::string(L(" - Achtung: ", " - warning: ")) +
+                            std::to_string(report.danglingTransitions) + L(" Übergänge und ", " transitions and ") +
+                            std::to_string(report.danglingIntermediates) +
+                            L(" Zwischenanimationen zeigen jetzt auf eine fehlende Event-ID.",
+                              " intermediate animations now point to a missing event ID.");
+        }
+        ImGui::EndDisabled();
+    }
 
     if (selected_ < f.animations.size()) {
         auto& a = f.animations[selected_];

@@ -47,6 +47,17 @@ std::expected<KfmFile, std::string> LoadKfmFile(const std::filesystem::path& pat
 // Export a NEW file. Existing destinations are never truncated or replaced.
 std::expected<void, std::string> SaveKfmFile(const KfmFile& file, const std::filesystem::path& path);
 
+// ---- Bearbeitung der Animationsliste ----
+// Kleinste Event-ID größer als alle vorhandenen (mindestens 1).
+[[nodiscard]] std::int32_t KfmNextFreeEventCode(const KfmFile& file);
+// Kopie der Animation `index` direkt dahinter einfügen: neue freie Event-ID, KF-Datei, Index und
+// Übergänge unverändert; der Legacy-Name (nur 1.2.4b) erhält " Kopie". Liefert den neuen Index.
+std::size_t KfmDuplicateAnimation(KfmFile& file, std::size_t index);
+// Animation entfernen. Übergänge ANDERER Animationen, die auf ihre Event-ID zeigen, werden nicht
+// still verändert, sondern gezählt (sie gelten danach als fehlende Ziele).
+struct KfmRemoveReport { std::size_t danglingTransitions = 0, danglingIntermediates = 0; bool removed = false; };
+KfmRemoveReport KfmRemoveAnimation(KfmFile& file, std::size_t index);
+
 struct KfmReferences {
     std::optional<std::filesystem::path> nif;
     std::vector<std::optional<std::filesystem::path>> animations;

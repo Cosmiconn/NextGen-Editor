@@ -31,6 +31,7 @@ private:
     std::vector<std::size_t> visible_;
     std::size_t selected_ = 0, transitionCount_ = 0;
     bool dirty_ = false;
+    bool deleteArmed_ = false;
 
     std::optional<core::KfAnimationFile> previewKf_;
     std::filesystem::path previewKfPath_;

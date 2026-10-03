@@ -1,3 +1,8 @@
+## KFM — animation list editing
+- KFM panel: duplicate an animation (next free event ID, KF file/index/transitions copied, 1.2.4b legacy name gets " Kopie", 2.0.0.0b keeps no name), delete with an explicit safety checkbox and a report of transitions/intermediates that now point to a missing event ID, editable NIF file and root node.
+- Core: `KfmNextFreeEventCode`, `KfmDuplicateAnimation`, `KfmRemoveAnimation`; `test_kfm_file` covers both KFM versions (encode/decode after duplicate, dangling-reference count after delete).
+- Corrected the format status: field editing for existing animations already existed.
+
 ## Level Editor — vertex snapping
 - Holding V while dragging the move gizmo snaps the selection pivot to the nearest corner of the NIF triangle under the cursor (selected objects excluded; placements and SHMD category meshes) or to the nearest HTD vertex, whichever the ray hits first; a yellow marker shows the target. New `NifMeshRenderer::RaycastObjectDetailed` returns hit point and nearest triangle corner.
 - Verified on Roumen via the automation probe `snapprobe`: targets land on the pavement GroundObject (Y 483.609) instead of the hidden HTD below.

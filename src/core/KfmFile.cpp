@@ -208,4 +208,39 @@ KfmReferences InspectKfmReferences(const KfmFile& file,
     }
     return result;
 }
+
+std::int32_t KfmNextFreeEventCode(const KfmFile& file) {
+    std::int32_t maxCode = 0;
+    for (const auto& a : file.animations) maxCode = std::max(maxCode, a.eventCode);
+    return maxCode < std::numeric_limits<std::int32_t>::max() ? maxCode + 1 : maxCode;
+}
+
+std::size_t KfmDuplicateAnimation(KfmFile& file, std::size_t index) {
+    if (index >= file.animations.size()) return file.animations.size();
+    KfmAnimation copy = file.animations[index];
+    copy.eventCode = KfmNextFreeEventCode(file);
+    if (file.version == KfmVersion::V1_2_4b && !copy.name.empty()) copy.name += " Kopie";
+    if (file.version != KfmVersion::V1_2_4b) copy.name.clear(); // 2.0.0.0b kennt kein Namensfeld
+    file.animations.insert(file.animations.begin() + static_cast<std::ptrdiff_t>(index + 1), std::move(copy));
+    return index + 1;
+}
+
+KfmRemoveReport KfmRemoveAnimation(KfmFile& file, std::size_t index) {
+    KfmRemoveReport report;
+    if (index >= file.animations.size()) return report;
+    const std::int32_t code = file.animations[index].eventCode;
+    file.animations.erase(file.animations.begin() + static_cast<std::ptrdiff_t>(index));
+    report.removed = true;
+    bool stillPresent = false;
+    for (const auto& a : file.animations) stillPresent = stillPresent || a.eventCode == code;
+    if (stillPresent) return report; // doppelte Event-ID: Verweise bleiben auflösbar
+    for (const auto& a : file.animations) {
+        for (const auto& t : a.transitions) {
+            if (t.eventCode == code) ++report.danglingTransitions;
+            for (const auto& m : t.intermediateAnimations)
+                if (m.eventCode == code) ++report.danglingIntermediates;
+        }
+    }
+    return report;
+}
 } // namespace theseed::mapeditor::core
