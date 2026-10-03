@@ -37,6 +37,9 @@ struct TextureLayer {
     // Die Blend-BMP war beim Import nicht auffindbar/lesbar. sourceBlend hält dann den
     // Anfangszustand; solange der Layer nicht bemalt wird, legt der Export keine Datei an.
     bool blendMissingAtImport = false;
+    // Pfad der geladenen Blend-BMP auf der Platte; der Export übernimmt daraus Ordner- und
+    // Dateinamen-Schreibweise (".\resmap\field\bera\Moss.BMP" liegt als Bera/Moss.BMP vor).
+    std::string sourceBlendPath;
 };
 
 class TextureLayerStack {

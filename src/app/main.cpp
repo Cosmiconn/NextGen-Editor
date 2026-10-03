@@ -15111,6 +15111,76 @@ void DrawMinimapPreviewContent(EditorState& state) {
                                "Editor preview · Fiesta export locked until format verification"));
 }
 
+// Ein Pinselschritt an einer Weltposition für Terrain, Texturen und Block&Walk - gemeinsam für
+// die 2D-Ansicht und den 3D-Viewport (dort über PickTerrainFrom3D).
+bool ApplyBrushAtWorld(EditorState& state, float worldX, float worldZ) {
+    const bool texMode = state.editMode == EditMode::TexturePaint;
+    const bool walkMode = state.editMode == EditMode::BlockWalk;
+    if (texMode && (state.selectedLayer < 0 || static_cast<std::size_t>(state.selectedLayer) >= state.textureStack.LayerCount()))
+        return false;
+    const float spanX = static_cast<float>(state.heightmap.Width() > 1 ? state.heightmap.Width() - 1 : 1) * state.heightmap.BlockWidth();
+    const float spanZ = static_cast<float>(state.heightmap.Height() > 1 ? state.heightmap.Height() - 1 : 1) * state.heightmap.BlockHeight();
+    if (state.editMode == EditMode::Heightmap) {
+        core::UndoPatch patch = core::ApplyBrush(state.heightmap, state.brushMode, state.brush, worldX, worldZ);
+        if (!patch.entries.empty()) {
+            PushHeightmapHistory(state, std::move(patch));
+            state.meshDirty = true;
+            state.mapDirty = true;
+        }
+    } else if (texMode) {
+        // Eigene Zellgröße des Textur-Gitters (unabhängige Auflösung, siehe
+        // docs/MAP_FORMAT.md) statt der Heightmap-Blockgröße - sonst wäre der Pinsel bei
+        // z.B. 512x512-Textur-Layern auf einer 257x257-Heightmap deutlich daneben.
+        float texCellW = spanX / static_cast<float>(state.textureStack.Width());
+        float texCellH = spanZ / static_cast<float>(state.textureStack.Height());
+        // Layer mit eigener Region (z.B. Adl: linke/rechte Kartenhaelfte, siehe
+        // TextureLayer::regionStartX): Welt-Position in die Region umrechnen, das Gitter
+        // deckt nur die Region ab; nur Layer mit derselben Region nehmen an der
+        // Normalisierung teil. Ohne Region (0) bleibt alles wie bisher.
+        float paintX = worldX, paintZ = worldZ;
+        core::TexturePaintSettings paintSettings = state.paintSettings;
+        std::vector<char> sameRegion;
+        if (state.selectedLayer >= 0 && static_cast<std::size_t>(state.selectedLayer) < state.textureStack.LayerCount()) {
+            const auto& active = state.textureStack.Layer(static_cast<std::size_t>(state.selectedLayer));
+            if (active.regionWidth > 0.0f && active.regionHeight > 0.0f) {
+                const float bw = state.heightmap.BlockWidth(), bh = state.heightmap.BlockHeight();
+                paintX = worldX - active.regionStartX * bw;
+                paintZ = worldZ - active.regionStartY * bh;
+                texCellW = active.regionWidth * bw / static_cast<float>(state.textureStack.Width());
+                texCellH = active.regionHeight * bh / static_cast<float>(state.textureStack.Height());
+            }
+            sameRegion.assign(state.textureStack.LayerCount(), 0);
+            for (std::size_t li = 0; li < state.textureStack.LayerCount(); ++li) {
+                const auto& other = state.textureStack.Layer(li);
+                sameRegion[li] = other.regionStartX == active.regionStartX && other.regionStartY == active.regionStartY &&
+                                 other.regionWidth == active.regionWidth && other.regionHeight == active.regionHeight;
+            }
+            paintSettings.participating = &sameRegion;
+        }
+        core::TexturePaintPatch patch = core::PaintLayerWeight(
+            state.textureStack, static_cast<std::size_t>(state.selectedLayer), state.paintMode,
+            paintSettings, paintX, paintZ, texCellW, texCellH);
+        if (!patch.entries.empty()) {
+            PushTexturePaintHistory(state, std::move(patch));
+            state.layerPreviewDirty = true;
+            state.mapDirty = true;
+            state.renderer.UpdateBlendTextures(state.textureStack);
+        }
+    } else if (walkMode) {
+        // Zell-genauer Stempel (Zelle = 6.25 Einheiten, Bit gesetzt = blockiert) - siehe
+        // WalkGrid::kCellSize; die Weltposition entspricht direkt der Zellposition.
+        std::uint32_t changed[4] = {0, 0, 0, 0};
+        core::WalkUndoPatch patch = core::ApplyWalkBitStamp(
+            state.walkGrid, state.walkSettings.radius, worldX, worldZ, state.walkBlockMode, changed);
+        if (!patch.entries.empty()) {
+            PushWalkHistory(state, std::move(patch));
+            state.mapDirty = true;
+            if (!state.walkPreviewDirty) UpdateWalkPreviewRect(state, changed[0], changed[1], changed[2], changed[3]);
+        }
+    }
+    return true;
+}
+
 void DrawEditor2DContent(EditorState& state) {
     const bool texMode = state.editMode == EditMode::TexturePaint;
     const bool walkMode = state.editMode == EditMode::BlockWalk;
@@ -15817,63 +15887,8 @@ void DrawEditor2DContent(EditorState& state) {
                     state.selectedPortalKind = bestKind;
                     state.selectedPortalIdx = bestIdx;
                 }
-            } else if (state.editMode == EditMode::Heightmap) {
-                core::UndoPatch patch = core::ApplyBrush(state.heightmap, state.brushMode, state.brush, worldX, worldZ);
-                if (!patch.entries.empty()) {
-                    PushHeightmapHistory(state, std::move(patch));
-                    state.meshDirty = true;
-                    state.mapDirty = true;
-                }
-            } else if (texMode) {
-                // Eigene Zellgröße des Textur-Gitters (unabhängige Auflösung, siehe
-                // docs/MAP_FORMAT.md) statt der Heightmap-Blockgröße - sonst wäre der Pinsel bei
-                // z.B. 512x512-Textur-Layern auf einer 257x257-Heightmap deutlich daneben.
-                float texCellW = spanX / static_cast<float>(state.textureStack.Width());
-                float texCellH = spanZ / static_cast<float>(state.textureStack.Height());
-                // Layer mit eigener Region (z.B. Adl: linke/rechte Kartenhaelfte, siehe
-                // TextureLayer::regionStartX): Welt-Position in die Region umrechnen, das Gitter
-                // deckt nur die Region ab; nur Layer mit derselben Region nehmen an der
-                // Normalisierung teil. Ohne Region (0) bleibt alles wie bisher.
-                float paintX = worldX, paintZ = worldZ;
-                core::TexturePaintSettings paintSettings = state.paintSettings;
-                std::vector<char> sameRegion;
-                if (state.selectedLayer >= 0 && static_cast<std::size_t>(state.selectedLayer) < state.textureStack.LayerCount()) {
-                    const auto& active = state.textureStack.Layer(static_cast<std::size_t>(state.selectedLayer));
-                    if (active.regionWidth > 0.0f && active.regionHeight > 0.0f) {
-                        const float bw = state.heightmap.BlockWidth(), bh = state.heightmap.BlockHeight();
-                        paintX = worldX - active.regionStartX * bw;
-                        paintZ = worldZ - active.regionStartY * bh;
-                        texCellW = active.regionWidth * bw / static_cast<float>(state.textureStack.Width());
-                        texCellH = active.regionHeight * bh / static_cast<float>(state.textureStack.Height());
-                    }
-                    sameRegion.assign(state.textureStack.LayerCount(), 0);
-                    for (std::size_t li = 0; li < state.textureStack.LayerCount(); ++li) {
-                        const auto& other = state.textureStack.Layer(li);
-                        sameRegion[li] = other.regionStartX == active.regionStartX && other.regionStartY == active.regionStartY &&
-                                         other.regionWidth == active.regionWidth && other.regionHeight == active.regionHeight;
-                    }
-                    paintSettings.participating = &sameRegion;
-                }
-                core::TexturePaintPatch patch = core::PaintLayerWeight(
-                    state.textureStack, static_cast<std::size_t>(state.selectedLayer), state.paintMode,
-                    paintSettings, paintX, paintZ, texCellW, texCellH);
-                if (!patch.entries.empty()) {
-                    PushTexturePaintHistory(state, std::move(patch));
-                    state.layerPreviewDirty = true;
-                    state.mapDirty = true;
-                    state.renderer.UpdateBlendTextures(state.textureStack);
-                }
-            } else if (walkMode) {
-                // Zell-genauer Stempel (Zelle = 6.25 Einheiten, Bit gesetzt = blockiert) - siehe
-                // WalkGrid::kCellSize; die Weltposition entspricht direkt der Zellposition.
-                std::uint32_t changed[4] = {0, 0, 0, 0};
-                core::WalkUndoPatch patch = core::ApplyWalkBitStamp(
-                    state.walkGrid, state.walkSettings.radius, worldX, worldZ, state.walkBlockMode, changed);
-                if (!patch.entries.empty()) {
-                    PushWalkHistory(state, std::move(patch));
-                    state.mapDirty = true;
-                    if (!state.walkPreviewDirty) UpdateWalkPreviewRect(state, changed[0], changed[1], changed[2], changed[3]);
-                }
+            } else if (state.editMode == EditMode::Heightmap || texMode || walkMode) {
+                ApplyBrushAtWorld(state, worldX, worldZ);
             }
         }
     }
@@ -17485,6 +17500,18 @@ void DrawPreview3DContent(EditorState& state) {
         }
     }
 
+    // ---- Pinsel im 3D-Viewport (Terrain, Texturen, Block&Walk) wie Unreals Landscape-Modus:
+    //  LMB malt auf dem Terrain unter der Maus, Alt+LMB dreht weiterhin die Kamera, RMB fliegt.
+    const bool brushTool3D = (state.editMode == EditMode::Heightmap || state.editMode == EditMode::TexturePaint ||
+                              state.editMode == EditMode::BlockWalk) && MapSupportsTerrainEditing(state) &&
+                             !state.playtestActive;
+    if (brushTool3D && viewImageHovered && !viewportUiCapturing && !ImGui::GetIO().KeyAlt &&
+        !ImGui::GetIO().KeyCtrl && ImGui::IsMouseDown(ImGuiMouseButton_Left) && !state.cameraLooking) {
+        if (const auto hit = PickTerrainFrom3D(state, imageScreenPos, w, h, ImGui::GetMousePos()))
+            ApplyBrushAtWorld(state, hit->x, hit->z);
+    }
+    const bool lmbPaints3D = brushTool3D && !ImGui::GetIO().KeyAlt;
+
     // ---- Kamera-Steuerung ----
     //  Klassisch (CHANGELOG [0.44.32]): RMB = umsehen, WASD/Q/E sobald der Viewport gehovert ist,
     //  LMB-Ziehen = Orbit, MMB = schieben, Rad = Zoom.
@@ -17517,7 +17544,7 @@ void DrawPreview3DContent(EditorState& state) {
             }
             if (ortho && hovered3d && !viewportUiCapturing && !state.marqueeActive &&
                 !(ImGui::GetIO().KeyCtrl && ImGui::GetIO().KeyAlt) &&
-                (ImGui::IsMouseDragging(ImGuiMouseButton_Left) || ImGui::IsMouseDragging(ImGuiMouseButton_Right) ||
+                ((!lmbPaints3D && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) || ImGui::IsMouseDragging(ImGuiMouseButton_Right) ||
                  ImGui::IsMouseDragging(ImGuiMouseButton_Middle))) {
                 const ImVec2 delta = io.MouseDelta;
                 state.camera.PanBy(-delta.x * orthoUnitsPerPixel, delta.y * orthoUnitsPerPixel);
@@ -17529,13 +17556,13 @@ void DrawPreview3DContent(EditorState& state) {
                         LeaveAxisView(state);
                     } else if (io.KeyAlt && ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
                         state.camera.ZoomSteps((delta.x - delta.y) * 0.04f);
-                    } else if (!io.KeyAlt && !io.KeyCtrl && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+                    } else if (!lmbPaints3D && !io.KeyAlt && !io.KeyCtrl && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
                         const float moveScale = std::max(state.camera.Distance(), 30.0f) * 0.004f * speedMul;
                         state.camera.LookBy(-delta.x * 0.0045f, 0.0f);
                         state.camera.MoveLocal(-delta.y * moveScale, 0.0f, 0.0f);
                         LeaveAxisView(state);
                     }
-                } else if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+                } else if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && (!lmbPaints3D || io.KeyAlt)) {
                     state.camera.OrbitBy(delta.x * 0.01f, -delta.y * 0.01f);
                     LeaveAxisView(state);
                 }
@@ -21280,6 +21307,8 @@ struct AutomationScript {
     bool quitRequested = false;
 };
 
+GLFWwindow* g_automationWindow = nullptr; // nur für die Maus-Befehle der Automatisierung
+
 AutomationScript LoadAutomationScriptFromEnvironment() {
     AutomationScript script;
     const char* env = std::getenv("NEXTGEN_EDITOR_SCRIPT");
@@ -21403,6 +21432,55 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         std::printf("[saveall] %s\n", report.c_str());
         std::fflush(stdout);
     }
+    else if (cmd == "shop") {
+        // shop <NPC-InxName>: öffnet den Händler-Inventar-Editor (Karte im NPC-Modus nötig).
+        std::string npc; in >> npc;
+        EnsureShopTextLoaded(state, npc);
+        state.shopEditorOpen = true;
+    }
+    else if (cmd == "mouse") {
+        // mouse <x> <y>: Mauszeiger im Fenster setzen (Fensterkoordinaten).
+        double x = 0, y = 0; in >> x >> y;
+        if (g_automationWindow) glfwSetCursorPos(g_automationWindow, x, y);
+        ImGui::GetIO().AddMousePosEvent(static_cast<float>(x), static_cast<float>(y));
+    }
+    else if (cmd == "lmb") {
+        std::string v; in >> v;
+        ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, v == "down");
+    }
+    else if (cmd == "probe") {
+        // probe <x> <z>: Terrainhöhe, Gewicht des aktiven Layers und Walk-Bit an einer Weltposition.
+        float x = 0, z = 0;
+        std::string first; in >> first;
+        if (first == "cursor" && state.viewportCursorWorld) { x = (*state.viewportCursorWorld)[0]; z = (*state.viewportCursorWorld)[2]; }
+        else { x = std::strtof(first.c_str(), nullptr); in >> z; }
+        float weight = -1.0f;
+        if (state.selectedLayer >= 0 && static_cast<std::size_t>(state.selectedLayer) < state.textureStack.LayerCount()) {
+            const auto& blend = state.textureStack.Layer(static_cast<std::size_t>(state.selectedLayer)).blend;
+            const float sx = static_cast<float>(state.heightmap.Width() - 1) * state.heightmap.BlockWidth();
+            const float sz = static_cast<float>(state.heightmap.Height() - 1) * state.heightmap.BlockHeight();
+            const auto bx = static_cast<std::uint32_t>(std::clamp(x / sx * blend.Width(), 0.0f, blend.Width() - 1.0f));
+            const auto bz = static_cast<std::uint32_t>(std::clamp(z / sz * blend.Height(), 0.0f, blend.Height() - 1.0f));
+            weight = blend.At(bx, bz);
+        }
+        std::printf("[probe] %.0f %.0f height %.2f layer %d weight %.3f blocked %d dirty %d cursor %s\n", x, z,
+                    state.heightmap.SampleWorld(x, z), state.selectedLayer, weight,
+                    core::level::WalkBlockedAtWorld(state.walkGrid, x, z) ? 1 : 0, state.mapDirty ? 1 : 0,
+                    state.viewportCursorWorld ? (std::to_string(static_cast<int>((*state.viewportCursorWorld)[0])) + "/" +
+                                                 std::to_string(static_cast<int>((*state.viewportCursorWorld)[2]))).c_str() : "-");
+        std::fflush(stdout);
+    }
+    else if (cmd == "brush") {
+        // brush <raise|lower|smooth|flatten> <radius> <strength>
+        std::string m; float r = 200, st = 10; in >> m >> r >> st;
+        if (m == "raise") state.brushMode = core::BrushMode::Raise;
+        else if (m == "lower") state.brushMode = core::BrushMode::Lower;
+        else if (m == "smooth") state.brushMode = core::BrushMode::Smooth;
+        else if (m == "flatten") state.brushMode = core::BrushMode::Flatten;
+        state.brush.radius = r; state.brush.strength = st;
+        state.paintSettings.radius = r; state.walkSettings.radius = r;
+    }
+    else if (cmd == "layer") { int l = 0; in >> l; state.selectedLayer = l; }
     else if (cmd == "selectall") SelectAllNormalObjects(state);
     else if (cmd == "select") { int id = -1; in >> id; state.selectedObjects = {id}; state.selectedObject = id; state.objectGizmoMatrixValid = false; }
     else if (cmd == "focus") FocusCurrentSceneSelection(state);
@@ -21494,6 +21572,7 @@ int main() {
 #endif
 
     GLFWwindow* window = glfwCreateWindow(1600, 900, "NextGen-Editor", nullptr, nullptr);
+    g_automationWindow = window;
     if (window == nullptr) {
         std::fprintf(stderr, "glfwCreateWindow fehlgeschlagen\n");
         glfwTerminate();

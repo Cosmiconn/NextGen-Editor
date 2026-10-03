@@ -32,6 +32,12 @@ std::expected<LegacyMapProject, std::string> OpenLegacyMap(
 
     const std::filesystem::path mapDir = iniPath.parent_path();
     const std::string stem = iniPath.stem().string();
+    project.sourceStem = stem;
+    auto rememberName = [&](const std::filesystem::path& file, const char* ext) {
+        std::error_code ec;
+        if (std::filesystem::equivalent(file.parent_path(), mapDir, ec))
+            project.sourceFileNames[ext] = file.filename().string();
+    };
 
     if (project.ini.heightmapWidth == 0 || project.ini.heightmapHeight == 0) {
         AddIssue(report,
@@ -54,6 +60,7 @@ std::expected<LegacyMapProject, std::string> OpenLegacyMap(
         if (hmResult) {
             project.heightmap = std::move(*hmResult);
             project.hasHeightmap = true;
+            rememberName(*htdPath, ".htd");
         } else {
             AddIssue(report, "Heightmap (.HTD): " + hmResult.error());
         }
@@ -109,6 +116,7 @@ std::expected<LegacyMapProject, std::string> OpenLegacyMap(
             if (walkResult) {
                 project.walkGrid = std::move(*walkResult);
                 project.hasWalkGrid = true;
+                rememberName(*shbdPath, ".shbd");
             } else {
                 AddIssue(report, "Block&Walk (.shbd): " + walkResult.error());
             }
@@ -123,6 +131,7 @@ std::expected<LegacyMapProject, std::string> OpenLegacyMap(
         if (shmdResult) {
             project.objects = std::move(*shmdResult);
             project.hasObjects = true;
+            rememberName(*shmdPath, ".shmd");
         } else {
             AddIssue(report, "Objekt-Placement (.shmd): " + shmdResult.error());
         }
@@ -136,6 +145,7 @@ std::expected<LegacyMapProject, std::string> OpenLegacyMap(
         if (idmResult) {
             project.spatialIndex = std::move(*idmResult);
             project.hasSpatialIndex = true;
+            rememberName(*idmPath, ".idm");
         } else {
             AddIssue(report, "R\u00e4umlicher Index (.idm): " + idmResult.error());
         }
@@ -147,6 +157,7 @@ std::expected<LegacyMapProject, std::string> OpenLegacyMap(
         if (aidResult) {
             project.zone = std::move(*aidResult);
             project.hasZone = true;
+            rememberName(*aidPath, ".aid");
         } else {
             AddIssue(report, "Zonen-Metadaten (.aid): " + aidResult.error());
         }
@@ -235,6 +246,20 @@ std::expected<void, std::string> SaveLegacyMap(
         return std::unexpected("Konnte Ausgabeverzeichnis nicht anlegen: " + outDir.string() + " (" + ec.message() + ")");
     }
 
+    // Unter demselben Kartennamen die Original-Dateinamen beibehalten (z. B. "eld.shbd",
+    // "darkVally.HTD"); bei "Speichern unter" mit neuem Namen <Karte>.<Endung>.
+    const bool sameStem = EqualsCaseInsensitive(project.sourceStem, mapStem);
+    auto fileName = [&](const char* ext, const char* defaultExt) {
+        if (sameStem) {
+            const auto it = project.sourceFileNames.find(ext);
+            if (it != project.sourceFileNames.end() && it->second.find_first_of("/\\:") == std::string::npos &&
+                it->second != "." && it->second != "..")
+                return it->second;
+        }
+        return mapStem + defaultExt;
+    };
+    const std::string htdName = fileName(".htd", ".HTD");
+
     // Heightmap-Dimensionsfelder der ini müssen immer zur aktuellen Heightmap passen (kann sich
     // durch "Neu"/Resize seit dem letzten Parse geändert haben).
     if (project.hasHeightmap) {
@@ -243,7 +268,7 @@ std::expected<void, std::string> SaveLegacyMap(
         project.ini.oneBlockWidth = project.heightmap.BlockWidth();
         project.ini.oneBlockHeight = project.heightmap.BlockHeight();
 
-        auto htdResult = ExportLegacyHtd(project.heightmap, outDir / (mapStem + ".HTD"), project.htdHeader, project.htdTrailingBytes);
+        auto htdResult = ExportLegacyHtd(project.heightmap, outDir / htdName, project.htdHeader, project.htdTrailingBytes);
         if (!htdResult) {
             return std::unexpected(htdResult.error());
         }
@@ -251,11 +276,11 @@ std::expected<void, std::string> SaveLegacyMap(
         // relativ zum Client-Ordner auf (".\\resmap\\field\\Rou\\Rou.HTD"); ein auf ".\\Rou.HTD"
         // verkürzter Pfad würde die Heightmap im Spiel nicht mehr finden.
         const auto currentName = LegacyPathToNative(project.ini.heightFileName).filename().string();
-        if (project.ini.heightFileName.empty() || !EqualsCaseInsensitive(currentName, mapStem + ".HTD")) {
-            std::string legacy = ".\\" + mapStem + ".HTD";
+        if (project.ini.heightFileName.empty() || !EqualsCaseInsensitive(currentName, htdName)) {
+            std::string legacy = ".\\" + htdName;
             if (const auto resmap = FindResmapAncestor(outDir)) {
                 std::filesystem::path rel = std::filesystem::path("resmap") /
-                    std::filesystem::relative(outDir, *resmap) / (mapStem + ".HTD");
+                    std::filesystem::relative(outDir, *resmap) / htdName;
                 legacy = ".\\" + rel.lexically_normal().generic_string();
                 for (char& c : legacy) if (c == '/') c = '\\';
             }
@@ -299,19 +324,19 @@ std::expected<void, std::string> SaveLegacyMap(
     }
 
     if (project.hasWalkGrid) {
-        auto r = ExportLegacyShbd(project.walkGrid, outDir / (mapStem + ".shbd"), project.shbdHeader);
+        auto r = ExportLegacyShbd(project.walkGrid, outDir / fileName(".shbd", ".shbd"), project.shbdHeader);
         if (!r) return std::unexpected(r.error());
     }
     if (project.hasObjects) {
-        auto r = SerializeLegacyShmd(project.objects, outDir / (mapStem + ".shmd"));
+        auto r = SerializeLegacyShmd(project.objects, outDir / fileName(".shmd", ".shmd"));
         if (!r) return std::unexpected(r.error());
     }
     if (project.hasSpatialIndex) {
-        auto r = SerializeLegacyIdm(project.spatialIndex, outDir / (mapStem + ".idm"));
+        auto r = SerializeLegacyIdm(project.spatialIndex, outDir / fileName(".idm", ".idm"));
         if (!r) return std::unexpected(r.error());
     }
     if (project.hasZone) {
-        auto r = SerializeLegacyAid(project.zone, outDir / (mapStem + ".aid"));
+        auto r = SerializeLegacyAid(project.zone, outDir / fileName(".aid", ".aid"));
         if (!r) return std::unexpected(r.error());
     }
 

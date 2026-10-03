@@ -114,6 +114,8 @@ std::expected<TextureLayerStack, std::string> ImportLegacyTextureSet(
             stack.Layer(idx).blend = ResampleBlendMap(*blendResult, stack.Width(), stack.Height());
             stack.Layer(idx).sourceBlend = std::move(*blendResult);
             stack.Layer(idx).sourceBmpBytes = ReadAllBytes(*resolvedPath);
+        stack.Layer(idx).sourceBlendPath = resolvedPath->string();
+            stack.Layer(idx).sourceBlendPath = resolvedPath->string();
             continue;
         }
 
@@ -172,7 +174,21 @@ std::expected<void, std::string> ExportLegacyTextureSet(
     }
 
     for (std::size_t i = 0; i < stack.LayerCount(); ++i) {
-        const auto blendTarget = BlendOutputPath(outDir, outIni.layers[i].blendFileName);
+        auto blendTarget = BlendOutputPath(outDir, outIni.layers[i].blendFileName);
+        // Schreibweise der tatsächlich geladenen Datei übernehmen, wenn Quelle und Ziel beide
+        // unter einem resmap-Ordner liegen und es dieselbe Datei ist (nur Gross-/Kleinschreibung).
+        if (blendTarget && !stack.Layer(i).sourceBlendPath.empty()) {
+            const std::filesystem::path source(stack.Layer(i).sourceBlendPath);
+            const auto srcResmap = FindResmapAncestor(source.parent_path());
+            const auto outResmap = FindResmapAncestor(outDir);
+            if (srcResmap && outResmap) {
+                const auto rel = std::filesystem::relative(source, *srcResmap);
+                const auto candidate = (*outResmap / rel).lexically_normal();
+                if (!rel.empty() && !rel.is_absolute() && rel.begin()->string() != ".." &&
+                    EqualsCaseInsensitive(candidate.generic_string(), blendTarget->generic_string()))
+                    blendTarget = candidate;
+            }
+        }
         if (!blendTarget) return std::unexpected(blendTarget.error());
         const std::filesystem::path& blendPath = *blendTarget;
         std::filesystem::create_directories(blendPath.parent_path(), ec);
