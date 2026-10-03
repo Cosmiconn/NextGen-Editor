@@ -81,27 +81,27 @@ The selection tolerance shrinks with the zoom - to hit precisely just zoom in cl
      "2d zoom pan draufsicht mausrad"},
     {"controls.view3d", "controls",
      "3D-Ansicht (Kamera)", "3D view (camera)",
-     R"MAN(Die Kamera arbeitet wie in einem Level-Editor:
+     R"MAN(Die Kamera arbeitet wie in einem Level-Editor. Standard ist die Unreal-Navigation (umschaltbar unter Einstellungen, im Menü Ansicht oder im Ansicht-Menü der Viewport-Leiste):
 - Rechte Maustaste halten + Maus bewegen: umsehen (die Kamera bleibt stehen, Du drehst Dich).
-- W / A / S / D (oder Pfeiltasten): vorwärts, links, rückwärts, rechts laufen.
-- Q / E (oder Leertaste): runter / hoch.
-- Shift: 4-fach schneller. Strg: langsam (0,2-fach). Das Grundtempo wächst mit der Entfernung.
-- Mausrad: Zoom, bis dicht an den Punkt heran. Die Kamera schneidet dabei nichts Nahes ab.
-- Mittlere Maustaste ziehen: Ansicht schieben.
-- Linke Maustaste ziehen: um das Ziel kreisen.
+- Rechte Maustaste halten + W / A / S / D: fliegen; Q / E: runter / hoch. Mausrad bei gehaltener rechter Taste: Kameratempo 1..8.
+- Pfeiltasten: bewegen, auch ohne Maustaste.
+- Linke Maustaste ziehen: vor/zurück und drehen. Alt + linke Maustaste: um das Ziel kreisen. Alt + rechte Maustaste: Dolly (näher/weiter).
+- Mittlere Maustaste ziehen: Ansicht schieben. Mausrad: Zoom, bis dicht an den Punkt heran. Die Kamera schneidet dabei nichts Nahes ab.
+- Shift: 4-fach schneller. Strg: langsam (0,2-fach). Das Grundtempo wächst mit der Entfernung und mit der Tempo-Stufe.
 - Knöpfe + / - unten rechts: Zoom. 'Kamera zentrieren' (Werkzeugleiste): ganze Karte.
-Die Tasten wirken nur, solange die Maus über dem 3D-Bild ist und kein Textfeld aktiv ist.)MAN",
-     R"MAN(The camera works like in a level editor:
+Klassische Navigation: W / A / S / D wirken, sobald die Maus über dem 3D-Bild ist; linke Maustaste ziehen kreist um das Ziel.
+Die Tasten wirken nur, solange kein Textfeld aktiv ist.)MAN",
+     R"MAN(The camera works like in a level editor. The default is Unreal navigation (switchable in Settings, in the View menu or in the view menu of the viewport toolbar):
 - Hold the right mouse button + move the mouse: look around (the camera stays in place, you turn).
-- W / A / S / D (or arrow keys): walk forward, left, backward, right.
-- Q / E (or space): down / up.
-- Shift: 4 times faster. Ctrl: slow (0.2 times). The base speed grows with the distance.
-- Mouse wheel: zoom, up to very close to the point. Nothing nearby is clipped.
-- Drag with the middle mouse button: pan the view.
-- Drag with the left mouse button: orbit around the target.
+- Hold the right mouse button + W / A / S / D: fly; Q / E: down / up. Mouse wheel while holding the right button: camera speed 1..8.
+- Arrow keys: move, also without a mouse button.
+- Drag with the left mouse button: forward/back and turn. Alt + left mouse button: orbit around the target. Alt + right mouse button: dolly (closer/farther).
+- Drag with the middle mouse button: pan the view. Mouse wheel: zoom, up to very close to the point. Nothing nearby is clipped.
+- Shift: 4 times faster. Ctrl: slow (0.2 times). The base speed grows with the distance and the speed level.
 - Buttons + / - at the bottom right: zoom. 'Center camera' (toolbar): whole map.
-The keys only work while the mouse is over the 3D image and no text field is active.)MAN",
-     "3d kamera wasd rechte maustaste umsehen fly"},
+Classic navigation: W / A / S / D work whenever the mouse is over the 3D image; dragging with the left mouse button orbits the target.
+The keys only work while no text field is active.)MAN",
+     "3d kamera wasd rechte maustaste umsehen fly unreal navigation tempo speed orbit dolly"},
     {"controls.keys", "controls",
      "Tastenkürzel im Überblick", "Shortcut overview",
      R"MAN(# Allgemein
@@ -112,7 +112,15 @@ The keys only work while the mouse is over the 3D image and no text field is act
 - Rechte Maustaste + Maus: umsehen
 - W A S D / Pfeile: laufen; Q E / Leertaste: runter/hoch
 - Shift: schnell; Strg: langsam
-- Mausrad: Zoom; Mitte ziehen: schieben; Links ziehen: kreisen
+- Mausrad: Zoom; Mitte ziehen: schieben; Alt+Links ziehen: kreisen
+- W / E / R oder Leertaste: Gizmo Verschieben / Rotieren / Skalieren (Unreal-Navigation)
+- Strg+0..9: Kamera-Lesezeichen setzen; 0..9: anspringen
+- F: Auswahl fokussieren; Ende: auf den Boden setzen; G: Spielansicht
+- H: Auswahl ausblenden; Shift+H: Auswahl isolieren; Strg+H: alle einblenden
+- Strg+Alt+Links ziehen: Rahmenauswahl (Shift ergänzt); Alt+Ziehen am Gizmo: duplizieren
+- V beim Ziehen des Verschieben-Gizmos: Vertex-Snap (Mesh-Ecke bzw. HTD-Vertex unter dem Zeiger)
+- Alt + mittlere Maustaste: Pivot frei setzen; Alt + mittlerer Doppelklick: Pivot zurücksetzen
+- Alt+P: Spieltest starten/beenden; Esc: Spieltest beenden bzw. Auswahl aufheben
 # 2D-Ansicht
 - Mausrad: Zoom um den Zeiger; Mitte oder Rechts ziehen: verschieben
 # SHN-Tabellen
@@ -126,7 +134,15 @@ The keys only work while the mouse is over the 3D image and no text field is act
 - Right mouse button + mouse: look around
 - W A S D / arrows: walk; Q E / space: down/up
 - Shift: fast; Ctrl: slow
-- Mouse wheel: zoom; drag middle: pan; drag left: orbit
+- Mouse wheel: zoom; drag middle: pan; Alt+drag left: orbit
+- W / E / R or space: gizmo move / rotate / scale (Unreal navigation)
+- Ctrl+0..9: set camera bookmark; 0..9: jump to it
+- F: focus selection; End: drop to ground; G: game view
+- H: hide selection; Shift+H: isolate selection; Ctrl+H: show all
+- Ctrl+Alt+drag left: marquee selection (Shift adds); Alt+drag on the gizmo: duplicate
+- V while dragging the move gizmo: vertex snap (mesh corner or HTD vertex under the pointer)
+- Alt + middle mouse button: place the pivot freely; Alt + middle double-click: reset the pivot
+- Alt+P: start/stop playtest; Esc: stop playtest or clear selection
 # 2D view
 - Mouse wheel: zoom around the pointer; drag middle or right: pan
 # SHN tables
@@ -150,31 +166,41 @@ On large maps (e.g. Adelia 951x476 blocks) each blend texture covers only one re
      "karte map öffnen speichern neu ini htd shbd shmd"},
     {"map.heightmap", "map",
      "Tab Hightmap (Höhenkarte)", "Heightmap tab",
-     R"MAN(Höhenkarte bearbeiten. Halte die linke Maustaste in der 2D-Ansicht und fahre über die Karte.
+     R"MAN(Höhenkarte bearbeiten. Halte die linke Maustaste in der 2D-Ansicht oder im 3D-Viewport und fahre über das Terrain (im 3D-Viewport dreht Alt+LMB weiterhin die Kamera).
 - Anheben / Absenken: Gelände hoch- oder herunterziehen.
-- Glätten: gleicht Höhen an die Umgebung an.
-- Einebnen: setzt das Gelände auf die 'Zielhöhe'.
+- Glätten: gleicht Höhen an die Umgebung an. Schärfen: Gegenteil, betont Kanten und Spitzen.
+- Einebnen: setzt das Gelände auf die 'Zielhöhe' - standardmäßig die Höhe beim Strichbeginn; wahlweise nur anheben oder nur absenken.
+- Rauschen: natürliche Unebenheiten (Wellenlänge, Seed; Stärke = Amplitude).
+- Terrassen: zieht Höhen auf Stufen (Stufenhöhe).
+- Erosion: Material rutscht von zu steilen Stellen bergab, das Volumen bleibt gleich.
+- Rampe: erster Klick Start, zweiter Klick Ende - ebene Steigung, Breite = Radius.
+- Falloff: Weich, Linear, Kugel, Spitz oder Konstant.
 - Radius: Pinselgröße in Welteinheiten. Stärke: wie stark pro Zug.
 - Rückgängig / Wiederholen: nehmen ganze Pinselzüge zurück.
 Unten stehen Gittergröße und Höhenbereich. Objekte und NPCs folgen der Höhe beim Neuberechnen ihrer Position; gespeicherte Objekthöhen ändern sich dadurch nicht automatisch.)MAN",
-     R"MAN(Edit the heightmap. Hold the left mouse button in the 2D view and move over the map.
+     R"MAN(Edit the heightmap. Hold the left mouse button in the 2D view or the 3D viewport and move over the terrain (in the 3D viewport Alt+LMB still orbits the camera).
 - Raise / Lower: pull the terrain up or down.
-- Smooth: blends heights with the surroundings.
-- Flatten: sets the terrain to the 'target height'.
+- Smooth: blends heights with the surroundings. Sharpen: the opposite, emphasizes edges and peaks.
+- Flatten: sets the terrain to the 'target height' - by default the height at the start of the stroke; optionally raise only or lower only.
+- Noise: natural unevenness (wavelength, seed; strength = amplitude).
+- Terrace: pulls heights to steps (step height).
+- Erode: material slides down from spots that are too steep; volume is preserved.
+- Ramp: first click start, second click end - even incline, width = radius.
+- Falloff: smooth, linear, spherical, tip or constant.
 - Radius: brush size in world units. Strength: how strong per stroke.
 - Undo / Redo: revert whole brush strokes.
 Below you find grid size and height range. Objects and NPCs follow the height when their position is recalculated; saved object heights do not change automatically.)MAN",
-     "höhenkarte heightmap gelände anheben absenken glätten einebnen"},
+     "höhenkarte heightmap gelände anheben absenken glätten einebnen rauschen noise terrassen erosion rampe schärfen falloff"},
     {"map.texturing", "map",
      "Tab Map Texturen", "Map textures tab",
      R"MAN(Jede Karte hat mehrere Texturschichten (Layer). Jeder Layer hat eine Diffuse-Textur (Bild), einen UV-Scale (Kachelgröße) und ein Gewicht je Kartenpunkt (Blend), das Du malst.
-- Layer wählen (Liste), dann in der 2D-Ansicht malen: 'Erhöhen' verstärkt den Layer, 'Senken' schwächt ihn. Die Gewichte aller Layer derselben Region werden normalisiert.
+- Layer wählen (Liste), dann in der 2D-Ansicht oder im 3D-Viewport malen: 'Erhöhen' verstärkt den Layer, 'Senken' schwächt ihn. Jeder Layer hat seine eigene Maske; Malen ändert nur den gewählten Layer. Die Layer liegen in Listenreihenfolge übereinander (spätere über früheren), wie im Spiel.
 - Radius / Stärke: Pinsel.
 - Layer hinzufügen: Name, Diffuse-Datei ('Durchsuchen...') und UV-Scale angeben. 'Layer entfernen' löscht den gewählten Layer.
 - Rückgängig / Wiederholen für Textur-Pinselzüge.
 Einzelne Layer lassen sich im Bereich 'Sichtbarkeit' ein- und ausblenden, ohne die Daten zu ändern.)MAN",
      R"MAN(Every map has several texture layers. Each layer has a diffuse texture (image), a UV scale (tile size) and a weight per map point (blend) that you paint.
-- Select a layer (list), then paint in the 2D view: 'Increase' strengthens the layer, 'Decrease' weakens it. The weights of all layers of the same region are normalized.
+- Select a layer (list), then paint in the 2D view or the 3D viewport: 'Increase' strengthens the layer, 'Decrease' weakens it. Every layer has its own mask; painting changes only the selected layer. Layers lie on top of each other in list order (later over earlier), as in the game.
 - Radius / Strength: brush.
 - Add layer: enter name, diffuse file ('Browse...') and UV scale. 'Remove layer' deletes the selected layer.
 - Undo / Redo for texture strokes.
@@ -199,18 +225,20 @@ Objects appear as a reference with their footprint; they cannot be clicked in th
      "Tab Objekt Platzierung", "Object placement tab",
      R"MAN(Objekte sind 3D-Modelle (Häuser, Bäume, Steine ...) mit Position, Drehung und Skalierung.
 - Platzieren: Modellpfad eintragen oder 'Durchsuchen...', Rotation und Skalierung einstellen, dann in die 2D-Ansicht klicken.
-- Mehrfachauswahl: Strg+Klick fügt einzelne Objekte hinzu/entfernt sie, Shift+Klick wählt einen Bereich in der Liste. 'Alle normalen auswählen' bzw. Strg+A markiert alle normalen Placements.
+- Mehrfachauswahl: Strg+Klick fügt einzelne Objekte hinzu/entfernt sie, Shift+Klick wählt einen Bereich in der Liste. In der 2D-Ansicht wählt Shift+Ziehen per Rechteck, Alt+Shift+Ziehen per Lasso; mit Strg wird die bestehende Auswahl erweitert. 'Alle normalen auswählen' bzw. Strg+A markiert alle normalen Placements.
 - Bewegen: Ein bereits ausgewähltes Objekt in der 2D-Ansicht mit links ziehen. Bei Mehrfachauswahl bewegt sich die ganze Gruppe gemeinsam; relative Abstände und Y-Höhen bleiben erhalten.
 - Koordinaten: X/Y/Z des aktiven Objekts direkt ändern. Bei Mehrfachauswahl wird dieselbe Positionsdifferenz auf alle ausgewählten Objekte angewandt. Rotation und Skalierung wirken ebenfalls relativ auf die Gruppe.
+- Szene-Outliner: Rechtsklick auf ein Objekt erlaubt ein freies Editor-Label und eine Gruppe/Ordner-Zuordnung. Gruppen erscheinen einklappbar; diese Organisation ist reine Editor-Metadaten und verändert die Fiesta-Dateien nicht.
 - 'Ausgewählte Objekte löschen' löscht die Auswahl. 'Alle normalen Objekte entfernen' entfernt nach Bestätigung alle normalen Placements, lässt Sky/Water/GroundObject aber bestehen.
 - Die Höhe wird beim Platzieren aus dem Gelände genommen.
 - Im 3D-Bild siehst Du die echten Modelle. Ausgewählte normale Objekte erhalten zusätzlich einen weißen Auswahl-Marker.
 Objekte lassen sich nach Kategorien (Bäume, Gebäude, Felsen ...) ein- und ausblenden (Bereich Sichtbarkeit) - hilfreich bei dichten Karten.)MAN",
      R"MAN(Objects are 3D models (houses, trees, stones ...) with position, rotation and scale.
 - Place: enter a model path or 'Browse...', set rotation and scale, then click into the 2D view.
-- Multi-select: Ctrl+click adds/removes individual objects, Shift+click selects a range in the list. 'Select all normal' or Ctrl+A selects all normal placements.
+- Multi-select: Ctrl+click adds/removes individual objects, Shift+click selects a range in the list. In the 2D view, Shift+drag selects by rectangle and Alt+Shift+drag selects by lasso; hold Ctrl to extend the existing selection. 'Select all normal' or Ctrl+A selects all normal placements.
 - Move: left-drag an already selected object in the 2D view. With multiple objects selected, the whole group moves together while relative spacing and Y heights are preserved.
 - Coordinates: edit X/Y/Z of the active object directly. With multiple objects selected, the same position delta is applied to every selected object. Rotation and scale are also applied relatively to the group.
+- Scene Outliner: right-click an object to assign a free editor label and a group/folder. Groups are collapsible; this organization is editor-only metadata and does not change Fiesta files.
 - 'Delete selected objects' deletes the selection. 'Remove all normal objects' removes all normal placements after confirmation while keeping Sky/Water/GroundObject.
 - Height is taken from the terrain when placing.
 - In the 3D image you see the real models. Selected normal objects also get a white selection marker.
@@ -235,6 +263,45 @@ Objects can be shown/hidden by category (trees, buildings, rocks ...) in the Vis
 - 'NPC names and facing arrows': names and facing direction of NPCs in the 3D image (NPC mode).
 - If NPCs lack a model they are listed here by name.)MAN",
      "sichtbarkeit visibility ausblenden einblenden kategorie layer"},
+    {"map.leveltools", "map",
+     "Level-Editor-Werkzeuge (Viewport-Leiste, Spieltest, Ausgabe)", "Level editor tools (viewport toolbar, playtest, output log)",
+     R"MAN(Die Leiste oben im 3D-Bild bündelt die Level-Editor-Werkzeuge. Alles davon ist reiner Editor-Zustand und verändert keine Fiesta-Datei.
+# Viewport-Leiste
+- Ansicht: Perspektive oder Achsenansichten (Oben mit Norden oben, von Süden/Norden/Westen/Osten), Viewport-Layout (einzeln, 2 nebeneinander, 4 als 2x2 wie in Unreal: Perspektive/Oben/Süden/Osten), Kamera-Lesezeichen 0..9 und Navigationsart. Jeder Viewport hat eigene Kamera, Ansicht und Anzeigen; ein Klick macht ihn zum aktiven (gelber Rahmen), Kürzel und Gizmo wirken im aktiven Viewport. Die Achsenansichten nutzen die Perspektivkamera.
+- Anzeigen: Show Flags für Terrain, NIF-Meshes, Platzhalter, SHMD Sky/Water/GroundObject, NPCs, Routen, Drahtgitter sowie Raster, Achsen-Anzeige, Statistik und SHBD-Kollision um den Mauszeiger.
+- Objekte-Modus: Verschieben/Rotieren/Skalieren, World/Local, Pivot (Auswahlmitte oder aktives = zuletzt gewähltes Objekt; Alt+MMB setzt ihn frei), 'Boden' (Surface Snap), 'Objekt' (Actor Snap: rastet am Pivot anderer Objekte im Raster-Snap-Radius ein), Raster-, Winkel- und Skalierungs-Snap. Die Raster-Presets sind Fiesta-Einheiten: 6,25 = eine SHBD-Walk-Zelle, 50 = ein HTD-Block.
+- Surface Snap und 'Auf den Boden setzen' im Spieltest beachten das HTD-Terrain UND die SHMD-Kategorie GroundObject (z.B. das Pflaster von Roumen liegt über dem HTD).
+- Tempo 1..8, G (Spielansicht: alle Editor-Helfer aus) und Spieltest.
+- Anzeigen -> Darstellung: Ansichtsmodus (beleuchtet, unbeleuchtet, nur Licht/Vertexfarbe, Normalen), Terrain-Vertexfarben der Karte (#VerTexColorTexture), Glow aus <Karte>.conf und Kantenglättung. Die Achsenansichten sind orthografisch: Ziehen verschiebt, Mausrad zoomt, Drehen kehrt zur Perspektive zurück. Details und Datenherkunft: docs/RENDERER.md.
+# Statistik
+FPS, Objekt-/Mesh-/NPC-Anzahl, ausgeblendete Objekte, Kameraziel sowie Weltposition unter dem Mauszeiger mit Höhe und SHBD-Zelle (begehbar/blockiert).
+# Spieltest
+Startet eine Spielfigur direkt im Viewport (Alt+P oder Knopf 'Spieltest'). Spawn: MapInfo.shn RegenX/RegenY der offenen Karte, sonst das Kameraziel; danach die nächste begehbare SHBD-Zelle. W/A/S/D laufen relativ zur Kamera, Shift geht langsam, rechte/linke Maustaste dreht, Mausrad zoomt, C schaltet die Kollision, Esc beendet und stellt die Editor-Kamera wieder her. Die Kollision nutzt das geladene Block&Walk-Gitter (gesetztes Bit = blockiert, 6,25 Einheiten je Zelle) mit 1,5 Zellen Radius und gleitet an Wänden entlang. Laufgeschwindigkeit und Radius sind Editorwerte, keine aus dem Client belegten Konstanten. Ist kein begehbares SHBD geladen, läuft der Spieltest ohne Kollision und meldet das.
+# Auswahl und Sichtbarkeit
+Strg+Alt+linke Maustaste ziehen wählt per Rahmen; Shift ergänzt. 'Überschneidung' wählt alles, dessen projizierte NIF-Bounds den Rahmen berühren, 'vollständig innen' nur vollständig enthaltene Objekte. H blendet die Auswahl aus, Shift+H isoliert sie, Strg+H blendet alles wieder ein (nur Editor-Sichtbarkeit). Alt beim Ziehen des Verschieben-Gizmos dupliziert die Auswahl an Ort und Stelle; Duplikat und Verschiebung sind ein Undo-Schritt. V beim Ziehen setzt den Pivot auf die nächste Ecke des NIF-Dreiecks unter dem Mauszeiger (andere Objekte, z.B. das Pflaster-GroundObject) oder auf den nächsten HTD-Vertex - ein gelber Kreis zeigt das Ziel.
+# Objekte-Menü
+Ausrichten (X/Y/Z auf Minimum, Mitte, Maximum oder das aktive = zuletzt gewählte Objekt), Verteilen (gleichmäßige Abstände, Reihenfolge bleibt) und Rotation/Skalierung vom aktiven Objekt übernehmen. Alles ist rückgängig machbar.
+# Ausgabe
+Das Fenster 'Ausgabe' sammelt alle Statusmeldungen mit Zeit, Kategorie und Schweregrad (Info/Warnung/Fehler), filterbar und kopierbar.)MAN",
+     R"MAN(The bar at the top of the 3D image groups the level editor tools. All of it is editor state only and never changes a Fiesta file.
+# Viewport toolbar
+- View: perspective or axis views (top with north up, from south/north/west/east), viewport layout (single, 2 side by side, 4 as 2x2 like Unreal: perspective/top/south/east), camera bookmarks 0..9 and the navigation scheme. Each viewport has its own camera, view and show flags; a click makes it active (yellow frame), shortcuts and the gizmo act in the active viewport. Axis views use the perspective camera.
+- Show: show flags for terrain, NIF meshes, placeholders, SHMD Sky/Water/GroundObject, NPCs, routes, wireframe as well as grid, axis indicator, stats and SHBD collision around the mouse pointer.
+- Objects mode: move/rotate/scale, world/local, pivot (selection center or active = last selected object; Alt+MMB places it freely), 'Surface' (surface snap), 'Actor' (actor snap: snaps to other objects' pivots within the grid snap radius), grid, angle and scale snap. Grid presets are Fiesta units: 6.25 = one SHBD walk cell, 50 = one HTD block.
+- Surface snap and ground placement in the playtest respect the HTD terrain AND the SHMD GroundObject category (e.g. the Roumen pavement lies above the HTD).
+- Speed 1..8, G (game view: all editor helpers off) and playtest.
+- Show -> Rendering: view mode (lit, unlit, lighting/vertex color only, normals), the map's terrain vertex colors (#VerTexColorTexture), glow from <map>.conf and anti-aliasing. Axis views are orthographic: dragging pans, the mouse wheel zooms, rotating returns to perspective. Details and data sources: docs/RENDERER.md.
+# Stats
+FPS, object/mesh/NPC counts, hidden objects, camera target and the world position under the mouse pointer with height and SHBD cell (walkable/blocked).
+# Playtest
+Starts a player character directly in the viewport (Alt+P or the 'Playtest' button). Spawn: MapInfo.shn RegenX/RegenY of the open map, otherwise the camera target; then the nearest walkable SHBD cell. W/A/S/D run relative to the camera, Shift walks, right/left mouse button turns, mouse wheel zooms, C toggles collision, Esc ends and restores the editor camera. Collision uses the loaded block & walk grid (set bit = blocked, 6.25 units per cell) with a 1.5 cell radius and slides along walls. Run speed and radius are editor values, not constants verified from the client. If no walkable SHBD is loaded, the playtest runs without collision and says so.
+# Selection and visibility
+Ctrl+Alt+left mouse drag selects by marquee; Shift adds. 'Crossing' selects everything whose projected NIF bounds touch the rectangle, 'fully inside' only fully contained objects. H hides the selection, Shift+H isolates it, Ctrl+H shows everything again (editor visibility only). Holding Alt while dragging the move gizmo duplicates the selection in place; duplicate and move are one undo step. Holding V while dragging puts the pivot on the nearest corner of the NIF triangle under the mouse pointer (other objects, e.g. the pavement GroundObject) or on the nearest HTD vertex - a yellow circle shows the target.
+# Objects menu
+Align (X/Y/Z to minimum, center, maximum or the active = last selected object), distribute (even spacing, order is kept) and match rotation/scale to the active object. Everything can be undone.
+# Output log
+The 'Output' window collects all status messages with time, category and severity (info/warning/error), filterable and copyable.)MAN",
+     "spieltest playtest pie unreal viewport leiste toolbar snap raster grid lesezeichen bookmark ausgabe output log rahmen marquee isolieren isolate ausrichten align verteilen distribute shbd kollision"},
     {"map.npcs", "map",
      "Tab NPC Platzierung", "NPC placement tab",
      R"MAN(NPCs kommen aus World/NPC.txt (Server-Ordner) und gehören zu einer Karte. Wähle einen NPC durch Klick auf sein Quadrat in der 2D-Ansicht.
@@ -301,6 +368,34 @@ Ein TownPortal-Ziel liegt höchstens 205 Einheiten vom zugehörigen Gate_Town-NP
 - 'Save TownPortal.shn' and 'Save RecallCoord.txt'.
 A TownPortal target is at most 205 units away from the associated Gate_Town NPC.)MAN",
      "portal townportal recall schriftrolle teleport"},
+    {"map.mapcheck", "map",
+     "Kartenprüfung", "Map check",
+     R"MAN(Werkzeuge > Kartenprüfung prüft die offene Karte wie Unreals "Map Check" und listet alles, was im Spiel nicht funktionieren würde. Doppelklick springt zur Stelle (Objekte werden ausgewählt, Quests öffnen den Quest-Editor). 'Prüfen' wiederholt die Prüfung nach Änderungen.
+Geprüft wird:
+- NPCs und Gates auf blockierten Zellen (SHBD). Die Schwere richtet sich nach dem Abstand zur nächsten freien Zelle: bis 4 Zellen Hinweis (kommt im Original vor, z.B. Händler hinter einer Theke), bis 16 Zellen Warnung, darüber Fehler.
+- Gates ohne LinkTable-Eintrag, Gate-Ziele auf der Zielkarte (falls deren SHBD im Client-Ordner liegt) und Ankunftspunkte anderer Gates auf dieser Karte.
+- TownPortal- und Rückruf-Ziele sowie der Wiederbelebungspunkt (MapInfo RegenX/RegenY) auf blockierten Zellen.
+- Spawn-Zonen in Wänden (ab 90 % blockiert), außerhalb der Karte, ohne aktiven MobRegen-Eintrag; Monster, die nicht in MobInfo.shn stehen.
+- Objekte außerhalb der Karte, NIFs, die fehlen oder nicht lesbar sind, fehlende Objekt- und Terrain-Texturen.
+- Aktivierte Quests, deren Start-NPC nicht existiert oder auf keiner Karte steht ('Quests prüfen').
+Hinweise sind ausgeblendet, bis 'Hinweise' angehakt wird. In NA2016 findet die Prüfung z.B. den LinkTable-Eintrag 'Eld' mit Ziel-Y 1344 (blockiert; gemeint ist vermutlich 13445) und sieben Gates ohne LinkTable-Eintrag.)MAN",
+     R"MAN(Tools > Map check checks the open map like Unreal's "Map Check" and lists everything that would not work in the game. Double-click jumps to the spot (objects are selected, quests open the quest editor). 'Check' runs it again after changes.
+Checked are:
+- NPCs and gates on blocked cells (SHBD). Severity follows the distance to the nearest free cell: up to 4 cells note (happens in the original, e.g. a merchant behind a counter), up to 16 cells warning, beyond that error.
+- Gates without a LinkTable entry, gate targets on the target map (if its SHBD is in the client folder) and arrival points of other gates on this map.
+- TownPortal and recall targets and the respawn point (MapInfo RegenX/RegenY) on blocked cells.
+- Spawn zones inside walls (90 % blocked or more), outside the map, without an active MobRegen entry; monsters that are not in MobInfo.shn.
+- Objects outside the map, NIFs that are missing or unreadable, missing object and terrain textures.
+- Enabled quests whose starting NPC does not exist or is not placed on any map ('Check quests').
+Notes stay hidden until 'Notes' is ticked. In NA2016 the check finds e.g. the LinkTable entry 'Eld' with target Y 1344 (blocked; 13445 was probably meant) and seven gates without a LinkTable entry.)MAN",
+     "kartenprüfung map check fehler error prüfen gate npc spawn quest nif textur"},
+    {"map.autosave", "map",
+     "Automatisches Speichern", "Autosave",
+     R"MAN(Bei Änderungen sichert der Editor die offene Karte alle 5 Minuten (Werkzeuge > Einstellungen: an/aus, 1-60 Minuten, 'Jetzt sichern'). Die Sicherung liegt in <Projekt>/Autosave/Client/resmap/field/<Karte> - nicht in der Projektausgabe, sie wird also nie ausgeliefert. Geschrieben wird im Hintergrund, nicht während eines Pinselstrichs.
+Beim nächsten Öffnen der Karte (z.B. nach einem Absturz) fragt der Editor: 'Wiederherstellen' übernimmt Höhen, Layer-Masken, Block&Walk, Objekte und die passende IDM-Zuordnung aus der Sicherung; die Karte ist danach geändert und wird mit Speichern ins Projekt übernommen. 'Verwerfen' löscht die Sicherung, 'Später' fragt beim nächsten Öffnen erneut. Speichern ins Projekt löscht die Sicherung.)MAN",
+     R"MAN(When something changed, the editor saves the open map every 5 minutes (Tools > Settings: on/off, 1-60 minutes, 'Autosave now'). The autosave lives in <Project>/Autosave/Client/resmap/field/<map> - not in the project output, so it is never shipped. It is written in the background, never during a brush stroke.
+The next time the map is opened (e.g. after a crash) the editor asks: 'Restore' takes heights, layer masks, Block&Walk, objects and the matching IDM mapping from the autosave; the map is then modified and goes to the project with Save. 'Discard' deletes the autosave, 'Later' asks again next time. Saving to the project deletes the autosave.)MAN",
+     "autosave automatisch speichern sicherung absturz crash wiederherstellen restore"},
     {"shn.overview", "shn",
      "SHN-Editor: Grundlagen", "SHN editor: basics",
      R"MAN(SHN sind die Tabellen-Dateien des Spiels (Zeilen und typisierte Spalten). CLIENT-Dateien liegen in ressystem, SERVER-Dateien in 9Data/Shine.
@@ -345,19 +440,21 @@ The percentage editors change ALL rows of the column - check first, then save.)M
      "Quest-Editor", "Quest editor",
      R"MAN(Links die Liste (Titel oder Beschreibung, Suche nach ID oder Text), rechts die Details:
 - Quest-ID, Titel-Text-ID und Beschreibung-Text-ID (Texte aus QuestDialog.shn werden daneben aufgelöst), Mindest-/Maximal-Level, Start-NPC (Mob-ID), Aktiviert, Tägliche Quest, benötigtes Item, Vorgänger-Quest.
-- Monster-Ziele (5 Plätze), Item-Ziele (10 Plätze): aktiv, ID, Anzahl; der Name wird aufgelöst (rot = nicht gefunden).
-- Drops: Mob, Item, Menge, Rate.
+- Start-NPC: 'Auswählen...' öffnet eine Liste aller NPCs aus MobInfo.shn mit ihrer Platzierung aus World/NPC.txt (Karte, Position, Rolle); Suche nach Name, InxName oder ID. Die Auswahl setzt die ID und schaltet 'Start-NPC erforderlich' ein. Steht der NPC auf keiner Karte, wird das rot angezeigt - die Quest kann dann im Spiel nicht angenommen werden.
+- Monster-/NPC-Ziele (5 Plätze, Art 'NPC aufsuchen' oder 'Monster besiegen'), Item-Ziele (10 Plätze): aktiv, ID, Anzahl; der Name wird aufgelöst (rot = nicht gefunden). 'Auswählen...' wählt auch hier aus der Liste; 'NPC aufsuchen' hat im Original Anzahl 0.
+- Drops (bis 10): Mob, Item, Menge, Rate, Min?/Max? (vermutlich Mindest-/Höchstanzahl, nicht belegt).
 - Skripte Start / Action / Finish: die Quest-Skriptsprache (SAY, IF, GOTO, ACCEPT, CREATE_ITEM ...). 'SAY-Text-ID nachschlagen' zeigt den Text zu einer ID.
-- Belohnungen (144 Byte) sind noch nicht entschlüsselt und werden unverändert gespeichert.
+- Belohnungen (12 Einträge): Verwendung (fest/Auswahl), Typ (EXP, Geld, Item, Typ 4) und Wert bzw. Item-ID × Anzahl. Die Struktur ist an allen 2304 NA2016-Quests belegt; mit * markierte Bedeutungen sind aus den Wertebereichen abgeleitet.
 - 'QuestData.shn speichern'.)MAN",
      R"MAN(On the left the list (title or description, search by ID or text), on the right the details:
 - Quest ID, title text ID and description text ID (texts from QuestDialog.shn are resolved next to them), minimum/maximum level, start NPC (mob ID), enabled, daily quest, required item, predecessor quest.
-- Monster targets (5 slots), item targets (10 slots): active, ID, count; the name is resolved (red = not found).
-- Drops: mob, item, amount, rate.
+- Start NPC: 'Choose...' opens a list of all NPCs from MobInfo.shn with their placement from World/NPC.txt (map, position, role); search by name, InxName or ID. Choosing one sets the ID and turns on 'Starting NPC required'. An NPC that stands on no map is shown in red - the quest cannot be accepted in the game then.
+- Monster/NPC targets (5 slots, kind 'visit NPC' or 'defeat monster'), item targets (10 slots): active, ID, count; the name is resolved (red = not found). 'Choose...' picks from the list here too; 'visit NPC' has count 0 in the original.
+- Drops (up to 10): mob, item, amount, rate, Min?/Max? (probably minimum/maximum count, unproven).
 - Scripts Start / Action / Finish: the quest script language (SAY, IF, GOTO, ACCEPT, CREATE_ITEM ...). 'Look up SAY text ID' shows the text for an ID.
-- Rewards (144 bytes) are not decoded yet and are saved unchanged.
+- Rewards (12 entries): usage (fixed/choice), type (EXP, money, item, type 4) and value or item ID × count. The structure is verified on all 2304 NA2016 quests; meanings marked with * are inferred from value ranges.
 - 'Save QuestData.shn'.)MAN",
-     "quest questdata skript say if goto"},
+     "quest questdata skript say if goto belohnung reward drop exp start npc auswählen choose platzierung"},
     {"creators.npcmob", "creators",
      "Custom NPC / Mob erstellen", "Creating a custom NPC / mob",
      R"MAN(Tab 'Custom NPC/Mob' im SHN-Editor. Der Assistent klont eine Vorlage in alle Tabellen (MobInfo, MobInfoServer, MobViewInfo, MobSpecies, QuestSpecies, MobWeapon) mit einer überall freien ID.
@@ -502,7 +599,7 @@ const TipRow kTips[] = {
     {"Abbrechen", "Verwirft die Eingabe.", "Discards the input."},
     {"Schließen", "Schließt dieses Fenster.", "Closes this window."},
     {"Entfernen", "Entfernt den gewählten Eintrag.", "Removes the selected entry."},
-    {"← Zurück", "Zurück zur vorherigen Ebene.", "Back to the previous level."},
+    {"< Zurück", "Zurück zur vorherigen Ebene.", "Back to the previous level."},
     {"Speichern", "Schreibt die geänderte Datei auf die Platte.", "Writes the modified file to disk."},
     {"CLIENT: SHN-Ordner einlesen", "Liest alle SHN-Tabellen des Client-Ordners (ressystem) ein.", "Reads all SHN tables of the client folder (ressystem)."},
     {"SERVER: SHN-Ordner einlesen", "Liest alle SHN-Tabellen des Server-Ordners (9Data/Shine) ein.", "Reads all SHN tables of the server folder (9Data/Shine)."},

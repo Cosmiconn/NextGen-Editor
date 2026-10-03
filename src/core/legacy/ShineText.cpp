@@ -142,12 +142,26 @@ std::expected<ShineTextFile, std::string> LoadShineTextFile(const std::filesyste
             if (!current->columns.empty() && current->columns[0].name.empty() && current->columns[0].type.empty()) {
                 current->columns.erase(current->columns.begin());
             }
+            // World/ItemDropTable.txt (NA2016) besitzt 290 echte Spalten, hängt aber sowohl
+            // an #ColumnType als auch #ColumnName noch ein "\t;" an. Dieses Semikolon ist
+            // ein Shine-Zeilen-/Kommentar-Sentinel, keine 291. Datenspalte. Einige Records
+            // tragen an derselben Position ";" und andere nur ein leeres Auffüllfeld.
+            if (!current->columns.empty() &&
+                TrimAscii(current->columns.back().name) == ";" &&
+                TrimAscii(current->columns.back().type) == ";") {
+                current->columns.pop_back();
+                current->trailingSemicolonSentinel = true;
+            }
             current->lastLine = lineIdx;
             current->headerLastLine = lineIdx;
         } else if (firstLower == "#record") {
             if (!current) continue;
             std::vector<std::string> values(tokens.begin() + static_cast<std::ptrdiff_t>(argBase), tokens.end());
             TrimTrailingEmpty(values);
+            if (current->trailingSemicolonSentinel && !values.empty() &&
+                TrimAscii(values.back()) == ";") {
+                values.pop_back();
+            }
             // Dasselbe Leer-Tab-Muster wie bei #ColumnType/#ColumnName (siehe dort) tritt bei
             // manchen Dateien (z.B. MobRegen/<Karte>.txt) auch bei "#record" selbst auf - genau
             // ein Wert zu viel, und der erste ist leer, während die Spaltenliste bereits korrekt
@@ -167,6 +181,10 @@ std::expected<ShineTextFile, std::string> LoadShineTextFile(const std::filesyste
             if (!target) continue;
             std::vector<std::string> values(tokens.begin() + static_cast<std::ptrdiff_t>(argBase) + 1, tokens.end());
             TrimTrailingEmpty(values);
+            if (target->trailingSemicolonSentinel && !values.empty() &&
+                TrimAscii(values.back()) == ";") {
+                values.pop_back();
+            }
             target->records.push_back(ShineRecord{values, lineIdx});
             file.loadedRecordLines.push_back(lineIdx);
             target->lastLine = lineIdx;
@@ -221,7 +239,11 @@ std::expected<void, std::string> SaveShineTextFile(const ShineTextFile& file, co
             inserts.emplace_back(kAtEnd, "#Table\t" + table.name);
             inserts.emplace_back(kAtEnd, "#ColumnType\t" + joinTab(types));
             inserts.emplace_back(kAtEnd, "#ColumnName\t" + joinTab(names));
-            for (const auto& rec : table.records) inserts.emplace_back(kAtEnd, "#Record\t" + joinTab(rec.values));
+            for (const auto& rec : table.records) {
+                std::string line = "#Record\t" + joinTab(rec.values);
+                if (table.trailingSemicolonSentinel) line += "\t;";
+                inserts.emplace_back(kAtEnd, std::move(line));
+            }
             continue;
         }
         std::size_t insertAfter = table.lastLine;
@@ -253,14 +275,23 @@ std::expected<void, std::string> SaveShineTextFile(const ShineTextFile& file, co
                 for (std::size_t ti = origTokens.size(); ti-- > 0;) {
                     if (!TrimAscii(origTokens[ti]).empty()) { lastNonEmpty = ti; break; }
                 }
+                const bool hadTrailingSemicolon =
+                    table.trailingSemicolonSentinel && lastNonEmpty < origTokens.size() &&
+                    TrimAscii(origTokens[lastNonEmpty]) == ";";
+                const std::size_t logicalLastNonEmpty =
+                    hadTrailingSemicolon && lastNonEmpty > 0 ? lastNonEmpty - 1 : lastNonEmpty;
+
                 // "#record\t\t<wert>...": das zusaetzliche Leer-Tab nach der Direktive hat der Loader
                 // aus den Werten entfernt (siehe LoadShineTextFile) - hier exakt wieder einsetzen.
                 if (directiveLower == "#record" && origTokens.size() > dIdx + 1 &&
-                    TrimAscii(origTokens[dIdx + 1]).empty() && lastNonEmpty < origTokens.size() &&
-                    lastNonEmpty > dIdx && (lastNonEmpty - dIdx) == table.columns.size() + 1) {
+                    TrimAscii(origTokens[dIdx + 1]).empty() && logicalLastNonEmpty < origTokens.size() &&
+                    logicalLastNonEmpty > dIdx &&
+                    (logicalLastNonEmpty - dIdx) == table.columns.size() + 1) {
                     newLine += "\t" + origTokens[dIdx + 1];
                 }
                 newLine += "\t" + joined;
+                if (hadTrailingSemicolon) newLine += "\t" + origTokens[lastNonEmpty];
+
                 // Auffuell-Tabs (und alles, was hinter dem letzten nicht-leeren Token der
                 // Originalzeile steht) unveraendert anhaengen - echte Dateien fuellen jede Zeile
                 // auf eine feste Spaltenzahl auf. Ein unveraenderter Record bleibt so exakt gleich.
@@ -279,7 +310,9 @@ std::expected<void, std::string> SaveShineTextFile(const ShineTextFile& file, co
                 // GANZ am Ende der Datei, weit hinter der letzten "#Table"-Zeile, die "Link-
                 // Table" deklariert) - "#recordin" adressiert die Zieltabelle dagegen immer
                 // eindeutig per Name.
-                inserts.emplace_back(insertAfter, "#recordin\t" + table.name + "\t" + joined);
+                std::string line = "#recordin\t" + table.name + "\t" + joined;
+                if (table.trailingSemicolonSentinel) line += "\t;";
+                inserts.emplace_back(insertAfter, std::move(line));
             }
         }
     }

@@ -35,6 +35,10 @@ struct KfmFile {
     float unknownFloat1 = 0.25f, unknownFloat2 = 0;
     std::vector<KfmAnimation> animations;
     std::int32_t unknownInt3 = 0;
+    // Runtime-only provenance. Never encoded into the KFM. LoadKfmFile sets this to the
+    // actual working copy that supplied the bytes so relative NIF/KF references can honor
+    // project copy-on-write without losing the separate read-only source identity.
+    std::filesystem::path loadedPath;
 };
 const char* KfmVersionName(KfmVersion version);
 std::expected<KfmFile, std::string> DecodeKfm(std::span<const std::uint8_t> bytes);
@@ -43,13 +47,29 @@ std::expected<KfmFile, std::string> LoadKfmFile(const std::filesystem::path& pat
 // Export a NEW file. Existing destinations are never truncated or replaced.
 std::expected<void, std::string> SaveKfmFile(const KfmFile& file, const std::filesystem::path& path);
 
+// ---- Bearbeitung der Animationsliste ----
+// Kleinste Event-ID größer als alle vorhandenen (mindestens 1).
+[[nodiscard]] std::int32_t KfmNextFreeEventCode(const KfmFile& file);
+// Kopie der Animation `index` direkt dahinter einfügen: neue freie Event-ID, KF-Datei, Index und
+// Übergänge unverändert; der Legacy-Name (nur 1.2.4b) erhält " Kopie". Liefert den neuen Index.
+std::size_t KfmDuplicateAnimation(KfmFile& file, std::size_t index);
+// Animation entfernen. Übergänge ANDERER Animationen, die auf ihre Event-ID zeigen, werden nicht
+// still verändert, sondern gezählt (sie gelten danach als fehlende Ziele).
+struct KfmRemoveReport { std::size_t danglingTransitions = 0, danglingIntermediates = 0; bool removed = false; };
+KfmRemoveReport KfmRemoveAnimation(KfmFile& file, std::size_t index);
+
 struct KfmReferences {
     std::optional<std::filesystem::path> nif;
     std::vector<std::optional<std::filesystem::path>> animations;
     std::size_t missingKfFiles = 0, duplicateEventCodes = 0;
     std::size_t missingTransitionTargets = 0, missingIntermediateTargets = 0;
 };
-// Explicit relative references, resolved against the KFM directory. No recursive
-// basename guesses. Work is performed once per request, never per rendered row.
+// Explicit relative references. If file.loadedPath is set, project/working siblings are
+// checked first and the source directory is the read-only fallback. No recursive basename
+// guesses. Work is performed once per request, never per rendered row.
 KfmReferences InspectKfmReferences(const KfmFile& file, const std::filesystem::path& source);
+// Explicit copy-on-write variant for callers that already know both paths.
+KfmReferences InspectKfmReferences(const KfmFile& file,
+                                   const std::filesystem::path& source,
+                                   const std::filesystem::path& workingSource);
 } // namespace theseed::mapeditor::core

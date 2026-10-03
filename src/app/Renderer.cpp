@@ -24,15 +24,18 @@ const char* kVertexShaderSrc = R"(
 #version 330 core
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
+layout(location = 2) in vec3 aColor; // Terrain-Vertexfarbe (#VerTexColorTexture), sonst weiss
 
 uniform mat4 uMvp;
 
 out vec3 vNormal;
 out vec3 vWorldPos;
+out vec3 vColor;
 
 void main() {
     vNormal = aNormal;
     vWorldPos = aPos;
+    vColor = aColor;
     gl_Position = uMvp * vec4(aPos, 1.0);
 }
 )";
@@ -41,18 +44,33 @@ const char* kFragmentShaderSrc = R"(
 #version 330 core
 in vec3 vNormal;
 in vec3 vWorldPos;
+in vec3 vColor;
 out vec4 FragColor;
 
 uniform vec3 uLightDir;
+uniform bool uUseVertexColor; // Karte liefert eine Vertex-Color-Bitmap
+uniform bool uGroundLight;    // <Karte>.conf [WorldSetting] Ground_DL_Enable
+uniform int uViewMode;        // 0 beleuchtet, 1 unbeleuchtet, 2 nur Licht, 3 Normalen, 4 Vertexfarbe, 5 UV, 6 Alpha
+// SHMD-Szenenlicht (GlobalLight/DirectionLight*), Nebel (Fog/Frustum), siehe SceneLighting.hpp.
+uniform bool uSceneLightFromMap;
+uniform vec3 uSceneAmbient;
+uniform vec3 uSunColor;
+uniform bool uFogEnabled;
+uniform vec3 uFogColor;
+uniform float uFogStart;
+uniform float uFogEnd;
+uniform vec3 uCameraPos;
 uniform float uMinHeight;
 uniform float uMaxHeight;
 
 uniform bool uUseTextures;
 uniform int uLayerCount;
+uniform bool uFirstPass; // erster Layer-Durchgang deckend, weitere werden darübergelegt
 uniform float uUvScale[8];
 uniform float uLayerVisible[8]; // 0 = Layer ausgeblendet (Map-Editor "Sichtbarkeit")
 uniform vec4 uLayerRegion[8]; // Welt-X/Z-Start, Welt-Breite/Tiefe der Region, die die Blend-Map des Layers abdeckt
 uniform vec2 uMapSpan;
+uniform vec2 uBlockSize;
 
 uniform sampler2D uDiffuse0;
 uniform sampler2D uBlend0;
@@ -71,52 +89,54 @@ uniform sampler2D uBlend6;
 uniform sampler2D uDiffuse7;
 uniform sampler2D uBlend7;
 
-vec3 SampleLayer(sampler2D diffuseTex, sampler2D blendTex, float uvScale, vec4 region) {
+vec4 SampleLayer(sampler2D diffuseTex, sampler2D blendTex, float uvScale, vec4 region) {
     // Region des Layers (ini #StartPos/#Width/#Height): bei grossen Karten wie Adl deckt jeder Layer
     // nur einen Teil der Karte ab - Blend UND Diffuse-Kachelung beziehen sich auf diese Region
     // (vorher wurde jeder Layer ueber die ganze Karte gestreckt). Ausserhalb der Region Gewicht 0.
     vec2 mapUv = (vWorldPos.xz - region.xy) / region.zw;
-    if (mapUv.x < 0.0 || mapUv.y < 0.0 || mapUv.x > 1.0 || mapUv.y > 1.0) return vec3(0.0);
+    if (mapUv.x < 0.0 || mapUv.y < 0.0 || mapUv.x > 1.0 || mapUv.y > 1.0) return vec4(0.0);
     float weight = texture(blendTex, mapUv).r;
-    // KORRIGIERT (zurückgenommen): der vorherige "finale" V-Flip nur für die Diffuse-Textur
-    // (relativ zur Blend-Achse) hat das Problem NICHT gelöst - Nutzer-Rückmeldung mit
-    // Vergleichs-Screenshots (2D View mit rotem Block/Walk-Overlay vs. Nahaufnahme derselben
-    // Steintextur) zeigt: das rote Block/Walk-Overlay ist korrekt ausgerichtet ("richtig
-    // rum"), aber die Diffuse-Textur ist weiterhin oben/unten vertauscht - GENAU das Symptom,
-    // das der vorherige Flip eigentlich beheben sollte. Da Block/Walk dieselbe mapUv-Achse wie
-    // Blend nutzt (beide nachweislich korrekt), war der Flip demnach die falsche Richtung -
-    // jetzt wieder auf direkte Übernahme von mapUv umgestellt, wie beim Blend-Lookup. Falls
-    // die Textur danach WEITERHIN falsch orientiert ist, liegt die Ursache vermutlich nicht in
-    // der UV-Zuordnung, sondern in der Zeilenreihenfolge beim DDS-Dekodieren selbst (siehe
-    // DdsImage.cpp) - das wäre der nächste Verdächtige, siehe HANDOFF.md.
-    vec2 diffuseUv = mapUv * uvScale;
+    // Diffuse detail density is a WORLD-space property, not a map-size property.
+    // The previous mapUv*uvScale interpretation made one ground tile span thousands of
+    // world units on large maps. Legacy maps use 50-unit terrain blocks by default; the
+    // earlier renderer's 500-unit reference therefore corresponds to ten terrain blocks.
+    // Keeping that reference relative to the actual block size preserves scale on maps
+    // with non-default block dimensions while still honoring UVScaleDiffuse.
+    vec2 localWorld = vWorldPos.xz - region.xy;
+    vec2 referenceTile = max(uBlockSize * 10.0, vec2(1.0));
+    vec2 diffuseUv = (localWorld / referenceTile) * max(uvScale, 0.0001);
     vec3 diffuseColor = texture(diffuseTex, diffuseUv).rgb;
-    return diffuseColor * weight;
+    return vec4(diffuseColor, weight);
+}
+
+// Layer der Reihe nach übereinanderlegen: jede Blend-Map ist die Deckkraft ihres Layers über
+// allem darunter (belegt an Uruga/Bera/Teva: Masken summieren sich nicht zu 1, mehrere Layer
+// sind stellenweise gleichzeitig voll deckend). color = vorgemultiplizierte Farbe dieses
+// Durchgangs, transmit = Anteil, der von den Layern darunter noch durchscheint.
+void Over(vec4 layer, float visible, inout vec3 color, inout float transmit) {
+    float a = clamp(layer.a * visible, 0.0, 1.0);
+    color = color * (1.0 - a) + layer.rgb * a;
+    transmit *= 1.0 - a;
 }
 
 void main() {
     vec3 n = normalize(vNormal);
     float diff = max(dot(n, normalize(-uLightDir)), 0.0);
     vec3 baseColor;
+    float layerTransmit = 1.0;
 
     if (uUseTextures && uLayerCount > 0) {
-        // KORRIGIERT: uvScale ist die Anzahl Wiederholungen ÜBER DIE GESAMTE KARTENFLÄCHE
-        // (Standard-Konvention), nicht - wie zuvor angenommen - ein Kehrwert einer festen
-        // Welteinheiten-Periode. Beleg: echte .ini-Werte für UVScaleDiffuse liegen bei 4-5
-        // (siehe docs/MAP_FORMAT.md) - mit der alten "/500"-Formel hätte sich eine Textur auf
-        // einer 12800 Einheiten breiten Karte ca. 128x statt der vermutlich beabsichtigten 4-5x
-        // wiederholt. Das erklärt eher ein vom Nutzer gemeldetes "Emblem erscheint mehrfach"
-        // als eine reine Spiegelung. mapUv (0..1 über die Kartenfläche) ist dieselbe Basis wie
-        // beim Blend-Lookup, nur zusätzlich mit uvScale multipliziert.
+        // Diffuse textures are intentionally sampled in world scale inside SampleLayer(), so
+        // visual texel size does not grow with the overall map dimensions.
         vec3 color = vec3(0.0);
-        if (uLayerCount > 0) color += SampleLayer(uDiffuse0, uBlend0, uUvScale[0], uLayerRegion[0]) * uLayerVisible[0];
-        if (uLayerCount > 1) color += SampleLayer(uDiffuse1, uBlend1, uUvScale[1], uLayerRegion[1]) * uLayerVisible[1];
-        if (uLayerCount > 2) color += SampleLayer(uDiffuse2, uBlend2, uUvScale[2], uLayerRegion[2]) * uLayerVisible[2];
-        if (uLayerCount > 3) color += SampleLayer(uDiffuse3, uBlend3, uUvScale[3], uLayerRegion[3]) * uLayerVisible[3];
-        if (uLayerCount > 4) color += SampleLayer(uDiffuse4, uBlend4, uUvScale[4], uLayerRegion[4]) * uLayerVisible[4];
-        if (uLayerCount > 5) color += SampleLayer(uDiffuse5, uBlend5, uUvScale[5], uLayerRegion[5]) * uLayerVisible[5];
-        if (uLayerCount > 6) color += SampleLayer(uDiffuse6, uBlend6, uUvScale[6], uLayerRegion[6]) * uLayerVisible[6];
-        if (uLayerCount > 7) color += SampleLayer(uDiffuse7, uBlend7, uUvScale[7], uLayerRegion[7]) * uLayerVisible[7];
+        if (uLayerCount > 0) Over(SampleLayer(uDiffuse0, uBlend0, uUvScale[0], uLayerRegion[0]), uLayerVisible[0], color, layerTransmit);
+        if (uLayerCount > 1) Over(SampleLayer(uDiffuse1, uBlend1, uUvScale[1], uLayerRegion[1]), uLayerVisible[1], color, layerTransmit);
+        if (uLayerCount > 2) Over(SampleLayer(uDiffuse2, uBlend2, uUvScale[2], uLayerRegion[2]), uLayerVisible[2], color, layerTransmit);
+        if (uLayerCount > 3) Over(SampleLayer(uDiffuse3, uBlend3, uUvScale[3], uLayerRegion[3]), uLayerVisible[3], color, layerTransmit);
+        if (uLayerCount > 4) Over(SampleLayer(uDiffuse4, uBlend4, uUvScale[4], uLayerRegion[4]), uLayerVisible[4], color, layerTransmit);
+        if (uLayerCount > 5) Over(SampleLayer(uDiffuse5, uBlend5, uUvScale[5], uLayerRegion[5]), uLayerVisible[5], color, layerTransmit);
+        if (uLayerCount > 6) Over(SampleLayer(uDiffuse6, uBlend6, uUvScale[6], uLayerRegion[6]), uLayerVisible[6], color, layerTransmit);
+        if (uLayerCount > 7) Over(SampleLayer(uDiffuse7, uBlend7, uUvScale[7], uLayerRegion[7]), uLayerVisible[7], color, layerTransmit);
         baseColor = color;
     } else {
         float t = clamp((vWorldPos.y - uMinHeight) / max(uMaxHeight - uMinHeight, 0.0001), 0.0, 1.0);
@@ -125,8 +145,47 @@ void main() {
         baseColor = mix(low, high, t);
     }
 
-    vec3 color = baseColor * (0.35 + 0.65 * diff);
-    FragColor = vec4(color, 1.0);
+    // Beleuchtung (Editor-Näherung, Client-Formel nicht belegt - siehe docs/RENDERER.md):
+    //  ohne Vertexfarbe: bisherige Ambient+Diffus-Mischung;
+    //  mit Vertexfarbe: die Bitmap trägt Helligkeit und Farbton der Karte, das gerichtete
+    //  Bodenlicht moduliert nur noch leicht und entfällt bei Ground_DL_Enable=FALSE.
+    vec3 vc = uUseVertexColor ? vColor : vec3(1.0);
+    vec3 lighting;
+    if (uSceneLightFromMap) {
+        // Kartendaten (SHMD): Umgebungslicht + Sonnenfarbe * N·L, wie bei fester Funktions-
+        // beleuchtung auf 1 gesättigt; die Vertexfarbe ersetzt das Material (AMB_DIF).
+        vec3 light = uSceneAmbient + (uGroundLight ? uSunColor * diff : vec3(0.0));
+        lighting = vc * clamp(light, 0.0, 1.0);
+    } else {
+        float lightTerm;
+        if (uUseVertexColor) lightTerm = uGroundLight ? (0.62 + 0.55 * diff) : 1.0;
+        else lightTerm = uGroundLight ? (0.35 + 0.65 * diff) : 1.0;
+        lighting = vc * lightTerm;
+    }
+
+    vec3 color;
+    if (uViewMode == 1) color = baseColor;
+    else if (uViewMode == 2) color = lighting;
+    else if (uViewMode == 3) color = n * 0.5 + 0.5;
+    else if (uViewMode == 4) color = vc;                                            // Terrain-Vertexfarbe
+    else if (uViewMode == 5) color = vec3(fract(vWorldPos.xz / max(uBlockSize * 10.0, vec2(1.0))), 0.0); // Kachel-UV
+    else if (uViewMode == 6) color = vec3(1.0);                                     // Terrain ist deckend
+    else if (uViewMode == 7) color = vec3(0.55) * (0.45 + 0.55 * diff);             // Terrain: kein LOD
+    else color = baseColor * lighting;
+    float fog = 0.0;
+    if (uFogEnabled && uViewMode == 0) {
+        float d = length(vWorldPos - uCameraPos);
+        fog = clamp((d - uFogStart) / max(uFogEnd - uFogStart, 1.0), 0.0, 1.0);
+    }
+    if (uFirstPass) {
+        FragColor = vec4(mix(color, uFogColor, fog), 1.0);
+    } else if (uViewMode == 0 || uViewMode == 1) {
+        // Weitere Layer-Gruppe über das Bisherige legen: Blend (ONE, SRC_ALPHA) ergibt
+        // neu = src + alt * transmit. Nebel so verteilt, dass er insgesamt genau einmal wirkt.
+        FragColor = vec4(color * (1.0 - fog) + uFogColor * fog * (1.0 - layerTransmit), layerTransmit);
+    } else {
+        FragColor = vec4(0.0, 0.0, 0.0, 1.0); // Analyse-Ansichten zeigt der erste Durchgang vollständig
+    }
 }
 )";
 
@@ -224,6 +283,73 @@ void main() {
 }
 )";
 
+// ---- Nachbearbeitung (Glow aus <Karte>.conf [GlowScreenEffect]) ----------------------------
+// Vollbild-Dreieck aus gl_VertexID (kein Vertexpuffer nötig, braucht nur ein gebundenes VAO).
+const char* kPostVertexShaderSrc = R"(
+#version 330 core
+out vec2 vUv;
+void main() {
+    vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+    vUv = p;
+    gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}
+)";
+
+// Kopie mit optionaler Helligkeitsschwelle (Downsample-Schritt).
+const char* kPostCopyFragmentShaderSrc = R"(
+#version 330 core
+in vec2 vUv;
+out vec4 FragColor;
+uniform sampler2D uSrc;
+void main() {
+    FragColor = vec4(texture(uSrc, vUv).rgb, 1.0);
+}
+)";
+
+// Separierbarer 9-Tap-Gauss; uDirection = Texelschritt (horizontal oder vertikal).
+const char* kPostBlurFragmentShaderSrc = R"(
+#version 330 core
+in vec2 vUv;
+out vec4 FragColor;
+uniform sampler2D uSrc;
+uniform vec2 uDirection;
+uniform float uSigma;
+void main() {
+    vec3 sum = vec3(0.0);
+    float wsum = 0.0;
+    for (int i = -4; i <= 4; ++i) {
+        float w = exp(-float(i * i) / (2.0 * uSigma * uSigma));
+        sum += texture(uSrc, vUv + uDirection * float(i)).rgb * w;
+        wsum += w;
+    }
+    FragColor = vec4(sum / wsum, 1.0);
+}
+)";
+
+// Komposition: Szene + Glow * Glowness * BlendFactor (Editor-Näherung des Client-Effekts).
+const char* kPostCompositeFragmentShaderSrc = R"(
+#version 330 core
+in vec2 vUv;
+out vec4 FragColor;
+uniform sampler2D uScene;
+uniform sampler2D uGlow;
+uniform float uGlowStrength;
+void main() {
+    vec3 scene = texture(uScene, vUv).rgb;
+    vec3 glow = texture(uGlow, vUv).rgb;
+    FragColor = vec4(scene + glow * uGlowStrength, 1.0);
+}
+)";
+
+void ConfigureColorTexture(std::uint32_t tex, int width, int height) {
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+}
+
 } // namespace
 
 HeightmapRenderer::~HeightmapRenderer() { Shutdown(); }
@@ -268,6 +394,39 @@ void HeightmapRenderer::Init() {
     const std::uint32_t ovs = CompileShader(GL_VERTEX_SHADER, kOverlayVertexShaderSrc);
     const std::uint32_t ofs = CompileShader(GL_FRAGMENT_SHADER, kOverlayFragmentShaderSrc);
     overlayShaderProgram_ = LinkProgram(ovs, ofs);
+
+    glGenVertexArrays(1, &postVao_);
+    postCopyProgram_ = LinkProgram(CompileShader(GL_VERTEX_SHADER, kPostVertexShaderSrc),
+                                   CompileShader(GL_FRAGMENT_SHADER, kPostCopyFragmentShaderSrc));
+    postBlurProgram_ = LinkProgram(CompileShader(GL_VERTEX_SHADER, kPostVertexShaderSrc),
+                                   CompileShader(GL_FRAGMENT_SHADER, kPostBlurFragmentShaderSrc));
+    postCompositeProgram_ = LinkProgram(CompileShader(GL_VERTEX_SHADER, kPostVertexShaderSrc),
+                                        CompileShader(GL_FRAGMENT_SHADER, kPostCompositeFragmentShaderSrc));
+    GLint maxSamples = 0;
+    glGetIntegerv(GL_MAX_SAMPLES, &maxSamples);
+    maxMsaaSamples_ = std::max(1, static_cast<int>(maxSamples));
+}
+
+void HeightmapRenderer::SelectRenderTarget(int index) {
+    index = std::clamp(index, 0, kMaxRenderTargets - 1);
+    if (index == currentTarget_) return;
+    const auto save = [this](SceneTargetSlot& t) {
+        t.fbo = fbo_; t.colorTex = fboColorTex_; t.depthRbo = fboDepthRbo_; t.width = fboWidth_; t.height = fboHeight_;
+        t.msaaFbo = msaaFbo_; t.msaaColorRbo = msaaColorRbo_; t.msaaDepthRbo = msaaDepthRbo_;
+        for (int i = 0; i < 2; ++i) { t.glowFbo[i] = glowFbo_[i]; t.glowTex[i] = glowTex_[i]; }
+        t.outputFbo = outputFbo_; t.outputTex = outputTex_; t.glowWidth = glowWidth_; t.glowHeight = glowHeight_;
+        t.sceneW = sceneTargetW_; t.sceneH = sceneTargetH_; t.sceneSamples = sceneTargetSamples_; t.sceneGlowDiv = sceneTargetGlowDiv_;
+    };
+    const auto load = [this](const SceneTargetSlot& t) {
+        fbo_ = t.fbo; fboColorTex_ = t.colorTex; fboDepthRbo_ = t.depthRbo; fboWidth_ = t.width; fboHeight_ = t.height;
+        msaaFbo_ = t.msaaFbo; msaaColorRbo_ = t.msaaColorRbo; msaaDepthRbo_ = t.msaaDepthRbo;
+        for (int i = 0; i < 2; ++i) { glowFbo_[i] = t.glowFbo[i]; glowTex_[i] = t.glowTex[i]; }
+        outputFbo_ = t.outputFbo; outputTex_ = t.outputTex; glowWidth_ = t.glowWidth; glowHeight_ = t.glowHeight;
+        sceneTargetW_ = t.sceneW; sceneTargetH_ = t.sceneH; sceneTargetSamples_ = t.sceneSamples; sceneTargetGlowDiv_ = t.sceneGlowDiv;
+    };
+    save(targetSlots_[static_cast<std::size_t>(currentTarget_)]);
+    load(targetSlots_[static_cast<std::size_t>(index)]);
+    currentTarget_ = index;
 }
 
 void HeightmapRenderer::Shutdown() {
@@ -276,10 +435,18 @@ void HeightmapRenderer::Shutdown() {
     if (ebo_) glDeleteBuffers(1, &ebo_);
     if (vao_) glDeleteVertexArrays(1, &vao_);
     if (shaderProgram_) glDeleteProgram(shaderProgram_);
-    if (fboColorTex_) glDeleteTextures(1, &fboColorTex_);
-    if (fboDepthRbo_) glDeleteRenderbuffers(1, &fboDepthRbo_);
-    if (fbo_) glDeleteFramebuffers(1, &fbo_);
-    vbo_ = ebo_ = vao_ = shaderProgram_ = fboColorTex_ = fboDepthRbo_ = fbo_ = 0;
+    vbo_ = ebo_ = vao_ = shaderProgram_ = 0;
+    // Alle Viewport-Ziele freigeben (je Slot das Haupt-FBO und die MSAA-/Glow-Ziele).
+    for (int target = 0; target < kMaxRenderTargets; ++target) {
+        SelectRenderTarget(target);
+        if (fboColorTex_) glDeleteTextures(1, &fboColorTex_);
+        if (fboDepthRbo_) glDeleteRenderbuffers(1, &fboDepthRbo_);
+        if (fbo_) glDeleteFramebuffers(1, &fbo_);
+        fboColorTex_ = fboDepthRbo_ = fbo_ = 0;
+        fboWidth_ = fboHeight_ = 0;
+        ReleaseSceneTargets();
+    }
+    SelectRenderTarget(0);
 
     if (fbo2dColorTex_) glDeleteTextures(1, &fbo2dColorTex_);
     if (fbo2dDepthRbo_) glDeleteRenderbuffers(1, &fbo2dDepthRbo_);
@@ -287,10 +454,32 @@ void HeightmapRenderer::Shutdown() {
     fbo2dColorTex_ = fbo2dDepthRbo_ = fbo2d_ = 0;
     fbo2dWidth_ = fbo2dHeight_ = 0;
 
+    if (fboOverviewColorTex_) glDeleteTextures(1, &fboOverviewColorTex_);
+    if (fboOverviewDepthRbo_) glDeleteRenderbuffers(1, &fboOverviewDepthRbo_);
+    if (fboOverview_) glDeleteFramebuffers(1, &fboOverview_);
+    fboOverviewColorTex_ = fboOverviewDepthRbo_ = fboOverview_ = 0;
+    fboOverviewWidth_ = fboOverviewHeight_ = 0;
+
     if (overlayVbo_) glDeleteBuffers(1, &overlayVbo_);
     if (overlayVao_) glDeleteVertexArrays(1, &overlayVao_);
     if (overlayShaderProgram_) glDeleteProgram(overlayShaderProgram_);
     overlayVbo_ = overlayVao_ = overlayShaderProgram_ = 0;
+
+    if (postVao_) glDeleteVertexArrays(1, &postVao_);
+    if (postCopyProgram_) glDeleteProgram(postCopyProgram_);
+    if (postBlurProgram_) glDeleteProgram(postBlurProgram_);
+    if (postCompositeProgram_) glDeleteProgram(postCompositeProgram_);
+    postVao_ = postCopyProgram_ = postBlurProgram_ = postCompositeProgram_ = 0;
+}
+
+void HeightmapRenderer::SetVertexColorMap(const core::legacy::RgbImage* image) {
+    if (image == nullptr || image->Empty()) {
+        vertexColorMap_ = {};
+        useVertexColor_ = false;
+    } else {
+        vertexColorMap_ = *image;
+        useVertexColor_ = true;
+    }
 }
 
 void HeightmapRenderer::RebuildMesh(const core::Heightmap& heightmap) {
@@ -310,7 +499,19 @@ void HeightmapRenderer::RebuildMesh(const core::Heightmap& heightmap) {
     mapSpanZ_ = static_cast<float>(h - 1) * heightmap.BlockHeight();
 
     std::vector<float> vertices;
-    vertices.reserve(static_cast<std::size_t>(w) * h * 6);
+    vertices.reserve(static_cast<std::size_t>(w) * h * 9);
+    // Vertex-Color-Bitmap: je HTD-Vertex genau ein Texel (Rou 257x257). Weicht die Grösse ab,
+    // wird nächstliegend abgetastet statt die Bitmap zu verwerfen.
+    const bool haveVc = useVertexColor_ && !vertexColorMap_.Empty();
+    const auto vertexColor = [&](std::uint32_t x, std::uint32_t z, float out[3]) {
+        if (!haveVc) { out[0] = out[1] = out[2] = 1.0f; return; }
+        const auto vx = static_cast<std::uint32_t>(std::min<std::uint64_t>(
+            vertexColorMap_.width - 1, static_cast<std::uint64_t>(x) * vertexColorMap_.width / w));
+        const auto vz = static_cast<std::uint32_t>(std::min<std::uint64_t>(
+            vertexColorMap_.height - 1, static_cast<std::uint64_t>(z) * vertexColorMap_.height / h));
+        const std::uint8_t* c = vertexColorMap_.At(vx, vz);
+        out[0] = c[0] / 255.0f; out[1] = c[1] / 255.0f; out[2] = c[2] / 255.0f;
+    };
 
     for (std::uint32_t z = 0; z < h; ++z) {
         for (std::uint32_t x = 0; x < w; ++x) {
@@ -334,9 +535,12 @@ void HeightmapRenderer::RebuildMesh(const core::Heightmap& heightmap) {
             constexpr float ny = 1.0f;
             const float invLen = 1.0f / std::sqrt(nx * nx + ny * ny + nz * nz);
 
+            float rgb[3];
+            vertexColor(x, z, rgb);
             vertices.insert(vertices.end(), {
                 worldX, worldY, worldZ,
                 nx * invLen, ny * invLen, nz * invLen,
+                rgb[0], rgb[1], rgb[2],
             });
         }
     }
@@ -363,14 +567,23 @@ void HeightmapRenderer::RebuildMesh(const core::Heightmap& heightmap) {
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, static_cast<long>(indices.size() * sizeof(std::uint32_t)), indices.data(), GL_DYNAMIC_DRAW);
 
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), reinterpret_cast<void*>(0));
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 9 * sizeof(float), reinterpret_cast<void*>(0));
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 9 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 9 * sizeof(float), reinterpret_cast<void*>(6 * sizeof(float)));
 
     glBindVertexArray(0);
 }
 
 void HeightmapRenderer::LoadTerrainTextures(const core::TextureLayerStack& stack, const std::filesystem::path& mapDir) {
+    // History/core tests intentionally run without an OpenGL context. A default-constructed
+    // renderer has no shader program and must keep all CPU-side editor operations headless-safe.
+    if (shaderProgram_ == 0) {
+        textureLayerCount_ = 0;
+        return;
+    }
+
     ClearTerrainTextures();
 
     const int count = std::min(static_cast<int>(stack.LayerCount()), kMaxTextureLayers);
@@ -417,6 +630,7 @@ void HeightmapRenderer::LoadTerrainTextures(const core::TextureLayerStack& stack
 }
 
 void HeightmapRenderer::UpdateBlendTextures(const core::TextureLayerStack& stack) {
+    if (shaderProgram_ == 0 || textureLayerCount_ <= 0) return;
     const int count = std::min(static_cast<int>(stack.LayerCount()), textureLayerCount_);
     for (int i = 0; i < count; ++i) {
         UploadBlendTexture(blendTex_[i], stack.Layer(static_cast<std::size_t>(i)).blend);
@@ -452,8 +666,8 @@ void HeightmapRenderer::EnsureFramebuffer(int width, int height) {
 
     glGenRenderbuffers(1, &fboDepthRbo_);
     glBindRenderbuffer(GL_RENDERBUFFER, fboDepthRbo_);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, fboDepthRbo_);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, fboDepthRbo_);
 
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         std::fprintf(stderr, "[Renderer] Framebuffer unvollständig!\n");
@@ -474,17 +688,21 @@ void HeightmapRenderer::BeginScene(const OrbitCamera& camera, int width, int hei
         return;
     }
     EnsureFramebuffer(width, height);
+    EnsureSceneTargets(width, height);
 
-    glBindFramebuffer(GL_FRAMEBUFFER, fbo_);
+    // Mit MSAA wird in das Multisample-FBO gezeichnet und in EndScene() aufgelöst.
+    glBindFramebuffer(GL_FRAMEBUFFER, msaaFbo_ != 0 ? msaaFbo_ : fbo_);
     glViewport(0, 0, width, height);
     glEnable(GL_DEPTH_TEST);
-    glClearColor(0.10f, 0.11f, 0.13f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    if (msaaFbo_ != 0) glEnable(GL_MULTISAMPLE);
+    glClearColor(lighting_.background[0], lighting_.background[1], lighting_.background[2], 1.0f);
+    eye_[0] = camera.EyeX(); eye_[1] = camera.EyeY(); eye_[2] = -camera.EyeZ();
+    glClearStencil(0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
     if (indexCount_ > 0) {
         const Mat4 view = camera.ViewMatrix();
-        const Mat4 proj = OrbitCamera::PerspectiveMatrix(
-            0.9f, static_cast<float>(width) / static_cast<float>(height), camera.NearPlane(), camera.FarPlane());
+        const Mat4 proj = camera.ProjectionMatrix(static_cast<float>(width) / static_cast<float>(height));
         DrawTerrainMesh(proj * view, wireframe);
     }
     // Framebuffer bleibt absichtlich gebunden - weitere Renderer (z.B. Objekt-Marker) können
@@ -496,17 +714,30 @@ void HeightmapRenderer::DrawTerrainMesh(const Mat4& viewProj, bool wireframe) {
     glUseProgram(shaderProgram_);
 
     glUniformMatrix4fv(glGetUniformLocation(shaderProgram_, "uMvp"), 1, GL_FALSE, viewProj.m);
-    glUniform3f(glGetUniformLocation(shaderProgram_, "uLightDir"), -0.4f, -1.0f, -0.3f);
+    glUniform3fv(glGetUniformLocation(shaderProgram_, "uLightDir"), 1, lighting_.lightDir);
     glUniform1f(glGetUniformLocation(shaderProgram_, "uMinHeight"), minHeight_);
     glUniform1f(glGetUniformLocation(shaderProgram_, "uMaxHeight"), maxHeight_);
     glUniform1i(glGetUniformLocation(shaderProgram_, "uUseTextures"), textureLayerCount_ > 0 ? 1 : 0);
     glUniform2f(glGetUniformLocation(shaderProgram_, "uMapSpan"), mapSpanX_, mapSpanZ_);
+    glUniform2f(glGetUniformLocation(shaderProgram_, "uBlockSize"),
+                std::max(blockW_, 0.001f), std::max(blockH_, 0.001f));
+    glUniform1i(glGetUniformLocation(shaderProgram_, "uUseVertexColor"), useVertexColor_ && vertexColorEnabled_ ? 1 : 0);
+    glUniform1i(glGetUniformLocation(shaderProgram_, "uGroundLight"), groundLight_ ? 1 : 0);
+    glUniform1i(glGetUniformLocation(shaderProgram_, "uViewMode"), viewMode_);
+    glUniform1i(glGetUniformLocation(shaderProgram_, "uSceneLightFromMap"), lighting_.fromMapData ? 1 : 0);
+    glUniform3fv(glGetUniformLocation(shaderProgram_, "uSceneAmbient"), 1, lighting_.ambient);
+    glUniform3fv(glGetUniformLocation(shaderProgram_, "uSunColor"), 1, lighting_.sun);
+    glUniform1i(glGetUniformLocation(shaderProgram_, "uFogEnabled"), lighting_.fogEnabled ? 1 : 0);
+    glUniform3fv(glGetUniformLocation(shaderProgram_, "uFogColor"), 1, lighting_.fogColor);
+    glUniform1f(glGetUniformLocation(shaderProgram_, "uFogStart"), lighting_.fogStart);
+    glUniform1f(glGetUniformLocation(shaderProgram_, "uFogEnd"), lighting_.fogEnd);
+    glUniform3f(glGetUniformLocation(shaderProgram_, "uCameraPos"), eye_[0], eye_[1], eye_[2]);
 
     glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
     glBindVertexArray(vao_);
-    // Layer in Gruppen zu je kLayersPerPass zeichnen (Textur-Einheiten-Limit) und additiv
-    // zusammenfuehren: color = Summe(gewicht * diffuse), das ist linear - jeder Durchgang liefert
-    // seinen Teil, alle Layer ausserhalb ihrer Region tragen 0 bei (siehe SampleLayer).
+    // Layer in Gruppen zu je kLayersPerPass zeichnen (Textur-Einheiten-Limit). Jede Gruppe wird
+    // über die vorherigen gelegt (Blend ONE, SRC_ALPHA mit alpha = Durchlass der Gruppe), so dass
+    // das Ergebnis dem Übereinanderlegen aller Layer in Reihenfolge entspricht (siehe Over()).
     const int passes = std::max(1, (textureLayerCount_ + kLayersPerPass - 1) / kLayersPerPass);
     for (int pass = 0; pass < passes; ++pass) {
         const int first = pass * kLayersPerPass;
@@ -530,6 +761,7 @@ void HeightmapRenderer::DrawTerrainMesh(const Mat4& viewProj, bool wireframe) {
             }
         }
         glUniform1i(glGetUniformLocation(shaderProgram_, "uLayerCount"), inPass);
+        glUniform1i(glGetUniformLocation(shaderProgram_, "uFirstPass"), pass == 0 ? 1 : 0);
         glUniform1fv(glGetUniformLocation(shaderProgram_, "uUvScale"), kLayersPerPass, uvScales);
         glUniform4fv(glGetUniformLocation(shaderProgram_, "uLayerRegion"), kLayersPerPass, regions);
         float visible[kLayersPerPass] = {};
@@ -546,7 +778,7 @@ void HeightmapRenderer::DrawTerrainMesh(const Mat4& viewProj, bool wireframe) {
         }
         if (pass > 0) {
             glEnable(GL_BLEND);
-            glBlendFunc(GL_ONE, GL_ONE);
+            glBlendFuncSeparate(GL_ONE, GL_SRC_ALPHA, GL_ZERO, GL_ONE); // Ziel-Alpha unverändert lassen
             glDepthFunc(GL_LEQUAL);
             glDepthMask(GL_FALSE);
         }
@@ -583,8 +815,8 @@ void HeightmapRenderer::EnsureFramebuffer2d(int width, int height) {
 
     glGenRenderbuffers(1, &fbo2dDepthRbo_);
     glBindRenderbuffer(GL_RENDERBUFFER, fbo2dDepthRbo_);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, fbo2dDepthRbo_);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, fbo2dDepthRbo_);
 
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         std::fprintf(stderr, "[Renderer] 2D-Framebuffer unvollständig!\n");
@@ -592,6 +824,62 @@ void HeightmapRenderer::EnsureFramebuffer2d(int width, int height) {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     fbo2dWidth_ = width;
     fbo2dHeight_ = height;
+}
+
+void HeightmapRenderer::EnsureFramebufferOverview(int width, int height) {
+    if (fboOverview_ != 0 && width == fboOverviewWidth_ && height == fboOverviewHeight_) return;
+
+    if (fboOverviewColorTex_) glDeleteTextures(1, &fboOverviewColorTex_);
+    if (fboOverviewDepthRbo_) glDeleteRenderbuffers(1, &fboOverviewDepthRbo_);
+    if (fboOverview_) glDeleteFramebuffers(1, &fboOverview_);
+
+    glGenFramebuffers(1, &fboOverview_);
+    glBindFramebuffer(GL_FRAMEBUFFER, fboOverview_);
+
+    glGenTextures(1, &fboOverviewColorTex_);
+    glBindTexture(GL_TEXTURE_2D, fboOverviewColorTex_);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, fboOverviewColorTex_, 0);
+
+    glGenRenderbuffers(1, &fboOverviewDepthRbo_);
+    glBindRenderbuffer(GL_RENDERBUFFER, fboOverviewDepthRbo_);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, fboOverviewDepthRbo_);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        std::fprintf(stderr, "[Renderer] Overview-Framebuffer unvollständig!\\n");
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    fboOverviewWidth_ = width;
+    fboOverviewHeight_ = height;
+}
+
+std::uint32_t HeightmapRenderer::RenderTopDownOverview(int width, int height) {
+    if (width <= 0 || height <= 0) return 0;
+    EnsureFramebufferOverview(width, height);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, fboOverview_);
+    glViewport(0, 0, width, height);
+    glEnable(GL_DEPTH_TEST);
+    glClearColor(0.10f, 0.11f, 0.13f, 1.0f);
+    glClearStencil(0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+
+    if (indexCount_ > 0) {
+        const float centerX = mapSpanX_ * 0.5f;
+        const float centerZ = mapSpanZ_ * 0.5f;
+        const float halfW = std::max(mapSpanX_ * 0.5f, 1.0f);
+        const float halfH = std::max(mapSpanZ_ * 0.5f, 1.0f);
+        const float eyeHeight = maxHeight_ + 500.0f;
+        DrawTerrainMesh(OrthoTopDownViewProj(centerX, centerZ, halfW, halfH, eyeHeight), false);
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    return fboOverviewColorTex_;
 }
 
 void HeightmapRenderer::BeginTopDownScene(int width, int height) {
@@ -602,7 +890,8 @@ void HeightmapRenderer::BeginTopDownScene(int width, int height) {
     glViewport(0, 0, width, height);
     glEnable(GL_DEPTH_TEST);
     glClearColor(0.10f, 0.11f, 0.13f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glClearStencil(0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
     if (indexCount_ > 0) {
         const bool windowed = tdHalfW_ > 0.0f && tdHalfH_ > 0.0f;
@@ -646,9 +935,131 @@ std::uint32_t HeightmapRenderer::EndTopDownScene() {
     return fbo2dColorTex_;
 }
 
-std::uint32_t HeightmapRenderer::EndScene() {
+void HeightmapRenderer::ReleaseSceneTargets() {
+    if (msaaColorRbo_) glDeleteRenderbuffers(1, &msaaColorRbo_);
+    if (msaaDepthRbo_) glDeleteRenderbuffers(1, &msaaDepthRbo_);
+    if (msaaFbo_) glDeleteFramebuffers(1, &msaaFbo_);
+    msaaColorRbo_ = msaaDepthRbo_ = msaaFbo_ = 0;
+    for (int i = 0; i < 2; ++i) {
+        if (glowTex_[i]) glDeleteTextures(1, &glowTex_[i]);
+        if (glowFbo_[i]) glDeleteFramebuffers(1, &glowFbo_[i]);
+        glowTex_[i] = glowFbo_[i] = 0;
+    }
+    if (outputTex_) glDeleteTextures(1, &outputTex_);
+    if (outputFbo_) glDeleteFramebuffers(1, &outputFbo_);
+    outputTex_ = outputFbo_ = 0;
+    sceneTargetW_ = sceneTargetH_ = sceneTargetSamples_ = sceneTargetGlowDiv_ = 0;
+}
+
+void HeightmapRenderer::EnsureSceneTargets(int width, int height) {
+    const int samples = std::clamp(msaaSamples_, 1, maxMsaaSamples_);
+    const int glowDiv = std::clamp(static_cast<int>(std::lround(glow_.downScaling)), 1, 32);
+    if (width == sceneTargetW_ && height == sceneTargetH_ && samples == sceneTargetSamples_ &&
+        glowDiv == sceneTargetGlowDiv_)
+        return;
+    ReleaseSceneTargets();
+    sceneTargetW_ = width;
+    sceneTargetH_ = height;
+    sceneTargetSamples_ = samples;
+    sceneTargetGlowDiv_ = glowDiv;
+
+    if (samples > 1) {
+        glGenFramebuffers(1, &msaaFbo_);
+        glBindFramebuffer(GL_FRAMEBUFFER, msaaFbo_);
+        glGenRenderbuffers(1, &msaaColorRbo_);
+        glBindRenderbuffer(GL_RENDERBUFFER, msaaColorRbo_);
+        glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, GL_RGBA8, width, height);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, msaaColorRbo_);
+        glGenRenderbuffers(1, &msaaDepthRbo_);
+        glBindRenderbuffer(GL_RENDERBUFFER, msaaDepthRbo_);
+        glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, GL_DEPTH24_STENCIL8, width, height);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, msaaDepthRbo_);
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            std::fprintf(stderr, "[Renderer] MSAA-Framebuffer unvollständig - Kantenglättung deaktiviert.\n");
+            glDeleteRenderbuffers(1, &msaaColorRbo_);
+            glDeleteRenderbuffers(1, &msaaDepthRbo_);
+            glDeleteFramebuffers(1, &msaaFbo_);
+            msaaColorRbo_ = msaaDepthRbo_ = msaaFbo_ = 0;
+            sceneTargetSamples_ = 1;
+        }
+    }
+
+    const int gw = std::max(1, width / glowDiv), gh = std::max(1, height / glowDiv);
+    for (int i = 0; i < 2; ++i) {
+        glGenTextures(1, &glowTex_[i]);
+        ConfigureColorTexture(glowTex_[i], gw, gh);
+        glGenFramebuffers(1, &glowFbo_[i]);
+        glBindFramebuffer(GL_FRAMEBUFFER, glowFbo_[i]);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, glowTex_[i], 0);
+    }
+    glGenTextures(1, &outputTex_);
+    ConfigureColorTexture(outputTex_, width, height);
+    glGenFramebuffers(1, &outputFbo_);
+    glBindFramebuffer(GL_FRAMEBUFFER, outputFbo_);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, outputTex_, 0);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    return fboColorTex_;
+    glowWidth_ = gw;
+    glowHeight_ = gh;
+}
+
+std::uint32_t HeightmapRenderer::EndScene() {
+    // 1) MSAA auflösen.
+    if (msaaFbo_ != 0) {
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, msaaFbo_);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbo_);
+        glBlitFramebuffer(0, 0, fboWidth_, fboHeight_, 0, 0, fboWidth_, fboHeight_, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+        glDisable(GL_MULTISAMPLE);
+    }
+    // 2) Glow (<Karte>.conf [GlowScreenEffect]): verkleinern, NumBlurring x Gauss, aufaddieren.
+    const bool glowActive = glowEnabled_ && glow_.present && glow_.numBlurring > 0 &&
+                            glow_.glowness * glow_.blendFactor > 0.0f && outputFbo_ != 0 && postVao_ != 0;
+    if (!glowActive) {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        return fboColorTex_;
+    }
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+    glBindVertexArray(postVao_);
+    glActiveTexture(GL_TEXTURE0);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, glowFbo_[0]);
+    glViewport(0, 0, glowWidth_, glowHeight_);
+    glUseProgram(postCopyProgram_);
+    glUniform1i(glGetUniformLocation(postCopyProgram_, "uSrc"), 0);
+    glBindTexture(GL_TEXTURE_2D, fboColorTex_);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+
+    glUseProgram(postBlurProgram_);
+    glUniform1i(glGetUniformLocation(postBlurProgram_, "uSrc"), 0);
+    glUniform1f(glGetUniformLocation(postBlurProgram_, "uSigma"), std::clamp(2.0f * glow_.gaussFactor, 0.5f, 8.0f));
+    const GLint dirLoc = glGetUniformLocation(postBlurProgram_, "uDirection");
+    for (int iteration = 0; iteration < glow_.numBlurring; ++iteration) {
+        glBindFramebuffer(GL_FRAMEBUFFER, glowFbo_[1]);
+        glBindTexture(GL_TEXTURE_2D, glowTex_[0]);
+        glUniform2f(dirLoc, 1.0f / static_cast<float>(glowWidth_), 0.0f);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+        glBindFramebuffer(GL_FRAMEBUFFER, glowFbo_[0]);
+        glBindTexture(GL_TEXTURE_2D, glowTex_[1]);
+        glUniform2f(dirLoc, 0.0f, 1.0f / static_cast<float>(glowHeight_));
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, outputFbo_);
+    glViewport(0, 0, fboWidth_, fboHeight_);
+    glUseProgram(postCompositeProgram_);
+    glUniform1i(glGetUniformLocation(postCompositeProgram_, "uScene"), 0);
+    glUniform1i(glGetUniformLocation(postCompositeProgram_, "uGlow"), 1);
+    glUniform1f(glGetUniformLocation(postCompositeProgram_, "uGlowStrength"), glow_.glowness * glow_.blendFactor);
+    glBindTexture(GL_TEXTURE_2D, fboColorTex_);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, glowTex_[0]);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glActiveTexture(GL_TEXTURE0);
+    glBindVertexArray(0);
+    glUseProgram(0);
+    glEnable(GL_DEPTH_TEST);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    return outputTex_;
 }
 
 } // namespace theseed::mapeditor::app

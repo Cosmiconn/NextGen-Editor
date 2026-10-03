@@ -82,9 +82,11 @@ void TestFullLegacyTextureRoundtrip(const std::filesystem::path& iniPath) {
     TexturePaintSettings settings;
     settings.radius = 400.0f;
     settings.strength = 0.9f;
-    for (std::size_t layer = 1; layer < stackResult->LayerCount(); ++layer) {
-        PaintLayerWeight(*stackResult, layer, PaintMode::Increase, settings,
-                          static_cast<float>(layer) * 2000.0f, 3000.0f, 50.0f, 50.0f);
+    // Alle Layer bemalen - auch Layer 0 (L1_A fehlt in den Fixtures und wird nur angelegt, wenn
+    // er bemalt wurde; Layer beeinflussen sich gegenseitig nicht mehr).
+    for (std::size_t layer = 0; layer < stackResult->LayerCount(); ++layer) {
+        PaintLayerWeight(*stackResult, layer, layer == 0 ? PaintMode::Decrease : PaintMode::Increase, settings,
+                          static_cast<float>(layer + 1) * 2000.0f, 3000.0f, 50.0f, 50.0f);
     }
 
     // 3) Als komplettes Legacy-Set exportieren (ini + BMPs).

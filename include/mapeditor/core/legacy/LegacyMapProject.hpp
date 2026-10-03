@@ -24,6 +24,7 @@
 
 #include <expected>
 #include <filesystem>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -37,6 +38,11 @@ struct PreservedMapFile {
 
 struct LegacyMapProject {
     std::vector<PreservedMapFile> preservedFiles;
+    // Tatsächliche Dateinamen der geladenen Module (Endung klein -> Name auf der Platte), z. B.
+    // ".shbd" -> "eld.shbd", ".htd" -> "darkVally.HTD". SaveLegacyMap schreibt unter demselben
+    // Kartennamen wieder genau diese Namen (Gross-/Kleinschreibung wie im Original).
+    std::string sourceStem;
+    std::map<std::string, std::string> sourceFileNames;
     LegacyMapIni ini;
 
     core::Heightmap heightmap;

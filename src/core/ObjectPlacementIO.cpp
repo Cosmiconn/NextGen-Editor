@@ -114,6 +114,7 @@ std::expected<ObjectPlacementSet, std::string> ParseLegacyShmd(const std::filesy
             obj.rotZ = -legacyRotY;
             obj.rotW = legacyRotW;
             obj.scale = scale;
+            obj.sourceIndex = static_cast<std::int32_t>(set.Count());
             set.AddObject(std::move(obj));
         }
     }
@@ -232,6 +233,21 @@ std::string CanonicalShmd(const ObjectPlacementSet& set) {
     return out.str();
 }
 } // namespace
+
+std::vector<std::size_t> ShmdWrittenOrder(const ObjectPlacementSet& set) {
+    // Muss exakt der Blockbildung in CanonicalShmd entsprechen.
+    std::vector<std::vector<std::size_t>> blocks;
+    std::unordered_map<std::string, std::size_t> blockOf;
+    for (std::size_t i = 0; i < set.Count(); ++i) {
+        const auto [it, inserted] = blockOf.try_emplace(set.At(i).modelPath, blocks.size());
+        if (inserted) blocks.emplace_back();
+        blocks[it->second].push_back(i);
+    }
+    std::vector<std::size_t> order;
+    order.reserve(set.Count());
+    for (const auto& b : blocks) order.insert(order.end(), b.begin(), b.end());
+    return order;
+}
 
 std::expected<void, std::string> SerializeLegacyShmd(const ObjectPlacementSet& set, const std::filesystem::path& file) {
     const auto canonical = CanonicalShmd(set);

@@ -38,6 +38,24 @@ View-Tabelle, alle mit identischer Zeilenanzahl UND übereinstimmendem Namens-St
 Ein neuer Eintrag in einer dieser Basis-Dateien braucht mit sehr hoher Wahrscheinlichkeit eine
 passende Zeile in den anderen Familienmitgliedern.
 
+### Verifizierte ID-Mengen und Cross-Link-Regel (26.09.2026)
+
+Die drei Familien wurden zusätzlich direkt gegen `NA2016.zip` auf ihre `ID`-Spalten geprüft.
+Das Ergebnis ist stärker als die frühere reine Zeilenzahl-/Namens-Stamm-Evidenz:
+
+| Familie | Zeilen | eindeutige IDs | ID-Mengen zwischen Familienmitgliedern | wichtige Besonderheit |
+|---|---:|---:|---|---|
+| Item | 14.999 | 14.999 | exakt identisch | `ItemViewInfo` hat 115 IDs an anderer Zeilenposition als `ItemInfo`; Cross-Link MUSS per ID suchen, niemals per Row-Index |
+| Mob | 2.878 | 2.878 | exakt identisch | IDs liegen in allen drei geprüften Dateien zeilenweise gleich |
+| ActiveSkill | 2.791 | 2.790 | exakt identisch | ID **9034** kommt zweimal vor; ein ID-only Cross-Link ist dort absichtlich als mehrdeutig zu behandeln |
+
+Daraus folgt für den Editor:
+- grün: ID in allen **geladenen** verifizierten Familienmitgliedern vorhanden;
+- rot: ID fehlt in mindestens einem geladenen Familienmitglied;
+- gelb: ID ist im aktuellen oder Ziel-Dokument mehrfach vorhanden und daher als ID-only-Link mehrdeutig;
+- ein nicht geladenes Familienmitglied ist **kein Fehler** und wird nur als „nicht geladen“ angezeigt;
+- Cross-Links navigieren per `ID`, nicht per Zeilennummer.
+
 ## Weitere Namens-Stamm-Paare (mittlere bis hohe Konfidenz)
 
 Zeilenzahl-Differenzen sind hier bewusst vermerkt - sie deuten auf Teilmengen- oder
@@ -84,3 +102,44 @@ Basis-Datei ändert (nicht nur bei neuen Einträgen):
 `FindDependencyPeers` (main.cpp, vereint `FindRowCountPeers` + `FindNameStemPeers`) markiert
 im Datei-Browser des Single-SHN-Editors automatisch alle hier per Namens-Stamm ODER
 Zeilenanzahl gefundenen Familienmitglieder mit einem gelben ⚠-Symbol + Tooltip.
+
+Zusätzlich besitzt der Single-SHN-Grid jetzt eine **streng begrenzte semantische Referenzprüfung** für die drei oben verifizierten ID-Familien Item/Mob/ActiveSkill. ID-Zellen erhalten Grün/Rot/Gelb-Status, der ausgewählte Datensatz zeigt die geladenen Familienziele, und eindeutige Treffer sind direkt anklickbar. Für andere Dateien/Spalten wird bewusst keine Referenzsemantik erfunden.
+
+
+## Verbindliche Mutationsregel ab 01.10.2026
+
+Die vollständige Change-Typ-Matrix steht in
+[`docs/DATA_DEPENDENCY_MATRIX.md`](DATA_DEPENDENCY_MATRIX.md). Für Save-Ziele und
+Copy-on-write gilt
+[`docs/PROJECT_OUTPUT_POLICY.md`](PROJECT_OUTPUT_POLICY.md).
+
+Wichtig: `FindDependencyPeers` bleibt als **Diagnoseheuristik** erhalten, darf aber
+keine Rows oder Dateien automatisch verändern. Namensstamm und identische
+Zeilenanzahl sind nicht stark genug für Mutation.
+
+Automatische Row-Propagation ist nur für die drei direkt über ihre ID-Mengen
+verifizierten Familien freigegeben:
+
+- Item
+- Mob
+- ActiveSkill
+
+Dabei werden alle geladenen Client-/Server-Kopien der verifizierten
+Familienmitglieder berücksichtigt. **Automatisch übertragen wird dabei ausschließlich
+die verifizierte `ID`.** Gleichnamige weitere Spalten sind keine belegte Semantik und
+werden in neu angehängten Peer-Zeilen deshalb auf Format-Defaults belassen und als
+manuell zu prüfen markiert. Andere Kandidaten werden nur angezeigt.
+
+Eine Referenzbeziehung ist ebenfalls keine Mutationsbeziehung: Eine Quest, die eine
+Item-/Mob-ID benutzt, darf beispielsweise ItemInfo/MobInfo nicht verändern, solange
+nicht gleichzeitig ausdrücklich ein neuer Item-/Mob-Datensatz angelegt wird.
+
+### Client-/Server-Kopien im NA2016-Bestand
+
+Im aktuell geprüften NA2016-Tree wurden 130 Client-SHN und 220 Server-SHN gefunden.
+93 Dateinamen existieren auf beiden Seiten. 92 dieser 93 Paare sind über ihren
+Git-Blob byte-identisch; nur `ColorInfo.shn` unterscheidet sich.
+
+Das ist starke Evidenz für konkrete bekannte Shared-Table-Fälle, aber **keine
+globale Sync-Regel**. Der Editor synchronisiert nur ausdrücklich verifizierte
+Familien/Dateien.

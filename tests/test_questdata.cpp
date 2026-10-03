@@ -17,8 +17,8 @@ int main(int argc, char** argv) {
     for (auto& q : f.records) {
         assert(q.mobs.size() == 5);
         assert(q.items.size() == 10);
-        assert(q.itemDropPadding.size() == 28u * (11u - q.drops.size()) + 12u);
-        assert(q.rewardsRaw.size() == 144);
+        assert(q.drops.size() <= kQuestDropSlots);
+        assert(q.unusedDropSlots.size() == kQuestDropBytes * (kQuestDropSlots - q.drops.size()));
     }
 
     // Unveraendertes Speichern muss byte-identisch zum Original sein.

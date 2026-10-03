@@ -1,0 +1,135 @@
+name: ResMap Encrypted Visual Handoff
+
+on:
+  push:
+    branches:
+      - ui-upgrade
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  handoff:
+    if: contains(github.event.head_commit.message, '[resmap-review]')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install contact-sheet dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y imagemagick
+
+      - name: Download reviewed full-corpus evidence
+        uses: actions/download-artifact@v7
+        with:
+          name: ResMap-full-reference-evidence-d4409d806ce4eb133d3b5000ba80111499171520
+          path: evidence
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 36868281224
+
+      - name: Build and encrypt visual review sheets
+        env:
+          CORPUS_URLS: ${{ secrets.RESMAP_CORPUS_URLS }}
+        run: |
+          set -euo pipefail
+          test -n "$CORPUS_URLS"
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64
+          import csv
+          import hashlib
+          import hmac
+          import json
+          import os
+          import subprocess
+
+          root = Path("evidence")
+          review = root / "review.tsv"
+          if not review.is_file():
+              matches = list(root.rglob("review.tsv"))
+              if len(matches) != 1:
+                  raise SystemExit(f"Expected exactly one review.tsv, got {len(matches)}")
+              review = matches[0]
+              root = review.parent
+
+          with review.open("r", encoding="utf-8", newline="") as handle:
+              rows = list(csv.DictReader(handle, delimiter="\t"))
+          if len(rows) != 18:
+              raise SystemExit(f"Expected 18 review rows, got {len(rows)}")
+
+          urls = json.loads(os.environ["CORPUS_URLS"])
+          if not isinstance(urls, list) or len(urls) != 10:
+              raise SystemExit("RESMAP_CORPUS_URLS must contain ten URLs")
+          key = hashlib.sha256(urls[0].encode("utf-8")).digest()
+
+          sheets = Path("review-sheets")
+          sheets.mkdir(exist_ok=True)
+
+          def resolve(value: str) -> Path:
+              path = Path(value)
+              if not path.is_absolute():
+                  path = root / path
+              if not path.is_file():
+                  raise SystemExit(f"Evidence image missing: {value} -> {path}")
+              return path
+
+          for sheet_index in range(3):
+              group = rows[sheet_index * 6:(sheet_index + 1) * 6]
+              output = sheets / f"resmap-review-{sheet_index + 1}.jpg"
+              cmd = [
+                  "montage",
+                  "-background", "#101010",
+                  "-fill", "white",
+                  "-font", "DejaVu-Sans",
+                  "-pointsize", "15",
+              ]
+              for row in group:
+                  category = row["Category"]
+                  entries = [
+                      ("NG t0", row["T000"]),
+                      ("NG t0.25", row["T025"]),
+                      ("NG t1", row["T100"]),
+                      ("NifSkope", row["NifSkopeReference"]),
+                  ]
+                  for label, value in entries:
+                      cmd.extend(["-label", f"{category}\n{label}", str(resolve(value))])
+              cmd.extend([
+                  "-tile", "4x6",
+                  "-geometry", "280x210+8+8",
+                  "-quality", "82",
+                  str(output),
+              ])
+              subprocess.run(cmd, check=True)
+
+              data = output.read_bytes()
+              label = output.name.encode("utf-8")
+              encrypted = bytearray(len(data))
+              offset = 0
+              counter = 0
+              while offset < len(data):
+                  block = hmac.new(
+                      key,
+                      label + counter.to_bytes(8, "big"),
+                      hashlib.sha256,
+                  ).digest()
+                  take = min(len(block), len(data) - offset)
+                  for i in range(take):
+                      encrypted[offset + i] = data[offset + i] ^ block[i]
+                  offset += take
+                  counter += 1
+
+              encoded = base64.b64encode(encrypted).decode("ascii")
+              chunk_size = 48000
+              print(f"ENCIMG_BEGIN\t{output.name}\t{len(data)}\t{len(encoded)}")
+              for part, start in enumerate(range(0, len(encoded), chunk_size)):
+                  print(
+                      f"ENCIMG_CHUNK\t{output.name}\t{part}\t"
+                      + encoded[start:start + chunk_size]
+                  )
+              print(f"ENCIMG_END\t{output.name}")
+
+          print("Encrypted contact sheets emitted successfully.")
+          PY

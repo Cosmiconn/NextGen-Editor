@@ -48,10 +48,23 @@ Result probe(const fs::path& path,const fs::path& scratch,bool recovery=false) {
     if(ext==".nif"||ext==".kf") {
         auto m=core::LoadNifMesh(path,recovery);
         if(!m)return {"ERROR",m.error()};
-        std::size_t parts=0,vertices=0,triangles=0,textures=0;
-        for(const auto& p:m->parts){if(!p.positions.empty()&&!p.triangleIndices.empty())++parts;vertices+=p.positions.size();triangles+=p.triangleIndices.size()/3;if(p.embeddedDiffuseTexture)++textures;}
+        std::size_t parts=0,vertices=0,triangles=0,textures=0,textureSlots=0,textureTransforms=0;
+        for(const auto& p:m->parts){
+            if(!p.positions.empty()&&!p.triangleIndices.empty())++parts;
+            vertices+=p.positions.size();
+            triangles+=p.triangleIndices.size()/3;
+            if(p.embeddedDiffuseTexture)++textures;
+            for(const auto& slot:p.textureSlots) {
+                if(slot.present) ++textureSlots;
+                if(slot.present && slot.hasTransform) ++textureTransforms;
+            }
+        }
         return {m->partial?"RECOVERY_PARTIAL":m->recovered?"RECOVERY_OK":parts?"OK_GEOMETRY":"OK_NO_GEOMETRY",
             "parts="+std::to_string(parts)+", vertices="+std::to_string(vertices)+", triangles="+std::to_string(triangles)+", textures="+std::to_string(textures)+
+            ", textureSlots="+std::to_string(textureSlots)+", textureTransforms="+std::to_string(textureTransforms)+
+            ", textureEffects="+std::to_string(m->textureEffectBlocks)+", envSphereEffects="+std::to_string(m->textureEffectEnvironmentSphereBlocks)+
+            ", unsupportedEffects="+std::to_string(m->textureEffectUnsupportedBlocks)+", effectBindings="+std::to_string(m->textureEffectNodeBindings)+
+            ", inheritedProperties="+std::to_string(m->inheritedPropertyBindings)+
             ", decoded="+std::to_string(m->decodedEmbeddedTextures)+", undecoded="+std::to_string(m->undecodedEmbeddedTextures)};
     }
     if(ext==".kfm") {

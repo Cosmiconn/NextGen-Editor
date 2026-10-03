@@ -65,32 +65,19 @@ TexturePaintPatch PaintLayerWeight(
                 return settings.participating == nullptr || i >= settings.participating->size() || (*settings.participating)[i] != 0;
             };
 
+            (void)takesPart;
             const float targetOld = oldWeights[targetLayer];
             const float delta = settings.strength * falloff * (mode == PaintMode::Increase ? 1.0f : -1.0f);
             const float targetNew = std::clamp(targetOld + delta, 0.0f, 1.0f);
-            const float actualDelta = targetNew - targetOld;
-            if (std::abs(actualDelta) < 1e-6f) {
+            if (std::abs(targetNew - targetOld) < 1e-6f) {
                 continue; // nichts geändert (z.B. schon bei 0 oder 1 geklemmt)
             }
-
-            float otherSumOld = 0.0f;
-            for (std::size_t i = 0; i < layerCount; ++i) if (i != targetLayer && takesPart(i)) otherSumOld += oldWeights[i];
-
+            // Nur die Maske des gewählten Layers ändern. Fiesta-Layer sind unabhängige
+            // Deckkraft-Masken, die in Reihenfolge übereinandergelegt werden - belegt an Uruga,
+            // Bera und Teva: die Masken summieren sich nicht zu 1, mehrere Layer sind stellenweise
+            // gleichzeitig voll deckend. Eine Umverteilung auf andere Layer würde deren Masken
+            // (und damit die gespeicherten BMPs) verändern.
             stack.Layer(targetLayer).blend.Set(ux, uz, targetNew);
-
-            if (otherSumOld > 1e-6f) {
-                // Fehlende/überschüssige Masse proportional zum bisherigen Anteil auf die
-                // übrigen Layer verteilen, damit die Summe ~1.0 bleibt.
-                for (std::size_t i = 0; i < layerCount; ++i) {
-                    if (i == targetLayer || !takesPart(i)) continue;
-                    const float share = oldWeights[i] / otherSumOld;
-                    const float newWeight = std::clamp(oldWeights[i] - actualDelta * share, 0.0f, 1.0f);
-                    stack.Layer(i).blend.Set(ux, uz, newWeight);
-                }
-            }
-            // Sonderfall otherSumOld ~ 0 (alle übrigen Layer bereits leer): keine Umverteilung
-            // möglich, Summe kann in diesem Rand-/Ausnahmefall leicht von 1.0 abweichen -
-            // bewusste Vereinfachung für v1, siehe CHANGELOG.md.
 
             patch.entries.push_back({ux, uz, std::move(oldWeights)});
         }

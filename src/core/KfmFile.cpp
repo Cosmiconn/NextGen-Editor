@@ -152,32 +152,44 @@ std::expected<void,std::string> SaveKfmFile(const KfmFile& file,const std::files
     return {};
 }
 KfmReferences InspectKfmReferences(const KfmFile& file,const std::filesystem::path& source) {
+    return InspectKfmReferences(file, source, source);
+}
+KfmReferences InspectKfmReferences(const KfmFile& file,
+                                   const std::filesystem::path& source,
+                                   const std::filesystem::path& workingSource) {
     KfmReferences result;
     std::unordered_map<std::string,std::optional<std::filesystem::path>> paths;
+    const auto resolveFrom=[&](const std::filesystem::path& base,
+                               const std::filesystem::path& relative)
+        -> std::optional<std::filesystem::path> {
+        std::error_code ec;
+        try {
+            auto current=base.parent_path();bool found=true;
+            for(const auto& component:relative) {
+                if(std::filesystem::exists(current/component,ec)){current/=component;continue;}
+                std::optional<std::filesystem::path> match;
+                for(const auto& entry:std::filesystem::directory_iterator(current,ec)) {
+                    if(legacy::EqualsCaseInsensitive(entry.path().filename().string(),component.string())) {
+                        if(match){found=false;break;}match=entry.path();
+                    }
+                }
+                if(!found || !match){found=false;break;}current=*match;
+            }
+            if(found && std::filesystem::is_regular_file(current,ec))return current.lexically_normal();
+        }
+        catch(const std::filesystem::filesystem_error&) {}
+        return std::nullopt;
+    };
     const auto resolve=[&](const std::string& name) {
         if(const auto it=paths.find(name);it!=paths.end())return it->second;
         std::optional<std::filesystem::path> path;
         if(!name.empty() && name.find('\0')==std::string::npos) {
             const auto relative=legacy::LegacyPathToNative(name);
-            std::error_code ec;
             // Do not follow absolute paths embedded by an asset author.
             if(!relative.is_absolute() && !relative.has_root_name() && name.find(':')==std::string::npos) {
-                try {
-                    auto current=source.parent_path();bool found=true;
-                    for(const auto& component:relative) {
-                        if(std::filesystem::exists(current/component,ec)){current/=component;continue;}
-                        std::optional<std::filesystem::path> match;
-                        for(const auto& entry:std::filesystem::directory_iterator(current,ec)) {
-                            if(legacy::EqualsCaseInsensitive(entry.path().filename().string(),component.string())) {
-                                if(match){found=false;break;}match=entry.path();
-                            }
-                        }
-                        if(!found || !match){found=false;break;}current=*match;
-                    }
-                    if(found)path=current.lexically_normal();
-                }
-                catch(const std::filesystem::filesystem_error&) {}
-                if(path && !std::filesystem::is_regular_file(*path,ec))path.reset();
+                if(!workingSource.empty())path=resolveFrom(workingSource,relative);
+                if(!path && source.lexically_normal()!=workingSource.lexically_normal())
+                    path=resolveFrom(source,relative);
             }
         }
         paths.emplace(name,path);return path;
@@ -195,5 +207,40 @@ KfmReferences InspectKfmReferences(const KfmFile& file,const std::filesystem::pa
         for(const auto& i:t.intermediateAnimations)if(!events.contains(i.eventCode))++result.missingIntermediateTargets;
     }
     return result;
+}
+
+std::int32_t KfmNextFreeEventCode(const KfmFile& file) {
+    std::int32_t maxCode = 0;
+    for (const auto& a : file.animations) maxCode = std::max(maxCode, a.eventCode);
+    return maxCode < std::numeric_limits<std::int32_t>::max() ? maxCode + 1 : maxCode;
+}
+
+std::size_t KfmDuplicateAnimation(KfmFile& file, std::size_t index) {
+    if (index >= file.animations.size()) return file.animations.size();
+    KfmAnimation copy = file.animations[index];
+    copy.eventCode = KfmNextFreeEventCode(file);
+    if (file.version == KfmVersion::V1_2_4b && !copy.name.empty()) copy.name += " Kopie";
+    if (file.version != KfmVersion::V1_2_4b) copy.name.clear(); // 2.0.0.0b kennt kein Namensfeld
+    file.animations.insert(file.animations.begin() + static_cast<std::ptrdiff_t>(index + 1), std::move(copy));
+    return index + 1;
+}
+
+KfmRemoveReport KfmRemoveAnimation(KfmFile& file, std::size_t index) {
+    KfmRemoveReport report;
+    if (index >= file.animations.size()) return report;
+    const std::int32_t code = file.animations[index].eventCode;
+    file.animations.erase(file.animations.begin() + static_cast<std::ptrdiff_t>(index));
+    report.removed = true;
+    bool stillPresent = false;
+    for (const auto& a : file.animations) stillPresent = stillPresent || a.eventCode == code;
+    if (stillPresent) return report; // doppelte Event-ID: Verweise bleiben auflösbar
+    for (const auto& a : file.animations) {
+        for (const auto& t : a.transitions) {
+            if (t.eventCode == code) ++report.danglingTransitions;
+            for (const auto& m : t.intermediateAnimations)
+                if (m.eventCode == code) ++report.danglingIntermediates;
+        }
+    }
+    return report;
 }
 } // namespace theseed::mapeditor::core

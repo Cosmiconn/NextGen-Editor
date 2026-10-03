@@ -16,8 +16,8 @@ enum class PaintMode { Increase, Decrease };
 struct TexturePaintSettings {
     float radius = 200.0f;   // Weltraum-Radius
     float strength = 0.5f;   // Gewichtsänderung im Zentrum pro Anwendung (0..1)
-    // Optional: nur Layer mit mask[i] != 0 nehmen an Normalisierung/Umverteilung teil (Karten mit
-    // Layern verschiedener Regionen, z.B. Adl: linke/rechte Haelfte). nullptr = alle Layer.
+    // Früher: Layer, die an der Gewichts-Normalisierung teilnahmen. Es wird nicht mehr normalisiert
+    // (Fiesta-Layer sind unabhängige Masken); das Feld bleibt nur aus Kompatibilität bestehen.
     const std::vector<char>* participating = nullptr;
 };
 
@@ -48,6 +48,7 @@ public:
     bool Undo(TextureLayerStack& stack);
     bool Redo(TextureLayerStack& stack);
     void Clear();
+    void ClearRedo() noexcept { redo_.clear(); }
 
     [[nodiscard]] bool CanUndo() const noexcept { return !undo_.empty(); }
     [[nodiscard]] bool CanRedo() const noexcept { return !redo_.empty(); }

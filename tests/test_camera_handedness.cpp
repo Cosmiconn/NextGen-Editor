@@ -36,6 +36,41 @@ int main() {
     else std::printf("[ok]     Osten (+X) liegt rechts von der Bildmitte\n");
     if (!(ny > cy)) { std::fprintf(stderr, "[FEHLER] Norden (+Z) liegt nicht oben\n"); ++failures; }
     else std::printf("[ok]     Norden (+Z) liegt oberhalb der Bildmitte\n");
+    // ---- Orthografische Projektion (Achsenansichten) ----
+    {
+        auto check = [&](bool ok, const char* what) {
+            if (ok) std::printf("[ok]     %s\n", what);
+            else { std::fprintf(stderr, "[FEHLER] %s\n", what); ++failures; }
+        };
+        OrbitCamera c;
+        c.SetTarget(500.0f, 0.0f, 500.0f);
+        c.SetDistance(1000.0f);
+        c.SetOrientation(0.0f, 1.5f); // von oben
+        check(!c.IsOrthographic(), "Standard: Perspektive");
+        const float aspect = 1.6f;
+        const float halfH = 1000.0f * std::tan(OrbitCamera::kFovY * 0.5f);
+        c.SetOrthographic(true);
+        const Mat4 ovp = c.ProjectionMatrix(aspect) * c.ViewMatrix();
+        float ox0, oy0, ox1, oy1, oxn, oyn;
+        Project(ovp, 500.0f, 0.0f, 500.0f, ox0, oy0);
+        Project(ovp, 500.0f + halfH * aspect, 0.0f, 500.0f, ox1, oy1);
+        Project(ovp, 500.0f, 0.0f, 500.0f + halfH, oxn, oyn);
+        check(std::fabs(ox0) < 1.0e-3f && std::fabs(oy0) < 1.0e-3f, "Ortho: Ziel liegt in der Bildmitte");
+        check(std::fabs(ox1 - 1.0f) < 2.0e-3f, "Ortho: Ausschnittsbreite = Entfernung * tan(FOV/2) * Seitenverhältnis");
+        check(oxn > -1.0e-3f && std::fabs(std::fabs(oyn) - 1.0f) < 2.0e-2f && oyn > 0.0f,
+              "Ortho von oben: Norden (+Z) oben am Bildrand, Osten rechts");
+        // Höhe verändert die Bildposition in der Draufsicht nicht (Parallelprojektion).
+        float hx, hy;
+        Project(ovp, 600.0f, 300.0f, 520.0f, hx, hy);
+        float gx, gy;
+        Project(ovp, 600.0f, -300.0f, 520.0f, gx, gy);
+        check(std::fabs(hx - gx) < 2.0e-3f, "Ortho: Parallelprojektion - Höhe verschiebt X nicht");
+        // Punkte zwischen Auge und Ziel werden nicht abgeschnitten (Nahebene hinter dem Auge).
+        float zx, zy;
+        Project(ovp, 500.0f, 900.0f, 500.0f, zx, zy);
+        const float cz = ovp.m[2] * 500.0f + ovp.m[6] * 900.0f + ovp.m[10] * 500.0f + ovp.m[14];
+        check(cz > -1.0f && cz < 1.0f, "Ortho: Objekt kurz unter dem Auge liegt im Tiefenbereich");
+    }
     // ---- Ego-Kamera (seit [0.44.32]): Umsehen, Laufen, Zoom, Clip-Ebenen ----
     {
         auto check = [&](bool ok, const char* what) {

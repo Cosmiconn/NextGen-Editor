@@ -2,6 +2,14 @@ name: NextGen-Editor Build
 
 on: [push, pull_request, workflow_dispatch]
 
+# Renderer work lands in small, evidence-driven commits. Only the newest ordinary
+# branch run is useful, so pull_request and push normally collapse onto one branch
+# group. A [resmap-full] push is different: it owns short-lived private corpus URLs
+# and must not be cancelled by the parallel pull_request run for the same commit.
+concurrency:
+  group: nextgen-editor-${{ github.workflow }}-${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[resmap-full]') && format('resmap-full-{0}', github.ref_name) || (github.head_ref || github.ref_name) }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -14,37 +22,586 @@ jobs:
       matrix:
         os: [windows-latest, ubuntu-24.04]
     steps:
-      - uses: actions/checkout@v4
-      - name: Install C++23 compiler
+      - uses: actions/checkout@v7
+      - name: Validate UI icon mappings
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y g++-14
-      - name: Configure Linux core
+        run: python3 tools/ui/check_icon_consistency.py
+      - name: Install C++23 compiler and headless OpenGL build dependencies
         if: runner.os == 'Linux'
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-14 -DNEXTGEN_EDITOR_BUILD_GUI=OFF
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            g++-14 \
+            libgl1-mesa-dev \
+            libx11-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxcursor-dev \
+            libxi-dev \
+            imagemagick \
+            p7zip-full \
+            qt6-base-dev \
+            xdotool \
+            xvfb
+      - name: Configure Linux core and standalone NIF OpenGL verifier
+        if: runner.os == 'Linux'
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_CXX_COMPILER=g++-14
+          -DNEXTGEN_EDITOR_CORE_ONLY=ON
+          -DNEXTGEN_EDITOR_BUILD_GL_TEST_TOOLS=ON
+          -DCMAKE_DISABLE_FIND_PACKAGE_glfw3=TRUE
+          -DCMAKE_DISABLE_FIND_PACKAGE_glad=TRUE
       - name: Configure Windows core
         if: runner.os == 'Windows'
-        run: cmake -S . -B build -DNEXTGEN_EDITOR_BUILD_GUI=OFF
+        run: cmake -S . -B build -DNEXTGEN_EDITOR_CORE_ONLY=ON
       - run: cmake --build build --config Release --parallel 2
+      - name: Enforce zero-gap fixture NIF renderer audit
+        if: runner.os == 'Linux'
+        run: |
+          ./build/nif_material_inventory tests/fixtures
+          # The fixture corpus intentionally includes three priority-2 reschar/equipment NIFs
+          # using NsPgToonNoAni implementation 0. Keep them visible, but do not let them block
+          # the ResMap-priority gate before that shader is addressed in the reschar phase.
+          ./build/nif_material_inventory --strict-renderer --defer-priority2-character-shaders --asset-root tests/fixtures tests/fixtures
+      - name: Smoke-test Linux strict ResMap archive runner
+        if: runner.os == 'Linux'
+        run: |
+          python3 -m py_compile tools/audit_resmap.py
+          python3 tools/audit_resmap.py \
+            --audit-exe ./build/nif_material_inventory \
+            --report ./build/resmap-strict-audit-linux-smoke.txt \
+            --defer-priority2-character-shaders \
+            ./tests/fixtures
+          grep -q 'rendererGapFiles=0' ./build/resmap-strict-audit-linux-smoke.txt
+      - name: Smoke-test Linux OpenGL NIF snapshot tool
+        if: runner.os == 'Linux'
+        run: |
+          xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 \
+            ./build/test_nif_opengl tests/fixtures build/gl-output tree05.nif
+          # Back_Shamrock contains four real world-space mesh-particle systems with
+          # six authored active particles each. This exercises particle-aware snapshot
+          # framing instead of compiling that evidence path without ever using it.
+          xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 \
+            ./build/test_nif_opengl tests/fixtures/particles build/gl-particle-output Back_Shamrock.nif
+      - name: Smoke-test Linux ResMap visual runner
+        if: runner.os == 'Linux'
+        run: |
+          python3 -m py_compile tools/verify_resmap_visual.py
+          mkdir -p build/visual-smoke-input/resmap
+          cp tests/fixtures/tree05.nif build/visual-smoke-input/resmap/
+          python3 tools/verify_resmap_visual.py \
+            --matrix-exe ./build/nif_visual_matrix \
+            --snapshot-exe ./build/test_nif_opengl \
+            --strict-audit-exe ./build/nif_material_inventory \
+            --output ./build/resmap-visual-linux-smoke \
+            --allow-incomplete-matrix \
+            --xvfb \
+            ./build/visual-smoke-input/resmap
+          test -s build/resmap-visual-linux-smoke/provenance.json
+          test -s build/resmap-visual-linux-smoke/strict_audit.log
+          grep -q 'rendererGapFiles=0' build/resmap-visual-linux-smoke/strict_audit.log
+          test -s build/resmap-visual-linux-smoke/review.tsv
+          test -s build/resmap-visual-linux-smoke/frame_metrics.tsv
+          test -s build/resmap-visual-linux-smoke/VISUAL_REVIEW_CHECKLIST.md
+          test -s build/resmap-visual-linux-smoke/index.html
+          python3 - <<'PY'
+          import csv
+          from pathlib import Path
+
+          metrics = Path("build/resmap-visual-linux-smoke/frame_metrics.tsv")
+          with metrics.open("r", encoding="utf-8", newline="") as handle:
+              rows = list(csv.DictReader(handle, delimiter="\t"))
+          if not rows:
+              raise SystemExit("frame_metrics.tsv has no evidence rows")
+          required = {
+              "T000VisiblePixels", "T025VisiblePixels", "T100VisiblePixels",
+              "ChangedT000T025", "ChangedT025T100", "ChangedT000T100",
+              "ReviewFlags",
+          }
+          missing = required.difference(rows[0])
+          if missing:
+              raise SystemExit(f"frame_metrics.tsv missing columns: {sorted(missing)}")
+          if not any(
+              int(row["T000VisiblePixels"]) > 0
+              or int(row["T025VisiblePixels"]) > 0
+              or int(row["T100VisiblePixels"]) > 0
+              for row in rows
+          ):
+              raise SystemExit("visual smoke produced no visible snapshot pixels")
+          PY
+      - name: Build temporary independent NifSkope reference runtime
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          rm -rf build/nifskope-reference artifact-nifskope-reference
+          mkdir -p build/nifskope-reference artifact-nifskope-reference/app artifact-nifskope-reference/lib
+          curl -L --fail --retry 3 \
+            https://github.com/fo76utils/nifskope/releases/download/v2.0.dev11-20251230/NifSkope_2_0_2025-12-30-linuxqt6_x64.7z \
+            -o build/NifSkope-reference.7z
+          echo "b0b83e519a866f97c9c2c13d4bb0b7460b457fdcb6664e6fc1f8f7638177a508  build/NifSkope-reference.7z" | sha256sum -c -
+          7z x -y build/NifSkope-reference.7z -obuild/nifskope-reference >/dev/null
+          NIFSKOPE="$(find build/nifskope-reference -type f -name NifSkope -perm -u+x | head -n 1)"
+          test -n "$NIFSKOPE"
+          cp tests/fixtures/tree05.nif build/nifskope-reference-smoke.nif
+          "$NIFSKOPE" -no-gui --UpdateBounds build/nifskope-reference-smoke.nif
+          cp -a build/nifskope-reference/. artifact-nifskope-reference/app/
+          if test -d /usr/lib/x86_64-linux-gnu/qt6/plugins; then
+            cp -a /usr/lib/x86_64-linux-gnu/qt6/plugins artifact-nifskope-reference/qt6-plugins
+          fi
+          {
+            ldd "$NIFSKOPE"
+            if test -d /usr/lib/x86_64-linux-gnu/qt6/plugins; then
+              find /usr/lib/x86_64-linux-gnu/qt6/plugins -type f -name '*.so' -print0 |
+                while IFS= read -r -d '' plugin; do
+                  ldd "$plugin" || true
+                done
+            fi
+          } |
+            awk '/=> \/.* \(/ {print $3} /^\// {print $1}' |
+            sort -u |
+            while IFS= read -r dependency; do
+              test -f "$dependency" || continue
+              case "$(basename "$dependency")" in
+                libc.so.*|libm.so.*|libpthread.so.*|libdl.so.*|librt.so.*|libresolv.so.*|libutil.so.*)
+                  continue
+                  ;;
+              esac
+              cp -L "$dependency" artifact-nifskope-reference/lib/
+            done
+          cat > artifact-nifskope-reference/run-nifskope-reference.sh <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          HERE="$(cd "$(dirname "$0")" && pwd)"
+          NIFSKOPE="$(find "$HERE/app" -type f -name NifSkope -perm -u+x | head -n 1)"
+          export LD_LIBRARY_PATH="$HERE/lib:${LD_LIBRARY_PATH:-}"
+          if test -d "$HERE/qt6-plugins"; then
+            export QT_PLUGIN_PATH="$HERE/qt6-plugins"
+          fi
+          exec "$NIFSKOPE" "$@"
+          SH
+          chmod +x artifact-nifskope-reference/run-nifskope-reference.sh
+          find artifact-nifskope-reference -maxdepth 2 -type f -printf '%p\n' | sort | head -100
+      - name: Smoke-test NifSkope reference capture
+        if: runner.os == 'Linux'
+        run: |
+          python3 -m py_compile tools/capture_nifskope_reference.py
+          rm -rf build/nifskope-reference-capture-smoke
+          mkdir -p build/nifskope-reference-capture-smoke
+          {
+            printf 'category\troot\tpath\treason\n'
+            printf 'vegetation\t%s\ttree05.nif\tfixture smoke\n' "$PWD/tests/fixtures"
+          } > build/nifskope-reference-capture-smoke/matrix.tsv
+          xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 \
+            python3 tools/capture_nifskope_reference.py \
+              --nifskope ./artifact-nifskope-reference/run-nifskope-reference.sh \
+              --matrix ./build/nifskope-reference-capture-smoke/matrix.tsv \
+              --output ./build/nifskope-reference-capture-smoke/output \
+              --settle 0.75
+          test -s build/nifskope-reference-capture-smoke/output/vegetation.png
+          test -s build/nifskope-reference-capture-smoke/output/nifskope_reference.tsv
+          python3 - <<'PY'
+          from pathlib import Path
+
+          png = Path("build/nifskope-reference-capture-smoke/output/vegetation.png")
+          data = png.read_bytes()
+          if len(data) < 1024 or not data.startswith(b"\x89PNG\r\n\x1a\n"):
+              raise SystemExit("NifSkope reference capture is not a valid non-trivial PNG")
+          PY
+
+          rm -rf build/resmap-visual-nifskope-smoke
+          python3 tools/verify_resmap_visual.py \
+            --matrix-exe ./build/nif_visual_matrix \
+            --snapshot-exe ./build/test_nif_opengl \
+            --output ./build/resmap-visual-nifskope-smoke \
+            --allow-incomplete-matrix \
+            --xvfb \
+            --nifskope-reference ./artifact-nifskope-reference/run-nifskope-reference.sh \
+            ./build/visual-smoke-input/resmap
+          test -s build/resmap-visual-nifskope-smoke/nifskope_reference/nifskope_reference.tsv
+          reference_count="$(find build/resmap-visual-nifskope-smoke/nifskope_reference -maxdepth 1 -type f -name '*.png' | wc -l)"
+          matrix_count="$(tail -n +2 build/resmap-visual-nifskope-smoke/matrix.tsv | sed '/^$/d' | wc -l)"
+          test "$reference_count" -eq "$matrix_count"
+
+          cp tools/capture_nifskope_reference.py artifact-nifskope-reference/
+      - name: Detect secure full ResMap corpus source
+        id: resmap_corpus
+        if: runner.os == 'Linux' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[resmap-full]')))
+        env:
+          CORPUS_URL: ${{ secrets.RESMAP_CORPUS_URL }}
+          CORPUS_URLS: ${{ secrets.RESMAP_CORPUS_URLS }}
+        run: |
+          set -euo pipefail
+          if test -n "$CORPUS_URLS"; then
+            echo "mode=direct" >> "$GITHUB_OUTPUT"
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "Secure direct ResMap corpus source is configured."
+          elif test -n "$CORPUS_URL"; then
+            echo "mode=bundle" >> "$GITHUB_OUTPUT"
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "Secure bundled ResMap corpus source is configured."
+          else
+            echo "mode=none" >> "$GITHUB_OUTPUT"
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Full ResMap reference audit skipped::Configure RESMAP_CORPUS_URLS as a JSON array of ten private direct-download URLs, or RESMAP_CORPUS_URL as one private ZIP bundle URL."
+          fi
+      - name: Download secure full ResMap corpus
+        if: runner.os == 'Linux' && steps.resmap_corpus.outputs.available == 'true'
+        env:
+          CORPUS_MODE: ${{ steps.resmap_corpus.outputs.mode }}
+          CORPUS_URL: ${{ secrets.RESMAP_CORPUS_URL }}
+          CORPUS_URLS: ${{ secrets.RESMAP_CORPUS_URLS }}
+          CORPUS_SHA256: ${{ secrets.RESMAP_CORPUS_SHA256 }}
+        run: |
+          set -euo pipefail
+          rm -rf build/resmap-corpus-bundle.zip build/resmap-corpus-unpacked build/resmap-secure-input
+          mkdir -p build/resmap-corpus-unpacked build/resmap-secure-input
+
+          if test "$CORPUS_MODE" = "direct"; then
+            python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import shutil
+          import urllib.request
+          import zipfile
+
+          expected = [
+              ("resmap_1.zip", 306058568),
+              ("resmap_2.zip", 283955047),
+              ("resmap_3.1.zip", 236252970),
+              ("resmap_3.2.zip", 216722721),
+              ("resmap_4.zip", 258190491),
+              ("resmap_5.1.zip", 169735280),
+              ("Resmap_5.2.zip", 108531020),
+              ("Resmap_5.3.zip", 211594060),
+              ("Resmap_5.4.zip", 153272094),
+              ("Resmap_5.5.zip", 99270678),
+          ]
+          raw = os.environ.get("CORPUS_URLS", "")
+          try:
+              urls = json.loads(raw)
+          except json.JSONDecodeError as exc:
+              raise SystemExit(f"RESMAP_CORPUS_URLS is not valid JSON: {exc}")
+          if not isinstance(urls, list) or len(urls) != len(expected):
+              raise SystemExit(
+                  f"RESMAP_CORPUS_URLS must be a JSON array with exactly {len(expected)} URLs"
+              )
+          if any(not isinstance(url, str) or not url.startswith("https://") for url in urls):
+              raise SystemExit("Every RESMAP_CORPUS_URLS entry must be a non-empty HTTPS URL")
+
+          destination = Path("build/resmap-secure-input")
+          for index, ((name, expected_size), url) in enumerate(zip(expected, urls), start=1):
+              target = destination / name
+              print(f"Downloading secure ResMap asset {index}/{len(expected)}: {name}", flush=True)
+              request = urllib.request.Request(
+                  url,
+                  headers={"User-Agent": "NextGen-Editor-ResMap-Audit/1.0"},
+              )
+              with urllib.request.urlopen(request, timeout=120) as response, target.open("wb") as handle:
+                  shutil.copyfileobj(response, handle, length=1024 * 1024)
+              actual_size = target.stat().st_size
+              if actual_size != expected_size:
+                  raise SystemExit(
+                      f"Unexpected size for {name}: {actual_size} bytes; expected {expected_size}"
+                  )
+              with zipfile.ZipFile(target) as archive:
+                  bad_member = archive.testzip()
+                  if bad_member is not None:
+                      raise SystemExit(f"ZIP integrity failure in {name}: {bad_member}")
+
+          print("Secure direct ResMap corpus downloaded and verified: 10/10 ZIP assets")
+          PY
+          elif test "$CORPUS_MODE" = "bundle"; then
+            curl -L --fail --retry 3 --retry-all-errors \
+              "$CORPUS_URL" \
+              -o build/resmap-corpus-bundle.zip
+
+            if test -n "$CORPUS_SHA256"; then
+              echo "$CORPUS_SHA256  build/resmap-corpus-bundle.zip" | sha256sum -c -
+            fi
+
+            python3 - <<'PY'
+          from pathlib import Path
+          import shutil
+          import zipfile
+
+          bundle = Path("build/resmap-corpus-bundle.zip")
+          unpacked = Path("build/resmap-corpus-unpacked")
+          normalized = Path("build/resmap-secure-input")
+          expected = [
+              ("resmap_1.zip", 306058568),
+              ("resmap_2.zip", 283955047),
+              ("resmap_3.1.zip", 236252970),
+              ("resmap_3.2.zip", 216722721),
+              ("resmap_4.zip", 258190491),
+              ("resmap_5.1.zip", 169735280),
+              ("Resmap_5.2.zip", 108531020),
+              ("Resmap_5.3.zip", 211594060),
+              ("Resmap_5.4.zip", 153272094),
+              ("Resmap_5.5.zip", 99270678),
+          ]
+
+          root = unpacked.resolve()
+          with zipfile.ZipFile(bundle) as handle:
+              for info in handle.infolist():
+                  relative = Path(info.filename)
+                  if relative.is_absolute() or ".." in relative.parts:
+                      raise SystemExit(f"Unsafe corpus bundle member: {info.filename}")
+                  target = (unpacked / relative).resolve()
+                  try:
+                      target.relative_to(root)
+                  except ValueError:
+                      raise SystemExit(f"Unsafe corpus bundle member: {info.filename}")
+              handle.extractall(unpacked)
+
+          normalized.mkdir(parents=True, exist_ok=True)
+          for name, expected_size in expected:
+              matches = [path for path in unpacked.rglob(name) if path.is_file()]
+              if len(matches) != 1:
+                  raise SystemExit(
+                      f"Expected exactly one {name} in secure corpus bundle; got {len(matches)}"
+                  )
+              target = normalized / name
+              shutil.copy2(matches[0], target)
+              actual_size = target.stat().st_size
+              if actual_size != expected_size:
+                  raise SystemExit(
+                      f"Unexpected size for {name}: {actual_size} bytes; expected {expected_size}"
+                  )
+              with zipfile.ZipFile(target) as archive:
+                  bad_member = archive.testzip()
+                  if bad_member is not None:
+                      raise SystemExit(f"ZIP integrity failure in {name}: {bad_member}")
+
+          print("Secure bundled ResMap corpus normalized and verified: 10/10 ZIP assets")
+          PY
+          else
+            echo "::error::Unsupported secure corpus mode: $CORPUS_MODE"
+            exit 1
+          fi
+      - name: Run full ResMap strict + visual + NifSkope secure corpus audit
+        if: runner.os == 'Linux' && steps.resmap_corpus.outputs.available == 'true'
+        run: |
+          set -euo pipefail
+          rm -rf build/resmap-secure-evidence
+
+          inputs=(
+            build/resmap-secure-input/resmap_1.zip
+            build/resmap-secure-input/resmap_2.zip
+            build/resmap-secure-input/resmap_3.1.zip
+            build/resmap-secure-input/resmap_3.2.zip
+            build/resmap-secure-input/resmap_4.zip
+            build/resmap-secure-input/resmap_5.1.zip
+            build/resmap-secure-input/Resmap_5.2.zip
+            build/resmap-secure-input/Resmap_5.3.zip
+            build/resmap-secure-input/Resmap_5.4.zip
+            build/resmap-secure-input/Resmap_5.5.zip
+          )
+
+          python3 tools/verify_resmap_visual.py \
+            --matrix-exe ./build/nif_visual_matrix \
+            --snapshot-exe ./build/test_nif_opengl \
+            --strict-audit-exe ./build/nif_material_inventory \
+            --output ./build/resmap-secure-evidence \
+            --xvfb \
+            --nifskope-reference ./artifact-nifskope-reference/run-nifskope-reference.sh \
+            "${inputs[@]}"
+
+          python3 - <<'PY'
+          import csv
+          import json
+          from pathlib import Path
+
+          root = Path("build/resmap-secure-evidence")
+          provenance = json.loads((root / "provenance.json").read_text(encoding="utf-8"))
+          expected = {
+              "sourceRoots": 10,
+              "mergedFiles": 6217,
+              "identicalDuplicateFiles": 168,
+              "physicalNifEntries": 3765,
+              "logicalNifPaths": 3685,
+              "strictAuditEnabled": True,
+              "strictAuditScanRoots": 10,
+          }
+          mismatches = {
+              key: (provenance.get(key), value)
+              for key, value in expected.items()
+              if provenance.get(key) != value
+          }
+          if mismatches:
+              raise SystemExit(f"Unexpected ResMap corpus provenance: {mismatches}")
+
+          strict_log = (root / "strict_audit.log").read_text(encoding="utf-8", errors="replace")
+          summaries = [line for line in strict_log.splitlines() if line.startswith("SUMMARY")]
+          if not summaries or "rendererGapFiles=0" not in summaries[-1].split():
+              raise SystemExit("Strict full-corpus audit did not finish at rendererGapFiles=0")
+
+          with (root / "review.tsv").open("r", encoding="utf-8", newline="") as handle:
+              rows = list(csv.DictReader(handle, delimiter="\t"))
+          if len(rows) != 18:
+              raise SystemExit(f"Expected 18 visual reference rows, got {len(rows)}")
+          missing_reference = [row["Category"] for row in rows if not row["NifSkopeReference"]]
+          if missing_reference:
+              raise SystemExit(f"Missing NifSkope references: {missing_reference}")
+          flagged = {
+              row["Category"]: row["ReviewFlags"]
+              for row in rows
+              if row["ReviewFlags"]
+          }
+          if flagged:
+              raise SystemExit(f"Automated frame review flags remain: {flagged}")
+
+          print("FULL RESMAP SECURE EVIDENCE PASSED")
+          print(summaries[-1])
+          print("18/18 visual rows with independent NifSkope captures")
+          PY
+      - name: Upload full ResMap secure evidence
+        if: runner.os == 'Linux' && steps.resmap_corpus.outputs.available == 'true' && always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ResMap-full-reference-evidence-${{ github.sha }}
+          path: build/resmap-secure-evidence/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload temporary NifSkope reference runtime
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: NifSkope-reference-linux
+          path: artifact-nifskope-reference/
+          if-no-files-found: error
+      - name: Package Linux NIF visual tools
+        if: runner.os == 'Linux'
+        run: |
+          rm -rf artifact-linux
+          mkdir -p artifact-linux
+          cp \
+            build/nif_material_inventory \
+            build/nif_probe \
+            build/nif_visual_matrix \
+            build/test_nif_opengl \
+            tools/audit_resmap.py \
+            tools/capture_nifskope_reference.py \
+            tools/verify_resmap_visual.py \
+            artifact-linux/
+      - name: Upload Linux NIF auditor
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: NextGen-NIF-Auditor-linux
+          path: artifact-linux/
+          if-no-files-found: error
+      - name: Smoke-test strict ResMap audit runner
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./tools/audit_resmap.ps1 `
+            -AuditExe ./build/Release/nif_material_inventory.exe `
+            -InputPath ./tests/fixtures `
+            -ReportPath ./build/resmap-strict-audit-smoke.txt `
+            -DeferPriority2CharacterShaders
       - run: ctest --test-dir build -C Release --output-on-failure
 
   windows-gui:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Configure full GUI
+      - uses: actions/checkout@v7
+      - name: Validate PowerShell audit runners
         shell: pwsh
-        run: cmake -S . -B build -DNEXTGEN_EDITOR_BUILD_GUI=ON "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+        run: |
+          $parseErrors = @()
+          foreach ($script in @('tools/audit_resmap.ps1', 'tools/verify_resmap_visual.ps1', 'tests/test_resmap_visual_runner.ps1')) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $script),
+              [ref]$tokens,
+              [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              Write-Host "PowerShell parse errors in $script"
+              $errors | Format-List | Out-String | Write-Host
+              $parseErrors += $errors
+            }
+          }
+          if ($parseErrors.Count -gt 0) {
+            throw "PowerShell audit runner syntax validation failed."
+          }
+      - name: Smoke-test ResMap visual runner logic
+        shell: pwsh
+        run: ./tests/test_resmap_visual_runner.ps1
+      - name: Configure full GUI using Windows defaults
+        shell: pwsh
+        run: cmake -S . -B build
       - run: cmake --build build --config Release --parallel 2
+      - name: Audit NIF material renderer coverage
+        if: runner.os == 'Linux'
+        run: ./build/nif_material_inventory tests/fixtures | tee build/nif-material-audit.txt
       - run: ctest --test-dir build -C Release --output-on-failure
       - name: Package Windows application and runtime libraries
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Path artifact | Out-Null
-          Copy-Item build/Release/map_editor.exe,build/Release/nif_probe.exe,build/Release/fiesta_audit.exe,build/Release/nif_benchmark.exe artifact/
+          $ErrorActionPreference = 'Stop'
+          $editorExe = 'build/Release/Editor.exe'
+          $nifAuditExe = 'build/Release/nif_material_inventory.exe'
+          $nifMatrixExe = 'build/Release/nif_visual_matrix.exe'
+          $nifSnapshotExe = 'build/Release/test_nif_opengl.exe'
+          $resmapAuditScript = 'tools/audit_resmap.ps1'
+          $resmapVisualScript = 'tools/verify_resmap_visual.ps1'
+          if (-not (Test-Path $editorExe -PathType Leaf)) {
+            throw "Windows GUI executable was not produced: $editorExe"
+          }
+          if (-not (Test-Path $nifAuditExe -PathType Leaf)) {
+            throw "Strict NIF audit executable was not produced: $nifAuditExe"
+          }
+          if (-not (Test-Path $nifMatrixExe -PathType Leaf)) {
+            throw "Visual matrix selector was not produced: $nifMatrixExe"
+          }
+          if (-not (Test-Path $nifSnapshotExe -PathType Leaf)) {
+            throw "OpenGL NIF snapshot executable was not produced: $nifSnapshotExe"
+          }
+          if (-not (Test-Path $resmapAuditScript -PathType Leaf)) {
+            throw "Strict ResMap audit runner is missing: $resmapAuditScript"
+          }
+          if (-not (Test-Path $resmapVisualScript -PathType Leaf)) {
+            throw "ResMap visual matrix runner is missing: $resmapVisualScript"
+          }
+
+          New-Item -ItemType Directory -Path artifact -Force | Out-Null
+          Copy-Item $editorExe,$nifAuditExe,$nifMatrixExe,$nifSnapshotExe,build/Release/nif_probe.exe,build/Release/fiesta_audit.exe,build/Release/nif_benchmark.exe artifact/
+          Copy-Item $resmapAuditScript,$resmapVisualScript artifact/
           Get-ChildItem build/Release/*.dll -ErrorAction SilentlyContinue | Copy-Item -Destination artifact/
           Get-ChildItem build/vcpkg_installed/x64-windows/bin/*.dll -ErrorAction SilentlyContinue | Copy-Item -Destination artifact/
+          if (Test-Path build/Release/assets -PathType Container) {
+            Copy-Item build/Release/assets artifact/assets -Recurse
+          } else {
+            throw 'Runtime UI assets were not copied next to Editor.exe.'
+          }
           Copy-Item docs/third-party artifact/licenses -Recurse
-      - uses: actions/upload-artifact@v4
+
+          if (-not (Test-Path artifact/Editor.exe -PathType Leaf)) {
+            throw 'Editor.exe is missing from the packaged artifact.'
+          }
+          if (-not (Test-Path artifact/nif_material_inventory.exe -PathType Leaf)) {
+            throw 'nif_material_inventory.exe is missing from the packaged artifact.'
+          }
+          if (-not (Test-Path artifact/audit_resmap.ps1 -PathType Leaf)) {
+            throw 'audit_resmap.ps1 is missing from the packaged artifact.'
+          }
+          if (-not (Test-Path artifact/nif_visual_matrix.exe -PathType Leaf)) {
+            throw 'nif_visual_matrix.exe is missing from the packaged artifact.'
+          }
+          if (-not (Test-Path artifact/test_nif_opengl.exe -PathType Leaf)) {
+            throw 'test_nif_opengl.exe is missing from the packaged artifact.'
+          }
+          if (-not (Test-Path artifact/verify_resmap_visual.ps1 -PathType Leaf)) {
+            throw 'verify_resmap_visual.ps1 is missing from the packaged artifact.'
+          }
+          Write-Host 'Packaged Windows files:'
+          Get-ChildItem artifact -Recurse | Select-Object FullName,Length
+      - uses: actions/upload-artifact@v7
         with:
           name: NextGen-Editor-windows
           path: artifact/
+          if-no-files-found: error

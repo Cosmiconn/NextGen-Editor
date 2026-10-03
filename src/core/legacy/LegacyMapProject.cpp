@@ -22,7 +22,7 @@ void AddIssue(LegacyMapOpenReport* report, const std::string& msg) {
 std::expected<LegacyMapProject, std::string> OpenLegacyMap(
     const std::filesystem::path& iniPath, LegacyMapOpenReport* report) {
 
-    auto iniResult = ParseLegacyMapIni(iniPath);
+    auto iniResult = ParseLegacyMapIni(iniPath, false);
     if (!iniResult) {
         return std::unexpected(iniResult.error());
     }
@@ -32,6 +32,17 @@ std::expected<LegacyMapProject, std::string> OpenLegacyMap(
 
     const std::filesystem::path mapDir = iniPath.parent_path();
     const std::string stem = iniPath.stem().string();
+    project.sourceStem = stem;
+    auto rememberName = [&](const std::filesystem::path& file, const char* ext) {
+        std::error_code ec;
+        if (std::filesystem::equivalent(file.parent_path(), mapDir, ec))
+            project.sourceFileNames[ext] = file.filename().string();
+    };
+
+    if (project.ini.heightmapWidth == 0 || project.ini.heightmapHeight == 0) {
+        AddIssue(report,
+            "Keine Heightmap-Dimensionen in der .ini; Karte wird ohne erfundenes Terrain als SHMD/NIF-Szene geöffnet.");
+    }
 
     // --- Heightmap: primär über #HeightFileName aus der ini auflösen (deckt den Fall ab, dass
     // der Dateiname vom ini-Stamm abweicht, z.B. RouVal01 -> "darkVally.HTD"). ---
@@ -49,6 +60,7 @@ std::expected<LegacyMapProject, std::string> OpenLegacyMap(
         if (hmResult) {
             project.heightmap = std::move(*hmResult);
             project.hasHeightmap = true;
+            rememberName(*htdPath, ".htd");
         } else {
             AddIssue(report, "Heightmap (.HTD): " + hmResult.error());
         }
@@ -56,16 +68,19 @@ std::expected<LegacyMapProject, std::string> OpenLegacyMap(
         AddIssue(report, "Keine .HTD-Datei gefunden (weder \u00fcber HeightFileName noch \u00fcber Namens-Konvention) - diese Karte nutzt m\u00f6glicherweise ein anderes Format, siehe docs/MAP_FORMAT.md (z.B. 'Eld').");
     }
 
-    // --- Texturing: nutzt bereits eigene, robuste Pfadaufl\u00f6sung (siehe LegacyTextureSetIO). ---
-    TextureSetImportReport texReport;
-    auto texResult = ImportLegacyTextureSet(iniPath, &texReport);
-    if (texResult) {
-        project.textureStack = std::move(*texResult);
-    } else {
-        AddIssue(report, "Texturing: " + texResult.error());
-    }
-    for (const auto& msg : texReport.missingBlendFiles) {
-        AddIssue(report, "Texturing: " + msg);
+    // --- Texturing. Empty/minimal INIs used by SHMD/NIF-backed maps intentionally have
+    // no terrain layers. Do not create a synthetic fallback texture grid for those maps.
+    if (!project.ini.layers.empty()) {
+        TextureSetImportReport texReport;
+        auto texResult = ImportLegacyTextureSet(iniPath, &texReport);
+        if (texResult) {
+            project.textureStack = std::move(*texResult);
+        } else {
+            AddIssue(report, "Texturing: " + texResult.error());
+        }
+        for (const auto& msg : texReport.missingBlendFiles) {
+            AddIssue(report, "Texturing: " + msg);
+        }
     }
 
     // --- Block&Walk: Aufl\u00f6sung bevorzugt DIREKT aus dem Datei-Header lesen (zweites
@@ -101,6 +116,7 @@ std::expected<LegacyMapProject, std::string> OpenLegacyMap(
             if (walkResult) {
                 project.walkGrid = std::move(*walkResult);
                 project.hasWalkGrid = true;
+                rememberName(*shbdPath, ".shbd");
             } else {
                 AddIssue(report, "Block&Walk (.shbd): " + walkResult.error());
             }
@@ -115,6 +131,7 @@ std::expected<LegacyMapProject, std::string> OpenLegacyMap(
         if (shmdResult) {
             project.objects = std::move(*shmdResult);
             project.hasObjects = true;
+            rememberName(*shmdPath, ".shmd");
         } else {
             AddIssue(report, "Objekt-Placement (.shmd): " + shmdResult.error());
         }
@@ -128,6 +145,7 @@ std::expected<LegacyMapProject, std::string> OpenLegacyMap(
         if (idmResult) {
             project.spatialIndex = std::move(*idmResult);
             project.hasSpatialIndex = true;
+            rememberName(*idmPath, ".idm");
         } else {
             AddIssue(report, "R\u00e4umlicher Index (.idm): " + idmResult.error());
         }
@@ -139,25 +157,71 @@ std::expected<LegacyMapProject, std::string> OpenLegacyMap(
         if (aidResult) {
             project.zone = std::move(*aidResult);
             project.hasZone = true;
+            rememberName(*aidPath, ".aid");
         } else {
             AddIssue(report, "Zonen-Metadaten (.aid): " + aidResult.error());
         }
     }
 
     // Keep companion files whose semantics are not edited here. Never synthesize them.
-    const std::set<std::string> preservedExtensions{".htdg", ".conf", ".sbi", ".sbisss", ".shab", ".shad", ".bdt"};
-    for (const auto& entry : std::filesystem::directory_iterator(mapDir)) {
-        if (!entry.is_regular_file()) continue;
-        auto extension = entry.path().extension().string();
-        for (auto& c : extension) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-        if (!preservedExtensions.contains(extension)) continue;
-        std::ifstream in(entry.path(), std::ios::binary | std::ios::ate);
+    //
+    // IMPORTANT: this is deliberately broader than a hard-coded whitelist. Real Fiesta map
+    // folders contain opaque sidecar formats and future/private server variants may add more.
+    // Losing an unknown sidecar merely because its extension is new would violate the
+    // minimal-invasive project-save policy.
+    //
+    // At the same time, large render assets are NOT copied automatically. NIF/DDS/BMP/KF/KFM
+    // remain read-only source assets unless a dedicated asset workflow explicitly creates an
+    // override for them.
+    const std::set<std::string> managedExtensions{
+        ".ini", ".htd", ".shbd", ".shmd", ".idm", ".aid"
+    };
+    const std::set<std::string> assetExtensions{
+        ".nif", ".kf", ".kfm", ".dds", ".bmp", ".png", ".tga", ".jpg", ".jpeg"
+    };
+    const std::set<std::string> transientExtensions{
+        ".tmp", ".bak", ".log"
+    };
+
+    std::error_code dirEc;
+    for (std::filesystem::directory_iterator it(
+             mapDir, std::filesystem::directory_options::skip_permission_denied, dirEc), end;
+         it != end; it.increment(dirEc)) {
+        if (dirEc) {
+            dirEc.clear();
+            continue;
+        }
+        std::error_code fileEc;
+        if (!it->is_regular_file(fileEc) || fileEc) continue;
+
+        const auto& path = it->path();
+        auto extension = path.extension().string();
+        for (auto& c : extension)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+        if (managedExtensions.contains(extension) ||
+            assetExtensions.contains(extension) ||
+            transientExtensions.contains(extension))
+            continue;
+
+        // Hidden/editor-local files are not Fiesta companions and should not leak into a
+        // deployable project override.
+        const auto fileName = path.filename().string();
+        if (fileName.empty() || fileName.front() == '.') continue;
+
+        std::ifstream in(path, std::ios::binary | std::ios::ate);
         const auto size = in.tellg();
         if (!in || size < 0 || size > 64 * 1024 * 1024)
-            return std::unexpected("Begleitdatei kann nicht sicher erhalten werden: " + entry.path().string());
-        PreservedMapFile preserved{entry.path().filename().string(), std::vector<std::uint8_t>(static_cast<std::size_t>(size))};
-        in.seekg(0); in.read(reinterpret_cast<char*>(preserved.bytes.data()), size);
-        if (!in) return std::unexpected("Begleitdatei konnte nicht vollstaendig gelesen werden: " + entry.path().string());
+            return std::unexpected("Begleitdatei kann nicht sicher erhalten werden: " + path.string());
+
+        PreservedMapFile preserved{
+            fileName,
+            std::vector<std::uint8_t>(static_cast<std::size_t>(size))
+        };
+        in.seekg(0);
+        in.read(reinterpret_cast<char*>(preserved.bytes.data()), size);
+        if (!in)
+            return std::unexpected("Begleitdatei konnte nicht vollstaendig gelesen werden: " + path.string());
         project.preservedFiles.push_back(std::move(preserved));
     }
     if (!project.preservedFiles.empty()) AddIssue(report,
@@ -182,6 +246,20 @@ std::expected<void, std::string> SaveLegacyMap(
         return std::unexpected("Konnte Ausgabeverzeichnis nicht anlegen: " + outDir.string() + " (" + ec.message() + ")");
     }
 
+    // Unter demselben Kartennamen die Original-Dateinamen beibehalten (z. B. "eld.shbd",
+    // "darkVally.HTD"); bei "Speichern unter" mit neuem Namen <Karte>.<Endung>.
+    const bool sameStem = EqualsCaseInsensitive(project.sourceStem, mapStem);
+    auto fileName = [&](const char* ext, const char* defaultExt) {
+        if (sameStem) {
+            const auto it = project.sourceFileNames.find(ext);
+            if (it != project.sourceFileNames.end() && it->second.find_first_of("/\\:") == std::string::npos &&
+                it->second != "." && it->second != "..")
+                return it->second;
+        }
+        return mapStem + defaultExt;
+    };
+    const std::string htdName = fileName(".htd", ".HTD");
+
     // Heightmap-Dimensionsfelder der ini müssen immer zur aktuellen Heightmap passen (kann sich
     // durch "Neu"/Resize seit dem letzten Parse geändert haben).
     if (project.hasHeightmap) {
@@ -190,11 +268,24 @@ std::expected<void, std::string> SaveLegacyMap(
         project.ini.oneBlockWidth = project.heightmap.BlockWidth();
         project.ini.oneBlockHeight = project.heightmap.BlockHeight();
 
-        auto htdResult = ExportLegacyHtd(project.heightmap, outDir / (mapStem + ".HTD"), project.htdHeader, project.htdTrailingBytes);
+        auto htdResult = ExportLegacyHtd(project.heightmap, outDir / htdName, project.htdHeader, project.htdTrailingBytes);
         if (!htdResult) {
             return std::unexpected(htdResult.error());
         }
-        project.ini.heightFileName = ".\\" + mapStem + ".HTD";
+        // Den Original-Pfad behalten, wenn er schon auf <Karte>.HTD zeigt: Der Client löst ihn
+        // relativ zum Client-Ordner auf (".\\resmap\\field\\Rou\\Rou.HTD"); ein auf ".\\Rou.HTD"
+        // verkürzter Pfad würde die Heightmap im Spiel nicht mehr finden.
+        const auto currentName = LegacyPathToNative(project.ini.heightFileName).filename().string();
+        if (project.ini.heightFileName.empty() || !EqualsCaseInsensitive(currentName, htdName)) {
+            std::string legacy = ".\\" + htdName;
+            if (const auto resmap = FindResmapAncestor(outDir)) {
+                std::filesystem::path rel = std::filesystem::path("resmap") /
+                    std::filesystem::relative(outDir, *resmap) / htdName;
+                legacy = ".\\" + rel.lexically_normal().generic_string();
+                for (char& c : legacy) if (c == '/') c = '\\';
+            }
+            project.ini.heightFileName = legacy;
+        }
     }
 
     // ini.layers an den aktuellen TextureLayerStack angleichen (Layer können in der GUI
@@ -221,26 +312,31 @@ std::expected<void, std::string> SaveLegacyMap(
         project.ini.layers = std::move(newLayers);
     }
 
-    // Texturing (schreibt auch die .ini - siehe ExportLegacyTextureSet).
-    auto texResult = ExportLegacyTextureSet(project.textureStack, project.ini, outDir, mapStem + ".ini");
-    if (!texResult) {
-        return std::unexpected(texResult.error());
+    // Texturing writes the ini plus Blend-BMPs only for actual terrain-layer maps.
+    // A mesh/NIF-backed map without terrain keeps its source ini byte-exactly, including
+    // the valid case of a completely empty ini file.
+    if (project.textureStack.LayerCount() > 0 || !project.ini.layers.empty()) {
+        auto texResult = ExportLegacyTextureSet(project.textureStack, project.ini, outDir, mapStem + ".ini");
+        if (!texResult) return std::unexpected(texResult.error());
+    } else {
+        auto iniResult = SerializeLegacyMapIni(project.ini, outDir / (mapStem + ".ini"));
+        if (!iniResult) return std::unexpected(iniResult.error());
     }
 
     if (project.hasWalkGrid) {
-        auto r = ExportLegacyShbd(project.walkGrid, outDir / (mapStem + ".shbd"), project.shbdHeader);
+        auto r = ExportLegacyShbd(project.walkGrid, outDir / fileName(".shbd", ".shbd"), project.shbdHeader);
         if (!r) return std::unexpected(r.error());
     }
     if (project.hasObjects) {
-        auto r = SerializeLegacyShmd(project.objects, outDir / (mapStem + ".shmd"));
+        auto r = SerializeLegacyShmd(project.objects, outDir / fileName(".shmd", ".shmd"));
         if (!r) return std::unexpected(r.error());
     }
     if (project.hasSpatialIndex) {
-        auto r = SerializeLegacyIdm(project.spatialIndex, outDir / (mapStem + ".idm"));
+        auto r = SerializeLegacyIdm(project.spatialIndex, outDir / fileName(".idm", ".idm"));
         if (!r) return std::unexpected(r.error());
     }
     if (project.hasZone) {
-        auto r = SerializeLegacyAid(project.zone, outDir / (mapStem + ".aid"));
+        auto r = SerializeLegacyAid(project.zone, outDir / fileName(".aid", ".aid"));
         if (!r) return std::unexpected(r.error());
     }
 
