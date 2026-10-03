@@ -1,3 +1,10 @@
+## Level Editor — multiple viewports with per-viewport display options
+- View menu → Viewport layout: single, 2 side by side, or 2×2 like Unreal (perspective, top, south, east – the axis views orthographic around the current target). Each viewport keeps its own camera, view preset, view mode, wireframe, show flags (terrain, meshes, placeholders, NPCs, grid, stats, SHBD collision, game view) and marquee state.
+- The active viewport (yellow frame) holds its values live in the editor state, so picking, gizmo, shortcuts and the playtest work unchanged; a click activates a viewport before the click is processed. The playtest pawn appears in every viewport, its HUD only in the active one.
+- `HeightmapRenderer` renders each viewport into its own target (FBO, MSAA, glow) via `SelectRenderTarget`, sharing terrain mesh and textures. Narrow viewports collapse the snap/pivot controls.
+- Orthographic near plane now sits one target distance behind the eye and the SHMD sky is hidden in axis views, so the sky dome no longer covers elevation views.
+- Layout persisted in `viewport.txt`; automation commands `layout` and `activeviewport`. Verified with a 2×2 screenshot of Roumen during a playtest.
+
 ## Renderer — LOD level view
 - View mode "LOD levels (NiLODNode)": gray = no LOD node, green = nearest band (near 0), yellow = middle band (near < 2000), red = far band, i.e. which authored LOD range is currently displayed. Verified on Roumen (distant trees show their far band).
 

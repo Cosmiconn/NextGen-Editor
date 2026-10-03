@@ -169,9 +169,11 @@ Mat4 OrbitCamera::ProjectionMatrix(float aspect) const {
     const float safeAspect = aspect > 1.0e-6f ? aspect : 1.0f;
     if (!orthographic_) return PerspectiveMatrix(kFovY, safeAspect, NearPlane(), FarPlane());
     // Orthografisch: gleicher Ausschnitt wie die Perspektive auf Höhe des Ziels. Die Nahebene liegt
-    // bewusst HINTER dem Auge, damit nichts zwischen Auge und Ziel abgeschnitten wird.
+    // eine Zielentfernung HINTER dem Auge: so bleibt Geometrie oberhalb des Auges (Berge in der
+    // Draufsicht) sichtbar, ohne dass weit entfernte Hüllen hinter der Kamera (Himmelskuppel) das
+    // Bild verdecken.
     const float halfHeight = distance_ * std::tan(kFovY * 0.5f);
-    return OrthographicMatrix(halfHeight * safeAspect, halfHeight, -FarPlane() * 0.5f, FarPlane());
+    return OrthographicMatrix(halfHeight * safeAspect, halfHeight, -std::max(distance_, 500.0f), FarPlane());
 }
 
 Mat4 OrthoTopDownViewProj(float centerX, float centerZ, float halfWidth, float halfHeight, float heightPadding) {

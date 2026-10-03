@@ -628,6 +628,29 @@ struct EditorState {
     // Frei gesetzter Pivot (Alt+MMB-Klick, wie Unreal): gilt bis zur nächsten Auswahländerung.
     std::optional<std::array<float, 3>> pivotOverride;
     std::string pivotOverrideSelectionKey;
+    // ---- Mehrere 3D-Viewports (Layout 1 / 2 / 4 wie in Unreal) ----
+    // Der AKTIVE Viewport hält seine Werte direkt in den normalen Feldern (camera, viewportViewMode,
+    // showTerrain, ...), damit Picking, Gizmo, Kürzel und Spieltest unverändert funktionieren. Die
+    // übrigen Viewports liegen in viewportSlots und werden nur zum Zeichnen eingetauscht.
+    struct ViewportSlot {
+        app::OrbitCamera camera;
+        int viewPreset = 0;
+        bool cameraLooking = false;
+        int viewMode = 0;
+        bool wireframe = false;
+        bool showTerrain = true, showObjectMeshes = true, showObjectMarkers = true, showNpcModels = true;
+        bool showGrid = false, showStats = true, showWalkCollision = false, gameView = false;
+        bool marqueeActive = false;
+        ImVec2 marqueeStart{};
+        std::optional<std::array<float, 3>> cursorWorld;
+        ImVec2 pos{}, size{};
+        bool initialized = false;
+    };
+    std::array<ViewportSlot, 4> viewportSlots{};
+    std::array<ImVec2, 4> viewportRectPos{}, viewportRectSize{};
+    int viewportLayout = 1;          // 1 = einzeln, 2 = nebeneinander, 4 = 2x2
+    int activeViewport = 0;
+    bool drawingActiveViewport = true; // false, während ein nicht aktiver Viewport gezeichnet wird
     bool gameView = false;            // G: alle Editor-Helfer im Viewport ausblenden
     bool showViewportStats = true;
     bool showViewportGrid = false;
@@ -1527,6 +1550,7 @@ void SaveViewportSettings(EditorState& state) {
         << "surface_snap=" << (state.surfaceSnap ? 1 : 0) << "\n"
         << "pivot_active=" << (state.pivotAtActiveObject ? 1 : 0) << "\n"
         << "actor_snap=" << (state.actorSnap ? 1 : 0) << "\n"
+        << "viewport_layout=" << state.viewportLayout << "\n"
         << "show_stats=" << (state.showViewportStats ? 1 : 0) << "\n"
         << "show_grid=" << (state.showViewportGrid ? 1 : 0) << "\n"
         << "show_axes=" << (state.showViewportAxes ? 1 : 0) << "\n"
@@ -1566,6 +1590,7 @@ void LoadViewportSettings(EditorState& state) {
         else if (key == "surface_snap") state.surfaceSnap = b;
         else if (key == "pivot_active") state.pivotAtActiveObject = b;
         else if (key == "actor_snap") state.actorSnap = b;
+        else if (key == "viewport_layout") { const int l = std::atoi(value); state.viewportLayout = (l == 2 || l == 4) ? l : 1; }
         else if (key == "show_stats") state.showViewportStats = b;
         else if (key == "show_grid") state.showViewportGrid = b;
         else if (key == "show_axes") state.showViewportAxes = b;
@@ -3337,7 +3362,9 @@ void RefreshShmdCategoryVisibility(EditorState& state) {
         bool visible = true;
         if (i < state.shmdCategoryRenderKind.size()) {
             switch (state.shmdCategoryRenderKind[i]) {
-                case 0: visible = state.showShmdSky; break;
+                // Orthografische Achsenansichten zeigen keinen Himmel (wie Unreal) - die Himmelskuppel
+                // würde dort sonst als ebene Fläche das ganze Bild verdecken.
+                case 0: visible = state.showShmdSky && !state.camera.IsOrthographic(); break;
                 case 1: visible = state.showShmdWater; break;
                 case 2: visible = state.showShmdGroundObject; break;
                 default: break; // unbekannte generische SHMD-Kategorie bleibt sichtbar
@@ -5054,6 +5081,8 @@ const char* ViewportPresetName(int preset);
 void ApplyViewportPreset(EditorState& state, int preset);
 void DrawViewportShowFlagsMenu(EditorState& state);
 void TogglePlaytest(EditorState& state);
+const char* ViewportLayoutName(int layout);
+void SetViewportLayout(EditorState& state, int layout);
 
 void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
     LoadRecentEntries(state);
@@ -16196,7 +16225,7 @@ std::string CurrentGizmoSelectionKey(const EditorState& state) {
 
 bool DrawObjectTransformGizmo(EditorState& state, const ImVec2& imageScreenPos, int w, int h) {
     if (state.editMode != EditMode::ObjectPlacement || state.selectedObjects.empty() ||
-        state.objectGizmoOperation < 0 || state.playtestActive || state.gameView) {
+        state.objectGizmoOperation < 0 || state.playtestActive || state.gameView || !state.drawingActiveViewport) {
         state.objectGizmoMatrixValid = false;
         state.objectGizmoWasUsing = false;
         return false;
@@ -16511,6 +16540,12 @@ void DrawViewportViewMenu(EditorState& state) {
             ApplyViewportPreset(state, preset);
     ImGui::TextDisabled("%s", L("Achsenansichten sind orthografisch (Ziehen verschiebt).",
                                 "Axis views are orthographic (dragging pans)."));
+    ImGui::SeparatorText(L("Viewport-Layout", "Viewport layout"));
+    for (const int layout : {1, 2, 4})
+        if (ImGui::MenuItem(ViewportLayoutName(layout), nullptr, state.viewportLayout == layout))
+            SetViewportLayout(state, layout);
+    ImGui::TextDisabled("%s", L("Jeder Viewport hat eigene Kamera, Ansicht und Anzeigen.",
+                                "Each viewport has its own camera, view and show flags."));
     ImGui::SeparatorText(L("Kamera-Lesezeichen", "Camera bookmarks"));
     EnsureCameraBookmarksLoaded(state);
     for (int slot = 0; slot < static_cast<int>(core::level::CameraBookmarkSet::kSlots); ++slot) {
@@ -16568,6 +16603,9 @@ bool DrawViewportToolbar(EditorState& state, const ImVec2& imageScreenPos, float
     viewport_ui::Tooltip(L("Show Flags: was der Viewport zeichnet", "Show flags: what the viewport draws"));
     if (ImGui::BeginPopup("##viewportShowMenu")) { DrawViewportShowFlagsMenu(state); ImGui::EndPopup(); }
 
+    // Schmale Viewports (2er-/4er-Layout): Snap- und Pivot-Leiste ausblenden, damit sich linke und
+    // rechte Gruppe nicht überlappen; die Werte bleiben im Eigenschaften-Panel erreichbar.
+    const bool compactToolbar = width < 900.0f;
     if (state.editMode == EditMode::ObjectPlacement && !state.playtestActive) {
         ImGui::SameLine(0.0f, 12.0f);
         auto opButton = [&](const char* id, const char* label, IconDrawFn fallbackIcon,
@@ -16583,6 +16621,7 @@ bool DrawViewportToolbar(EditorState& state, const ImVec2& imageScreenPos, float
         opButton("viewportMove", L("Verschieben", "Move"), DrawIconMove, "transform.move", 0, "W", state.shortcutGizmoMove);
         opButton("viewportRotate", L("Rotieren", "Rotate"), DrawIconRotate, "transform.rotate", 1, "E", state.shortcutGizmoRotate);
         opButton("viewportScale", L("Skalieren", "Scale"), DrawIconScale, "transform.scale", 2, "R", state.shortcutGizmoScale);
+        if (!compactToolbar) {
         ImGui::SameLine(0.0f, 6.0f);
         if (ImGui::SmallButton(state.objectGizmoLocal ? "Local##vpSpace" : "World##vpSpace")) {
             state.objectGizmoLocal = !state.objectGizmoLocal;
@@ -16627,6 +16666,7 @@ bool DrawViewportToolbar(EditorState& state, const ImVec2& imageScreenPos, float
         if (rotSnap != snapBefore) state.objectGizmoSnap = rotSnap;
         else if (scaleSnap != snapBefore) state.objectGizmoSnap = scaleSnap;
         if (changed) state.viewportSettingsDirty = true;
+        } // !compactToolbar
     }
     ImGui::EndGroup();
     capturing |= ImGui::IsMouseHoveringRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), false);
@@ -16840,7 +16880,7 @@ void DrawViewportStats(EditorState& state, const ImVec2& imagePos, int w) {
 }
 
 // Spielermarker (Kapsel, Boden-Kreis, Blickrichtung) + HUD.
-void DrawPlaytestOverlay(EditorState& state, const ImVec2& imagePos, int w, int h) {
+void DrawPlaytestOverlay(EditorState& state, const ImVec2& imagePos, int w, int h, bool showHud = true) {
     ImDrawList* dl = ImGui::GetWindowDrawList();
     const auto& pawn = state.playtestPawn;
     const float r = state.playtestConfig.radius;
@@ -16859,6 +16899,7 @@ void DrawPlaytestOverlay(EditorState& state, const ImVec2& imagePos, int w, int 
         if (ProjectWorldTo3DView(state, imagePos, w, h, {pawn.x + fx * r * 3.0f, pawn.y + 1.0f, pawn.z + fz * r * 3.0f}, nose))
             dl->AddLine(base, nose, IM_COL32(255, 220, 90, 255), 2.5f);
     }
+    if (!showHud) return;
     char buf[256];
     std::snprintf(buf, sizeof(buf),
                   L("SPIELTEST  ·  X %.0f  Y(Server) %.0f  ·  SHBD %s  ·  %s",
@@ -17087,7 +17128,8 @@ void DrawPreview3DContent(EditorState& state) {
     }
     const bool gizmoCapturing = DrawObjectTransformGizmo(state, imageScreenPos, w, h);
     if (editorHelpers) DrawNpcOverlay3D(state, imageScreenPos, w, h);
-    if (state.playtestActive) DrawPlaytestOverlay(state, imageScreenPos, w, h);
+    if (state.playtestActive) // Spielfigur in allen Viewports, Hinweisleiste nur im aktiven
+        DrawPlaytestOverlay(state, imageScreenPos, w, h, state.drawingActiveViewport);
     if (editorHelpers && state.showViewportAxes) DrawViewportAxisIndicator(state, imageScreenPos, h);
     if (state.showViewportStats && !state.gameView && !state.playtestActive) DrawViewportStats(state, imageScreenPos, w);
     const bool gizmoToolbarCapturing = DrawViewportToolbar(state, imageScreenPos, avail.x);
@@ -17261,7 +17303,7 @@ void DrawPreview3DContent(EditorState& state) {
         ImGuiIO& io = ImGui::GetIO();
         const bool hovered3d = viewImageHovered;
         const float speedMul = core::level::CameraSpeedMultiplier(state.cameraSpeedSetting);
-        if (state.playtestActive) {
+        if (state.playtestActive && state.drawingActiveViewport) {
             state.cameraLooking = false;
             UpdatePlaytest(state, hovered3d && !viewportUiCapturing);
         } else {
@@ -17358,7 +17400,7 @@ void DrawPreview3DContent(EditorState& state) {
         // Deliberately no permanent mouse-help banner inside the 3D viewport. It was
         // perceived as a popup that never disappeared and also competed visually with the
         // transform gizmo. Camera bindings stay available in the manual/settings UI.
-        if (state.viewportSettingsDirty) SaveViewportSettings(state);
+        if (state.viewportSettingsDirty && state.drawingActiveViewport) SaveViewportSettings(state);
     }
 
     // Zoom +/- Knöpfe unten rechts über dem 3D-Bild (siehe Mockup) - zusätzlich zum
@@ -17369,6 +17411,143 @@ void DrawPreview3DContent(EditorState& state) {
     ImGui::SetCursorScreenPos(ImVec2(zoomPos.x, zoomPos.y + zoomBtnSize.y + 4.0f));
     if (UI::Button("-##zoomOut", zoomBtnSize)) state.camera.ZoomSteps(-2.0f);
     ImGui::PopStyleColor();
+}
+
+// ---- Mehrere 3D-Viewports -------------------------------------------------------------------
+template <class F>
+void ForEachViewportField(EditorState& state, EditorState::ViewportSlot& v, F&& f) {
+    f(state.camera, v.camera);
+    f(state.viewportViewPreset, v.viewPreset);
+    f(state.cameraLooking, v.cameraLooking);
+    f(state.viewportViewMode, v.viewMode);
+    f(state.wireframe, v.wireframe);
+    f(state.showTerrain, v.showTerrain);
+    f(state.showObjectMeshes, v.showObjectMeshes);
+    f(state.showObjectMarkers, v.showObjectMarkers);
+    f(state.showNpcModels, v.showNpcModels);
+    f(state.showViewportGrid, v.showGrid);
+    f(state.showViewportStats, v.showStats);
+    f(state.showWalkCollision3D, v.showWalkCollision);
+    f(state.gameView, v.gameView);
+    f(state.marqueeActive, v.marqueeActive);
+    f(state.marqueeStart, v.marqueeStart);
+    f(state.viewportCursorWorld, v.cursorWorld);
+    f(state.viewport3dPos, v.pos);
+    f(state.viewport3dSize, v.size);
+}
+
+void SwapViewportState(EditorState& state, EditorState::ViewportSlot& v) {
+    ForEachViewportField(state, v, [](auto& a, auto& b) { std::swap(a, b); });
+}
+
+void SetActiveViewport(EditorState& state, int index) {
+    index = std::clamp(index, 0, static_cast<int>(state.viewportSlots.size()) - 1);
+    if (index == state.activeViewport) return;
+    auto& oldSlot = state.viewportSlots[static_cast<std::size_t>(state.activeViewport)];
+    ForEachViewportField(state, oldSlot, [](auto& live, auto& slot) { slot = live; });
+    auto& newSlot = state.viewportSlots[static_cast<std::size_t>(index)];
+    ForEachViewportField(state, newSlot, [](auto& live, auto& slot) { live = slot; });
+    state.activeViewport = index;
+    state.cameraLooking = false;
+    state.marqueeActive = false;
+    state.objectGizmoMatrixValid = false;
+}
+
+// Neue Viewports starten wie Unreals 4er-Layout: Perspektive, Oben, Süden, Osten - jeweils
+// orthografisch auf dasselbe Ziel ausgerichtet wie die aktuelle Kamera.
+void InitializeViewportSlots(EditorState& state) {
+    constexpr int kPresets[4] = {0, 1, 2, 5};
+    for (int k = 0; k < 4; ++k) {
+        auto& v = state.viewportSlots[static_cast<std::size_t>(k)];
+        if (k == state.activeViewport || v.initialized) continue;
+        ForEachViewportField(state, v, [](auto& live, auto& slot) { slot = live; });
+        v.cameraLooking = false;
+        v.marqueeActive = false;
+        v.initialized = true;
+        SwapViewportState(state, v);
+        ApplyViewportPreset(state, kPresets[k]);
+        SwapViewportState(state, v);
+    }
+    state.viewportSlots[static_cast<std::size_t>(state.activeViewport)].initialized = true;
+}
+
+const char* ViewportLayoutName(int layout) {
+    switch (layout) {
+        case 2: return L("2 Viewports nebeneinander", "2 viewports side by side");
+        case 4: return L("4 Viewports (2x2)", "4 viewports (2x2)");
+        default: return L("Einzelner Viewport", "Single viewport");
+    }
+}
+
+void SetViewportLayout(EditorState& state, int layout) {
+    layout = layout == 2 || layout == 4 ? layout : 1;
+    if (state.activeViewport >= layout) SetActiveViewport(state, 0);
+    state.viewportLayout = layout;
+    if (layout > 1) InitializeViewportSlots(state);
+    state.viewportSettingsDirty = true;
+}
+
+void DrawViewportLayout(EditorState& state) {
+    const int count = state.viewportLayout == 2 || state.viewportLayout == 4 ? state.viewportLayout : 1;
+    if (count > 1) InitializeViewportSlots(state);
+    if (state.activeViewport >= count) SetActiveViewport(state, 0);
+
+    // Klick in einen anderen Viewport aktiviert ihn, BEVOR gezeichnet wird - so wirkt derselbe Klick
+    // bereits als Auswahl/Kamera-Eingabe im neuen aktiven Viewport.
+    if (count > 1 && ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId) &&
+        (ImGui::IsMouseClicked(ImGuiMouseButton_Left) || ImGui::IsMouseClicked(ImGuiMouseButton_Right) ||
+         ImGui::IsMouseClicked(ImGuiMouseButton_Middle))) {
+        const ImVec2 m = ImGui::GetMousePos();
+        for (int k = 0; k < count; ++k) {
+            const ImVec2 p = state.viewportRectPos[static_cast<std::size_t>(k)];
+            const ImVec2 sz = state.viewportRectSize[static_cast<std::size_t>(k)];
+            if (m.x >= p.x && m.y >= p.y && m.x < p.x + sz.x && m.y < p.y + sz.y) {
+                if (k != state.activeViewport) SetActiveViewport(state, k);
+                break;
+            }
+        }
+    }
+
+    if (count == 1) {
+        state.drawingActiveViewport = true;
+        state.renderer.SelectRenderTarget(0);
+        DrawPreview3DContent(state);
+        state.viewportRectPos[0] = state.viewport3dPos;
+        state.viewportRectSize[0] = state.viewport3dSize;
+        return;
+    }
+
+    const ImVec2 origin = ImGui::GetCursorScreenPos();
+    const ImVec2 avail = ImGui::GetContentRegionAvail();
+    constexpr float kGap = 3.0f;
+    const int cols = 2, rows = count == 4 ? 2 : 1;
+    const float cellW = std::max(40.0f, (avail.x - kGap * static_cast<float>(cols - 1)) / static_cast<float>(cols));
+    const float cellH = std::max(40.0f, (avail.y - kGap * static_cast<float>(rows - 1)) / static_cast<float>(rows));
+    for (int k = 0; k < count; ++k) {
+        const int col = k % cols, row = k / cols;
+        const ImVec2 pos(origin.x + static_cast<float>(col) * (cellW + kGap), origin.y + static_cast<float>(row) * (cellH + kGap));
+        ImGui::SetCursorScreenPos(pos);
+        ImGui::PushID(k);
+        ImGui::BeginChild("##viewportCell", ImVec2(cellW, cellH), false,
+                          ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+        const bool live = k == state.activeViewport;
+        auto& slot = state.viewportSlots[static_cast<std::size_t>(k)];
+        if (!live) SwapViewportState(state, slot);
+        state.drawingActiveViewport = live;
+        state.renderer.SelectRenderTarget(k);
+        DrawPreview3DContent(state);
+        state.viewportRectPos[static_cast<std::size_t>(k)] = state.viewport3dPos;
+        state.viewportRectSize[static_cast<std::size_t>(k)] = state.viewport3dSize;
+        if (!live) SwapViewportState(state, slot);
+        ImGui::EndChild();
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        dl->AddRect(pos, ImVec2(pos.x + cellW, pos.y + cellH),
+                    live ? IM_COL32(255, 196, 64, 235) : IM_COL32(40, 60, 80, 200), 0.0f, 0, live ? 2.0f : 1.0f);
+        ImGui::PopID();
+    }
+    state.drawingActiveViewport = true;
+    state.renderer.SelectRenderTarget(0);
+    ImGui::SetCursorScreenPos(ImVec2(origin.x, origin.y + avail.y));
 }
 
 // Tab-Leiste des Arbeitsbereichs (Hightmap/Texturing/Block-Walk/Objects/NPCs/NPC AI/Mobs/
@@ -20773,7 +20952,7 @@ void DrawMapEditorWorkspace(EditorState& state) {
     ImGui::Begin("3D-Ansicht##view3d");
     DrawPanelHeader("view3dHeader", L("3D ANSICHT","3D VIEW"),
                     DrawIconCube, "view.3d", modeName());
-    DrawPreview3DContent(state);
+    DrawViewportLayout(state);
     ImGui::End();
     ImGui::PopStyleColor();
 
@@ -20907,6 +21086,8 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         in >> tx >> ty >> tz >> yaw >> pitch >> dist;
         state.camera.SetTarget(tx, ty, tz); state.camera.SetDistance(dist); state.camera.SetOrientation(yaw, pitch);
     }
+    else if (cmd == "layout") { int l = 1; in >> l; SetViewportLayout(state, l); }
+    else if (cmd == "activeviewport") { int k = 0; in >> k; SetActiveViewport(state, k); }
     else if (cmd == "grid") onOff(state.showViewportGrid);
     else if (cmd == "stats") onOff(state.showViewportStats);
     else if (cmd == "collision") onOff(state.showWalkCollision3D);

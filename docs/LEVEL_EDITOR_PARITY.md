@@ -27,7 +27,7 @@ Handbuch „Level-Editor-Werkzeuge“, Kern `core/LevelEditorTools` + `test_leve
 | Surface Snap während des Ziehens (§5) | **umgesetzt** – HTD + SHMD-GroundObject (Raycast) |
 | Duplicate-while-dragging (§5) | **umgesetzt** – Alt+Ziehen, ein Undo-Schritt |
 | Hide Selected / Hide Unselected (Isolate) / Show All, Anzahl versteckter Objekte (§6) | **umgesetzt** – H / Shift+H / Strg+H, Statusleiste |
-| Show Flags im Viewport (§3.3, §8) | **teilweise** – globales Show-Menü (Szene + Editor-Helfer), noch nicht je Viewport |
+| Show Flags im Viewport (§3.3, §8) | **umgesetzt** – je Viewport (Layout 1/2/2×2) |
 | Marquee Inside vs. Crossing, Replace/Add (§7) | **3D umgesetzt** auf projizierten NIF-Bounds; Remove-Modifier und Lasso in 3D offen |
 | Align / Distribute / Match Transform (§9) | **umgesetzt** (Objekte-Menü) |
 | Bookmarks / gespeicherte Kamerapositionen (§9) | **umgesetzt** – Strg+0..9 / 0..9, je Karte persistiert |
@@ -51,6 +51,7 @@ Weitere Stufen am 03.10.2026 (jeweils mit Tests gegen echte NA2016-Daten, siehe 
 | Auswahl | 3D-Rahmen auf NIF-Bounds, 2D-Rahmen/Lasso auf Kontaktgeometrie, jeweils Überschneidung oder vollständig innen |
 | Export-Sicherheit | IDM-Zuordnungen folgen der SHMD-Schreibreihenfolge (Indexsemantik an Rou belegt), Blendmaps in Originalauflösung |
 | KFM | Animationen duplizieren/löschen, NIF-Datei und Wurzel bearbeiten |
+| Viewports | Layout 1 / 2 / 2×2 mit eigener Kamera, Ansicht und Show Flags je Viewport, aktiver Viewport für Eingaben |
 
 Weiterhin offen – jeweils mit dem, was dafür fehlt:
 
@@ -60,7 +61,6 @@ Weiterhin offen – jeweils mit dem, was dafür fehlt:
 | Bedeutung der IDM-Gruppen (Neuberechnung statt Abbildung) | weitere Karten mit IDM + Client-Verhalten bei veränderten Gruppen |
 | SHBD-Bitsemantik jenseits „gesetzt = blockiert“, Spielnavigation | Server-/Client-Verhalten an Testkarten |
 | Skill-Editor: physische Existenz von KF/NIF/Effekt-Dateien | vollständiger Client-Datenbestand (ActiveSkillView-/Effekt-Tabellen + `resEffect`) |
-| Per-Viewport-Show-Flags, Mehrfach-Viewport-Layout | reine Editorarbeit, nicht datenabhängig – nächste Ausbaustufe |
 | Windows/MSVC-Build dieser Stufe | Build auf dem Windows-Rechner (unter Linux/GCC 13 vollständig gebaut und getestet) |
 
 ---

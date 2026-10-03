@@ -97,6 +97,10 @@ public:
     [[nodiscard]] int MaxMsaaSamples() const noexcept { return maxMsaaSamples_; }
     // 0 beleuchtet, 1 unbeleuchtet (nur Textur), 2 nur Licht/Vertexfarbe, 3 Normalen.
     void SetViewMode(int mode) { viewMode_ = mode; }
+    // Mehrere 3D-Viewports: jeder Viewport rendert in sein eigenes Ziel (FBO, MSAA, Glow), weil
+    // ImGui alle Bilder erst am Frame-Ende zeichnet. Terrain-Mesh und Texturen bleiben geteilt.
+    static constexpr int kMaxRenderTargets = 4;
+    void SelectRenderTarget(int index);
     // SHMD-Szenenlicht, Nebel und Hintergrundfarbe (siehe SceneLighting.hpp).
     void SetSceneLighting(const SceneLighting& lighting) { lighting_ = lighting; }
     // Zeichnet eine zusätzliche Textur halbtransparent über das zuletzt in BeginTopDownScene
@@ -187,6 +191,17 @@ private:
     int glowWidth_ = 0, glowHeight_ = 0;
     int sceneTargetW_ = 0, sceneTargetH_ = 0, sceneTargetSamples_ = 0, sceneTargetGlowDiv_ = 0;
     std::uint32_t postVao_ = 0, postCopyProgram_ = 0, postBlurProgram_ = 0, postCompositeProgram_ = 0;
+    struct SceneTargetSlot {
+        std::uint32_t fbo = 0, colorTex = 0, depthRbo = 0;
+        int width = 0, height = 0;
+        std::uint32_t msaaFbo = 0, msaaColorRbo = 0, msaaDepthRbo = 0;
+        std::uint32_t glowFbo[2] = {0, 0}, glowTex[2] = {0, 0};
+        std::uint32_t outputFbo = 0, outputTex = 0;
+        int glowWidth = 0, glowHeight = 0;
+        int sceneW = 0, sceneH = 0, sceneSamples = 0, sceneGlowDiv = 0;
+    };
+    SceneTargetSlot targetSlots_[kMaxRenderTargets];
+    int currentTarget_ = 0;
     void EnsureSceneTargets(int width, int height);
     void ReleaseSceneTargets();
 

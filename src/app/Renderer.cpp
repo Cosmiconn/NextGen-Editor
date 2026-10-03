@@ -388,16 +388,46 @@ void HeightmapRenderer::Init() {
     maxMsaaSamples_ = std::max(1, static_cast<int>(maxSamples));
 }
 
+void HeightmapRenderer::SelectRenderTarget(int index) {
+    index = std::clamp(index, 0, kMaxRenderTargets - 1);
+    if (index == currentTarget_) return;
+    const auto save = [this](SceneTargetSlot& t) {
+        t.fbo = fbo_; t.colorTex = fboColorTex_; t.depthRbo = fboDepthRbo_; t.width = fboWidth_; t.height = fboHeight_;
+        t.msaaFbo = msaaFbo_; t.msaaColorRbo = msaaColorRbo_; t.msaaDepthRbo = msaaDepthRbo_;
+        for (int i = 0; i < 2; ++i) { t.glowFbo[i] = glowFbo_[i]; t.glowTex[i] = glowTex_[i]; }
+        t.outputFbo = outputFbo_; t.outputTex = outputTex_; t.glowWidth = glowWidth_; t.glowHeight = glowHeight_;
+        t.sceneW = sceneTargetW_; t.sceneH = sceneTargetH_; t.sceneSamples = sceneTargetSamples_; t.sceneGlowDiv = sceneTargetGlowDiv_;
+    };
+    const auto load = [this](const SceneTargetSlot& t) {
+        fbo_ = t.fbo; fboColorTex_ = t.colorTex; fboDepthRbo_ = t.depthRbo; fboWidth_ = t.width; fboHeight_ = t.height;
+        msaaFbo_ = t.msaaFbo; msaaColorRbo_ = t.msaaColorRbo; msaaDepthRbo_ = t.msaaDepthRbo;
+        for (int i = 0; i < 2; ++i) { glowFbo_[i] = t.glowFbo[i]; glowTex_[i] = t.glowTex[i]; }
+        outputFbo_ = t.outputFbo; outputTex_ = t.outputTex; glowWidth_ = t.glowWidth; glowHeight_ = t.glowHeight;
+        sceneTargetW_ = t.sceneW; sceneTargetH_ = t.sceneH; sceneTargetSamples_ = t.sceneSamples; sceneTargetGlowDiv_ = t.sceneGlowDiv;
+    };
+    save(targetSlots_[static_cast<std::size_t>(currentTarget_)]);
+    load(targetSlots_[static_cast<std::size_t>(index)]);
+    currentTarget_ = index;
+}
+
 void HeightmapRenderer::Shutdown() {
     ClearTerrainTextures();
     if (vbo_) glDeleteBuffers(1, &vbo_);
     if (ebo_) glDeleteBuffers(1, &ebo_);
     if (vao_) glDeleteVertexArrays(1, &vao_);
     if (shaderProgram_) glDeleteProgram(shaderProgram_);
-    if (fboColorTex_) glDeleteTextures(1, &fboColorTex_);
-    if (fboDepthRbo_) glDeleteRenderbuffers(1, &fboDepthRbo_);
-    if (fbo_) glDeleteFramebuffers(1, &fbo_);
-    vbo_ = ebo_ = vao_ = shaderProgram_ = fboColorTex_ = fboDepthRbo_ = fbo_ = 0;
+    vbo_ = ebo_ = vao_ = shaderProgram_ = 0;
+    // Alle Viewport-Ziele freigeben (je Slot das Haupt-FBO und die MSAA-/Glow-Ziele).
+    for (int target = 0; target < kMaxRenderTargets; ++target) {
+        SelectRenderTarget(target);
+        if (fboColorTex_) glDeleteTextures(1, &fboColorTex_);
+        if (fboDepthRbo_) glDeleteRenderbuffers(1, &fboDepthRbo_);
+        if (fbo_) glDeleteFramebuffers(1, &fbo_);
+        fboColorTex_ = fboDepthRbo_ = fbo_ = 0;
+        fboWidth_ = fboHeight_ = 0;
+        ReleaseSceneTargets();
+    }
+    SelectRenderTarget(0);
 
     if (fbo2dColorTex_) glDeleteTextures(1, &fbo2dColorTex_);
     if (fbo2dDepthRbo_) glDeleteRenderbuffers(1, &fbo2dDepthRbo_);
@@ -416,7 +446,6 @@ void HeightmapRenderer::Shutdown() {
     if (overlayShaderProgram_) glDeleteProgram(overlayShaderProgram_);
     overlayVbo_ = overlayVao_ = overlayShaderProgram_ = 0;
 
-    ReleaseSceneTargets();
     if (postVao_) glDeleteVertexArrays(1, &postVao_);
     if (postCopyProgram_) glDeleteProgram(postCopyProgram_);
     if (postBlurProgram_) glDeleteProgram(postBlurProgram_);
