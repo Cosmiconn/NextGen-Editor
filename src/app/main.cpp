@@ -726,6 +726,8 @@ struct EditorState {
     char legacyAidPath[512] = "";
     core::ObjectSpatialIndex legacySpatialIndex;
     std::int32_t legacyShmdSourceCount = -1; // Objektanzahl der geladenen SHMD (IDM-Remap)
+    std::string legacySourceStem;                               // Original-Dateinamen der Kartenmodule,
+    std::map<std::string, std::string> legacySourceFileNames;   // siehe LegacyMapProject::sourceFileNames
     bool hasLegacySpatialIndex = false;
     core::legacy::ZoneMetadata legacyZoneMetadata;
     std::vector<core::legacy::PreservedMapFile> preservedMapFiles;
@@ -1934,6 +1936,8 @@ core::legacy::LegacyMapProject BuildProjectFromState(const EditorState& state,
     core::legacy::LegacyMapProject project;
     project.ini = state.legacyIniMeta;
     project.preservedFiles = state.preservedMapFiles;
+    project.sourceStem = state.legacySourceStem;
+    project.sourceFileNames = state.legacySourceFileNames;
     project.heightmap = state.heightmap;
     project.hasHeightmap = MapSupportsTerrainEditing(state);
     project.htdHeader = state.htdHeader;
@@ -3446,6 +3450,8 @@ void ApplyProjectToState(EditorState& state, core::legacy::LegacyMapProject&& pr
     state.walkPreviewDirty = true;
 
     state.legacyShmdSourceCount = static_cast<std::int32_t>(project.objects.Count());
+    state.legacySourceStem = project.sourceStem;
+    state.legacySourceFileNames = project.sourceFileNames;
     state.placementSet = std::move(project.objects);
     state.selectedObject = kNoObjectSelection;
     state.selectedObjects.clear();

@@ -114,7 +114,6 @@ std::expected<TextureLayerStack, std::string> ImportLegacyTextureSet(
             stack.Layer(idx).blend = ResampleBlendMap(*blendResult, stack.Width(), stack.Height());
             stack.Layer(idx).sourceBlend = std::move(*blendResult);
             stack.Layer(idx).sourceBmpBytes = ReadAllBytes(*resolvedPath);
-        stack.Layer(idx).sourceBlendPath = resolvedPath->string();
             stack.Layer(idx).sourceBlendPath = resolvedPath->string();
             continue;
         }
@@ -122,6 +121,7 @@ std::expected<TextureLayerStack, std::string> ImportLegacyTextureSet(
         stack.Layer(idx).sourceBlend = *blendResult;
         stack.Layer(idx).blend = std::move(*blendResult);
         stack.Layer(idx).sourceBmpBytes = ReadAllBytes(*resolvedPath);
+        stack.Layer(idx).sourceBlendPath = resolvedPath->string();
     }
 
     // Anfangszustand fehlender Masken merken (nach allen AddLayer-Aufrufen, die die Gewichte

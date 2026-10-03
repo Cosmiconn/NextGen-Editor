@@ -1,3 +1,7 @@
+## Map export — original file names and masks for Eld, Teva, Adl, EchoCave and Bera
+- Five more real maps saved unchanged through the editor: all written files byte-identical (Eld and EchoCave without terrain, Teva with 513x513 and 12 masks, Adl 951x476 with a mask used twice, Bera). Unreferenced leftovers in a map folder are not copied.
+- Fixed casing: the export wrote map files as `<map>.<ext>` and masks in the INI's spelling (`resmap/field/bera/moss.bmp` next to `Bera/Moss.BMP`, `Eld.shbd` instead of `eld.shbd`). On Windows these are the same files, on case-sensitive file systems they are not. The original names are now kept: the project remembers the loaded module names (`sourceFileNames`, also e.g. `darkVally.HTD`), and masks take folder and file name spelling from the loaded file. Under a different map name ("save as") `<map>.<ext>` is still used.
+
 ## Asset browser — rendered object previews
 - NIF thumbnails in the asset browser and the object properties showed only the model's first diffuse texture. They are now rendered models: a separate `NifMeshRenderer` draws the object into an offscreen framebuffer, the camera framed at an angle from above on the model's world bounds (`NifMeshRenderer::ObjectWorldBounds`, nearest LOD). If a model cannot be loaded, the old texture thumbnail is used. Example: `screenshots/object_previews.png` (lighthouse, tree, market stall, ship, fountain, Uruga airship).
 - Automation `nifpreview <out.ppm> <nif>...` writes previews as an image.
