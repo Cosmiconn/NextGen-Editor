@@ -159,6 +159,7 @@ void main() {
     else if (uViewMode == 4) color = vc;                                            // Terrain-Vertexfarbe
     else if (uViewMode == 5) color = vec3(fract(vWorldPos.xz / max(uBlockSize * 10.0, vec2(1.0))), 0.0); // Kachel-UV
     else if (uViewMode == 6) color = vec3(1.0);                                     // Terrain ist deckend
+    else if (uViewMode == 7) color = vec3(0.55) * (0.45 + 0.55 * diff);             // Terrain: kein LOD
     else color = baseColor * lighting;
     if (uFogEnabled && uViewMode == 0) {
         float d = length(vWorldPos - uCameraPos);

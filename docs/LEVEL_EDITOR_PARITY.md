@@ -46,7 +46,7 @@ Weitere Stufen am 03.10.2026 (jeweils mit Tests gegen echte NA2016-Daten, siehe 
 |---|---|
 | Kartenlicht | SHMD `GlobalLight`/`DirectionLight*`, `Fog`/`Frustum`, `BackGroundColor`; Vertex-Color-Bitmap; `<Karte>.conf` Bodenlicht + Glow (`docs/RENDERER.md`) |
 | Bildqualität | MSAA (bis 8×), Glow-Nachbearbeitung, orthografische Achsenansichten |
-| Debug-Ansichten | Lit, Unlit, Nur Licht, Normalen, Vertexfarben, UV0, Alpha, Wireframe |
+| Debug-Ansichten | Lit, Unlit, Nur Licht, Normalen, Vertexfarben, UV0, Alpha, LOD-Stufen, Wireframe |
 | Transform | Vertex-Snap (V), Actor-Snap, Surface Snap auf HTD + GroundObject, Alt-Duplizieren, Pivot Mitte/aktiv/frei (Alt+MMB) |
 | Auswahl | 3D-Rahmen auf NIF-Bounds, 2D-Rahmen/Lasso auf Kontaktgeometrie, jeweils Überschneidung oder vollständig innen |
 | Export-Sicherheit | IDM-Zuordnungen folgen der SHMD-Schreibreihenfolge (Indexsemantik an Rou belegt), Blendmaps in Originalauflösung |
@@ -60,7 +60,7 @@ Weiterhin offen – jeweils mit dem, was dafür fehlt:
 | Bedeutung der IDM-Gruppen (Neuberechnung statt Abbildung) | weitere Karten mit IDM + Client-Verhalten bei veränderten Gruppen |
 | SHBD-Bitsemantik jenseits „gesetzt = blockiert“, Spielnavigation | Server-/Client-Verhalten an Testkarten |
 | Skill-Editor: physische Existenz von KF/NIF/Effekt-Dateien | vollständiger Client-Datenbestand (ActiveSkillView-/Effekt-Tabellen + `resEffect`) |
-| Per-Viewport-Show-Flags, Mehrfach-Viewport-Layout, LOD-Stufen-Ansicht | reine Editorarbeit, nicht datenabhängig – nächste Ausbaustufe |
+| Per-Viewport-Show-Flags, Mehrfach-Viewport-Layout | reine Editorarbeit, nicht datenabhängig – nächste Ausbaustufe |
 | Windows/MSVC-Build dieser Stufe | Build auf dem Windows-Rechner (unter Linux/GCC 13 vollständig gebaut und getestet) |
 
 ---

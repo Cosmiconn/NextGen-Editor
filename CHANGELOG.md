@@ -1,3 +1,6 @@
+## Renderer — LOD level view
+- View mode "LOD levels (NiLODNode)": gray = no LOD node, green = nearest band (near 0), yellow = middle band (near < 2000), red = far band, i.e. which authored LOD range is currently displayed. Verified on Roumen (distant trees show their far band).
+
 ## Level Editor — actor snap and free pivot
 - Toolbar "Actor": while moving with the gizmo, the pivot snaps exactly onto another visible object's pivot within the grid-snap radius.
 - Alt + middle click places the gizmo pivot on the ground hit (HTD or target plane) for rotate/scale; it follows gizmo moves, is valid until the selection changes, and Alt + middle double-click resets it.

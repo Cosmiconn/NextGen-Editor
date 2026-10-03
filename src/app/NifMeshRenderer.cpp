@@ -87,7 +87,8 @@ in vec4 vColor;
 out vec4 FragColor;
 
 uniform vec3 uLightDir;
-uniform int uViewMode; // 0 beleuchtet, 1 unbeleuchtet, 2 nur Licht, 3 Normalen, 4 Vertexfarbe, 5 UV0, 6 Alpha
+uniform int uViewMode; // 0 beleuchtet, 1 unbeleuchtet, 2 nur Licht, 3 Normalen, 4 Vertexfarbe, 5 UV0, 6 Alpha, 7 LOD
+uniform vec3 uLodTint;  // LOD-Ansicht: Farbe des gerade gezeigten NiLODNode-Bereichs
 uniform bool uSceneLightFromMap; // SHMD GlobalLight/DirectionLight* vorhanden
 uniform vec3 uSceneAmbient;
 uniform vec3 uSunColor;
@@ -377,6 +378,8 @@ void main() {
         FragColor = vec4(fract(vUv0), 0.0, 1.0);                // UV0 (Rot = U, Grün = V)
     } else if (uViewMode == 6) {
         FragColor = vec4(vec3(alpha), 1.0);                     // effektives Alpha
+    } else if (uViewMode == 7) {
+        FragColor = vec4(uLodTint * (0.45 + 0.55 * ndl), 1.0);  // LOD-Bereich
     } else if (uAlphaTextureBlender) {
         FragColor = vec4(surface, alpha);
     } else {
@@ -719,6 +722,7 @@ void NifMeshRenderer::Init() {
     uniforms_.locModel = glGetUniformLocation(shaderProgram_, "uModel");
     uniforms_.locLightDir = glGetUniformLocation(shaderProgram_, "uLightDir");
     uniforms_.locViewMode = glGetUniformLocation(shaderProgram_, "uViewMode");
+    uniforms_.locLodTint = glGetUniformLocation(shaderProgram_, "uLodTint");
     uniforms_.locSceneLightFromMap = glGetUniformLocation(shaderProgram_, "uSceneLightFromMap");
     uniforms_.locSceneAmbient = glGetUniformLocation(shaderProgram_, "uSceneAmbient");
     uniforms_.locSunColor = glGetUniformLocation(shaderProgram_, "uSunColor");
@@ -2782,6 +2786,16 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
         }
 
         glUniformMatrix4fv(locModel, 1, GL_FALSE, item.model.m);
+        {
+            // LOD-Ansicht: grau = kein NiLODNode, grün = Detailstufe ab 0, gelb = mittlere, rot = ferne Stufe.
+            float tint[3] = {0.55f, 0.55f, 0.55f};
+            if (item.sub && item.sub->lodControlled) {
+                if (item.sub->lodNear <= 0.0f) { tint[0] = 0.25f; tint[1] = 0.85f; tint[2] = 0.35f; }
+                else if (item.sub->lodNear < 2000.0f) { tint[0] = 0.95f; tint[1] = 0.80f; tint[2] = 0.20f; }
+                else { tint[0] = 0.95f; tint[1] = 0.30f; tint[2] = 0.25f; }
+            }
+            glUniform3fv(uniforms_.locLodTint, 1, tint);
+        }
         glUniform1i(locParticleMode, item.particle ? 1 : 0);
         glUniform4f(locParticleColor, item.particleColor[0], item.particleColor[1],
                     item.particleColor[2], item.particleColor[3]);

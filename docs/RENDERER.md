@@ -68,7 +68,7 @@ Alle drei sind im Viewport-Menü **Anzeigen → Darstellung** einzeln abschaltba
 ## 3. Darstellungsoptionen (Viewport → Anzeigen → Darstellung)
 
 - Ansichtsmodus: Beleuchtet · Unbeleuchtet (nur Textur/Material) · Nur Licht · Normalen ·
-  Vertexfarben · UV0 · Alpha (Terrain- und NIF-Shader; Terrain zeigt bei UV die Kachel-UV und ist
+  Vertexfarben · UV0 · Alpha · LOD-Stufen (Terrain- und NIF-Shader; Terrain zeigt bei UV die Kachel-UV und ist
   bei Alpha deckend).
 - Terrain-Vertexfarben, Kartenlicht (SHMD), Hintergrundfarbe (SHMD), Nebel, Glow,
   Kantenglättung (Aus/2×/4×/8×), Drahtgitter.
