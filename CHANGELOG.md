@@ -1,3 +1,7 @@
+## Windows build check (MinGW cross-compile + Wine)
+- Fixed a Windows-only compile error: `SceneLighting.hpp` used a local named `far`, which `<windows.h>` defines as a macro (renamed to `viewDistance`).
+- Cross-built the complete project for Windows with MinGW-w64 GCC 13 (Editor.exe with the `_WIN32` dialog/WIC/icon paths, all tools and tests) and ran the 30 test binaries under Wine: 29/30 pass. `kfm_file` fails only at `SaveKfmFile`'s exclusive create (`std::ios::noreplace`), which MinGW maps to an fopen mode the msvcrt runtime under Wine lacks; MSVC's UCRT supports it. An MSVC build on the Windows machine remains the authoritative check.
+
 ## Level Editor — multiple viewports with per-viewport display options
 - View menu → Viewport layout: single, 2 side by side, or 2×2 like Unreal (perspective, top, south, east – the axis views orthographic around the current target). Each viewport keeps its own camera, view preset, view mode, wireframe, show flags (terrain, meshes, placeholders, NPCs, grid, stats, SHBD collision, game view) and marquee state.
 - The active viewport (yellow frame) holds its values live in the editor state, so picking, gizmo, shortcuts and the playtest work unchanged; a click activates a viewport before the click is processed. The playtest pawn appears in every viewport, its HUD only in the active one.

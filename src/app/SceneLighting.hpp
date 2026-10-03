@@ -41,10 +41,11 @@ inline SceneLighting SceneLightingFromEnvironment(const core::SceneEnvironment& 
         l.background[c] = std::clamp(env.backgroundColor[c], 0.0f, 1.0f);
     }
     l.backgroundFromMapData = true;
-    const float far = env.frustumFar > 1.0f && std::isfinite(env.frustumFar) ? env.frustumFar : 5000.0f;
+    // Bewusst nicht "far" nennen: <windows.h> definiert near/far als Makros.
+    const float viewDistance = env.frustumFar > 1.0f && std::isfinite(env.frustumFar) ? env.frustumFar : 5000.0f;
     const float depth = std::clamp(env.fog[0], 0.0f, 1.0f);
-    l.fogEnd = far;
-    l.fogStart = far * (1.0f - depth);
+    l.fogEnd = viewDistance;
+    l.fogStart = viewDistance * (1.0f - depth);
     if (l.fogEnd - l.fogStart < 1.0f) l.fogStart = l.fogEnd - 1.0f;
     return l;
 }
