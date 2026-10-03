@@ -1,0 +1,27 @@
+name: Aurelia Map Self-Test
+
+on:
+  push:
+    paths:
+      - 'tools/maps/generate_aurelia_75_125.py'
+      - 'tools/maps/test_aurelia_generator.py'
+      - '.github/workflows/aurelia-map.yml'
+  pull_request:
+    paths:
+      - 'tools/maps/generate_aurelia_75_125.py'
+      - 'tools/maps/test_aurelia_generator.py'
+      - '.github/workflows/aurelia-map.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  aurelia-self-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Compile Python generator
+        run: python3 -m py_compile tools/maps/generate_aurelia_75_125.py tools/maps/test_aurelia_generator.py
+      - name: Validate city layout and walk-grid generation
+        run: python3 tools/maps/test_aurelia_generator.py
