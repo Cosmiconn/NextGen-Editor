@@ -1,0 +1,4 @@
+Aurelia75 v2 technical render evidence
+Placements: 267
+Images were rasterized from the exact procedural mesh geometry written to the NIF assets and the exact SHMD placement list.
+No generative-image model is used in this rendering step.
