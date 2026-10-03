@@ -1,3 +1,8 @@
+## Renderer — SHMD scene lighting, fog and background
+- Terrain and NIF shaders use the map's SHMD environment (`GlobalLight`, `DirectionLightAmbient`, `DirectionLightDiffuse`) with fixed-function-style saturation; viewport background uses `BackGroundColor`; distance fog uses `Fog` (depth + color) and `Frustum` (Rou: sky-blue fog 0.071/0.541/0.929 over 2150–5000 units).
+- Fog is always on in the playtest, optional in the editor, off in orthographic views. Show → Rendering adds Map lighting, Background color and Fog toggles with the SHMD values as tooltips; persisted in `viewport.txt`; automation commands `maplighting`, `mapbackground`, `fog`.
+- New shared `src/app/SceneLighting.hpp` and `test_scene_lighting` against the real `Rou.shmd`. Maps without SHMD environment keep the previous editor lighting.
+
 ## Renderer — Fiesta map lighting data, glow, MSAA, view modes, orthographic views
 - Read map-local client render data (new core `core/legacy/MapRenderSettings` + `test_map_render_settings` against the real `Rou.conf` and `Rouvertexcolor2.bmp`): terrain vertex-color bitmap from `#VerTexColorTexture` (257×257 = HTD vertex grid, same row convention as blend BMPs) and `<Map>.conf` (`[WorldSetting] Ground_DL_Enable`, `[GlowScreenEffect]`), unknown entries kept raw.
 - Terrain renders the baked vertex colors as a vertex attribute (no 17th sampler beyond the GL 3.3 minimum of 16). Evidence on Roumen: the dark last bitmap row splits at exactly the 21 sea vertices of the last HTD row; other dark areas lie under the pavement GroundObject.

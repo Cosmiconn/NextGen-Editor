@@ -24,9 +24,14 @@ Behauptung über die Client-Formel.
 | Bodenlicht an/aus | `<Karte>.conf` `[WorldSetting] Ground_DL_Enable` | **gelesen**, schaltet gerichtetes Licht auf dem Terrain |
 | Glow | `<Karte>.conf` `[GlowScreenEffect]` Glowness/BlendFactor/GaussFactor/DownScaling/NumBlurring | **gelesen**, Nachbearbeitung als Näherung |
 | unbekannte `.conf`-Einträge | alle Abschnitte | **roh erhalten** (`MapRenderConfig::sections`) |
+| Umgebungslicht | `.shmd` `GlobalLight` (+ `DirectionLightAmbient`) – Rou: 0,792 grau | **gelesen**, Terrain + NIF |
+| Sonnenfarbe | `.shmd` `DirectionLightDiffuse` – Rou: 1,0 / 0,976 / 0,902 (warm) | **gelesen**, Terrain + NIF |
+| Hintergrund | `.shmd` `BackGroundColor` – Rou: 0 / 0,502 / 1,0 | **gelesen**, Löschfarbe des Viewports |
+| Nebel | `.shmd` `Fog` (Tiefe + Farbe, Rou: 0,57 · 0,071 / 0,541 / 0,929) und `Frustum` (5000) | **gelesen**, Nebel als Näherung (s. u.) |
 
 Kern: `core/legacy/MapRenderSettings` + `test_map_render_settings` (gegen die echten Dateien
-`Rou.conf` und `Rouvertexcolor2.bmp`).
+`Rou.conf` und `Rouvertexcolor2.bmp`); SHMD-Umgebung: `src/app/SceneLighting.hpp` +
+`test_scene_lighting` (gegen die echte `Rou.shmd`).
 
 ### Verifiziert an Roumen
 
@@ -40,9 +45,16 @@ Kern: `core/legacy/MapRenderSettings` + `test_map_render_settings` (gegen die ec
 
 ### Editor-Näherungen (nicht aus Client-Code belegt)
 
-- Terrain mit Vertexfarbe: `Farbe = Textur × Vertexfarbe × (0,62 + 0,55·N·L)`; bei
-  `Ground_DL_Enable=FALSE` ohne N·L-Anteil. Ohne Vertexfarbe bleibt `0,35 + 0,65·N·L`.
-- Lichtrichtung fest (-0,4, -1, -0,3); Lichtfarben weiß.
+- Mit SHMD-Umgebung (Standard): wie feste Funktionsbeleuchtung, auf 1 gesättigt.
+  Terrain: `Textur × Vertexfarbe × min(1, Umgebung + Sonne·N·L)` (bei `Ground_DL_Enable=FALSE`
+  ohne Sonnenanteil); NIF: `Oberfläche × min(1, Material-Ambient·Umgebung + Sonne·N·L)` +
+  Spekular + Emission.
+- Ohne SHMD-Umgebung (z. B. reine NIF-Karten): bisherige Editorformeln (`0,35 + 0,65·N·L` bzw.
+  mit Vertexfarbe `0,62 + 0,55·N·L`).
+- Lichtrichtung fest (-0,4, -1, -0,3) – die Daten enthalten nur Farben, keine Richtung.
+- Nebel: linear vom Auge aus, Start = `Frustum × (1 − Tiefe)`, Ende = `Frustum` (Lesart der Tiefe
+  wie Gamebryos `NiFogProperty`-Depth). Im Spieltest immer aktiv, im Editor optional (bei großem
+  Kameraabstand würde er sonst die ganze Karte einfärben), in Achsenansichten aus.
 - Glow: auf 1/`DownScaling` verkleinern, `NumBlurring` × separierbarer 9-Tap-Gauss
   (σ = 2·`GaussFactor`), Komposition `Szene + Glow · Glowness · BlendFactor`.
 
@@ -52,7 +64,8 @@ Alle drei sind im Viewport-Menü **Anzeigen → Darstellung** einzeln abschaltba
 
 - Ansichtsmodus: Beleuchtet · Unbeleuchtet (nur Textur/Material) · Nur Licht/Vertexfarbe · Normalen
   (Terrain- und NIF-Shader).
-- Terrain-Vertexfarben, Glow, Kantenglättung (Aus/2×/4×/8×), Drahtgitter.
+- Terrain-Vertexfarben, Kartenlicht (SHMD), Hintergrundfarbe (SHMD), Nebel, Glow,
+  Kantenglättung (Aus/2×/4×/8×), Drahtgitter.
 - Ansicht: Perspektive oder orthografische Achsenansichten (Oben/Süd/Nord/West/Ost). In Achsen-
   ansichten verschiebt Ziehen, das Rad zoomt; Drehen kehrt zur Perspektive zurück.
 
@@ -62,9 +75,8 @@ Alle drei sind im Viewport-Menü **Anzeigen → Darstellung** einzeln abschaltba
   Client benötigt (gleiche Kameraposition). Die Fixtures enthalten zudem nicht alle Roumen-
   Texturen/NIFs (`L3_RE.dds`, `L7_D.dds`, `grass_01.dds` und mehrere `resmap/nifs/Common/*`
   fehlen und erscheinen grau bzw. als Platzhalter).
-- Lichtrichtung/-farben, Nebel und Himmelsfarbe der Karte: keine Datenquelle in den Fixtures
-  gefunden (`EnvSet.nif` enthält nur Hintergrundgeometrie, keine Lichter). `NiFogProperty` wird
-  in NIFs weiterhin nur übersprungen.
+- Lichtrichtung: in SHMD/CONF nicht enthalten, daher fest. `NiFogProperty` in einzelnen NIFs
+  wird weiterhin nur übersprungen (der Kartennebel kommt aus der SHMD).
 - Proprietäre Shader, `NiTextureEffect`, `APPLY_HILIGHT2` und Partikelsimulation – siehe
   `docs/LEVEL_EDITOR_PARITY.md` §4.
 - Schatten werden nicht berechnet (die gebackenen Vertexfarben enthalten aber Terrain-Schatten).

@@ -662,6 +662,11 @@ struct EditorState {
     int viewportMsaaSamples = 4;   // 1 = aus
     bool viewportGlow = true;      // Glow aus <Karte>.conf
     bool viewportVertexColors = true;
+    // SHMD-Szenenumgebung (GlobalLight, DirectionLight*, Fog, BackGroundColor, Frustum).
+    bool sceneEnvironmentFromShmd = false;
+    bool viewportMapLighting = true;   // Licht aus der SHMD statt Editor-Standardlicht
+    bool viewportMapBackground = true; // BackGroundColor als Viewport-Hintergrund
+    bool viewportFog = false;          // Nebel im Editor (im Spieltest immer aktiv)
     std::vector<core::PlacedObject> objectClipboard;
     std::vector<std::string> objectClipboardLabels;
     std::vector<std::string> objectClipboardGroups;
@@ -1528,7 +1533,10 @@ void SaveViewportSettings(EditorState& state) {
         << "view_mode=" << state.viewportViewMode << "\n"
         << "msaa=" << state.viewportMsaaSamples << "\n"
         << "glow=" << (state.viewportGlow ? 1 : 0) << "\n"
-        << "vertex_colors=" << (state.viewportVertexColors ? 1 : 0) << "\n";
+        << "vertex_colors=" << (state.viewportVertexColors ? 1 : 0) << "\n"
+        << "map_lighting=" << (state.viewportMapLighting ? 1 : 0) << "\n"
+        << "map_background=" << (state.viewportMapBackground ? 1 : 0) << "\n"
+        << "fog=" << (state.viewportFog ? 1 : 0) << "\n";
 }
 
 void LoadViewportSettings(EditorState& state) {
@@ -1564,6 +1572,9 @@ void LoadViewportSettings(EditorState& state) {
         else if (key == "msaa") state.viewportMsaaSamples = std::clamp(std::atoi(value), 1, 8);
         else if (key == "glow") state.viewportGlow = b;
         else if (key == "vertex_colors") state.viewportVertexColors = b;
+        else if (key == "map_lighting") state.viewportMapLighting = b;
+        else if (key == "map_background") state.viewportMapBackground = b;
+        else if (key == "fog") state.viewportFog = b;
     }
 }
 
@@ -3286,6 +3297,7 @@ void RefreshShmdCategoryVisibility(EditorState& state) {
 // Verteilt ein frisch geöffnetes LegacyMapProject auf die einzelnen Editor-Zustandsfelder -
 // setzt außerdem alle Undo-Stacks/Auswahl/Dirty-Flags zurück (neue Karte, alte Historie ungültig).
 void ApplyProjectToState(EditorState& state, core::legacy::LegacyMapProject&& project, const std::filesystem::path& mapDir) {
+    state.sceneEnvironmentFromShmd = project.hasObjects && !project.objects.originalText.empty();
     const bool hadHeightmap = state.mapHasHeightmap;
     const bool hasHeightmap = project.hasHeightmap &&
         project.heightmap.Width() > 0 && project.heightmap.Height() > 0;
@@ -16286,6 +16298,27 @@ void DrawViewportShowFlagsMenu(EditorState& state) {
         else
             ImGui::SetTooltip("%s", L("Keine [GlowScreenEffect]-Daten für diese Karte.", "No [GlowScreenEffect] data for this map."));
     }
+    const bool hasEnv = state.sceneEnvironmentFromShmd;
+    renderChanged |= ImGui::MenuItem(L("Kartenlicht (SHMD)", "Map lighting (SHMD)"), nullptr, &state.viewportMapLighting, hasEnv);
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        const auto& env = state.placementSet.environment;
+        if (hasEnv)
+            ImGui::SetTooltip("GlobalLight %.3f %.3f %.3f\nDirectionLightAmbient %.3f %.3f %.3f\nDirectionLightDiffuse %.3f %.3f %.3f",
+                              env.globalLight[0], env.globalLight[1], env.globalLight[2],
+                              env.directionLightAmbient[0], env.directionLightAmbient[1], env.directionLightAmbient[2],
+                              env.directionLightDiffuse[0], env.directionLightDiffuse[1], env.directionLightDiffuse[2]);
+        else
+            ImGui::SetTooltip("%s", L("Keine SHMD-Umgebung geladen.", "No SHMD environment loaded."));
+    }
+    renderChanged |= ImGui::MenuItem(L("Hintergrundfarbe (SHMD)", "Background color (SHMD)"), nullptr,
+                                     &state.viewportMapBackground, hasEnv);
+    renderChanged |= ImGui::MenuItem(L("Nebel (SHMD Fog/Frustum)", "Fog (SHMD Fog/Frustum)"), nullptr, &state.viewportFog, hasEnv);
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) && hasEnv) {
+        const auto& env = state.placementSet.environment;
+        ImGui::SetTooltip(L("Fog %.2f · Farbe %.3f %.3f %.3f · Frustum %.0f\nIm Spieltest immer aktiv, in Achsenansichten aus.",
+                            "Fog %.2f · color %.3f %.3f %.3f · frustum %.0f\nAlways on in playtest, off in axis views."),
+                          env.fog[0], env.fog[1], env.fog[2], env.fog[3], env.frustumFar);
+    }
     if (ImGui::BeginMenu(L("Kantenglättung (MSAA)", "Anti-aliasing (MSAA)"))) {
         for (const int samples : {1, 2, 4, 8}) {
             const std::string label = samples == 1 ? std::string(L("Aus", "Off")) : std::to_string(samples) + "x";
@@ -16770,6 +16803,27 @@ void DrawPreview3DContent(EditorState& state) {
     state.nifMeshRenderer.SetViewMode(state.viewportViewMode);
     state.shmdCategoryMeshRenderer.SetViewMode(state.viewportViewMode);
     state.npcMeshRenderer.SetViewMode(state.viewportViewMode);
+    {
+        // SHMD-Umgebung -> Licht, Nebel, Hintergrund (Datenherkunft: docs/RENDERER.md).
+        app::SceneLighting lighting;
+        if (state.sceneEnvironmentFromShmd) {
+            const app::SceneLighting env = app::SceneLightingFromEnvironment(
+                state.placementSet.environment, state.placementSet.hasLightingFooter);
+            if (state.viewportMapLighting) lighting = env;
+            if (state.viewportMapBackground) {
+                std::copy(std::begin(env.background), std::end(env.background), std::begin(lighting.background));
+                lighting.backgroundFromMapData = true;
+            }
+            std::copy(std::begin(env.fogColor), std::end(env.fogColor), std::begin(lighting.fogColor));
+            lighting.fogStart = env.fogStart;
+            lighting.fogEnd = env.fogEnd;
+            lighting.fogEnabled = (state.viewportFog || state.playtestActive) && !state.camera.IsOrthographic();
+        }
+        state.renderer.SetSceneLighting(lighting);
+        state.nifMeshRenderer.SetSceneLighting(lighting);
+        state.shmdCategoryMeshRenderer.SetSceneLighting(lighting);
+        state.npcMeshRenderer.SetSceneLighting(lighting);
+    }
     state.renderer.BeginScene(state.camera, w, h, state.wireframe);
     // Immer neu aufbauen (statt Dirty-Tracking über alle Objekt-Mutationsstellen hinweg) -
     // bei ein paar Tausend Instanzen unproblematisch, aber garantiert nie veraltet (z.B. nach
@@ -20664,6 +20718,9 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
     else if (cmd == "surfacesnap") onOff(state.surfaceSnap);
     else if (cmd == "glow") onOff(state.viewportGlow);
     else if (cmd == "vertexcolors") onOff(state.viewportVertexColors);
+    else if (cmd == "maplighting") onOff(state.viewportMapLighting);
+    else if (cmd == "mapbackground") onOff(state.viewportMapBackground);
+    else if (cmd == "fog") onOff(state.viewportFog);
     else if (cmd == "viewmode") { in >> state.viewportViewMode; state.viewportViewMode = std::clamp(state.viewportViewMode, 0, 3); }
     else if (cmd == "msaa") { in >> state.viewportMsaaSamples; state.viewportMsaaSamples = std::clamp(state.viewportMsaaSamples, 1, 8); }
     else if (cmd == "status") { std::string t; std::getline(in >> std::ws, t); state.statusMessage = t; }

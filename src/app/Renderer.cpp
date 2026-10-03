@@ -51,6 +51,15 @@ uniform vec3 uLightDir;
 uniform bool uUseVertexColor; // Karte liefert eine Vertex-Color-Bitmap
 uniform bool uGroundLight;    // <Karte>.conf [WorldSetting] Ground_DL_Enable
 uniform int uViewMode;        // 0 beleuchtet, 1 unbeleuchtet, 2 nur Licht, 3 Normalen
+// SHMD-Szenenlicht (GlobalLight/DirectionLight*), Nebel (Fog/Frustum), siehe SceneLighting.hpp.
+uniform bool uSceneLightFromMap;
+uniform vec3 uSceneAmbient;
+uniform vec3 uSunColor;
+uniform bool uFogEnabled;
+uniform vec3 uFogColor;
+uniform float uFogStart;
+uniform float uFogEnd;
+uniform vec3 uCameraPos;
 uniform float uMinHeight;
 uniform float uMaxHeight;
 
@@ -130,16 +139,29 @@ void main() {
     //  mit Vertexfarbe: die Bitmap trägt Helligkeit und Farbton der Karte, das gerichtete
     //  Bodenlicht moduliert nur noch leicht und entfällt bei Ground_DL_Enable=FALSE.
     vec3 vc = uUseVertexColor ? vColor : vec3(1.0);
-    float lightTerm;
-    if (uUseVertexColor) lightTerm = uGroundLight ? (0.62 + 0.55 * diff) : 1.0;
-    else lightTerm = uGroundLight ? (0.35 + 0.65 * diff) : 1.0;
-    vec3 lighting = vc * lightTerm;
+    vec3 lighting;
+    if (uSceneLightFromMap) {
+        // Kartendaten (SHMD): Umgebungslicht + Sonnenfarbe * N·L, wie bei fester Funktions-
+        // beleuchtung auf 1 gesättigt; die Vertexfarbe ersetzt das Material (AMB_DIF).
+        vec3 light = uSceneAmbient + (uGroundLight ? uSunColor * diff : vec3(0.0));
+        lighting = vc * clamp(light, 0.0, 1.0);
+    } else {
+        float lightTerm;
+        if (uUseVertexColor) lightTerm = uGroundLight ? (0.62 + 0.55 * diff) : 1.0;
+        else lightTerm = uGroundLight ? (0.35 + 0.65 * diff) : 1.0;
+        lighting = vc * lightTerm;
+    }
 
     vec3 color;
     if (uViewMode == 1) color = baseColor;
     else if (uViewMode == 2) color = lighting;
     else if (uViewMode == 3) color = n * 0.5 + 0.5;
     else color = baseColor * lighting;
+    if (uFogEnabled && uViewMode == 0) {
+        float d = length(vWorldPos - uCameraPos);
+        float f = clamp((d - uFogStart) / max(uFogEnd - uFogStart, 1.0), 0.0, 1.0);
+        color = mix(color, uFogColor, f);
+    }
     FragColor = vec4(color, 1.0);
 }
 )";
@@ -621,7 +643,8 @@ void HeightmapRenderer::BeginScene(const OrbitCamera& camera, int width, int hei
     glViewport(0, 0, width, height);
     glEnable(GL_DEPTH_TEST);
     if (msaaFbo_ != 0) glEnable(GL_MULTISAMPLE);
-    glClearColor(0.10f, 0.11f, 0.13f, 1.0f);
+    glClearColor(lighting_.background[0], lighting_.background[1], lighting_.background[2], 1.0f);
+    eye_[0] = camera.EyeX(); eye_[1] = camera.EyeY(); eye_[2] = -camera.EyeZ();
     glClearStencil(0);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
@@ -639,7 +662,7 @@ void HeightmapRenderer::DrawTerrainMesh(const Mat4& viewProj, bool wireframe) {
     glUseProgram(shaderProgram_);
 
     glUniformMatrix4fv(glGetUniformLocation(shaderProgram_, "uMvp"), 1, GL_FALSE, viewProj.m);
-    glUniform3f(glGetUniformLocation(shaderProgram_, "uLightDir"), -0.4f, -1.0f, -0.3f);
+    glUniform3fv(glGetUniformLocation(shaderProgram_, "uLightDir"), 1, lighting_.lightDir);
     glUniform1f(glGetUniformLocation(shaderProgram_, "uMinHeight"), minHeight_);
     glUniform1f(glGetUniformLocation(shaderProgram_, "uMaxHeight"), maxHeight_);
     glUniform1i(glGetUniformLocation(shaderProgram_, "uUseTextures"), textureLayerCount_ > 0 ? 1 : 0);
@@ -649,6 +672,14 @@ void HeightmapRenderer::DrawTerrainMesh(const Mat4& viewProj, bool wireframe) {
     glUniform1i(glGetUniformLocation(shaderProgram_, "uUseVertexColor"), useVertexColor_ && vertexColorEnabled_ ? 1 : 0);
     glUniform1i(glGetUniformLocation(shaderProgram_, "uGroundLight"), groundLight_ ? 1 : 0);
     glUniform1i(glGetUniformLocation(shaderProgram_, "uViewMode"), viewMode_);
+    glUniform1i(glGetUniformLocation(shaderProgram_, "uSceneLightFromMap"), lighting_.fromMapData ? 1 : 0);
+    glUniform3fv(glGetUniformLocation(shaderProgram_, "uSceneAmbient"), 1, lighting_.ambient);
+    glUniform3fv(glGetUniformLocation(shaderProgram_, "uSunColor"), 1, lighting_.sun);
+    glUniform1i(glGetUniformLocation(shaderProgram_, "uFogEnabled"), lighting_.fogEnabled ? 1 : 0);
+    glUniform3fv(glGetUniformLocation(shaderProgram_, "uFogColor"), 1, lighting_.fogColor);
+    glUniform1f(glGetUniformLocation(shaderProgram_, "uFogStart"), lighting_.fogStart);
+    glUniform1f(glGetUniformLocation(shaderProgram_, "uFogEnd"), lighting_.fogEnd);
+    glUniform3f(glGetUniformLocation(shaderProgram_, "uCameraPos"), eye_[0], eye_[1], eye_[2]);
 
     glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
     glBindVertexArray(vao_);

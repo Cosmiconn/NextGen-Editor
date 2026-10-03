@@ -88,6 +88,13 @@ out vec4 FragColor;
 
 uniform vec3 uLightDir;
 uniform int uViewMode; // 0 beleuchtet, 1 unbeleuchtet, 2 nur Licht, 3 Normalen
+uniform bool uSceneLightFromMap; // SHMD GlobalLight/DirectionLight* vorhanden
+uniform vec3 uSceneAmbient;
+uniform vec3 uSunColor;
+uniform bool uFogEnabled;
+uniform vec3 uFogColor;
+uniform float uFogStart;
+uniform float uFogEnd;
 uniform vec3 uCameraPos;
 uniform mat4 uView;
 uniform vec3 uAmbientColor;
@@ -344,6 +351,13 @@ void main() {
 
     vec3 ambient = surface * materialAmbient * 0.28;
     vec3 diffuse = surface * (0.22 + 0.78 * ndl);
+    if (uSceneLightFromMap) {
+        // Kartendaten (SHMD): Material-Ambient * Umgebungslicht + Sonne * N·L, wie bei fester
+        // Funktionsbeleuchtung auf 1 gesättigt (Materialdiffus steckt bereits in surface).
+        vec3 lightSum = clamp(materialAmbient * uSceneAmbient + uSunColor * ndl, 0.0, 1.0);
+        ambient = vec3(0.0);
+        diffuse = surface * lightSum;
+    }
     vec3 specular = uSpecularColor * specPower * glossMask;
     vec3 emissive = materialEmission + glow;
     // NIF TextureType::TEX_ENVIRONMENT_MAP is additive to the ordinary textured,
@@ -361,6 +375,11 @@ void main() {
         FragColor = vec4(surface, alpha);
     } else {
         FragColor = vec4(ambient + diffuse + specular + emissive + environment, alpha);
+    }
+    if (uFogEnabled && uViewMode == 0 && !uParticleMode) {
+        float d = length(vWorldPos - uCameraPos);
+        float f = clamp((d - uFogStart) / max(uFogEnd - uFogStart, 1.0), 0.0, 1.0);
+        FragColor.rgb = mix(FragColor.rgb, uFogColor, f);
     }
 }
 )";
@@ -694,6 +713,13 @@ void NifMeshRenderer::Init() {
     uniforms_.locModel = glGetUniformLocation(shaderProgram_, "uModel");
     uniforms_.locLightDir = glGetUniformLocation(shaderProgram_, "uLightDir");
     uniforms_.locViewMode = glGetUniformLocation(shaderProgram_, "uViewMode");
+    uniforms_.locSceneLightFromMap = glGetUniformLocation(shaderProgram_, "uSceneLightFromMap");
+    uniforms_.locSceneAmbient = glGetUniformLocation(shaderProgram_, "uSceneAmbient");
+    uniforms_.locSunColor = glGetUniformLocation(shaderProgram_, "uSunColor");
+    uniforms_.locFogEnabled = glGetUniformLocation(shaderProgram_, "uFogEnabled");
+    uniforms_.locFogColor = glGetUniformLocation(shaderProgram_, "uFogColor");
+    uniforms_.locFogStart = glGetUniformLocation(shaderProgram_, "uFogStart");
+    uniforms_.locFogEnd = glGetUniformLocation(shaderProgram_, "uFogEnd");
     uniforms_.locCameraPos = glGetUniformLocation(shaderProgram_, "uCameraPos");
     uniforms_.locAmbientColor = glGetUniformLocation(shaderProgram_, "uAmbientColor");
     uniforms_.locDiffuseColor = glGetUniformLocation(shaderProgram_, "uDiffuseColor");
@@ -2243,8 +2269,15 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
 
     glUniformMatrix4fv(locViewProj, 1, GL_FALSE, viewProj.m);
     glUniformMatrix4fv(locView, 1, GL_FALSE, view.m);
-    glUniform3f(locLightDir, -0.4f, -1.0f, -0.3f);
+    glUniform3fv(locLightDir, 1, lighting_.lightDir);
     glUniform1i(uniforms_.locViewMode, viewMode_);
+    glUniform1i(uniforms_.locSceneLightFromMap, lighting_.fromMapData ? 1 : 0);
+    glUniform3fv(uniforms_.locSceneAmbient, 1, lighting_.ambient);
+    glUniform3fv(uniforms_.locSunColor, 1, lighting_.sun);
+    glUniform1i(uniforms_.locFogEnabled, lighting_.fogEnabled ? 1 : 0);
+    glUniform3fv(uniforms_.locFogColor, 1, lighting_.fogColor);
+    glUniform1f(uniforms_.locFogStart, lighting_.fogStart);
+    glUniform1f(uniforms_.locFogEnd, lighting_.fogEnd);
     glUniform3f(locCameraPos, camera.EyeX(), camera.EyeY(), -camera.EyeZ());
     glEnable(GL_DEPTH_TEST);
 

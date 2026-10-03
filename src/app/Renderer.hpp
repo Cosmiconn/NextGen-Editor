@@ -11,6 +11,7 @@
 // Höhen-Farbverlauf zurück.
 
 #include "Camera.hpp"
+#include "SceneLighting.hpp"
 #include "mapeditor/core/Heightmap.hpp"
 #include "mapeditor/core/TextureLayerStack.hpp"
 #include "mapeditor/core/legacy/MapRenderSettings.hpp"
@@ -96,6 +97,8 @@ public:
     [[nodiscard]] int MaxMsaaSamples() const noexcept { return maxMsaaSamples_; }
     // 0 beleuchtet, 1 unbeleuchtet (nur Textur), 2 nur Licht/Vertexfarbe, 3 Normalen.
     void SetViewMode(int mode) { viewMode_ = mode; }
+    // SHMD-Szenenlicht, Nebel und Hintergrundfarbe (siehe SceneLighting.hpp).
+    void SetSceneLighting(const SceneLighting& lighting) { lighting_ = lighting; }
     // Zeichnet eine zusätzliche Textur halbtransparent über das zuletzt in BeginTopDownScene
     // gezeichnete Bild (z.B. die Block&Walk-Heatmap) - muss VOR EndTopDownScene aufgerufen
     // werden, im selben Frame.
@@ -173,6 +176,8 @@ private:
     core::legacy::GlowScreenEffect glow_;
     bool glowEnabled_ = true;
     int viewMode_ = 0;
+    SceneLighting lighting_;
+    float eye_[3] = {0.0f, 0.0f, 0.0f};
     // MSAA- und Nachbearbeitungsziele
     int msaaSamples_ = 4;
     int maxMsaaSamples_ = 1;
