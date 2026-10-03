@@ -13,8 +13,8 @@ enum class ProjectOutputSide {
 
 // Enforces physical separation between the writable project root and the configured
 // read-only Fiesta source installations. Empty source roots are ignored so a project can
-// be configured incrementally. The project root itself may never equal or live below a
-// configured Client/Server source root.
+// be configured incrementally. Project and source roots must not overlap in either
+// direction, including through already-resolvable symlinks/junctions.
 std::expected<void, std::string> ValidateProjectOutputRoots(
     const std::filesystem::path& projectRoot,
     const std::filesystem::path& clientSourceRoot,
@@ -35,7 +35,8 @@ std::expected<std::filesystem::path, std::string> ProjectOutputForSource(
     ProjectOutputSide side);
 
 // Resolve a known runtime-relative path below <project>/Client or <project>/Server.
-// Absolute paths and paths containing ".." are rejected.
+// Absolute paths, paths containing "..", and physically escaping symlink/junction paths
+// are rejected.
 std::expected<std::filesystem::path, std::string> ProjectOutputForRelative(
     const std::filesystem::path& projectRoot,
     ProjectOutputSide side,

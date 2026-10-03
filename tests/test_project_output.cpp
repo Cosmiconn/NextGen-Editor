@@ -66,20 +66,46 @@ int main() {
         project, client, serverFile, ProjectOutputSide::Client);
     assert(!escapedSource);
 
-    // The writable project tree itself must never live inside either read-only
-    // installation. Otherwise valid project-relative writes would still modify the source.
+    // The writable project tree and either read-only source must be physically disjoint in
+    // BOTH directions. Otherwise <Project>/Client could itself be the configured source.
     assert(ValidateProjectOutputRoots(project, client, server));
     assert(!ValidateProjectOutputRoots(client, client, server));
     assert(!ValidateProjectOutputRoots(client / "EditorProject", client, server));
     assert(!ValidateProjectOutputRoots(server / "EditorProject", client, server));
+    assert(!ValidateProjectOutputRoots(project, project / "Client", server));
+    assert(!ValidateProjectOutputRoots(project, client, project / "Server"));
 
     auto nestedProjectSource = ProjectOutputForSource(
         client / "EditorProject", client, clientFile, ProjectOutputSide::Client);
     assert(!nestedProjectSource);
 
+    const auto nestedSourceRoot = project / "NestedClient";
+    const auto nestedSourceFile = nestedSourceRoot / "ressystem" / "ItemInfo.shn";
+    std::filesystem::create_directories(nestedSourceFile.parent_path());
+    std::ofstream(nestedSourceFile).put('n');
+    auto sourceInsideProject = ProjectOutputForSource(
+        project, nestedSourceRoot, nestedSourceFile, ProjectOutputSide::Client);
+    assert(!sourceInsideProject);
+
     auto parent = EnsureProjectOutputParent(*npcOut);
     assert(parent);
     assert(std::filesystem::is_directory(npcOut->parent_path()));
+
+    // Existing symlinks/junction-like paths must not let the project Client tree physically
+    // escape the project. Symlink creation can be unavailable on Windows without privileges;
+    // in that environment the portable root-overlap checks above still run.
+    const auto outside = base / "OutsideWritable";
+    const auto symlinkProject = base / "SymlinkProject";
+    std::filesystem::create_directories(outside);
+    std::filesystem::create_directories(symlinkProject);
+    ec.clear();
+    std::filesystem::create_directory_symlink(outside, symlinkProject / "Client", ec);
+    if (!ec) {
+        auto escapedBySymlink = ProjectOutputForRelative(
+            symlinkProject, ProjectOutputSide::Client,
+            std::filesystem::path("ressystem") / "ItemInfo.shn");
+        assert(!escapedBySymlink);
+    }
 
     std::filesystem::remove_all(base, ec);
     std::cout << "PROJECT OUTPUT OK\n";

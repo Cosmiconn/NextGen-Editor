@@ -111,10 +111,12 @@ std::expected<void, std::string> ValidateProjectOutputRoots(
              std::pair<const char*, std::filesystem::path>{"Client", clientSourceRoot},
              std::pair<const char*, std::filesystem::path>{"Server", serverSourceRoot}}) {
         if (sourceRoot.empty()) continue;
-        if (IsSameOrDescendant(projectRoot, sourceRoot)) {
+        if (IsSameOrDescendant(projectRoot, sourceRoot) ||
+            IsSameOrDescendant(sourceRoot, projectRoot)) {
             return std::unexpected(
-                "Projektordner liegt innerhalb der read-only " + std::string(label) +
-                "-Quelle: " + projectRoot.string());
+                "Projektordner und read-only " + std::string(label) +
+                "-Quelle ueberlappen physisch: " + projectRoot.string() +
+                " <-> " + sourceRoot.string());
         }
     }
     return {};
@@ -131,7 +133,21 @@ std::expected<std::filesystem::path, std::string> ProjectOutputForRelative(
     if (!IsSafeRelative(relative))
         return std::unexpected("Unsicherer relativer Projektpfad: " + relativePath.string());
 
-    return (projectRoot / SideName(side) / relative).lexically_normal();
+    const auto sideRoot = (projectRoot / SideName(side)).lexically_normal();
+    // Resolve existing path components before accepting the target. This prevents a
+    // project-side Client/Server directory (or a nested component) from being a symlink/
+    // junction that physically points outside the project tree and back into a source install.
+    if (!IsSameOrDescendant(sideRoot, projectRoot))
+        return std::unexpected(
+            "Projekt-" + std::string(SideName(side)) +
+            "-Ordner verlaesst physisch den Projektordner: " + sideRoot.string());
+
+    const auto target = (sideRoot / relative).lexically_normal();
+    if (!IsSameOrDescendant(target, sideRoot))
+        return std::unexpected(
+            "Projekt-Ausgabepfad verlaesst physisch den " + std::string(SideName(side)) +
+            "-Projektbaum: " + target.string());
+    return target;
 }
 
 std::expected<std::filesystem::path, std::string> ProjectOutputForSource(
