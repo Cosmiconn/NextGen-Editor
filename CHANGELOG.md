@@ -1,3 +1,8 @@
+## Block&Walk — object footprints checked against the original SHBD
+- Measured on Roumen: inside the footprints the editor derives, 92-99 % of the cells are blocked in the original SHBD for buildings and props (house02 97.5 %, shops 93-99 %, GuildHall 95.5 %, boxes 99.9 %). Decoration and floating objects are walkable in the game: weed 23 %, wool 2 %, the ship on the sea 16 %, Uruga's airship 9 %. "Block visible footprints" used to block them anyway.
+- New option, on by default: "Only block models that block in the original". Models whose footprints are mostly walkable in the SHBD loaded with the map are excluded; models without a comparison (newly placed) are still blocked. Cells blocked by the editor that are also blocked in the original: Roumen 74.8 % -> 86.1 %, Uruga 61.6 % -> 84.4 %. The tooltip lists the excluded models with their percentage.
+- Automation `footprintstats` prints these numbers per model.
+
 ## Level Editor — new terrain brushes
 - New brushes besides raise, lower, smooth and flatten:
   - Noise: coherent value noise with wavelength and seed.

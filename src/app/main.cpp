@@ -585,6 +585,12 @@ struct EditorState {
     bool walkPreviewDirty = true;
     bool walkFootprintPreviewActive = false;
     bool walkFootprintPreviewBlocked = true;
+    // Sperren nur für Modelle, deren Grundflächen im beim Laden vorhandenen SHBD überwiegend
+    // gesperrt sind (Gebäude ja, Gras/Schiffe nein). Modelle ohne Vergleich werden gesperrt.
+    bool walkFootprintOnlyBlocking = true;
+    core::WalkGrid walkGridAtLoad;
+    std::string modelBlockStatsKey;
+    std::unordered_map<std::string, std::pair<std::size_t, std::size_t>> modelBlockStats; // Modell -> (Zellen, davon gesperrt)
     char walkLegacyPath[512] = "";
     int walkLegacyWidth = 512;
     int walkLegacyHeight = 512;
@@ -3434,6 +3440,8 @@ void ApplyProjectToState(EditorState& state, core::legacy::LegacyMapProject&& pr
     state.renderer.LoadTerrainTextures(state.textureStack, mapDir);
 
     state.walkGrid = std::move(project.walkGrid);
+    state.walkGridAtLoad = state.walkGrid;
+    state.modelBlockStatsKey.clear();
     state.shbdHeader = project.shbdHeader;
     state.walkPreviewDirty = true;
 
@@ -4275,6 +4283,8 @@ void DrawAdvancedFileOps(EditorState& state) {
                     static_cast<std::uint32_t>(state.walkLegacyHeight), &state.shbdHeader);
                 if (result) {
                     state.walkGrid = std::move(*result);
+                    state.walkGridAtLoad = state.walkGrid;
+                    state.modelBlockStatsKey.clear();
                     ClearMapHistory(state);
                     state.walkPreviewDirty = true;
                     state.statusMessage = "Legacy-shbd importiert: " + std::string(state.walkLegacyPath);
@@ -13960,6 +13970,7 @@ void DrawCommandPalette(EditorState& state) {
 
 static void DrawVisibilityPanel(EditorState& state);
 static std::vector<std::vector<std::pair<float, float>>> CollectVisibleObjectFootprints(EditorState& state);
+static const std::unordered_map<std::string, std::pair<std::size_t, std::size_t>>& ModelBlockStats(EditorState& state);
 static void StampObjectFootprints(EditorState& state, bool blocked);
 static void RefreshObjectVisibility(EditorState& state);
 static bool IsObjectHidden(const EditorState& state, std::size_t i);
@@ -14171,6 +14182,25 @@ void DrawToolsContent(EditorState& state) {
         }
         ImGui::PopStyleColor(2);
 
+        UI::Checkbox(L("Nur Modelle sperren, die im Original blockieren","Only block models that block in the original"),
+                     &state.walkFootprintOnlyBlocking);
+        if (state.walkFootprintOnlyBlocking) {
+            const auto& stats = ModelBlockStats(state);
+            std::vector<std::pair<std::string, int>> excluded;
+            for (const auto& [model, agg] : stats)
+                if (agg.first > 0 && agg.second * 2 < agg.first)
+                    excluded.emplace_back(model, static_cast<int>(100.0 * agg.second / agg.first));
+            std::sort(excluded.begin(), excluded.end());
+            ImGui::TextDisabled(L("%zu Modelle ausgenommen (im Original überwiegend begehbar)",
+                                  "%zu models excluded (mostly walkable in the original)"), excluded.size());
+            if (!excluded.empty() && ImGui::IsItemHovered()) {
+                std::string tip;
+                for (std::size_t k = 0; k < excluded.size() && k < 30; ++k)
+                    tip += std::filesystem::path(excluded[k].first).filename().string() + "  " + std::to_string(excluded[k].second) + " %\n";
+                if (excluded.size() > 30) tip += "...";
+                ImGui::SetTooltip("%s", tip.c_str());
+            }
+        }
         if (state.walkFootprintPreviewActive) {
             const auto previewPolygons = CollectVisibleObjectFootprints(state);
             const ImVec4 previewColor = state.walkFootprintPreviewBlocked
@@ -14882,13 +14912,66 @@ const EditorState::ObjectFootprint& GetOrComputeFootprint(EditorState& state, co
 // Bounding-Box), gedreht/skaliert/verschoben wie das Objekt im 3D-View.
 static std::vector<std::pair<float, float>> ObjectFootprintWorldPolygon(EditorState& state, const core::PlacedObject& obj);
 
+// Zellen einer konvexen Grundfläche im Walk-Gitter zählen (gesamt, davon in `reference` gesperrt).
+static std::pair<std::size_t, std::size_t> CountFootprintCells(core::WalkGrid& scratch, const core::WalkGrid& reference,
+                                                               const std::vector<std::pair<float, float>>& polygon) {
+    core::WalkUndoPatch patch; std::vector<std::uint64_t> seen;
+    core::ApplyWalkConvexPolygon(scratch, polygon, true, patch, seen);
+    const std::uint32_t cols = scratch.Cols(), rows = scratch.Rows();
+    float minX = 1e30f, minZ = 1e30f, maxX = -1e30f, maxZ = -1e30f;
+    for (const auto& [px, pz] : polygon) { minX = std::min(minX, px); maxX = std::max(maxX, px); minZ = std::min(minZ, pz); maxZ = std::max(maxZ, pz); }
+    std::size_t cells = 0, blocked = 0;
+    if (cols > 0 && rows > 0) {
+        const auto cx0 = static_cast<std::uint32_t>(std::clamp(minX / core::WalkGrid::kCellSize, 0.0f, cols - 1.0f));
+        const auto cx1 = static_cast<std::uint32_t>(std::clamp(maxX / core::WalkGrid::kCellSize, 0.0f, cols - 1.0f));
+        const auto cz0 = static_cast<std::uint32_t>(std::clamp(minZ / core::WalkGrid::kCellSize, 0.0f, rows - 1.0f));
+        const auto cz1 = static_cast<std::uint32_t>(std::clamp(maxZ / core::WalkGrid::kCellSize, 0.0f, rows - 1.0f));
+        for (std::uint32_t cz = cz0; cz <= cz1; ++cz)
+            for (std::uint32_t cx = cx0; cx <= cx1; ++cx)
+                if (scratch.CellBlocked(cx, cz)) { ++cells; if (reference.CellBlocked(cx, cz)) ++blocked; }
+    }
+    core::RevertWalkPatch(scratch, patch);
+    return {cells, blocked};
+}
+
+// Je Modell: Zellen aller Grundflächen und Anteil, der im beim Laden vorhandenen SHBD gesperrt
+// war. Belegt an Roumen: Gebäude 92-99 %, Gras 23 %, Schiff auf dem Meer 16 %.
+static const std::unordered_map<std::string, std::pair<std::size_t, std::size_t>>& ModelBlockStats(EditorState& state) {
+    const std::string key = std::string(state.legacySaveStem) + "|" + std::to_string(state.placementSet.Count()) + "|" +
+                            std::to_string(state.walkGridAtLoad.Width()) + "x" + std::to_string(state.walkGridAtLoad.Height());
+    if (key == state.modelBlockStatsKey) return state.modelBlockStats;
+    state.modelBlockStatsKey = key;
+    state.modelBlockStats.clear();
+    if (state.walkGridAtLoad.Width() == 0) return state.modelBlockStats;
+    core::WalkGrid scratch(state.walkGridAtLoad.Width(), state.walkGridAtLoad.Height(), 0);
+    for (std::size_t i = 0; i < state.placementSet.Count(); ++i) {
+        const auto& obj = state.placementSet.At(i);
+        if (obj.sourceIndex < 0) continue; // neu platzierte Objekte haben keinen Vergleich im Original
+        const auto polygon = ObjectFootprintWorldPolygon(state, obj);
+        if (polygon.size() < 3) continue;
+        const auto [cells, blocked] = CountFootprintCells(scratch, state.walkGridAtLoad, polygon);
+        auto& agg = state.modelBlockStats[LowerAscii(obj.modelPath)];
+        agg.first += cells; agg.second += blocked;
+    }
+    return state.modelBlockStats;
+}
+
+// true, wenn das Modell laut Originaldaten nicht blockiert (< 50 % der Grundflächenzellen gesperrt).
+static bool ModelWalkableInSource(EditorState& state, const std::string& modelPath) {
+    const auto& stats = ModelBlockStats(state);
+    const auto it = stats.find(LowerAscii(modelPath));
+    return it != stats.end() && it->second.first > 0 && it->second.second * 2 < it->second.first;
+}
+
 static std::vector<std::vector<std::pair<float, float>>> CollectVisibleObjectFootprints(EditorState& state) {
     std::vector<std::vector<std::pair<float, float>>> polygons;
     RefreshObjectVisibility(state);
     polygons.reserve(state.placementSet.Count() + state.shmdCategoryRenderSet.Count());
+    const bool filter = state.walkFootprintOnlyBlocking && state.walkFootprintPreviewBlocked;
 
     for (std::size_t i = 0; i < state.placementSet.Count(); ++i) {
         if (IsObjectHidden(state, i)) continue;
+        if (filter && ModelWalkableInSource(state, state.placementSet.At(i).modelPath)) continue;
         auto polygon = ObjectFootprintWorldPolygon(state, state.placementSet.At(i));
         if (polygon.size() >= 3) polygons.push_back(std::move(polygon));
     }
@@ -21578,6 +21661,69 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         state.paintSettings.radius = r; state.walkSettings.radius = r;
     }
     else if (cmd == "layer") { int l = 0; in >> l; state.selectedLayer = l; }
+    else if (cmd == "footprintstats") {
+        // Vergleicht jede Objekt-Grundfläche mit dem geladenen (Original-)SHBD: Anteil gesperrter
+        // Zellen innerhalb der Grundfläche, je Modell aggregiert.
+        struct Agg { std::size_t objects = 0, cells = 0, blocked = 0; bool fallback = false; };
+        std::map<std::string, Agg> byModel;
+        std::size_t totalCells = 0, totalBlocked = 0, noPolygon = 0;
+        const std::uint32_t cols = state.walkGrid.Cols(), rows = state.walkGrid.Rows();
+        std::vector<char> covered(static_cast<std::size_t>(cols) * rows, 0);
+        core::WalkGrid scratch(state.walkGrid.Width(), state.walkGrid.Height(), 0);
+        RefreshObjectVisibility(state);
+        for (std::size_t i = 0; i < state.placementSet.Count(); ++i) {
+            const auto& obj = state.placementSet.At(i);
+            const auto polygon = ObjectFootprintWorldPolygon(state, obj);
+            if (polygon.size() < 3) { ++noPolygon; continue; }
+            core::WalkUndoPatch patch; std::vector<std::uint64_t> seen;
+            core::ApplyWalkConvexPolygon(scratch, polygon, true, patch, seen);
+            float minX = 1e30f, minZ = 1e30f, maxX = -1e30f, maxZ = -1e30f;
+            for (const auto& [px, pz] : polygon) { minX = std::min(minX, px); maxX = std::max(maxX, px); minZ = std::min(minZ, pz); maxZ = std::max(maxZ, pz); }
+            const auto cx0 = static_cast<std::uint32_t>(std::clamp(minX / core::WalkGrid::kCellSize, 0.0f, cols - 1.0f));
+            const auto cx1 = static_cast<std::uint32_t>(std::clamp(maxX / core::WalkGrid::kCellSize, 0.0f, cols - 1.0f));
+            const auto cz0 = static_cast<std::uint32_t>(std::clamp(minZ / core::WalkGrid::kCellSize, 0.0f, rows - 1.0f));
+            const auto cz1 = static_cast<std::uint32_t>(std::clamp(maxZ / core::WalkGrid::kCellSize, 0.0f, rows - 1.0f));
+            auto& agg = byModel[obj.modelPath];
+            ++agg.objects;
+            agg.fallback = agg.fallback || !state.nifMeshRenderer.HasRealMesh(i);
+            for (std::uint32_t cz = cz0; cz <= cz1; ++cz)
+                for (std::uint32_t cx = cx0; cx <= cx1; ++cx) {
+                    if (!scratch.CellBlocked(cx, cz)) continue;
+                    ++agg.cells; ++totalCells;
+                    covered[static_cast<std::size_t>(cz) * cols + cx] = 1;
+                    if (state.walkGrid.CellBlocked(cx, cz)) { ++agg.blocked; ++totalBlocked; }
+                }
+            core::RevertWalkPatch(scratch, patch);
+        }
+        std::size_t gridBlocked = 0, gridBlockedCovered = 0;
+        for (std::uint32_t cz = 0; cz < rows; ++cz)
+            for (std::uint32_t cx = 0; cx < cols; ++cx)
+                if (state.walkGrid.CellBlocked(cx, cz)) {
+                    ++gridBlocked;
+                    if (covered[static_cast<std::size_t>(cz) * cols + cx]) ++gridBlockedCovered;
+                }
+        std::printf("[footprint] objects %zu, without polygon %zu, cells in footprints %zu, of which blocked %zu (%.1f%%); "
+                    "blocked cells in SHBD %zu, covered by footprints %zu (%.1f%%)\n",
+                    state.placementSet.Count(), noPolygon, totalCells, totalBlocked,
+                    totalCells ? 100.0 * totalBlocked / totalCells : 0.0, gridBlocked, gridBlockedCovered,
+                    gridBlocked ? 100.0 * gridBlockedCovered / gridBlocked : 0.0);
+        {
+            std::size_t keptCells = 0, keptBlocked = 0, keptModels = 0, droppedModels = 0;
+            for (const auto& [m, a] : byModel) {
+                if (ModelWalkableInSource(state, m)) { ++droppedModels; continue; }
+                ++keptModels; keptCells += a.cells; keptBlocked += a.blocked;
+            }
+            std::printf("[footprint] mit Filter: %zu Modelle gesperrt, %zu ausgenommen; %zu Zellen, davon im Original gesperrt %.1f%%\n",
+                        keptModels, droppedModels, keptCells, keptCells ? 100.0 * keptBlocked / keptCells : 0.0);
+        }
+        std::vector<std::pair<std::string, Agg>> sorted(byModel.begin(), byModel.end());
+        std::sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b) { return a.second.cells > b.second.cells; });
+        for (std::size_t k = 0; k < sorted.size() && k < 25; ++k)
+            std::printf("[footprint] %-48s n=%3zu cells=%6zu blocked=%5.1f%%%s\n", sorted[k].first.c_str(), sorted[k].second.objects,
+                        sorted[k].second.cells, sorted[k].second.cells ? 100.0 * sorted[k].second.blocked / sorted[k].second.cells : 0.0,
+                        sorted[k].second.fallback ? " (ohne NIF)" : "");
+        std::fflush(stdout);
+    }
     else if (cmd == "selectall") SelectAllNormalObjects(state);
     else if (cmd == "select") { int id = -1; in >> id; state.selectedObjects = {id}; state.selectedObject = id; state.objectGizmoMatrixValid = false; }
     else if (cmd == "focus") FocusCurrentSceneSelection(state);
