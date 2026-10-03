@@ -115,6 +115,31 @@ int main(int argc, char** argv) {
         Check(SameObjects(*idm, *shmd, out, edited, -1), "Duplikat: alle Zuordnungen zeigen weiter auf dieselben Objekte");
     }
 
+    // --- Uruga-Fall: IDM verweist auf mehr Objekte als die SHMD enthält (Urg: 4828 vs 2243) ---
+    {
+        ObjectSpatialIndex stale;
+        stale.hash = "stale";
+        stale.headerValue = 10;
+        stale.groups = {{{0, 3, 7}}, {{1, 2, 9}}, {{5, 6, 8}}, {{4}}};
+        const std::vector<std::int32_t> identity = {0, 1, 2, 3, 4};
+        SpatialIndexRemapReport sr;
+        const auto same = RemapSpatialIndex(stale, identity, &sr, 5);
+        bool equal = same.headerValue == stale.headerValue && same.groups.size() == stale.groups.size();
+        for (std::size_t g = 0; equal && g < stale.groups.size(); ++g) equal = same.groups[g].indices == stale.groups[g].indices;
+        Check(equal && sr.identity && sr.unattributedIndices == 5,
+              "Uruga-Fall unverändert: Indizes ohne SHMD-Objekt (5..9) bleiben, Ergebnis identisch");
+        const auto noCount = RemapSpatialIndex(stale, identity, &sr);
+        Check(!sr.identity && sr.droppedReferences == 5, "ohne Objektanzahl gingen diese 5 Verweise verloren (alter Fehler)");
+        (void)noCount;
+        // Objekt 1 gelöscht: 2,3,4 rücken auf 1,2,3; 5..9 bleiben.
+        const auto removed = RemapSpatialIndex(stale, {0, 2, 3, 4}, &sr, 5);
+        Check(removed.groups[0].indices == std::vector<std::int32_t>{0, 2, 7} &&
+              removed.groups[1].indices == std::vector<std::int32_t>{1, 9} &&
+              removed.groups[2].indices == std::vector<std::int32_t>{5, 6, 8} &&
+              removed.groups[3].indices == std::vector<std::int32_t>{3} && sr.droppedReferences == 1,
+              "Uruga-Fall mit gelöschtem Objekt: SHMD-Indizes verschoben, übrige unverändert");
+    }
+
     if (g_failures) { std::fprintf(stderr, "%d Fehler\n", g_failures); return 1; }
     std::printf("Alle IDM-Remap-Tests bestanden.\n");
     return 0;

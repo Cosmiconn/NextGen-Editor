@@ -1,5 +1,7 @@
 #include "mapeditor/core/legacy/LegacyIdmAid.hpp"
 
+#include <set>
+
 #include <algorithm>
 #include <cstring>
 #include <fstream>
@@ -168,12 +170,19 @@ std::expected<void, std::string> SerializeLegacyAid(const ZoneMetadata& zones, c
 
 ObjectSpatialIndex RemapSpatialIndex(const ObjectSpatialIndex& original,
                                      const std::vector<std::int32_t>& writtenSourceIndex,
-                                     SpatialIndexRemapReport* report) {
+                                     SpatialIndexRemapReport* report,
+                                     std::int32_t sourceObjectCount) {
     SpatialIndexRemapReport r;
-    // Altindex -> neue Schreibposition (nur für erhaltene Original-Objekte).
+    // Altindex -> neue Schreibposition (nur für erhaltene Original-Objekte). Indizes ab
+    // sourceObjectCount gehören zu keinem Objekt der geladenen SHMD (Uruga) -> unverändert.
     std::int32_t maxOld = -1;
+    std::set<std::int32_t> unattributed;
     for (const auto& g : original.groups)
-        for (const std::int32_t i : g.indices) maxOld = std::max(maxOld, i);
+        for (const std::int32_t i : g.indices) {
+            if (sourceObjectCount >= 0 && i >= sourceObjectCount) { unattributed.insert(i); continue; }
+            maxOld = std::max(maxOld, i);
+        }
+    r.unattributedIndices = unattributed.size();
     std::vector<std::int32_t> newPos(static_cast<std::size_t>(std::max<std::int32_t>(maxOld + 1, 0)), -1);
     for (std::size_t k = 0; k < writtenSourceIndex.size(); ++k) {
         const std::int32_t src = writtenSourceIndex[k];
@@ -193,6 +202,11 @@ ObjectSpatialIndex RemapSpatialIndex(const ObjectSpatialIndex& original,
         SpatialIndexGroup ng;
         ng.indices.reserve(g.indices.size());
         for (const std::int32_t i : g.indices) {
+            if (sourceObjectCount >= 0 && i >= sourceObjectCount) {
+                ng.indices.push_back(i);
+                maxNew = std::max(maxNew, i);
+                continue;
+            }
             const std::int32_t p = (i >= 0 && static_cast<std::size_t>(i) < newPos.size()) ? newPos[static_cast<std::size_t>(i)] : -1;
             if (p < 0) { ++r.droppedReferences; continue; }
             ng.indices.push_back(p);

@@ -23,17 +23,24 @@ std::expected<void, std::string> SerializeLegacyIdm(const ObjectSpatialIndex& in
 // der Gruppen selbst (vermutlich Sichtbarkeitsmengen) ist nicht belegt; deshalb wird NICHT neu
 // berechnet, sondern nur jede erhaltene Objekt-Zuordnung auf die neue Schreibposition abgebildet.
 //
+// Uruga (NA2016) widerlegt eine allgemeine Gültigkeit: Urg.idm verweist auf 4828 Objekte
+// (0..4827), Urg.shmd enthält nur 2243 - der IDM wurde nach Änderungen an der SHMD offenbar nicht
+// neu erzeugt. Indizes >= sourceObjectCount (Objektanzahl der geladenen SHMD) lassen sich keinem
+// Objekt zuordnen und werden deshalb unverändert durchgereicht statt verworfen.
+//
 // writtenSourceIndex[k] = sourceIndex des Objekts an Schreibposition k (-1 = neu).
 struct SpatialIndexRemapReport {
     std::size_t removedObjects = 0;    // Objekte des Originals, die nicht mehr existieren
     std::size_t droppedReferences = 0; // dadurch entfernte Gruppeneinträge
     std::size_t movedObjects = 0;      // erhaltene Objekte mit neuer Schreibposition
     std::size_t uncoveredObjects = 0;  // neue Objekte ohne IDM-Zuordnung (wie im Original-Client)
+    std::size_t unattributedIndices = 0; // Indizes ohne SHMD-Objekt (>= sourceObjectCount), unverändert
     bool identity = true;              // unverändert -> Ergebnis byte-gleich zum Original
 };
 [[nodiscard]] ObjectSpatialIndex RemapSpatialIndex(const ObjectSpatialIndex& original,
                                                    const std::vector<std::int32_t>& writtenSourceIndex,
-                                                   SpatialIndexRemapReport* report = nullptr);
+                                                   SpatialIndexRemapReport* report = nullptr,
+                                                   std::int32_t sourceObjectCount = -1);
 
 // -----------------------------------------------------------------------------------------
 // .aid: uint32 areaCount, followed by all area records.

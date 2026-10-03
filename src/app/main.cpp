@@ -717,6 +717,7 @@ struct EditorState {
     char legacyIdmPath[512] = "";
     char legacyAidPath[512] = "";
     core::ObjectSpatialIndex legacySpatialIndex;
+    std::int32_t legacyShmdSourceCount = -1; // Objektanzahl der geladenen SHMD (IDM-Remap)
     bool hasLegacySpatialIndex = false;
     core::legacy::ZoneMetadata legacyZoneMetadata;
     std::vector<core::legacy::PreservedMapFile> preservedMapFiles;
@@ -1942,7 +1943,8 @@ core::legacy::LegacyMapProject BuildProjectFromState(const EditorState& state,
         std::vector<std::int32_t> writtenSources;
         for (const std::size_t i : core::legacy::ShmdWrittenOrder(state.placementSet))
             writtenSources.push_back(state.placementSet.At(i).sourceIndex);
-        project.spatialIndex = core::legacy::RemapSpatialIndex(state.legacySpatialIndex, writtenSources, idmReport);
+        project.spatialIndex = core::legacy::RemapSpatialIndex(state.legacySpatialIndex, writtenSources, idmReport,
+                                                               state.legacyShmdSourceCount);
     } else {
         project.spatialIndex = state.legacySpatialIndex;
     }
@@ -3433,6 +3435,7 @@ void ApplyProjectToState(EditorState& state, core::legacy::LegacyMapProject&& pr
     state.shbdHeader = project.shbdHeader;
     state.walkPreviewDirty = true;
 
+    state.legacyShmdSourceCount = static_cast<std::int32_t>(project.objects.Count());
     state.placementSet = std::move(project.objects);
     state.selectedObject = kNoObjectSelection;
     state.selectedObjects.clear();
@@ -4299,6 +4302,7 @@ void DrawAdvancedFileOps(EditorState& state) {
                 std::filesystem::path(state.legacyShmdPath));
             auto result = core::legacy::ParseLegacyShmd(inputPath);
             if (result) {
+                state.legacyShmdSourceCount = static_cast<std::int32_t>(result->Count());
                 state.placementSet = std::move(*result);
                 state.selectedObject = kNoObjectSelection;
                 state.selectedObjects.clear();
