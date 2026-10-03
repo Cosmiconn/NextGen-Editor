@@ -1,3 +1,9 @@
+## Export safety — IDM indices follow the SHMD write order
+- Established the IDM index semantics on NA2016 Roumen: indices are SHMD objects in file order. `headerValue` 1078 = max index + 1, and the boundary falls 221 objects into the last old block (`jun_grass01`); the 502 objects behind it were appended later and are not in the shipped `Rou.idm`, so the client tolerates uncovered objects.
+- `PlacedObject::sourceIndex` (editor-only, never written) records the loaded SHMD position; copies/duplicates/pastes reset it. `ShmdWrittenOrder` exposes the writer's model-block order; `RemapSpatialIndex` maps every surviving assignment to the new write position, drops deleted objects, keeps groups sorted and the `max+1` header invariant, and is the identity (byte-identical) for unchanged maps.
+- Map save and the advanced IDM export use the remap; the save status reports remapped/removed/uncovered counts. Group contents (likely visibility sets) are not recomputed.
+- `test_idm_remap` against the real `Rou.idm`/`Rou.shmd`: index-semantics evidence, byte-identical identity, delete and mid-block duplicate keep every mapping on the same object (model + position).
+
 ## Renderer — SHMD scene lighting, fog and background
 - Terrain and NIF shaders use the map's SHMD environment (`GlobalLight`, `DirectionLightAmbient`, `DirectionLightDiffuse`) with fixed-function-style saturation; viewport background uses `BackGroundColor`; distance fog uses `Fog` (depth + color) and `Frustum` (Rou: sky-blue fog 0.071/0.541/0.929 over 2150–5000 units).
 - Fog is always on in the playtest, optional in the editor, off in orthographic views. Show → Rendering adds Map lighting, Background color and Fog toggles with the SHMD values as tooltips; persisted in `viewport.txt`; automation commands `maplighting`, `mapbackground`, `fog`.

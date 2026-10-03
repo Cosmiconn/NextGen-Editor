@@ -330,6 +330,10 @@ target_include_directories(test_scene_lighting PRIVATE src/app)
 target_link_libraries(test_scene_lighting PRIVATE mapeditor_core)
 add_test(NAME scene_lighting COMMAND test_scene_lighting ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/Rou.shmd)
 
+add_executable(test_idm_remap tests/test_idm_remap.cpp)
+target_link_libraries(test_idm_remap PRIVATE mapeditor_core)
+add_test(NAME idm_remap COMMAND test_idm_remap ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures)
+
 add_executable(test_manual tests/test_manual.cpp)
 target_link_libraries(test_manual PRIVATE mapeditor_core)
 add_test(NAME manual COMMAND test_manual)

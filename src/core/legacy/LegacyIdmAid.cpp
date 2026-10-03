@@ -1,5 +1,6 @@
 #include "mapeditor/core/legacy/LegacyIdmAid.hpp"
 
+#include <algorithm>
 #include <cstring>
 #include <fstream>
 #include <vector>
@@ -163,6 +164,49 @@ std::expected<void, std::string> SerializeLegacyAid(const ZoneMetadata& zones, c
     }
     if (!out) return std::unexpected("AID-Schreibfehler");
     return {};
+}
+
+ObjectSpatialIndex RemapSpatialIndex(const ObjectSpatialIndex& original,
+                                     const std::vector<std::int32_t>& writtenSourceIndex,
+                                     SpatialIndexRemapReport* report) {
+    SpatialIndexRemapReport r;
+    // Altindex -> neue Schreibposition (nur für erhaltene Original-Objekte).
+    std::int32_t maxOld = -1;
+    for (const auto& g : original.groups)
+        for (const std::int32_t i : g.indices) maxOld = std::max(maxOld, i);
+    std::vector<std::int32_t> newPos(static_cast<std::size_t>(std::max<std::int32_t>(maxOld + 1, 0)), -1);
+    for (std::size_t k = 0; k < writtenSourceIndex.size(); ++k) {
+        const std::int32_t src = writtenSourceIndex[k];
+        if (src < 0) { ++r.uncoveredObjects; continue; }
+        if (static_cast<std::size_t>(src) >= newPos.size()) { ++r.uncoveredObjects; continue; } // nie im IDM
+        if (newPos[static_cast<std::size_t>(src)] >= 0) { ++r.uncoveredObjects; continue; }     // doppelte Herkunft
+        newPos[static_cast<std::size_t>(src)] = static_cast<std::int32_t>(k);
+        if (static_cast<std::int32_t>(k) != src) ++r.movedObjects;
+    }
+    for (const std::int32_t p : newPos) if (p < 0) ++r.removedObjects;
+
+    ObjectSpatialIndex out;
+    out.hash = original.hash; // Bedeutung ungeklärt -> unverändert übernehmen
+    std::int32_t maxNew = -1;
+    out.groups.reserve(original.groups.size());
+    for (const auto& g : original.groups) {
+        SpatialIndexGroup ng;
+        ng.indices.reserve(g.indices.size());
+        for (const std::int32_t i : g.indices) {
+            const std::int32_t p = (i >= 0 && static_cast<std::size_t>(i) < newPos.size()) ? newPos[static_cast<std::size_t>(i)] : -1;
+            if (p < 0) { ++r.droppedReferences; continue; }
+            ng.indices.push_back(p);
+            maxNew = std::max(maxNew, p);
+        }
+        // Im Original sind alle Gruppen aufsteigend sortiert - nach dem Abbilden wieder herstellen.
+        std::sort(ng.indices.begin(), ng.indices.end());
+        out.groups.push_back(std::move(ng));
+    }
+    r.identity = r.removedObjects == 0 && r.movedObjects == 0 && r.droppedReferences == 0;
+    // Invariante des Originals: alle Indizes < headerValue (Rou: max 1077, header 1078).
+    out.headerValue = r.identity ? original.headerValue : std::max(maxNew + 1, 0);
+    if (report) *report = r;
+    return out;
 }
 
 } // namespace theseed::mapeditor::core::legacy

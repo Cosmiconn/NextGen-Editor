@@ -7,6 +7,7 @@
 #include <expected>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace theseed::mapeditor::core::legacy {
 
@@ -42,6 +43,11 @@ namespace theseed::mapeditor::core::legacy {
 // -----------------------------------------------------------------------------------------
 
 std::expected<ObjectPlacementSet, std::string> ParseLegacyShmd(const std::filesystem::path& file);
+
+// Reihenfolge, in der SerializeLegacyShmd die Objekte schreibt: nach Modellpfad gruppiert, Blöcke
+// in Reihenfolge des ersten Auftretens, innerhalb eines Blocks in Listenreihenfolge. Liefert die
+// internen Objektindizes in Schreibreihenfolge (Grundlage für die IDM-Indizes).
+[[nodiscard]] std::vector<std::size_t> ShmdWrittenOrder(const ObjectPlacementSet& set);
 std::expected<void, std::string> SerializeLegacyShmd(const ObjectPlacementSet& set, const std::filesystem::path& file);
 
 } // namespace theseed::mapeditor::core::legacy

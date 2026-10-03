@@ -1876,7 +1876,8 @@ void SyncProjectRoots(EditorState& state) {
 
 // Baut aus dem aktuellen Editor-Zustand ein LegacyMapProject für SaveLegacyMap zusammen -
 // Kehrseite dessen, was ApplyProjectToState (siehe unten) beim Öffnen verteilt.
-core::legacy::LegacyMapProject BuildProjectFromState(const EditorState& state) {
+core::legacy::LegacyMapProject BuildProjectFromState(const EditorState& state,
+                                                     core::legacy::SpatialIndexRemapReport* idmReport = nullptr) {
     core::legacy::LegacyMapProject project;
     project.ini = state.legacyIniMeta;
     project.preservedFiles = state.preservedMapFiles;
@@ -1890,7 +1891,17 @@ core::legacy::LegacyMapProject BuildProjectFromState(const EditorState& state) {
     project.shbdHeader = state.shbdHeader;
     project.objects = state.placementSet;
     project.hasObjects = true;
-    project.spatialIndex = state.legacySpatialIndex;
+    // IDM-Indizes zeigen auf die SHMD-Schreibreihenfolge. Nach Löschen/Duplizieren verschiebt sich
+    // diese; RemapSpatialIndex bildet jede erhaltene Zuordnung auf die neue Position ab (unverändert
+    // -> byte-gleich). Neue Objekte bleiben wie im Original-Client ohne IDM-Eintrag.
+    if (state.hasLegacySpatialIndex) {
+        std::vector<std::int32_t> writtenSources;
+        for (const std::size_t i : core::legacy::ShmdWrittenOrder(state.placementSet))
+            writtenSources.push_back(state.placementSet.At(i).sourceIndex);
+        project.spatialIndex = core::legacy::RemapSpatialIndex(state.legacySpatialIndex, writtenSources, idmReport);
+    } else {
+        project.spatialIndex = state.legacySpatialIndex;
+    }
     project.hasSpatialIndex = state.hasLegacySpatialIndex;
     project.zone = state.legacyZoneMetadata;
     project.hasZone = state.hasLegacyZoneMetadata;
@@ -1963,7 +1974,8 @@ bool SaveLegacyMapProject(EditorState& state) {
     }
 
     std::snprintf(state.legacySaveDir, sizeof(state.legacySaveDir), "%s", outputDir.string().c_str());
-    auto project = BuildProjectFromState(state);
+    core::legacy::SpatialIndexRemapReport idmReport;
+    auto project = BuildProjectFromState(state, &idmReport);
     auto result = core::legacy::SaveLegacyMap(project, outputDir, state.legacySaveStem);
     if (!result) {
         state.statusMessage = L("Fehler: ","Error: ") + result.error();
@@ -1975,6 +1987,15 @@ bool SaveLegacyMapProject(EditorState& state) {
     const auto ini = outputDir / (std::string(state.legacySaveStem) + ".ini");
     TouchRecentMap(state, ini.string());
     state.statusMessage = std::string(T("workspace.savedas")) + outputDir.string();
+    if (state.hasLegacySpatialIndex && !idmReport.identity) {
+        state.statusMessage += std::string(L("\nIDM angepasst: ", "\nIDM updated: ")) +
+            std::to_string(idmReport.movedObjects) + L(" Objekte neu zugeordnet, ", " objects remapped, ") +
+            std::to_string(idmReport.removedObjects) + L(" gelöschte entfernt (", " deleted removed (") +
+            std::to_string(idmReport.droppedReferences) + L(" Einträge). ", " entries). ") +
+            std::to_string(idmReport.uncoveredObjects) +
+            L(" Objekte ohne IDM-Eintrag (wie im Original-Client, z. B. Rou: 502).",
+              " objects without IDM entry (as in the original client, e.g. Rou: 502).");
+    }
     return true;
 }
 
@@ -2690,6 +2711,7 @@ void PasteObjectClipboard(EditorState& state) {
     for (std::size_t i=0;i<state.objectClipboard.size();++i) {
         auto obj=state.objectClipboard[i];
         obj.posX+=offset; obj.posZ+=offset;
+        obj.sourceIndex=-1; // Kopie ist ein neues Objekt (keine IDM-Zuordnung)
         const int id=static_cast<int>(state.placementSet.AddObject(std::move(obj)));
         ids.push_back(id);
         state.objectEditorHidden.push_back(0); state.objectEditorLocked.push_back(0);
@@ -2720,6 +2742,7 @@ void DuplicateSelectedObjects(EditorState& state, std::optional<float> offsetOve
     std::vector<int> ids;
     for (auto& copy : copies) {
         copy.object.posX+=offset; copy.object.posZ+=offset;
+        copy.object.sourceIndex=-1; // Kopie ist ein neues Objekt (keine IDM-Zuordnung)
         const int id=static_cast<int>(state.placementSet.AddObject(std::move(copy.object)));
         ids.push_back(id);
         state.objectEditorHidden.push_back(0); state.objectEditorLocked.push_back(0);
@@ -4265,7 +4288,9 @@ void DrawAdvancedFileOps(EditorState& state) {
                 state.project, std::filesystem::path(state.legacyIdmPath));
             if (!target) state.statusMessage = "Export blockiert: " + target.error();
             else {
-                auto result = core::legacy::SerializeLegacyIdm(state.legacySpatialIndex, *target);
+                // Dieselbe IDM-Pflege wie beim Speichern der Karte (Zuordnungen folgen der SHMD-Reihenfolge).
+                const auto remapped = BuildProjectFromState(state).spatialIndex;
+                auto result = core::legacy::SerializeLegacyIdm(remapped, *target);
                 state.statusMessage = result ? "Legacy-idm als Projekt-Override exportiert nach: " + target->string()
                                              : "Export fehlgeschlagen: " + result.error();
             }

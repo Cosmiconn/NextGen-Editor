@@ -34,6 +34,10 @@ struct PlacedObject {
     float posX = 0.0f, posY = 0.0f, posZ = 0.0f;
     float rotX = 0.0f, rotY = 0.0f, rotZ = 0.0f, rotW = 1.0f; // Quaternion
     float scale = 1.0f;
+    // Reiner Editor-Zustand: Position dieses Objekts in der beim Laden gelesenen SHMD (Dateireihen-
+    // folge), -1 für neu angelegte/duplizierte Objekte. Wird NICHT geschrieben; dient dazu, die
+    // IDM-Indizes beim Export auf die neue Schreibreihenfolge abzubilden (RemapSpatialIndex).
+    std::int32_t sourceIndex = -1;
 };
 
 class ObjectPlacementSet {

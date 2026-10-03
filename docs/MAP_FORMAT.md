@@ -145,6 +145,15 @@ Objektliste) — die genaue 2D-Zellzuordnung der 1178 Gruppen (z. B. auf ein Ras
 **nicht verifiziert**, der Editor behandelt sie daher als flache, geordnete Liste statt ein
 2D-Grid-Objekt zu erzwingen.
 
+**Nachtrag 03.10.2026 – Indexsemantik belegt:** Die Indizes verweisen auf die SHMD-Objekte in
+Dateireihenfolge. `headerValue` 1078 = höchster Index + 1; die 1580-Objekt-SHMD enthält dahinter
+genau die später angehängten Objekte: die Grenze liegt 221 Objekte tief im Block
+`jun_grass01` (Indizes 857..1497), danach folgen 420 weitere Gräser, `lightbug`, drei Steinhaufen-
+Modelle, `stonepile3_7` und `AuctionHouse01`. Der ausgelieferte Client toleriert also Objekte ohne
+IDM-Eintrag. Unter der Annahme „Index = Objektposition“ sind die Gruppen räumlich nicht kohärent
+(mittlere Ausdehnung 3710 Einheiten) – vermutlich Sichtbarkeitsmengen; deshalb keine Neuberechnung.
+Der Export bildet erhaltene Zuordnungen auf die neue Schreibreihenfolge ab (`RemapSpatialIndex`).
+
 ### `Rou.shmd` — Vollständig verifiziert (Byte-für-Byte-Roundtrip)
 Menschenlesbares, Token-basiertes Format (nicht zeilenkritisch, robust gegenüber CRLF/LF):
 `shmd0_5` (Versionskennung) → generische Kategorie-Blöcke (`Sky`/`Water`/`GroundObject` in der

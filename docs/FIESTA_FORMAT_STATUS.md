@@ -15,7 +15,7 @@ Messzahlen: [v13 Gesamtprüfung](V13_VALIDATION.md) und [v14 KFM-Prüfung](V14_V
 | HTD/HTDG | Höhenraster, Header und Trailer mit explizit zugeordneten INI-Dimensionen | Ohne passende INI keine geratenen Dimensionen; Header-/Trailer-Bedeutung und genaue HTDG-Funktion nicht vollständig geklärt. |
 | SHBD | Raster und beide Headerfelder gelesen und bytegenau zurückgeschrieben | Bedeutung aller Bits und spielseitige Navigation nicht vollständig verifiziert. |
 | SHMD | Kategorien, Umgebung, alle Objektgruppen und Transformationen; Variante ohne Licht-Fußteil; unveränderte Texte bytegenau erhalten | Bestehende NaN-Transformationen bleiben erhalten und werden vom NIF-Renderer ausgelassen. Bearbeitete Dateien werden kanonisch geschrieben. |
-| IDM | Gruppen und Objektindizes gelesen und bytegenau zurückgeschrieben; begrenzte Zähler vor Speicherallokation | Index wird nach Verschieben/Löschen von Objekten noch nicht neu berechnet. |
+| IDM | Gruppen und Objektindizes gelesen und bytegenau zurückgeschrieben; begrenzte Zähler vor Speicherallokation. **Indexsemantik belegt:** Indizes = SHMD-Objekte in Dateireihenfolge (Rou: 0..1077 sind exakt ein Präfix, Grenze 221 Objekte tief im letzten alten Block). Beim Export werden alle erhaltenen Zuordnungen auf die neue Schreibreihenfolge abgebildet (Löschen, Duplikate mitten im Modellblock); unverändert byte-gleich (`test_idm_remap`) | Gruppenbedeutung (vermutlich Sichtbarkeitsmengen, nicht räumlich kohärent) nicht belegt → keine Neuberechnung; neue Objekte bleiben ohne Eintrag, wie im ausgelieferten Client (Rou: 502 von 1580). Hash unverändert übernommen. |
 | AID | Alle Zonen, 48-/56-Byte-Datensätze, Original-Namenspuffer; jede Zone auswählbar und editierbar | Geometrische Bedeutung der Werte über den belegten Datensatzaufbau hinaus nicht abschließend erforscht. |
 | SHN | Vorhandener Tabellen-Codec; Testasserts auch in Release aktiv | Unbekannte Feldbedeutungen je Tabelle bleiben Forschungsarbeit. |
 | QuestData.shn | Eigenständiger Quest-Codec für Header 6 mit Größen-/Slotprüfungen | Der ältere Header 2 in `Client/shader/ressystem/QuestData.shn` bleibt ausdrücklich nicht unterstützt. |
@@ -48,7 +48,9 @@ Der Pixelheader wird ausgewertet; ein vorher verschobener Block wird nicht durch
 
 ## Grenzen des vollständigen Kartenexports
 
-Erhaltene Begleitdateien und IDM-Indizes können nach inhaltlichen Kartenänderungen veraltet sein.
+Erhaltene Begleitdateien können nach inhaltlichen Kartenänderungen veraltet sein. IDM-Zuordnungen
+werden beim Export auf die neue SHMD-Reihenfolge abgebildet; ihr Inhalt (Gruppen) wird nicht neu
+berechnet, verschobene Objekte behalten also ihre bisherigen Gruppen.
 Der Export ist deshalb noch kein Generator sämtlicher vom Spiel benötigter abgeleiteter Daten.
 Externe Asset-Verweise, Vertexcolor-Dateien und resampelte Blendmaps verhindern außerdem eine
 pauschale Zusage, dass jede exportierte Karte eigenständig oder vollständig byteidentisch ist.
