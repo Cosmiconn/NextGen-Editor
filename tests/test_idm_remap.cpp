@@ -8,6 +8,7 @@
 #include "mapeditor/core/ObjectPlacementIO.hpp"
 #include "mapeditor/core/legacy/LegacyIdmAid.hpp"
 
+#include <algorithm>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>

@@ -67,7 +67,7 @@ int main(int argc, char** argv) {
         for (std::size_t i = 0; i < vc->rgb.size(); i += 3)
             for (int c = 0; c < 3; ++c) sum[c] += vc->rgb[i + static_cast<std::size_t>(c)];
         const double n = static_cast<double>(vc->rgb.size() / 3);
-        std::printf("         Mittelwert RGB %.1f / %.1f / %.1f\n", sum[0] / n, sum[1] / n, sum[2] / n);
+        std::printf("         Mittelwert RGB %.1f / %.1f / %.1f\n", static_cast<double>(sum[0]) / n, static_cast<double>(sum[1]) / n, static_cast<double>(sum[2]) / n);
         Check(sum[2] > sum[1] && sum[1] > sum[0], "Vertex-Color-BMP: kühler Farbton (B > G > R), wie in den Daten gemessen");
     }
     Check(!ReadBmpRgb(fixtures / "Rou.conf").has_value(), "Nicht-BMP wird abgelehnt");

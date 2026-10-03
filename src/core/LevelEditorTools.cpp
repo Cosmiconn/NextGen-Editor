@@ -1,10 +1,14 @@
 #include "mapeditor/core/LevelEditorTools.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <charconv>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <numeric>
+#include <string>
+#include <vector>
 
 namespace theseed::mapeditor::core::level {
 
