@@ -1,3 +1,15 @@
+## Level Editor — new terrain brushes
+- New brushes besides raise, lower, smooth and flatten:
+  - Noise: coherent value noise with wavelength and seed.
+  - Terrace: pulls heights to the nearest step.
+  - Erode: thermal erosion; material slides down from spots steeper than the allowed slope, volume is preserved.
+  - Sharpen: the opposite of smooth, like Unreal's "Detail".
+  - Ramp: two clicks give an even incline; width = radius, soft edge = half radius.
+- Flatten takes the target height at the start of the stroke (like Unreal, can be switched off) and can raise only, lower only or both.
+- Falloff shapes for all brushes: smooth, linear, spherical, tip, constant.
+- Core: `BrushMode::Noise/Terrace/Erode/Sharpen/Ramp`, `BrushFalloff`, `FlattenSide`, `ApplyRamp`. `test_heightmap_core` checks every effect and an exact undo.
+- Checked in the 3D viewport on Roumen: a ramp through the mountain gives 595.5 at the midpoint between 515 and 676, with linear quarter points (555 / 636).
+
 ## Level Editor — terrain, texture and Block&Walk brushes in the 3D viewport
 - Sculpting, texture painting and Block&Walk painting worked only in the 2D view. The brush step is now one shared function (`ApplyBrushAtWorld`) used by the 2D view and the 3D viewport. In the 3D viewport LMB paints on the terrain under the cursor (like Unreal's landscape mode), Alt+LMB still orbits, RMB+WASD still flies, and orthographic views no longer pan with LMB in these modes.
 - Verified with real mouse input on Roumen: raise brush 480.8 -> 891.6 under the cursor, layer weight 0 -> 1, walk cell walkable -> blocked.

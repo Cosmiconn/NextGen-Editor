@@ -557,6 +557,8 @@ struct EditorState {
     std::optional<ObjectEditSnapshot> pendingObjectEdit;
     bool pendingObjectEditChanged = false;
     core::BrushMode brushMode = core::BrushMode::Raise;
+    bool flattenPickOnStroke = true; // Einebnen: Zielhöhe beim Strichbeginn unter dem Pinsel aufnehmen (wie Unreal)
+    std::optional<std::array<float, 3>> rampStart; // Rampe: erster Klick (x, Höhe, z)
     core::BrushSettings brush;
 
     core::TextureLayerStack textureStack{1024, 1024}; // feinere Malauflösung; unabhängig von Heightmap
@@ -5321,6 +5323,18 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
                 state.brushMode=core::BrushMode::Smooth;
             if (ImGui::MenuItem(L("Einebnen","Flatten"), nullptr, state.brushMode==core::BrushMode::Flatten, terrainEnabled))
                 state.brushMode=core::BrushMode::Flatten;
+            if (ImGui::MenuItem(L("Rauschen","Noise"), nullptr, state.brushMode==core::BrushMode::Noise, terrainEnabled))
+                state.brushMode=core::BrushMode::Noise;
+            if (ImGui::MenuItem(L("Terrassen","Terrace"), nullptr, state.brushMode==core::BrushMode::Terrace, terrainEnabled))
+                state.brushMode=core::BrushMode::Terrace;
+            if (ImGui::MenuItem(L("Erosion","Erode"), nullptr, state.brushMode==core::BrushMode::Erode, terrainEnabled))
+                state.brushMode=core::BrushMode::Erode;
+            if (ImGui::MenuItem(L("Schärfen","Sharpen"), nullptr, state.brushMode==core::BrushMode::Sharpen, terrainEnabled))
+                state.brushMode=core::BrushMode::Sharpen;
+            if (ImGui::MenuItem(L("Rampe","Ramp"), nullptr, state.brushMode==core::BrushMode::Ramp, terrainEnabled)) {
+                state.brushMode=core::BrushMode::Ramp;
+                state.rampStart.reset();
+            }
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu(L("Layer","Layer"))) {
@@ -13956,17 +13970,27 @@ ImU32 ActiveBrushColor(const EditorState& state, int alpha = 235);
 void DrawToolsContent(EditorState& state) {
     if (state.editMode == EditMode::Heightmap) {
         ImGui::TextDisabled("%s",L("PINSELMODUS","BRUSH MODE"));
-        if (SceneQuickFilterButton("terrainRaise",L("Anheben","Raise"),state.brushMode==core::BrushMode::Raise))
-            state.brushMode=core::BrushMode::Raise;
-        ImGui::SameLine();
-        if (SceneQuickFilterButton("terrainLower",L("Absenken","Lower"),state.brushMode==core::BrushMode::Lower))
-            state.brushMode=core::BrushMode::Lower;
-        ImGui::SameLine();
-        if (SceneQuickFilterButton("terrainSmooth",L("Glätten","Smooth"),state.brushMode==core::BrushMode::Smooth))
-            state.brushMode=core::BrushMode::Smooth;
-        ImGui::SameLine();
-        if (SceneQuickFilterButton("terrainFlatten",L("Einebnen","Flatten"),state.brushMode==core::BrushMode::Flatten))
-            state.brushMode=core::BrushMode::Flatten;
+        {
+            struct ModeButton { const char* id; const char* label; core::BrushMode mode; };
+            const ModeButton modes[] = {
+                {"terrainRaise",L("Anheben","Raise"),core::BrushMode::Raise},
+                {"terrainLower",L("Absenken","Lower"),core::BrushMode::Lower},
+                {"terrainSmooth",L("Glätten","Smooth"),core::BrushMode::Smooth},
+                {"terrainFlatten",L("Einebnen","Flatten"),core::BrushMode::Flatten},
+                {"terrainNoise",L("Rauschen","Noise"),core::BrushMode::Noise},
+                {"terrainTerrace",L("Terrassen","Terrace"),core::BrushMode::Terrace},
+                {"terrainErode",L("Erosion","Erode"),core::BrushMode::Erode},
+                {"terrainSharpen",L("Schärfen","Sharpen"),core::BrushMode::Sharpen},
+                {"terrainRamp",L("Rampe","Ramp"),core::BrushMode::Ramp},
+            };
+            for (std::size_t i = 0; i < std::size(modes); ++i) {
+                if (i % 3 != 0) ImGui::SameLine();
+                if (SceneQuickFilterButton(modes[i].id, modes[i].label, state.brushMode == modes[i].mode)) {
+                    state.brushMode = modes[i].mode;
+                    state.rampStart.reset();
+                }
+            }
+        }
 
         ImGui::SeparatorText(L("Pinsel","Brush"));
         UI::SliderFloat("Radius", &state.brush.radius, 10.0f, 2000.0f);
@@ -13983,8 +14007,52 @@ void DrawToolsContent(EditorState& state) {
             const std::string label=std::to_string(static_cast<int>(preset))+"##terrainStrength";
             if (UI::SmallButton(label.c_str())) state.brush.strength=preset;
         }
-        if (state.brushMode == core::BrushMode::Flatten) {
+        {
+            const char* falloffs[] = {L("Weich","Smooth"), L("Linear","Linear"), L("Kugel","Spherical"),
+                                      L("Spitz","Tip"), L("Konstant","Constant")};
+            int falloff = static_cast<int>(state.brush.falloff);
+            if (UI::Combo(L("Falloff##terrainFalloff","Falloff##terrainFalloff"), &falloff, falloffs, 5))
+                state.brush.falloff = static_cast<core::BrushFalloff>(falloff);
+        }
+        switch (state.brushMode) {
+        case core::BrushMode::Flatten: {
+            UI::Checkbox(L("Zielhöhe beim Strichbeginn aufnehmen","Pick target height at stroke start"), &state.flattenPickOnStroke);
+            ImGui::BeginDisabled(state.flattenPickOnStroke);
             UI::InputFloat(L("Zielhöhe","Target height"), &state.brush.flattenTarget);
+            ImGui::EndDisabled();
+            const char* sides[] = {L("Anheben und absenken","Raise and lower"), L("Nur anheben","Raise only"), L("Nur absenken","Lower only")};
+            int side = static_cast<int>(state.brush.flattenSide);
+            if (UI::Combo(L("Richtung##flattenSide","Direction##flattenSide"), &side, sides, 3))
+                state.brush.flattenSide = static_cast<core::FlattenSide>(side);
+            break;
+        }
+        case core::BrushMode::Noise: {
+            UI::SliderFloat(L("Wellenlänge","Wavelength"), &state.brush.noiseScale, 50.0f, 4000.0f);
+            int seed = static_cast<int>(state.brush.noiseSeed);
+            if (UI::InputInt(L("Seed##noiseSeed","Seed##noiseSeed"), &seed)) state.brush.noiseSeed = static_cast<std::uint32_t>(std::max(seed, 0));
+            ImGui::TextDisabled("%s", L("Stärke = Amplitude je Anwendung.", "Strength = amplitude per application."));
+            break;
+        }
+        case core::BrushMode::Terrace:
+            UI::SliderFloat(L("Stufenhöhe","Step height"), &state.brush.terraceStep, 10.0f, 1000.0f);
+            break;
+        case core::BrushMode::Erode:
+            UI::SliderFloat(L("Erlaubte Steigung je Block","Allowed slope per block"), &state.brush.erodeTalus, 0.0f, 200.0f);
+            ImGui::TextDisabled("%s", L("Material rutscht von steileren Stellen bergab; das Volumen bleibt gleich.",
+                                       "Material slides down from steeper spots; volume is preserved."));
+            break;
+        case core::BrushMode::Ramp:
+            ImGui::TextWrapped("%s", L("Erster Klick setzt den Start, zweiter Klick das Ende (jeweils mit der Terrainhöhe dort). "
+                                       "Breite = Radius, weicher Rand = halber Radius.",
+                                       "First click sets the start, second click the end (each at the terrain height there). "
+                                       "Width = radius, soft edge = half radius."));
+            if (state.rampStart) {
+                ImGui::TextColored(UiTheme::Warning, L("Start gesetzt: %.0f / %.0f, Höhe %.1f","Start set: %.0f / %.0f, height %.1f"),
+                                   (*state.rampStart)[0], (*state.rampStart)[2], (*state.rampStart)[1]);
+                if (UI::SmallButton(L("Start verwerfen","Discard start"))) state.rampStart.reset();
+            }
+            break;
+        default: break;
         }
 
         ImGui::Separator();
@@ -15121,6 +15189,30 @@ bool ApplyBrushAtWorld(EditorState& state, float worldX, float worldZ) {
     const float spanX = static_cast<float>(state.heightmap.Width() > 1 ? state.heightmap.Width() - 1 : 1) * state.heightmap.BlockWidth();
     const float spanZ = static_cast<float>(state.heightmap.Height() > 1 ? state.heightmap.Height() - 1 : 1) * state.heightmap.BlockHeight();
     if (state.editMode == EditMode::Heightmap) {
+        const bool strokeStart = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+        if (state.brushMode == core::BrushMode::Ramp) {
+            // Rampe: nur Klicks zählen, kein Ziehen.
+            if (!strokeStart) return false;
+            const float h = state.heightmap.SampleWorld(worldX, worldZ);
+            if (!state.rampStart) {
+                state.rampStart = std::array<float, 3>{worldX, h, worldZ};
+                state.statusMessage = L("Rampenstart gesetzt - zweiter Klick setzt das Ende.",
+                                        "Ramp start set - a second click sets the end.");
+                return false;
+            }
+            const auto start = *state.rampStart;
+            state.rampStart.reset();
+            core::UndoPatch patch = core::ApplyRamp(state.heightmap, start[0], start[2], start[1], worldX, worldZ, h,
+                                                    state.brush.radius, state.brush.radius * 0.5f);
+            if (!patch.entries.empty()) {
+                PushHeightmapHistory(state, std::move(patch));
+                state.meshDirty = true;
+                state.mapDirty = true;
+            }
+            return true;
+        }
+        if (strokeStart && state.brushMode == core::BrushMode::Flatten && state.flattenPickOnStroke)
+            state.brush.flattenTarget = state.heightmap.SampleWorld(worldX, worldZ);
         core::UndoPatch patch = core::ApplyBrush(state.heightmap, state.brushMode, state.brush, worldX, worldZ);
         if (!patch.entries.empty()) {
             PushHeightmapHistory(state, std::move(patch));
@@ -21477,6 +21569,11 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         else if (m == "lower") state.brushMode = core::BrushMode::Lower;
         else if (m == "smooth") state.brushMode = core::BrushMode::Smooth;
         else if (m == "flatten") state.brushMode = core::BrushMode::Flatten;
+        else if (m == "noise") state.brushMode = core::BrushMode::Noise;
+        else if (m == "terrace") state.brushMode = core::BrushMode::Terrace;
+        else if (m == "erode") state.brushMode = core::BrushMode::Erode;
+        else if (m == "sharpen") state.brushMode = core::BrushMode::Sharpen;
+        else if (m == "ramp") { state.brushMode = core::BrushMode::Ramp; state.rampStart.reset(); }
         state.brush.radius = r; state.brush.strength = st;
         state.paintSettings.radius = r; state.walkSettings.radius = r;
     }

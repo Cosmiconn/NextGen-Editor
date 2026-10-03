@@ -11,6 +11,7 @@
 #include "mapeditor/core/HeightmapIO.hpp"
 #include "mapeditor/core/legacy/LegacyMapIni.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -224,8 +225,92 @@ void TestNaNAndZeroBlockSizeSafety() {
     }
 }
 
+// Neue Pinsel: jede Wirkung messbar, Undo stellt exakt wieder her.
+void TestExtendedBrushes() {
+    auto flat = [] { return Heightmap(41, 41, 50.0f, 50.0f); }; // 2000 x 2000 Einheiten
+    BrushSettings s;
+    s.radius = 400.0f;
+
+    {   // Falloff-Formen
+        Check(BrushFalloffWeight(BrushFalloff::Smooth, 0.0f) == 1.0f && BrushFalloffWeight(BrushFalloff::Smooth, 1.0f) == 0.0f,
+              "Falloff Smooth: 1 im Zentrum, 0 am Rand");
+        Check(BrushFalloffWeight(BrushFalloff::Constant, 0.9f) == 1.0f, "Falloff Constant: volle Stärke im Radius");
+        Check(BrushFalloffWeight(BrushFalloff::Tip, 0.5f) < BrushFalloffWeight(BrushFalloff::Linear, 0.5f) &&
+              BrushFalloffWeight(BrushFalloff::Linear, 0.5f) < BrushFalloffWeight(BrushFalloff::Spherical, 0.5f),
+              "Falloff: Tip < Linear < Spherical bei halbem Radius");
+    }
+    {   // Noise: Werte nach oben und unten, deterministisch, Undo
+        Heightmap a = flat(), b = flat();
+        s.strength = 50.0f; s.noiseScale = 200.0f; s.noiseSeed = 7;
+        auto pa = ApplyBrush(a, BrushMode::Noise, s, 1000.0f, 1000.0f);
+        ApplyBrush(b, BrushMode::Noise, s, 1000.0f, 1000.0f);
+        float lo = 0, hi = 0; bool same = true;
+        for (std::uint32_t z = 0; z < 41; ++z) for (std::uint32_t x = 0; x < 41; ++x) {
+            lo = std::min(lo, a.At(x, z)); hi = std::max(hi, a.At(x, z)); same = same && a.At(x, z) == b.At(x, z);
+        }
+        Check(lo < -1.0f && hi > 1.0f && same, "Noise: hebt und senkt, deterministisch bei gleichem Seed");
+        RevertPatch(a, pa);
+        bool zero = true;
+        for (std::uint32_t z = 0; z < 41; ++z) for (std::uint32_t x = 0; x < 41; ++x) zero = zero && a.At(x, z) == 0.0f;
+        Check(zero, "Noise: Undo stellt exakt wieder her");
+    }
+    {   // Terrace: Rampe wird zu Stufen
+        Heightmap hm = flat();
+        for (std::uint32_t z = 0; z < 41; ++z) for (std::uint32_t x = 0; x < 41; ++x) hm.Set(x, z, static_cast<float>(x) * 10.0f);
+        s.strength = 100.0f; s.terraceStep = 100.0f; s.falloff = BrushFalloff::Constant;
+        ApplyBrush(hm, BrushMode::Terrace, s, 1000.0f, 1000.0f);
+        Check(hm.At(17, 20) == 200.0f && hm.At(23, 20) == 200.0f && hm.At(26, 20) == 300.0f,
+              "Terrace: 170/230 -> 200, 260 -> 300 (Stufe 100)");
+        s.falloff = BrushFalloff::Smooth;
+    }
+    {   // Sharpen verstärkt eine Spitze, Smooth dämpft sie
+        Heightmap a = flat(), b = flat();
+        a.Set(20, 20, 100.0f); b.Set(20, 20, 100.0f);
+        s.strength = 50.0f;
+        ApplyBrush(a, BrushMode::Sharpen, s, 1000.0f, 1000.0f);
+        ApplyBrush(b, BrushMode::Smooth, s, 1000.0f, 1000.0f);
+        Check(a.At(20, 20) > 100.0f && b.At(20, 20) < 100.0f, "Sharpen hebt eine Spitze an, Smooth senkt sie");
+    }
+    {   // Erode: steile Spitze wird flacher, Volumen bleibt erhalten
+        Heightmap hm = flat();
+        hm.Set(20, 20, 500.0f);
+        double before = 0, after = 0;
+        for (std::uint32_t z = 0; z < 41; ++z) for (std::uint32_t x = 0; x < 41; ++x) before += hm.At(x, z);
+        s.strength = 100.0f; s.erodeTalus = 20.0f;
+        auto p = ApplyBrush(hm, BrushMode::Erode, s, 1000.0f, 1000.0f);
+        for (std::uint32_t z = 0; z < 41; ++z) for (std::uint32_t x = 0; x < 41; ++x) after += hm.At(x, z);
+        Check(hm.At(20, 20) < 500.0f && std::abs(after - before) < 1e-3, "Erode: Spitze rutscht ab, Volumen bleibt gleich");
+        RevertPatch(hm, p);
+        Check(hm.At(20, 20) == 500.0f, "Erode: Undo stellt wieder her");
+    }
+    {   // Flatten nur anheben / nur absenken
+        Heightmap hm = flat();
+        hm.Set(20, 20, 300.0f); hm.Set(21, 20, -300.0f);
+        s.strength = 100.0f; s.flattenTarget = 0.0f; s.falloff = BrushFalloff::Constant;
+        s.flattenSide = FlattenSide::RaiseOnly;
+        ApplyBrush(hm, BrushMode::Flatten, s, 1000.0f, 1000.0f);
+        Check(hm.At(20, 20) == 300.0f && hm.At(21, 20) == 0.0f, "Flatten nur anheben: Senke gefüllt, Hügel bleibt");
+        s.flattenSide = FlattenSide::LowerOnly;
+        hm.Set(21, 20, -300.0f);
+        ApplyBrush(hm, BrushMode::Flatten, s, 1000.0f, 1000.0f);
+        Check(hm.At(20, 20) == 0.0f && hm.At(21, 20) == -300.0f, "Flatten nur absenken: Hügel abgetragen, Senke bleibt");
+        s.flattenSide = FlattenSide::Both; s.falloff = BrushFalloff::Smooth;
+    }
+    {   // Rampe: lineare Steigung zwischen zwei Punkten, ausserhalb unverändert
+        Heightmap hm = flat();
+        auto p = ApplyRamp(hm, 250.0f, 1000.0f, 0.0f, 1750.0f, 1000.0f, 300.0f, 200.0f, 100.0f);
+        Check(std::abs(hm.At(5, 20) - 0.0f) < 1e-3 && std::abs(hm.At(20, 20) - 150.0f) < 1e-3 &&
+              std::abs(hm.At(35, 20) - 300.0f) < 1e-3, "Rampe: 0 -> 150 -> 300 entlang der Strecke");
+        Check(hm.At(20, 10) == 0.0f, "Rampe: ausserhalb von Breite + Falloff unverändert");
+        Check(hm.At(20, 23) > 0.0f && hm.At(20, 23) < 150.0f, "Rampe: weicher Übergang im Falloff-Streifen");
+        RevertPatch(hm, p);
+        Check(hm.At(20, 20) == 0.0f, "Rampe: Undo stellt wieder her");
+    }
+}
+
 int main(int argc, char** argv) {
     std::printf("== Heightmap Core Tests ==\n");
+    TestExtendedBrushes();
     TestBasicHeightmap();
     TestUndoRedo();
     TestFlattenConverges();

@@ -166,21 +166,31 @@ On large maps (e.g. Adelia 951x476 blocks) each blend texture covers only one re
      "karte map öffnen speichern neu ini htd shbd shmd"},
     {"map.heightmap", "map",
      "Tab Hightmap (Höhenkarte)", "Heightmap tab",
-     R"MAN(Höhenkarte bearbeiten. Halte die linke Maustaste in der 2D-Ansicht und fahre über die Karte.
+     R"MAN(Höhenkarte bearbeiten. Halte die linke Maustaste in der 2D-Ansicht oder im 3D-Viewport und fahre über das Terrain (im 3D-Viewport dreht Alt+LMB weiterhin die Kamera).
 - Anheben / Absenken: Gelände hoch- oder herunterziehen.
-- Glätten: gleicht Höhen an die Umgebung an.
-- Einebnen: setzt das Gelände auf die 'Zielhöhe'.
+- Glätten: gleicht Höhen an die Umgebung an. Schärfen: Gegenteil, betont Kanten und Spitzen.
+- Einebnen: setzt das Gelände auf die 'Zielhöhe' - standardmäßig die Höhe beim Strichbeginn; wahlweise nur anheben oder nur absenken.
+- Rauschen: natürliche Unebenheiten (Wellenlänge, Seed; Stärke = Amplitude).
+- Terrassen: zieht Höhen auf Stufen (Stufenhöhe).
+- Erosion: Material rutscht von zu steilen Stellen bergab, das Volumen bleibt gleich.
+- Rampe: erster Klick Start, zweiter Klick Ende - ebene Steigung, Breite = Radius.
+- Falloff: Weich, Linear, Kugel, Spitz oder Konstant.
 - Radius: Pinselgröße in Welteinheiten. Stärke: wie stark pro Zug.
 - Rückgängig / Wiederholen: nehmen ganze Pinselzüge zurück.
 Unten stehen Gittergröße und Höhenbereich. Objekte und NPCs folgen der Höhe beim Neuberechnen ihrer Position; gespeicherte Objekthöhen ändern sich dadurch nicht automatisch.)MAN",
-     R"MAN(Edit the heightmap. Hold the left mouse button in the 2D view and move over the map.
+     R"MAN(Edit the heightmap. Hold the left mouse button in the 2D view or the 3D viewport and move over the terrain (in the 3D viewport Alt+LMB still orbits the camera).
 - Raise / Lower: pull the terrain up or down.
-- Smooth: blends heights with the surroundings.
-- Flatten: sets the terrain to the 'target height'.
+- Smooth: blends heights with the surroundings. Sharpen: the opposite, emphasizes edges and peaks.
+- Flatten: sets the terrain to the 'target height' - by default the height at the start of the stroke; optionally raise only or lower only.
+- Noise: natural unevenness (wavelength, seed; strength = amplitude).
+- Terrace: pulls heights to steps (step height).
+- Erode: material slides down from spots that are too steep; volume is preserved.
+- Ramp: first click start, second click end - even incline, width = radius.
+- Falloff: smooth, linear, spherical, tip or constant.
 - Radius: brush size in world units. Strength: how strong per stroke.
 - Undo / Redo: revert whole brush strokes.
 Below you find grid size and height range. Objects and NPCs follow the height when their position is recalculated; saved object heights do not change automatically.)MAN",
-     "höhenkarte heightmap gelände anheben absenken glätten einebnen"},
+     "höhenkarte heightmap gelände anheben absenken glätten einebnen rauschen noise terrassen erosion rampe schärfen falloff"},
     {"map.texturing", "map",
      "Tab Map Texturen", "Map textures tab",
      R"MAN(Jede Karte hat mehrere Texturschichten (Layer). Jeder Layer hat eine Diffuse-Textur (Bild), einen UV-Scale (Kachelgröße) und ein Gewicht je Kartenpunkt (Blend), das Du malst.
