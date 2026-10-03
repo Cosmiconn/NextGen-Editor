@@ -20,7 +20,7 @@ Messzahlen: [v13 Gesamtprüfung](V13_VALIDATION.md) und [v14 KFM-Prüfung](V14_V
 | SHN | Vorhandener Tabellen-Codec; Testasserts auch in Release aktiv | Unbekannte Feldbedeutungen je Tabelle bleiben Forschungsarbeit. |
 | QuestData.shn | Eigenständiger Quest-Codec für Header 6 mit Größen-/Slotprüfungen | Der ältere Header 2 in `Client/shader/ressystem/QuestData.shn` bleibt ausdrücklich nicht unterstützt. |
 | Shine-TXT | Tabellen sowie übrige Textbestandteile; bytegenauer unveränderter Export | Dateien ohne erkannte Tabellen sind lediglich textuell erhalten, nicht semantisch vollständig verstanden. |
-| BMP | Vorhandener Blendmap-Codec; Windows-WIC für weitere Rastertexturen | Kein vollständiger BMP-Massentest in diesem Auditor. Unterschiedliche Blendmap-Auflösungen werden beim Import weiterhin resampelt. |
+| BMP | Vorhandener Blendmap-Codec; Windows-WIC für weitere Rastertexturen; 24-bit-RGB-Leser für die Terrain-Vertex-Color-Bitmap | Kein vollständiger BMP-Massentest in diesem Auditor. Blendmaps abweichender Auflösung werden zum Bearbeiten resampelt, beim Export aber in Originalauflösung geschrieben (unverändert bytegleich, bearbeitet zurückresampelt). |
 | PNG/JPEG | Vorhandener Windows-WIC-Anzeigepfad für Fiesta-Texturen | Kein neuer formatweiter Massentest; keine Zusage für andere Plattformen über WIC. |
 | CONF/SBI/SBISSS/SHAB/SHAD/BDT | Begleitdateien im Kartenordner werden unverändert eingelesen und beim Speichern mitgeführt | Opaque Erhaltung, keine vollständige Semantik oder Neuberechnung nach Änderungen. Dateinamen werden beibehalten. |
 | NPZ/NSB/NSF/M3D und weitere proprietäre Dateien | Inventarisiert, noch kein vollständiger Codec | Containeraufbau und Zusammenhang mit Karten/Animationen untersuchen. |

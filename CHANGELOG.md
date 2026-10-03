@@ -1,3 +1,7 @@
+## Export fidelity — blend maps keep their original resolution; 2D inside selection
+- Blend BMPs whose resolution differs from the shared layer resolution (e.g. Adl 476×476 beside 512×512) keep their original data (`TextureLayer::sourceBlend`). Export writes untouched layers byte-identically at the original size and resamples edited layers back to it instead of silently rescaling the file (`test_texture_layers`).
+- 2D box/lasso honour the marquee mode: "fully inside" requires the whole visible ground-contact contour inside the rectangle/lasso (crossing remains the default).
+
 ## Export safety — IDM indices follow the SHMD write order
 - Established the IDM index semantics on NA2016 Roumen: indices are SHMD objects in file order. `headerValue` 1078 = max index + 1, and the boundary falls 221 objects into the last old block (`jun_grass01`); the 502 objects behind it were appended later and are not in the shipped `Rou.idm`, so the client tolerates uncovered objects.
 - `PlacedObject::sourceIndex` (editor-only, never written) records the loaded SHMD position; copies/duplicates/pastes reset it. `ShmdWrittenOrder` exposes the writer's model-block order; `RemapSpatialIndex` maps every surviving assignment to the new write position, drops deleted objects, keeps groups sorted and the `max+1` header invariant, and is the identity (byte-identical) for unchanged maps.

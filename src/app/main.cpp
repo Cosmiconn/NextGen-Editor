@@ -15210,6 +15210,16 @@ void DrawEditor2DContent(EditorState& state) {
                                      const auto& segmentCrosses,
                                      bool allowOriginFallback) {
             const auto worldEdges=ObjectGroundContactWorldSegments(state,obj);
+            // Gleiche Rahmen-Semantik wie im 3D-Viewport: "vollständig innen" verlangt, dass die
+            // gesamte sichtbare Kontaktkontur im Rahmen/Lasso liegt.
+            if (state.marqueeMode==core::level::MarqueeMode::Inside) {
+                if (worldEdges.empty())
+                    return allowOriginFallback && inside(screenPointFromWorldXZ(obj.posX,obj.posZ));
+                for (const auto& edge:worldEdges)
+                    if (!inside(screenPointFromWorldXZ(edge.x0,edge.z0)) ||
+                        !inside(screenPointFromWorldXZ(edge.x1,edge.z1))) return false;
+                return true;
+            }
             if (!worldEdges.empty()) {
                 for (const auto& edge:worldEdges) {
                     const ImVec2 a=screenPointFromWorldXZ(edge.x0,edge.z0);

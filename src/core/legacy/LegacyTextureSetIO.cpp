@@ -1,4 +1,6 @@
 #include "mapeditor/core/legacy/LegacyTextureSetIO.hpp"
+
+#include <algorithm>
 #include "mapeditor/core/legacy/BmpBlendMap.hpp"
 #include "mapeditor/core/legacy/LegacyPathResolve.hpp"
 
@@ -83,6 +85,7 @@ std::expected<TextureLayerStack, std::string> ImportLegacyTextureSet(
                     std::to_string(stack.Width()) + "x" + std::to_string(stack.Height()) + ")");
             }
             stack.Layer(idx).blend = ResampleBlendMap(*blendResult, stack.Width(), stack.Height());
+            stack.Layer(idx).sourceBlend = std::move(*blendResult);
             continue;
         }
 
@@ -142,7 +145,24 @@ std::expected<void, std::string> ExportLegacyTextureSet(
         if (ec) {
             return std::unexpected("Konnte Verzeichnis f\u00fcr Blend-BMP nicht anlegen: " + blendPath.parent_path().string());
         }
-        auto writeResult = WriteBlendMapBmp(stack.Layer(i).blend, blendPath);
+        // Abweichende Originalauflösung: unverändert -> Original schreiben, bearbeitet -> auf die
+        // Originalauflösung zurückresampeln (die Datei behält ihre Grösse).
+        const auto& layer = stack.Layer(i);
+        const BlendMap* toWrite = &layer.blend;
+        BlendMap restored;
+        if (layer.sourceBlend && layer.sourceBlend->Width() > 0 && layer.sourceBlend->Height() > 0) {
+            const BlendMap reference = ResampleBlendMap(*layer.sourceBlend, layer.blend.Width(), layer.blend.Height());
+            const auto a = reference.Data();
+            const auto b = layer.blend.Data();
+            const bool unchanged = a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin());
+            if (unchanged) {
+                toWrite = &*layer.sourceBlend;
+            } else {
+                restored = ResampleBlendMap(layer.blend, layer.sourceBlend->Width(), layer.sourceBlend->Height());
+                toWrite = &restored;
+            }
+        }
+        auto writeResult = WriteBlendMapBmp(*toWrite, blendPath);
         if (!writeResult) {
             return std::unexpected(writeResult.error());
         }

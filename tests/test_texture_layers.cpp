@@ -124,6 +124,50 @@ void TestFiestaTextureRoundtrip() {
     std::filesystem::remove(dir);
 }
 
+// Blend-BMPs unterschiedlicher Auflösung (wie Adl: 476x476 neben 512x512): unveränderte Layer müssen
+// bytegleich in Originalauflösung exportiert werden, bearbeitete zurück auf ihre Originalauflösung.
+void TestMixedBlendResolutionExport() {
+    const auto dir = std::filesystem::temp_directory_path() / "nextgen_mixed_blend";
+    const auto out = std::filesystem::temp_directory_path() / "nextgen_mixed_blend_out";
+    const auto out2 = std::filesystem::temp_directory_path() / "nextgen_mixed_blend_out2";
+    std::filesystem::remove_all(dir); std::filesystem::remove_all(out); std::filesystem::remove_all(out2);
+    std::filesystem::create_directories(dir);
+    BlendMap big(64, 64), small(48, 48);
+    for (std::uint32_t z = 0; z < 64; ++z) for (std::uint32_t x = 0; x < 64; ++x) big.Set(x, z, 1.0f);
+    for (std::uint32_t z = 0; z < 48; ++z) for (std::uint32_t x = 0; x < 48; ++x)
+        small.Set(x, z, static_cast<float>((x * 5 + z * 3) % 256) / 255.0f);
+    Check(legacy::WriteBlendMapBmp(big, dir / "big.bmp").has_value() &&
+          legacy::WriteBlendMapBmp(small, dir / "small.bmp").has_value(), "Blend-BMPs 64x64 + 48x48 angelegt");
+    legacy::LegacyMapIni ini;
+    ini.heightmapWidth = 65; ini.heightmapHeight = 65;
+    for (const char* name : {"big", "small"}) {
+        legacy::LegacyLayerDef layer;
+        layer.name = name;
+        layer.blendFileName = std::string(name) + ".bmp";
+        ini.layers.push_back(layer);
+    }
+    Check(legacy::SerializeLegacyMapIni(ini, dir / "map.ini").has_value(), "Karten-INI angelegt");
+    auto stack = legacy::ImportLegacyTextureSet(dir / "map.ini");
+    Check(stack && stack->Width() == 64 && stack->Layer(1).sourceBlend.has_value(),
+          "48x48-Layer auf 64x64 resampelt, Original bleibt erhalten");
+    if (!stack) return;
+    auto readAll = [](const std::filesystem::path& p) {
+        std::ifstream in(p, std::ios::binary);
+        return std::vector<char>((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    };
+    Check(legacy::ExportLegacyTextureSet(*stack, ini, out, "map.ini").has_value(), "unveränderter Export");
+    Check(readAll(out / "small.bmp") == readAll(dir / "small.bmp"), "unveränderter 48x48-Layer bytegleich in Originalauflösung");
+    Check(readAll(out / "big.bmp") == readAll(dir / "big.bmp"), "64x64-Layer bytegleich");
+
+    stack->Layer(1).blend.Set(10, 10, 1.0f);
+    stack->Layer(1).blend.Set(11, 10, 1.0f);
+    Check(legacy::ExportLegacyTextureSet(*stack, ini, out2, "map.ini").has_value(), "Export nach Bearbeitung");
+    const auto edited = legacy::ReadBlendMapBmp(out2 / "small.bmp");
+    Check(edited && edited->Width() == 48 && edited->Height() == 48, "bearbeiteter Layer bleibt 48x48");
+    Check(edited && edited->At(8, 7) > 0.5f, "Bearbeitung ist in der Originalauflösung sichtbar");
+    std::filesystem::remove_all(dir); std::filesystem::remove_all(out); std::filesystem::remove_all(out2);
+}
+
 void TestLegacyIniParser(const std::filesystem::path& iniPath) {
     auto result = legacy::ParseLegacyMapIni(iniPath);
     Check(result.has_value(), "ParseLegacyMapIni(Rou.ini) erfolgreich");
@@ -203,6 +247,7 @@ int main() {
     TestPaintNormalization();
     TestFiestaTextureRoundtrip();
     TestBmpRawRowOrder();
+    TestMixedBlendResolutionExport();
 
     std::printf("\n== Legacy-ini-Parser gegen echten Rou.ini-Inhalt ==\n");
     TestLegacyIniParser("tests/fixtures/Rou.ini");

@@ -26,6 +26,11 @@ struct TextureLayer {
     float regionWidth = 0.0f;
     float regionHeight = 0.0f;
     BlendMap blend;
+    // Originale Blend-Map in ihrer eigenen Auflösung, falls sie beim Import auf die gemeinsame
+    // Stack-Auflösung resampelt werden musste (z.B. Adl: 476x476 neben 512x512). Der Export schreibt
+    // einen unveränderten Layer dann bytegleich in Originalauflösung bzw. resampelt einen bearbeiteten
+    // Layer zurück auf diese Auflösung, statt die Datei stillschweigend umzuskalieren.
+    std::optional<BlendMap> sourceBlend;
 };
 
 class TextureLayerStack {
