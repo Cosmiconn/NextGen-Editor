@@ -72,6 +72,7 @@ add_library(mapeditor_core
     src/core/Manual.cpp
     src/core/ManualData.cpp
     src/core/LevelEditorTools.cpp
+    src/core/legacy/MapRenderSettings.cpp
     src/core/legacy/LegacyMapProject.cpp
 )
 target_include_directories(mapeditor_core PUBLIC include)
@@ -319,6 +320,10 @@ add_executable(test_level_editor_tools tests/test_level_editor_tools.cpp)
 target_link_libraries(test_level_editor_tools PRIVATE mapeditor_core)
 add_test(NAME level_editor_tools COMMAND test_level_editor_tools
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/Rou.shbd)
+
+add_executable(test_map_render_settings tests/test_map_render_settings.cpp)
+target_link_libraries(test_map_render_settings PRIVATE mapeditor_core)
+add_test(NAME map_render_settings COMMAND test_map_render_settings ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures)
 
 add_executable(test_manual tests/test_manual.cpp)
 target_link_libraries(test_manual PRIVATE mapeditor_core)

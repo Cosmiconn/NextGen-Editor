@@ -13,7 +13,9 @@
 #include "Camera.hpp"
 #include "mapeditor/core/Heightmap.hpp"
 #include "mapeditor/core/TextureLayerStack.hpp"
+#include "mapeditor/core/legacy/MapRenderSettings.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <filesystem>
 
@@ -77,6 +79,23 @@ public:
     // ein-/ausblenden. Wirkt auf 3D UND 2D (gleicher Shader).
     void SetLayerVisible(int index, bool visible) { if (index >= 0 && index < kMaxTextureLayers) layerVisible_[index] = visible ? 1.0f : 0.0f; }
     void SetTerrainVisible(bool visible) { terrainVisible_ = visible; }
+
+    // ---- Karten-Renderdaten (Fiesta) und Darstellungsqualität ----
+    // Vertex-Color-Bitmap der Karte (#VerTexColorTexture); nullptr entfernt sie. Wirkt nach dem
+    // nächsten RebuildMesh(), weil die Farbe als Vertexattribut im Terrain-Puffer liegt.
+    void SetVertexColorMap(const core::legacy::RgbImage* image);
+    [[nodiscard]] bool HasVertexColorMap() const noexcept { return useVertexColor_; }
+    void SetVertexColorEnabled(bool enabled) { vertexColorEnabled_ = enabled; }
+    // <Karte>.conf [WorldSetting] Ground_DL_Enable.
+    void SetGroundDirectionalLight(bool enabled) { groundLight_ = enabled; }
+    // <Karte>.conf [GlowScreenEffect]; wirkt nur, wenn SetGlowEnabled(true).
+    void SetGlowSettings(const core::legacy::GlowScreenEffect& glow) { glow_ = glow; }
+    void SetGlowEnabled(bool enabled) { glowEnabled_ = enabled; }
+    // 1 = aus; wird auf GL_MAX_SAMPLES begrenzt.
+    void SetMsaaSamples(int samples) { msaaSamples_ = std::max(1, samples); }
+    [[nodiscard]] int MaxMsaaSamples() const noexcept { return maxMsaaSamples_; }
+    // 0 beleuchtet, 1 unbeleuchtet (nur Textur), 2 nur Licht/Vertexfarbe, 3 Normalen.
+    void SetViewMode(int mode) { viewMode_ = mode; }
     // Zeichnet eine zusätzliche Textur halbtransparent über das zuletzt in BeginTopDownScene
     // gezeichnete Bild (z.B. die Block&Walk-Heatmap) - muss VOR EndTopDownScene aufgerufen
     // werden, im selben Frame.
@@ -146,6 +165,26 @@ private:
     void EnsureFramebufferOverview(int width, int height);
 
     // Einfaches Vollbild-Quad (2 Dreiecke) für DrawTopDownOverlay.
+    // Karten-Renderdaten
+    core::legacy::RgbImage vertexColorMap_;
+    bool useVertexColor_ = false;
+    bool vertexColorEnabled_ = true;
+    bool groundLight_ = true;
+    core::legacy::GlowScreenEffect glow_;
+    bool glowEnabled_ = true;
+    int viewMode_ = 0;
+    // MSAA- und Nachbearbeitungsziele
+    int msaaSamples_ = 4;
+    int maxMsaaSamples_ = 1;
+    std::uint32_t msaaFbo_ = 0, msaaColorRbo_ = 0, msaaDepthRbo_ = 0;
+    std::uint32_t glowFbo_[2] = {0, 0}, glowTex_[2] = {0, 0};
+    std::uint32_t outputFbo_ = 0, outputTex_ = 0;
+    int glowWidth_ = 0, glowHeight_ = 0;
+    int sceneTargetW_ = 0, sceneTargetH_ = 0, sceneTargetSamples_ = 0, sceneTargetGlowDiv_ = 0;
+    std::uint32_t postVao_ = 0, postCopyProgram_ = 0, postBlurProgram_ = 0, postCompositeProgram_ = 0;
+    void EnsureSceneTargets(int width, int height);
+    void ReleaseSceneTargets();
+
     std::uint32_t overlayVao_ = 0;
     std::uint32_t overlayVbo_ = 0;
     std::uint32_t overlayShaderProgram_ = 0;

@@ -31,15 +31,16 @@ Handbuch „Level-Editor-Werkzeuge“, Kern `core/LevelEditorTools` + `test_leve
 | Marquee Inside vs. Crossing, Replace/Add (§7) | **3D umgesetzt** auf projizierten NIF-Bounds; Remove-Modifier und Lasso in 3D offen |
 | Align / Distribute / Match Transform (§9) | **umgesetzt** (Objekte-Menü) |
 | Bookmarks / gespeicherte Kamerapositionen (§9) | **umgesetzt** – Strg+0..9 / 0..9, je Karte persistiert |
-| Orthographic Front/Side (§3.3) | **Achsenansichten mit Perspektivkamera**; echte Orthografie weiterhin offen |
-| Unlit / UV / Normals Debug-Modi (§8) | offen (nur Lit + Wireframe) |
+| Orthographic Front/Side (§3.3) | **umgesetzt** – gemeinsame Projektion `OrbitCamera::ProjectionMatrix` für Renderer, Picking, Gizmo, Overlays |
+| Unlit / UV / Normals Debug-Modi (§8) | **teilweise** – Lit, Unlit, Nur Licht/Vertexfarbe, Normalen, Wireframe; UV/Alpha/LOD offen |
+| Karten-Lichtdaten (neu) | **umgesetzt** – Vertex-Color-Bitmap, `Ground_DL_Enable`, Glow aus `<Karte>.conf`, MSAA (siehe `docs/RENDERER.md`) |
 
 Zusätzlich (nicht im ursprünglichen Plan): Unreal-Navigation, Kameratempo 1..8, Spielansicht (G),
 Statistik-Overlay mit SHBD-Zelle unter dem Cursor, Weltraster, Achsen-Anzeige, Ausgabeprotokoll,
 **Spieltest** auf dem echten SHBD-Gitter (Spawn aus MapInfo.shn RegenX/RegenY) und ein
 Automatisierungs-Hook (`NEXTGEN_EDITOR_SCRIPT`) für reproduzierbare Viewport-Screenshots.
 
-Weiterhin ehrlich offen: echte orthografische Projektion, per-Viewport-Show-Flags, Vertex-/Actor-
+Weiterhin ehrlich offen: per-Viewport-Show-Flags, Vertex-/Actor-
 Snap, Pivot-Bearbeitung, Debug-Viewmodes, 2D-Marquee auf Kontaktgeometrie, Windows-Build dieser Stufe.
 
 ---

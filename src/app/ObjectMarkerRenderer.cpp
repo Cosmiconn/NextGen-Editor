@@ -261,7 +261,7 @@ void ObjectMarkerRenderer::Draw(const OrbitCamera& camera, int width, int height
 
     glUseProgram(shaderProgram_);
     const Mat4 view = camera.ViewMatrix();
-    const Mat4 proj = OrbitCamera::PerspectiveMatrix(0.9f, static_cast<float>(width) / static_cast<float>(height), camera.NearPlane(), camera.FarPlane());
+    const Mat4 proj = camera.ProjectionMatrix(static_cast<float>(width) / static_cast<float>(height));
     const Mat4 viewProj = proj * view;
     glUniformMatrix4fv(glGetUniformLocation(shaderProgram_, "uViewProj"), 1, GL_FALSE, viewProj.m);
     glUniform3f(glGetUniformLocation(shaderProgram_, "uLightDir"), -0.4f, -1.0f, -0.3f);

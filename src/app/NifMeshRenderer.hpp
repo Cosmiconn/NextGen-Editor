@@ -75,6 +75,9 @@ public:
 
     // Deterministic visual-regression hook. Normal editor runtime leaves this unset and
     // continues to use steady_clock; snapshot tooling can pin controller/particle time exactly.
+    // 0 beleuchtet, 1 unbeleuchtet (nur Material/Textur), 2 nur Licht, 3 Normalen.
+    void SetViewMode(int mode) { viewMode_ = mode; }
+
     void SetAnimationTimeOverrideForTesting(std::optional<float> seconds) {
         animationTimeOverride_ = seconds;
     }
@@ -229,7 +232,7 @@ private:
     // Particle state must be per placed object, never shared through modelCache_.
     std::vector<std::vector<ParticleRuntimeSystem>> perObjectParticleRuntime_;
     struct UniformLocations {
-        int locViewProj = -1, locView = -1, locModel = -1, locLightDir = -1, locCameraPos = -1, locAmbientColor = -1, locDiffuseColor = -1, locSpecularColor = -1, locEmissiveColor = -1, locGlossiness = -1, locSpecularEnabled = -1, locApplyMode = -1, locVcAlphaTextureBlender = -1, locAlphaTextureBlender11 = -1, locAlphaTextureBlender = -1, locPgTerrain = -1, locVertexColorMode = -1, locBumpLumaScale = -1, locBumpLumaOffset = -1, locBumpMatrix = -1, locAlphaTest = -1, locAlphaCutoff = -1, locAlphaTestFunc = -1, locMaterialAlpha = -1, locEnvironmentSphereCount = -1, locParticleMode = -1, locParticleColor = -1;
+        int locViewProj = -1, locView = -1, locModel = -1, locLightDir = -1, locCameraPos = -1, locAmbientColor = -1, locDiffuseColor = -1, locSpecularColor = -1, locEmissiveColor = -1, locGlossiness = -1, locSpecularEnabled = -1, locApplyMode = -1, locVcAlphaTextureBlender = -1, locAlphaTextureBlender11 = -1, locAlphaTextureBlender = -1, locPgTerrain = -1, locVertexColorMode = -1, locBumpLumaScale = -1, locBumpLumaOffset = -1, locBumpMatrix = -1, locAlphaTest = -1, locAlphaCutoff = -1, locAlphaTestFunc = -1, locMaterialAlpha = -1, locEnvironmentSphereCount = -1, locParticleMode = -1, locParticleColor = -1, locViewMode = -1;
         std::array<int, 10> locHasTex{}, locUvSet{}, locHasTransform{}, locTranslation{}, locScale{}, locRotation{}, locTransformType{}, locCenter{}, locSampler{};
         std::array<int, kMaxEnvironmentSphereEffects> locEnvironmentSampler{};
     } uniforms_;
@@ -263,6 +266,7 @@ private:
     };
     std::vector<DrawItem> opaqueItems_, blendedItems_;
     std::optional<float> animationTimeOverride_;
+    int viewMode_ = 0;
     std::uint32_t shaderProgram_ = 0;
     std::uint32_t glassShaderProgram_ = 0;
     std::uint32_t particleVao_ = 0, particleVbo_ = 0, particleEbo_ = 0;

@@ -1,3 +1,13 @@
+## Renderer — Fiesta map lighting data, glow, MSAA, view modes, orthographic views
+- Read map-local client render data (new core `core/legacy/MapRenderSettings` + `test_map_render_settings` against the real `Rou.conf` and `Rouvertexcolor2.bmp`): terrain vertex-color bitmap from `#VerTexColorTexture` (257×257 = HTD vertex grid, same row convention as blend BMPs) and `<Map>.conf` (`[WorldSetting] Ground_DL_Enable`, `[GlowScreenEffect]`), unknown entries kept raw.
+- Terrain renders the baked vertex colors as a vertex attribute (no 17th sampler beyond the GL 3.3 minimum of 16). Evidence on Roumen: the dark last bitmap row splits at exactly the 21 sea vertices of the last HTD row; other dark areas lie under the pavement GroundObject.
+- `Ground_DL_Enable` switches the directional terrain light; `[GlowScreenEffect]` drives a downscale + NumBlurring × separable Gaussian glow pass. Light formula and glow composition are documented editor approximations (`docs/RENDERER.md`).
+- 4× MSAA scene target with resolve (clamped to `GL_MAX_SAMPLES`, automatic fallback), selectable Off/2×/4×/8×.
+- View modes for terrain and NIF shaders: lit, unlit (texture/material only), lighting/vertex color only, normals.
+- True orthographic projection: `OrbitCamera::ProjectionMatrix` is now the single projection for terrain, NIF and marker renderers, picking, terrain hits, gizmo (`ImGuizmo::SetOrthographic`) and overlays. Axis presets (top/south/north/west/east) are orthographic; dragging pans, wheel zooms, rotating returns to perspective. `test_camera_handedness` covers ortho framing, orientation, parallel projection and depth range.
+- Show menu → Rendering groups view mode, vertex colors, glow (with the `.conf` values as tooltip) and MSAA; settings persist in `viewport.txt`; automation commands `viewmode`, `glow`, `vertexcolors`, `msaa`.
+- Verified on Linux (GCC 13, Xvfb + Mesa): 28/28 CTest, scripted comparison screenshots of Roumen (vertex colors off/on, glow, lighting-only, ortho top/south).
+
 ## Level Editor — Unreal-style viewport workflows on Fiesta NA2016 data
 - New GUI-free core module `core/LevelEditorTools` (+ `test_level_editor_tools`): snap presets in Fiesta world units (6.25 = SHBD walk cell, 50 = HTD block), camera speed levels 1..8, camera bookmarks with per-map text persistence, output log ring buffer with severity classification, marquee hit testing (inside/crossing) and selection combine, align/distribute, and a playtest step on the SHBD block & walk grid (circle-vs-cell collision with wall sliding, nearest-walkable search).
 - Real-data regression: on the NA2016 `Rou.shbd` fixture a 20,000-step random playtest walks 37,220 units with 2,123 blocked steps and never enters a blocked cell.

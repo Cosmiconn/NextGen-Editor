@@ -71,6 +71,7 @@
 #include "mapeditor/core/legacy/ShineText.hpp"
 #include "mapeditor/core/legacy/QuestData.hpp"
 #include "mapeditor/core/LevelEditorTools.hpp"
+#include "mapeditor/core/legacy/MapRenderSettings.hpp"
 #include "mapeditor/app/Localization.hpp"
 
 #include "Camera.hpp"
@@ -651,6 +652,16 @@ struct EditorState {
     bool playtestWalkGridUsable = false;
     std::string playtestSpawnSource;
     float playtestBlockedFlash = 0.0f;
+    // ---- Karten-Renderdaten (Fiesta) und Darstellung ----
+    // <Karte>.conf ([WorldSetting]/[GlowScreenEffect]) und die Vertex-Color-Bitmap aus der .ini.
+    core::legacy::MapRenderConfig mapRenderConfig;
+    std::string mapRenderConfigPath;
+    std::string mapVertexColorPath;
+    std::string mapRenderDataNote; // Hinweis, falls etwas fehlt/nicht lesbar ist
+    int viewportViewMode = 0;      // 0 beleuchtet, 1 unbeleuchtet, 2 nur Licht, 3 Normalen
+    int viewportMsaaSamples = 4;   // 1 = aus
+    bool viewportGlow = true;      // Glow aus <Karte>.conf
+    bool viewportVertexColors = true;
     std::vector<core::PlacedObject> objectClipboard;
     std::vector<std::string> objectClipboardLabels;
     std::vector<std::string> objectClipboardGroups;
@@ -1513,7 +1524,11 @@ void SaveViewportSettings(EditorState& state) {
         << "move_snap=" << state.objectMoveSnap << "\n"
         << "rotate_snap=" << state.objectRotateSnap << "\n"
         << "scale_snap=" << state.objectScaleSnap << "\n"
-        << "playtest_speed=" << state.playtestConfig.runSpeed << "\n";
+        << "playtest_speed=" << state.playtestConfig.runSpeed << "\n"
+        << "view_mode=" << state.viewportViewMode << "\n"
+        << "msaa=" << state.viewportMsaaSamples << "\n"
+        << "glow=" << (state.viewportGlow ? 1 : 0) << "\n"
+        << "vertex_colors=" << (state.viewportVertexColors ? 1 : 0) << "\n";
 }
 
 void LoadViewportSettings(EditorState& state) {
@@ -1545,6 +1560,10 @@ void LoadViewportSettings(EditorState& state) {
         else if (key == "rotate_snap" && f > 0.0f && std::isfinite(f)) state.objectRotateSnap = f;
         else if (key == "scale_snap" && f > 0.0f && std::isfinite(f)) state.objectScaleSnap = f;
         else if (key == "playtest_speed" && f >= 10.0f && f <= 2000.0f) state.playtestConfig.runSpeed = f;
+        else if (key == "view_mode") state.viewportViewMode = std::clamp(std::atoi(value), 0, 3);
+        else if (key == "msaa") state.viewportMsaaSamples = std::clamp(std::atoi(value), 1, 8);
+        else if (key == "glow") state.viewportGlow = b;
+        else if (key == "vertex_colors") state.viewportVertexColors = b;
     }
 }
 
@@ -3353,6 +3372,45 @@ std::filesystem::path LegacyMapWorkingIniPath(
     return PreferProjectOverride(state.project, core::ProjectOutputSide::Client, iniPath);
 }
 
+// Kartenlokale Render-Daten des Clients: Vertex-Color-Bitmap (#VerTexColorTexture der .ini) und
+// <Karte>.conf. Fehlende Dateien sind kein Fehler (viele Karten haben keine .conf), werden aber
+// im Hinweis vermerkt. Nur lesend - der Editor schreibt diese Dateien nicht.
+void LoadMapRenderData(EditorState& state, const std::filesystem::path& mapDir, const std::string& stem) {
+    state.mapRenderConfig = {};
+    state.mapRenderConfigPath.clear();
+    state.mapVertexColorPath.clear();
+    state.mapRenderDataNote.clear();
+    state.renderer.SetVertexColorMap(nullptr);
+
+    if (state.hasLegacyIniMeta && !state.legacyIniMeta.vertexColorTexture.empty()) {
+        auto resolved = core::legacy::ResolveLegacyAssetPath(mapDir, state.legacyIniMeta.vertexColorTexture);
+        if (!resolved) {
+            const auto name = core::legacy::LegacyPathToNative(state.legacyIniMeta.vertexColorTexture).filename();
+            if (auto sibling = core::legacy::ResolveCaseInsensitivePath(mapDir, name)) resolved = sibling;
+        }
+        if (resolved) {
+            if (auto image = core::legacy::ReadBmpRgb(*resolved)) {
+                state.renderer.SetVertexColorMap(&*image);
+                state.mapVertexColorPath = resolved->string();
+            } else {
+                state.mapRenderDataNote += "Vertex-Color-Bitmap nicht lesbar: " + image.error() + "\n";
+            }
+        } else {
+            state.mapRenderDataNote += "Vertex-Color-Bitmap nicht gefunden: " + state.legacyIniMeta.vertexColorTexture + "\n";
+        }
+    }
+    if (!stem.empty()) {
+        if (auto confPath = core::legacy::ResolveCaseInsensitivePath(mapDir, stem + ".conf")) {
+            if (auto conf = core::legacy::LoadMapRenderConfig(*confPath)) {
+                state.mapRenderConfig = std::move(*conf);
+                state.mapRenderConfigPath = confPath->string();
+                for (const auto& w : state.mapRenderConfig.warnings) state.mapRenderDataNote += stem + ".conf: " + w + "\n";
+            }
+        }
+    }
+    state.meshDirty = true; // Vertexfarben liegen im Terrain-Vertexpuffer
+}
+
 bool OpenLegacyMapIntoState(EditorState& state, const std::filesystem::path& iniPath,
                             bool preferProjectOutput = true) {
     const auto workingIniPath = LegacyMapWorkingIniPath(state, iniPath, preferProjectOutput);
@@ -3367,6 +3425,7 @@ bool OpenLegacyMapIntoState(EditorState& state, const std::filesystem::path& ini
     // below <Project>/Client/resmap/... and must win for reads once it exists.
     std::snprintf(state.legacyMapIniPath, sizeof(state.legacyMapIniPath), "%s", iniPath.string().c_str());
     ApplyProjectToState(state, std::move(*result), workingIniPath.parent_path());
+    LoadMapRenderData(state, workingIniPath.parent_path(), iniPath.stem().string());
     if (preferProjectOutput && state.project.projectFolder[0] != '\0') {
         std::filesystem::path outputDir;
         if (IsProjectSidePath(state.project, core::ProjectOutputSide::Client, iniPath)) {
@@ -3418,6 +3477,7 @@ bool OpenStandaloneNifMapIntoState(EditorState& state, const std::filesystem::pa
     ApplyProjectToState(state, std::move(project), workingPath.parent_path());
     state.standaloneNifMap = true;
     state.hasLegacyIniMeta = false;
+    LoadMapRenderData(state, workingPath.parent_path(), nifPath.stem().string());
     state.legacySaveDir[0] = '\0';
     std::snprintf(state.legacySaveStem, sizeof(state.legacySaveStem), "%s", nifPath.stem().string().c_str());
     state.editMode = EditMode::ObjectPlacement;
@@ -13052,6 +13112,12 @@ void DrawGlobalHelpBar(EditorState& state, const ImVec2& displaySize) {
 }
 
 // ---- Kamera-Lesezeichen / Ansichts-Presets ----------------------------------------------------
+// Drehen verlässt eine Achsenansicht und schaltet zurück auf die Perspektive.
+void LeaveAxisView(EditorState& state) {
+    state.viewportViewPreset = 0;
+    state.camera.SetOrthographic(false);
+}
+
 void SetCameraBookmark(EditorState& state, int slot) {
     if (slot < 0 || slot >= static_cast<int>(core::level::CameraBookmarkSet::kSlots)) return;
     EnsureCameraBookmarksLoaded(state);
@@ -13077,7 +13143,7 @@ bool JumpToCameraBookmark(EditorState& state, int slot) {
     state.camera.SetTarget(b.targetX, b.targetY, b.targetZ);
     state.camera.SetDistance(b.distance);
     state.camera.SetOrientation(b.yaw, b.pitch);
-    state.viewportViewPreset = 0;
+    LeaveAxisView(state);
     state.statusMessage = std::string(L("Kamera-Lesezeichen ", "Camera bookmark ")) + std::to_string(slot);
     return true;
 }
@@ -13093,12 +13159,14 @@ const char* ViewportPresetName(int preset) {
     }
 }
 
-// Achsen-Ansichten mit der Perspektivkamera (echte Orthografie bleibt laut
-// docs/LEVEL_EDITOR_PARITY.md an eine gemeinsame Projektionsabstraktion gebunden).
+// Achsen-Ansichten (orthografisch über OrbitCamera::ProjectionMatrix, die alle Renderer,
+// Picking, Gizmo und Overlays gemeinsam nutzen).
 // Yaw 0 = Kamera südlich des Ziels mit Blick nach Norden (+Z in Fiesta-Weltkoordinaten).
 void ApplyViewportPreset(EditorState& state, int preset) {
     constexpr float kPi = 3.14159265f;
     state.viewportViewPreset = std::clamp(preset, 0, 5);
+    // Wie in Unreal: Achsenansichten sind orthografisch, die Perspektive bleibt perspektivisch.
+    state.camera.SetOrthographic(state.viewportViewPreset != 0);
     switch (state.viewportViewPreset) {
         case 1: state.camera.SetOrientation(0.0f, 1.5f); break;
         case 2: state.camera.SetOrientation(0.0f, 0.06f); break;
@@ -15739,7 +15807,7 @@ static void DrawNpcOverlay3D(EditorState& state, const ImVec2& imagePos, int w, 
     if (!state.showNpcModels || !state.showNpcLabels || state.editMode != EditMode::Npcs || !state.npcTextLoaded || w <= 0 || h <= 0) return;
     auto* table = state.npcTextFile.FindTable("ShineNPC");
     if (!table) return;
-    const app::Mat4 vp = app::OrbitCamera::PerspectiveMatrix(0.9f, static_cast<float>(w) / static_cast<float>(h), state.camera.NearPlane(), state.camera.FarPlane()) * state.camera.ViewMatrix();
+    const app::Mat4 vp = state.camera.ProjectionMatrix(static_cast<float>(w) / static_cast<float>(h)) * state.camera.ViewMatrix();
     auto project = [&](float x, float y, float z, ImVec2& out) {
         const float cx = vp.m[0] * x + vp.m[4] * y + vp.m[8] * z + vp.m[12];
         const float cy = vp.m[1] * x + vp.m[5] * y + vp.m[9] * z + vp.m[13];
@@ -15801,9 +15869,7 @@ bool InvertEditMat4(const app::Mat4& m, app::Mat4& out) {
 std::optional<EditVec3> Unproject3D(const EditorState& state, const ImVec2& imagePos,
                                     int w, int h, const ImVec2& mouse, float ndcZ) {
     const app::Mat4 view=state.camera.ViewMatrix();
-    const app::Mat4 proj=app::OrbitCamera::PerspectiveMatrix(
-        0.9f,static_cast<float>(std::max(1,w))/static_cast<float>(std::max(1,h)),
-        state.camera.NearPlane(),state.camera.FarPlane());
+    const app::Mat4 proj=state.camera.ProjectionMatrix(static_cast<float>(std::max(1,w))/static_cast<float>(std::max(1,h)));
     app::Mat4 inv{};
     if(!InvertEditMat4(proj*view,inv)) return std::nullopt;
     const float x=((mouse.x-imagePos.x)/static_cast<float>(std::max(1,w)))*2.0f-1.0f;
@@ -15866,9 +15932,7 @@ int PlaceObjectAtWorld(EditorState& state, const std::string& modelPath, float x
 
 bool ProjectWorldTo3DView(const EditorState& state, const ImVec2& imagePos, int w, int h,
                           const EditVec3& world, ImVec2& screen) {
-    const app::Mat4 vp=app::OrbitCamera::PerspectiveMatrix(
-        0.9f,static_cast<float>(std::max(1,w))/static_cast<float>(std::max(1,h)),
-        state.camera.NearPlane(),state.camera.FarPlane())*state.camera.ViewMatrix();
+    const app::Mat4 vp=state.camera.ProjectionMatrix(static_cast<float>(std::max(1,w))/static_cast<float>(std::max(1,h)))*state.camera.ViewMatrix();
     const float cx=vp.m[0]*world.x+vp.m[4]*world.y+vp.m[8]*world.z+vp.m[12];
     const float cy=vp.m[1]*world.x+vp.m[5]*world.y+vp.m[9]*world.z+vp.m[13];
     const float cw=vp.m[3]*world.x+vp.m[7]*world.y+vp.m[11]*world.z+vp.m[15];
@@ -16026,12 +16090,10 @@ bool DrawObjectTransformGizmo(EditorState& state, const ImVec2& imageScreenPos, 
     std::copy(state.objectGizmoMatrix.begin(), state.objectGizmoMatrix.end(), std::begin(before.m));
 
     const app::Mat4 view = state.camera.ViewMatrix();
-    const app::Mat4 projection = app::OrbitCamera::PerspectiveMatrix(
-        0.9f, static_cast<float>(std::max(1,w)) / static_cast<float>(std::max(1,h)),
-        state.camera.NearPlane(), state.camera.FarPlane());
+    const app::Mat4 projection = state.camera.ProjectionMatrix(static_cast<float>(std::max(1,w))/static_cast<float>(std::max(1,h)));
 
     ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
-    ImGuizmo::SetOrthographic(false);
+    ImGuizmo::SetOrthographic(state.camera.IsOrthographic());
     ImGuizmo::SetRect(imageScreenPos.x, imageScreenPos.y, static_cast<float>(w), static_cast<float>(h));
     ImGuizmo::SetID(0x4E47);
 
@@ -16197,6 +16259,45 @@ void DrawViewportShowFlagsMenu(EditorState& state) {
     ImGui::MenuItem(L("NPC-Namen", "NPC labels"), nullptr, &state.showNpcLabels);
     ImGui::MenuItem(L("Patrouillenrouten", "Patrol routes"), nullptr, &state.showRoamRoutes);
     ImGui::MenuItem(L("Drahtgitter", "Wireframe"), nullptr, &state.wireframe);
+    ImGui::SeparatorText(L("Darstellung", "Rendering"));
+    bool renderChanged = false;
+    const char* viewModes[] = {L("Beleuchtet", "Lit"), L("Unbeleuchtet (nur Textur)", "Unlit (texture only)"),
+                               L("Nur Licht / Vertexfarbe", "Lighting / vertex color only"), L("Normalen", "Normals")};
+    for (int mode = 0; mode < 4; ++mode)
+        if (ImGui::MenuItem(viewModes[mode], nullptr, state.viewportViewMode == mode)) {
+            state.viewportViewMode = mode;
+            renderChanged = true;
+        }
+    const bool hasVc = state.renderer.HasVertexColorMap();
+    renderChanged |= ImGui::MenuItem(L("Terrain-Vertexfarben (Karte)", "Terrain vertex colors (map)"), nullptr,
+                                     &state.viewportVertexColors, hasVc);
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip("%s", hasVc ? state.mapVertexColorPath.c_str()
+                                      : L("Diese Karte hat keine lesbare #VerTexColorTexture-Bitmap.",
+                                          "This map has no readable #VerTexColorTexture bitmap."));
+    const bool hasGlow = state.mapRenderConfig.glow.present;
+    renderChanged |= ImGui::MenuItem(L("Glow (<Karte>.conf)", "Glow (<map>.conf)"), nullptr, &state.viewportGlow, hasGlow);
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        if (hasGlow)
+            ImGui::SetTooltip("%s\nGlowness %.2f · BlendFactor %.2f · GaussFactor %.2f · DownScaling %.0f · NumBlurring %d",
+                              state.mapRenderConfigPath.c_str(), state.mapRenderConfig.glow.glowness,
+                              state.mapRenderConfig.glow.blendFactor, state.mapRenderConfig.glow.gaussFactor,
+                              state.mapRenderConfig.glow.downScaling, state.mapRenderConfig.glow.numBlurring);
+        else
+            ImGui::SetTooltip("%s", L("Keine [GlowScreenEffect]-Daten für diese Karte.", "No [GlowScreenEffect] data for this map."));
+    }
+    if (ImGui::BeginMenu(L("Kantenglättung (MSAA)", "Anti-aliasing (MSAA)"))) {
+        for (const int samples : {1, 2, 4, 8}) {
+            const std::string label = samples == 1 ? std::string(L("Aus", "Off")) : std::to_string(samples) + "x";
+            if (ImGui::MenuItem(label.c_str(), nullptr, state.viewportMsaaSamples == samples,
+                                samples <= state.renderer.MaxMsaaSamples())) {
+                state.viewportMsaaSamples = samples;
+                renderChanged = true;
+            }
+        }
+        ImGui::EndMenu();
+    }
+    if (renderChanged) state.viewportSettingsDirty = true;
     ImGui::SeparatorText(L("Editor-Helfer", "Editor helpers"));
     bool changed = false;
     changed |= ImGui::MenuItem(L("Raster", "Grid"), nullptr, &state.showViewportGrid);
@@ -16213,8 +16314,8 @@ void DrawViewportViewMenu(EditorState& state) {
     for (int preset = 0; preset <= 5; ++preset)
         if (ImGui::MenuItem(ViewportPresetName(preset), nullptr, state.viewportViewPreset == preset))
             ApplyViewportPreset(state, preset);
-    ImGui::TextDisabled("%s", L("Achsenansichten nutzen die Perspektivkamera.",
-                                "Axis views use the perspective camera."));
+    ImGui::TextDisabled("%s", L("Achsenansichten sind orthografisch (Ziehen verschiebt).",
+                                "Axis views are orthographic (dragging pans)."));
     ImGui::SeparatorText(L("Kamera-Lesezeichen", "Camera bookmarks"));
     EnsureCameraBookmarksLoaded(state);
     for (int slot = 0; slot < static_cast<int>(core::level::CameraBookmarkSet::kSlots); ++slot) {
@@ -16659,6 +16760,16 @@ void DrawPreview3DContent(EditorState& state) {
     }
 
     const ImVec2 imageScreenPos = ImGui::GetCursorScreenPos();
+    // Karten-Renderdaten und Darstellungsoptionen (Ansicht-/Anzeigen-Menü der Viewport-Leiste).
+    state.renderer.SetGroundDirectionalLight(state.mapRenderConfig.groundDirectionalLight);
+    state.renderer.SetGlowSettings(state.mapRenderConfig.glow);
+    state.renderer.SetGlowEnabled(state.viewportGlow && state.viewportViewMode == 0);
+    state.renderer.SetVertexColorEnabled(state.viewportVertexColors);
+    state.renderer.SetMsaaSamples(state.viewportMsaaSamples);
+    state.renderer.SetViewMode(state.viewportViewMode);
+    state.nifMeshRenderer.SetViewMode(state.viewportViewMode);
+    state.shmdCategoryMeshRenderer.SetViewMode(state.viewportViewMode);
+    state.npcMeshRenderer.SetViewMode(state.viewportViewMode);
     state.renderer.BeginScene(state.camera, w, h, state.wireframe);
     // Immer neu aufbauen (statt Dirty-Tracking über alle Objekt-Mutationsstellen hinweg) -
     // bei ein paar Tausend Instanzen unproblematisch, aber garantiert nie veraltet (z.B. nach
@@ -16909,29 +17020,40 @@ void DrawPreview3DContent(EditorState& state) {
                 !(ue && io.KeyAlt))
                 state.cameraLooking = true;
             if (!ImGui::IsMouseDown(ImGuiMouseButton_Right)) state.cameraLooking = false;
-            if (state.cameraLooking) {
+            const bool ortho = state.camera.IsOrthographic();
+            // Orthografische Achsenansicht (wie Unreal): Ziehen mit LMB/RMB/MMB verschiebt, Rad zoomt,
+            // es wird nicht gedreht. Pixel -> Welteinheiten aus der sichtbaren Ausschnittshöhe.
+            const float orthoUnitsPerPixel = 2.0f * state.camera.Distance() *
+                std::tan(app::OrbitCamera::kFovY * 0.5f) / std::max(1.0f, static_cast<float>(h));
+            if (state.cameraLooking && !ortho) {
                 const ImVec2 delta = io.MouseDelta;
                 // Maus nach rechts = nach rechts drehen (Yaw sinkt), Maus nach oben = nach oben schauen.
                 state.camera.LookBy(-delta.x * 0.0045f, delta.y * 0.0045f);
-                if (delta.x != 0.0f || delta.y != 0.0f) state.viewportViewPreset = 0;
+                if (delta.x != 0.0f || delta.y != 0.0f) LeaveAxisView(state);
             }
-            if (hovered3d && !viewportUiCapturing && !state.marqueeActive) {
+            if (ortho && hovered3d && !viewportUiCapturing && !state.marqueeActive &&
+                !(ImGui::GetIO().KeyCtrl && ImGui::GetIO().KeyAlt) &&
+                (ImGui::IsMouseDragging(ImGuiMouseButton_Left) || ImGui::IsMouseDragging(ImGuiMouseButton_Right) ||
+                 ImGui::IsMouseDragging(ImGuiMouseButton_Middle))) {
+                const ImVec2 delta = io.MouseDelta;
+                state.camera.PanBy(-delta.x * orthoUnitsPerPixel, delta.y * orthoUnitsPerPixel);
+            } else if (hovered3d && !viewportUiCapturing && !state.marqueeActive) {
                 const ImVec2 delta = io.MouseDelta;
                 if (ue) {
                     if (io.KeyAlt && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
                         state.camera.OrbitBy(delta.x * 0.01f, -delta.y * 0.01f);
-                        state.viewportViewPreset = 0;
+                        LeaveAxisView(state);
                     } else if (io.KeyAlt && ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
                         state.camera.ZoomSteps((delta.x - delta.y) * 0.04f);
                     } else if (!io.KeyAlt && !io.KeyCtrl && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
                         const float moveScale = std::max(state.camera.Distance(), 30.0f) * 0.004f * speedMul;
                         state.camera.LookBy(-delta.x * 0.0045f, 0.0f);
                         state.camera.MoveLocal(-delta.y * moveScale, 0.0f, 0.0f);
-                        state.viewportViewPreset = 0;
+                        LeaveAxisView(state);
                     }
                 } else if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
                     state.camera.OrbitBy(delta.x * 0.01f, -delta.y * 0.01f);
-                    state.viewportViewPreset = 0;
+                    LeaveAxisView(state);
                 }
                 if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
                     const float panScale = std::max(state.camera.Distance(), 30.0f) * 0.0015f;
@@ -20540,6 +20662,10 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
     else if (cmd == "collision") onOff(state.showWalkCollision3D);
     else if (cmd == "gameview") onOff(state.gameView);
     else if (cmd == "surfacesnap") onOff(state.surfaceSnap);
+    else if (cmd == "glow") onOff(state.viewportGlow);
+    else if (cmd == "vertexcolors") onOff(state.viewportVertexColors);
+    else if (cmd == "viewmode") { in >> state.viewportViewMode; state.viewportViewMode = std::clamp(state.viewportViewMode, 0, 3); }
+    else if (cmd == "msaa") { in >> state.viewportMsaaSamples; state.viewportMsaaSamples = std::clamp(state.viewportMsaaSamples, 1, 8); }
     else if (cmd == "status") { std::string t; std::getline(in >> std::ws, t); state.statusMessage = t; }
     else if (cmd == "marquee") {
         // marquee <x0> <y0> <x1> <y1> [inside|crossing] - Anteile 0..1 des 3D-Bilds

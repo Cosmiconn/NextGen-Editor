@@ -52,6 +52,16 @@ public:
 
     [[nodiscard]] Mat4 ViewMatrix() const;
     [[nodiscard]] static Mat4 PerspectiveMatrix(float fovYRad, float aspect, float nearZ, float farZ);
+    // Orthografische Projektion; halbe Höhe/Breite des sichtbaren Ausschnitts in Welteinheiten.
+    [[nodiscard]] static Mat4 OrthographicMatrix(float halfWidth, float halfHeight, float nearZ, float farZ);
+
+    // Projektion der Editor-Kamera: Perspektive (Sichtfeld kFovY) oder orthografisch mit demselben
+    // Bildausschnitt auf Höhe des Ziels (halbe Höhe = Entfernung * tan(kFovY/2)). ALLE Renderer,
+    // Picking, Gizmo und Overlays nutzen diese eine Funktion, damit sie nie auseinanderlaufen.
+    static constexpr float kFovY = 0.9f;
+    void SetOrthographic(bool orthographic) { orthographic_ = orthographic; }
+    [[nodiscard]] bool IsOrthographic() const noexcept { return orthographic_; }
+    [[nodiscard]] Mat4 ProjectionMatrix(float aspect) const;
 
     [[nodiscard]] float Yaw() const noexcept { return yaw_; }
     [[nodiscard]] float Pitch() const noexcept { return pitch_; }
@@ -75,6 +85,7 @@ private:
     float targetX_ = 0.0f;
     float targetY_ = 0.0f;
     float targetZ_ = 0.0f;
+    bool orthographic_ = false;
 
     // Aus grosser Entfernung bleibt die Kamera ueber dem Boden (Pitch >= 0.05); nah am Ziel darf sie
     // nach oben schauen (negativer Pitch = Kamera unterhalb des Ziels).

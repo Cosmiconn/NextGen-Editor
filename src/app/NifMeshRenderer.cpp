@@ -87,6 +87,7 @@ in vec4 vColor;
 out vec4 FragColor;
 
 uniform vec3 uLightDir;
+uniform int uViewMode; // 0 beleuchtet, 1 unbeleuchtet, 2 nur Licht, 3 Normalen
 uniform vec3 uCameraPos;
 uniform mat4 uView;
 uniform vec3 uAmbientColor;
@@ -350,7 +351,13 @@ void main() {
     vec3 environment = uEnvironmentSphereCount > 0
         ? environmentSphereColor(environmentSphereUv(n))
         : vec3(0.0);
-    if (uAlphaTextureBlender) {
+    if (uViewMode == 1) {
+        FragColor = vec4(surface, alpha);
+    } else if (uViewMode == 2) {
+        FragColor = vec4(materialAmbient * 0.28 + vec3(0.22 + 0.78 * ndl) + specular, alpha);
+    } else if (uViewMode == 3) {
+        FragColor = vec4(n * 0.5 + 0.5, alpha);
+    } else if (uAlphaTextureBlender) {
         FragColor = vec4(surface, alpha);
     } else {
         FragColor = vec4(ambient + diffuse + specular + emissive + environment, alpha);
@@ -686,6 +693,7 @@ void NifMeshRenderer::Init() {
     uniforms_.locView = glGetUniformLocation(shaderProgram_, "uView");
     uniforms_.locModel = glGetUniformLocation(shaderProgram_, "uModel");
     uniforms_.locLightDir = glGetUniformLocation(shaderProgram_, "uLightDir");
+    uniforms_.locViewMode = glGetUniformLocation(shaderProgram_, "uViewMode");
     uniforms_.locCameraPos = glGetUniformLocation(shaderProgram_, "uCameraPos");
     uniforms_.locAmbientColor = glGetUniformLocation(shaderProgram_, "uAmbientColor");
     uniforms_.locDiffuseColor = glGetUniformLocation(shaderProgram_, "uDiffuseColor");
@@ -2184,7 +2192,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
 
     glUseProgram(shaderProgram_);
     const Mat4 view = camera.ViewMatrix();
-    const Mat4 proj = OrbitCamera::PerspectiveMatrix(0.9f, static_cast<float>(width) / static_cast<float>(height), camera.NearPlane(), camera.FarPlane());
+    const Mat4 proj = camera.ProjectionMatrix(static_cast<float>(width) / static_cast<float>(height));
     const Mat4 viewProj = proj * view;
     static const auto animationEpoch = std::chrono::steady_clock::now();
     const float wallClockAnimationTime =
@@ -2236,6 +2244,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
     glUniformMatrix4fv(locViewProj, 1, GL_FALSE, viewProj.m);
     glUniformMatrix4fv(locView, 1, GL_FALSE, view.m);
     glUniform3f(locLightDir, -0.4f, -1.0f, -0.3f);
+    glUniform1i(uniforms_.locViewMode, viewMode_);
     glUniform3f(locCameraPos, camera.EyeX(), camera.EyeY(), -camera.EyeZ());
     glEnable(GL_DEPTH_TEST);
 
