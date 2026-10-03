@@ -40,8 +40,10 @@ Statistik-Overlay mit SHBD-Zelle unter dem Cursor, Weltraster, Achsen-Anzeige, A
 **Spieltest** auf dem echten SHBD-Gitter (Spawn aus MapInfo.shn RegenX/RegenY) und ein
 Automatisierungs-Hook (`NEXTGEN_EDITOR_SCRIPT`) für reproduzierbare Viewport-Screenshots.
 
-Weiterhin ehrlich offen: per-Viewport-Show-Flags, Vertex-/Actor-
-Snap, Pivot-Bearbeitung, Debug-Viewmodes, 2D-Marquee auf Kontaktgeometrie, Windows-Build dieser Stufe.
+Inzwischen ergänzt: Vertex-Snap (V beim Ziehen), Kartenlicht/Nebel aus der SHMD, IDM-Pflege beim
+Export, Blendmaps in Originalauflösung.
+
+Weiterhin ehrlich offen: per-Viewport-Show-Flags, Actor-Snap, Pivot-Bearbeitung, Debug-Viewmodes, 2D-Marquee auf Kontaktgeometrie, Windows-Build dieser Stufe.
 
 ---
 

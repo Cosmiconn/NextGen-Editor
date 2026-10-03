@@ -2093,6 +2093,13 @@ Mat4 ApplyBillboard(const Mat4& objectModel, float objectScale,
 std::optional<float> NifMeshRenderer::RaycastObject(
     const core::ObjectPlacementSet& set, std::size_t objectIndex, const OrbitCamera& camera,
     const std::array<float,3>& rayOrigin, const std::array<float,3>& rayDirection) const {
+    if (const auto hit = RaycastObjectDetailed(set, objectIndex, camera, rayOrigin, rayDirection)) return hit->distance;
+    return std::nullopt;
+}
+
+std::optional<NifMeshRenderer::RayHit> NifMeshRenderer::RaycastObjectDetailed(
+    const core::ObjectPlacementSet& set, std::size_t objectIndex, const OrbitCamera& camera,
+    const std::array<float,3>& rayOrigin, const std::array<float,3>& rayDirection) const {
     if(objectIndex>=perObjectModel_.size()||objectIndex>=set.Count()) return std::nullopt;
     const LoadedModel* model=perObjectModel_[objectIndex];
     if(model==nullptr) return std::nullopt;
@@ -2112,6 +2119,7 @@ std::optional<float> NifMeshRenderer::RaycastObject(
 
     const Mat4 view=camera.ViewMatrix();
     float best=std::numeric_limits<float>::infinity();
+    std::array<std::array<float,3>,3> bestTriangle{};
 
     for(const auto& sub:model->subMeshes) {
         if(sub.pickPositions.empty()||sub.pickIndices.empty()) continue;
@@ -2154,11 +2162,21 @@ std::optional<float> NifMeshRenderer::RaycastObject(
             const auto b=toWorld(sub.pickPositions[ib]);
             const auto c=toWorld(sub.pickPositions[ic]);
             float t=0.0f;
-            if(RayTriangle(rayOrigin,rayDirection,a,b,c,t)&&t<best) best=t;
+            if(RayTriangle(rayOrigin,rayDirection,a,b,c,t)&&t<best) { best=t; bestTriangle={a,b,c}; }
         }
     }
     if(!std::isfinite(best)) return std::nullopt;
-    return best;
+    RayHit hit;
+    hit.distance=best;
+    for(int axis=0;axis<3;++axis) hit.point[static_cast<std::size_t>(axis)]=rayOrigin[static_cast<std::size_t>(axis)]+rayDirection[static_cast<std::size_t>(axis)]*best;
+    // Nächstgelegene Ecke des getroffenen Dreiecks (Vertex-Snap wie in Unreal).
+    float bestD=std::numeric_limits<float>::infinity();
+    for(const auto& v:bestTriangle) {
+        const float dx=v[0]-hit.point[0], dy=v[1]-hit.point[1], dz=v[2]-hit.point[2];
+        const float d=dx*dx+dy*dy+dz*dz;
+        if(d<bestD) { bestD=d; hit.nearestVertex=v; }
+    }
+    return hit;
 }
 
 void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamera& camera, int width, int height,

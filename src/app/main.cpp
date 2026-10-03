@@ -16106,6 +16106,55 @@ void DrawPortals3D(EditorState& state, const ImVec2& imagePos, int w, int h) {
 }
 
 
+// Vertex-Snap (V beim Ziehen des Verschieben-Gizmos, wie in Unreal): nächstgelegene Ecke des
+// NIF-Dreiecks unter dem Mauszeiger (ausgewählte Objekte ausgenommen) bzw. der nächste
+// HTD-Vertex des Terrains - je nachdem, was entlang des Strahls zuerst getroffen wird.
+std::optional<EditVec3> VertexSnapTarget(EditorState& state, const ImVec2& imagePos, int w, int h, const ImVec2& mouse) {
+    const auto nearP = Unproject3D(state, imagePos, w, h, mouse, -1.0f);
+    const auto farP = Unproject3D(state, imagePos, w, h, mouse, 1.0f);
+    if (!nearP || !farP) return std::nullopt;
+    std::array<float, 3> origin{nearP->x, nearP->y, nearP->z};
+    std::array<float, 3> dir{farP->x - nearP->x, farP->y - nearP->y, farP->z - nearP->z};
+    const float len = std::sqrt(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
+    if (len < 1.0e-6f) return std::nullopt;
+    for (float& v : dir) v /= len;
+
+    const std::unordered_set<int> selected(state.selectedObjects.begin(), state.selectedObjects.end());
+    float best = std::numeric_limits<float>::infinity();
+    std::optional<EditVec3> target;
+    RefreshObjectVisibility(state);
+    for (std::size_t i = 0; i < state.placementSet.Count(); ++i) {
+        if (selected.contains(static_cast<int>(i)) || IsObjectHidden(state, i) || !state.nifMeshRenderer.HasRealMesh(i)) continue;
+        if (const auto hit = state.nifMeshRenderer.RaycastObjectDetailed(state.placementSet, i, state.camera, origin, dir);
+            hit && hit->distance < best) {
+            best = hit->distance;
+            target = EditVec3{hit->nearestVertex[0], hit->nearestVertex[1], hit->nearestVertex[2]};
+        }
+    }
+    RefreshShmdCategoryVisibility(state);
+    for (std::size_t i = 0; i < state.shmdCategoryRenderSet.Count(); ++i) {
+        if (selected.contains(ShmdSelectionId(i)) || (i < state.shmdCategoryHidden.size() && state.shmdCategoryHidden[i]) ||
+            !state.shmdCategoryMeshRenderer.HasRealMesh(i)) continue;
+        if (const auto hit = state.shmdCategoryMeshRenderer.RaycastObjectDetailed(state.shmdCategoryRenderSet, i, state.camera, origin, dir);
+            hit && hit->distance < best) {
+            best = hit->distance;
+            target = EditVec3{hit->nearestVertex[0], hit->nearestVertex[1], hit->nearestVertex[2]};
+        }
+    }
+    if (MapSupportsTerrainEditing(state)) {
+        if (const auto t = PickTerrainFrom3D(state, imagePos, w, h, mouse)) {
+            const float dx = t->x - origin[0], dy = t->y - origin[1], dz = t->z - origin[2];
+            if (std::sqrt(dx * dx + dy * dy + dz * dz) < best) {
+                const float bw = std::max(state.heightmap.BlockWidth(), 1.0e-3f);
+                const float bh = std::max(state.heightmap.BlockHeight(), 1.0e-3f);
+                const float vx = std::round(t->x / bw) * bw, vz = std::round(t->z / bh) * bh;
+                target = EditVec3{vx, state.heightmap.SampleWorld(vx, vz), vz};
+            }
+        }
+    }
+    return target;
+}
+
 std::string CurrentGizmoSelectionKey(const EditorState& state) {
     std::string key = std::to_string(state.objectGizmoOperation) + "|" +
                       (state.objectGizmoLocal ? "L|" : "W|");
@@ -16180,7 +16229,24 @@ bool DrawObjectTransformGizmo(EditorState& state, const ImVec2& imageScreenPos, 
             const float dx = after.m[12] - before.m[12];
             const float dy = after.m[13] - before.m[13];
             const float dz = after.m[14] - before.m[14];
-            if (std::abs(dx)+std::abs(dy)+std::abs(dz) > 1.0e-6f) {
+            const bool vertexSnap = ImGui::IsKeyDown(ImGuiKey_V) && !ImGui::GetIO().WantTextInput;
+            std::optional<EditVec3> snapTarget;
+            if (vertexSnap) snapTarget = VertexSnapTarget(state, imageScreenPos, w, h, ImGui::GetMousePos());
+            if (snapTarget) {
+                // Pivot exakt auf den Zielvertex setzen; der Gizmo folgt im nächsten Frame.
+                const float sx = snapTarget->x - before.m[12];
+                const float sy = snapTarget->y - before.m[13];
+                const float sz = snapTarget->z - before.m[14];
+                if (std::abs(sx) + std::abs(sy) + std::abs(sz) > 1.0e-6f) MoveSelectedObjectsBy(state, sx, sy, sz);
+                state.objectGizmoMatrix[12] = snapTarget->x;
+                state.objectGizmoMatrix[13] = snapTarget->y;
+                state.objectGizmoMatrix[14] = snapTarget->z;
+                ImVec2 sp;
+                if (ProjectWorldTo3DView(state, imageScreenPos, w, h, *snapTarget, sp)) {
+                    ImGui::GetWindowDrawList()->AddCircle(sp, 7.0f, IM_COL32(255, 220, 60, 255), 16, 2.0f);
+                    ImGui::GetWindowDrawList()->AddCircleFilled(sp, 2.5f, IM_COL32(255, 220, 60, 255));
+                }
+            } else if (std::abs(dx)+std::abs(dy)+std::abs(dz) > 1.0e-6f) {
                 MoveSelectedObjectsBy(state, dx, dy, dz);
                 if (state.surfaceSnap) SnapSelectedObjectsToTerrainSilently(state);
             }
@@ -20773,6 +20839,19 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         state.objectGizmoMatrixValid = false;
         state.statusMessage = "marquee " + std::to_string(state.selectedObjects.size());
         std::printf("[automation] marquee %s -> %zu\n", mode.c_str(), state.selectedObjects.size());
+    }
+    else if (cmd == "snapprobe") {
+        // snapprobe <fx> <fy> - Vertex-Snap-Ziel an einer Bildposition (Anteile 0..1) ausgeben
+        float fx = 0.5f, fy = 0.5f;
+        in >> fx >> fy;
+        const ImVec2 p = state.viewport3dPos, sz = state.viewport3dSize;
+        const ImVec2 mouse(p.x + fx * sz.x, p.y + fy * sz.y);
+        const auto t = VertexSnapTarget(state, p, static_cast<int>(sz.x), static_cast<int>(sz.y), mouse);
+        const auto g = PickViewportGround(state, p, static_cast<int>(sz.x), static_cast<int>(sz.y), mouse);
+        if (t) std::printf("[automation] snap %.3f %.3f %.3f", t->x, t->y, t->z);
+        else std::printf("[automation] snap none");
+        if (g) std::printf(" | ground %.1f %.1f %.1f", g->x, g->y, g->z);
+        std::printf("\n");
     }
     else if (cmd == "screenshot") { in >> script.pendingScreenshot; }
     else if (cmd == "quit") script.quitRequested = true;

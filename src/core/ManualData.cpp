@@ -118,6 +118,7 @@ The keys only work while no text field is active.)MAN",
 - F: Auswahl fokussieren; Ende: auf den Boden setzen; G: Spielansicht
 - H: Auswahl ausblenden; Shift+H: Auswahl isolieren; Strg+H: alle einblenden
 - Strg+Alt+Links ziehen: Rahmenauswahl (Shift ergänzt); Alt+Ziehen am Gizmo: duplizieren
+- V beim Ziehen des Verschieben-Gizmos: Vertex-Snap (Mesh-Ecke bzw. HTD-Vertex unter dem Zeiger)
 - Alt+P: Spieltest starten/beenden; Esc: Spieltest beenden bzw. Auswahl aufheben
 # 2D-Ansicht
 - Mausrad: Zoom um den Zeiger; Mitte oder Rechts ziehen: verschieben
@@ -138,6 +139,7 @@ The keys only work while no text field is active.)MAN",
 - F: focus selection; End: drop to ground; G: game view
 - H: hide selection; Shift+H: isolate selection; Ctrl+H: show all
 - Ctrl+Alt+drag left: marquee selection (Shift adds); Alt+drag on the gizmo: duplicate
+- V while dragging the move gizmo: vertex snap (mesh corner or HTD vertex under the pointer)
 - Alt+P: start/stop playtest; Esc: stop playtest or clear selection
 # 2D view
 - Mouse wheel: zoom around the pointer; drag middle or right: pan
@@ -264,7 +266,7 @@ FPS, Objekt-/Mesh-/NPC-Anzahl, ausgeblendete Objekte, Kameraziel sowie Weltposit
 # Spieltest
 Startet eine Spielfigur direkt im Viewport (Alt+P oder Knopf 'Spieltest'). Spawn: MapInfo.shn RegenX/RegenY der offenen Karte, sonst das Kameraziel; danach die nächste begehbare SHBD-Zelle. W/A/S/D laufen relativ zur Kamera, Shift geht langsam, rechte/linke Maustaste dreht, Mausrad zoomt, C schaltet die Kollision, Esc beendet und stellt die Editor-Kamera wieder her. Die Kollision nutzt das geladene Block&Walk-Gitter (gesetztes Bit = blockiert, 6,25 Einheiten je Zelle) mit 1,5 Zellen Radius und gleitet an Wänden entlang. Laufgeschwindigkeit und Radius sind Editorwerte, keine aus dem Client belegten Konstanten. Ist kein begehbares SHBD geladen, läuft der Spieltest ohne Kollision und meldet das.
 # Auswahl und Sichtbarkeit
-Strg+Alt+linke Maustaste ziehen wählt per Rahmen; Shift ergänzt. 'Überschneidung' wählt alles, dessen projizierte NIF-Bounds den Rahmen berühren, 'vollständig innen' nur vollständig enthaltene Objekte. H blendet die Auswahl aus, Shift+H isoliert sie, Strg+H blendet alles wieder ein (nur Editor-Sichtbarkeit). Alt beim Ziehen des Verschieben-Gizmos dupliziert die Auswahl an Ort und Stelle; Duplikat und Verschiebung sind ein Undo-Schritt.
+Strg+Alt+linke Maustaste ziehen wählt per Rahmen; Shift ergänzt. 'Überschneidung' wählt alles, dessen projizierte NIF-Bounds den Rahmen berühren, 'vollständig innen' nur vollständig enthaltene Objekte. H blendet die Auswahl aus, Shift+H isoliert sie, Strg+H blendet alles wieder ein (nur Editor-Sichtbarkeit). Alt beim Ziehen des Verschieben-Gizmos dupliziert die Auswahl an Ort und Stelle; Duplikat und Verschiebung sind ein Undo-Schritt. V beim Ziehen setzt den Pivot auf die nächste Ecke des NIF-Dreiecks unter dem Mauszeiger (andere Objekte, z.B. das Pflaster-GroundObject) oder auf den nächsten HTD-Vertex - ein gelber Kreis zeigt das Ziel.
 # Objekte-Menü
 Ausrichten (X/Y/Z auf Minimum, Mitte, Maximum oder das aktive = zuletzt gewählte Objekt), Verteilen (gleichmäßige Abstände, Reihenfolge bleibt) und Rotation/Skalierung vom aktiven Objekt übernehmen. Alles ist rückgängig machbar.
 # Ausgabe
@@ -282,7 +284,7 @@ FPS, object/mesh/NPC counts, hidden objects, camera target and the world positio
 # Playtest
 Starts a player character directly in the viewport (Alt+P or the 'Playtest' button). Spawn: MapInfo.shn RegenX/RegenY of the open map, otherwise the camera target; then the nearest walkable SHBD cell. W/A/S/D run relative to the camera, Shift walks, right/left mouse button turns, mouse wheel zooms, C toggles collision, Esc ends and restores the editor camera. Collision uses the loaded block & walk grid (set bit = blocked, 6.25 units per cell) with a 1.5 cell radius and slides along walls. Run speed and radius are editor values, not constants verified from the client. If no walkable SHBD is loaded, the playtest runs without collision and says so.
 # Selection and visibility
-Ctrl+Alt+left mouse drag selects by marquee; Shift adds. 'Crossing' selects everything whose projected NIF bounds touch the rectangle, 'fully inside' only fully contained objects. H hides the selection, Shift+H isolates it, Ctrl+H shows everything again (editor visibility only). Holding Alt while dragging the move gizmo duplicates the selection in place; duplicate and move are one undo step.
+Ctrl+Alt+left mouse drag selects by marquee; Shift adds. 'Crossing' selects everything whose projected NIF bounds touch the rectangle, 'fully inside' only fully contained objects. H hides the selection, Shift+H isolates it, Ctrl+H shows everything again (editor visibility only). Holding Alt while dragging the move gizmo duplicates the selection in place; duplicate and move are one undo step. Holding V while dragging puts the pivot on the nearest corner of the NIF triangle under the mouse pointer (other objects, e.g. the pavement GroundObject) or on the nearest HTD vertex - a yellow circle shows the target.
 # Objects menu
 Align (X/Y/Z to minimum, center, maximum or the active = last selected object), distribute (even spacing, order is kept) and match rotation/scale to the active object. Everything can be undone.
 # Output log

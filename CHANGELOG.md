@@ -1,3 +1,7 @@
+## Level Editor — vertex snapping
+- Holding V while dragging the move gizmo snaps the selection pivot to the nearest corner of the NIF triangle under the cursor (selected objects excluded; placements and SHMD category meshes) or to the nearest HTD vertex, whichever the ray hits first; a yellow marker shows the target. New `NifMeshRenderer::RaycastObjectDetailed` returns hit point and nearest triangle corner.
+- Verified on Roumen via the automation probe `snapprobe`: targets land on the pavement GroundObject (Y 483.609) instead of the hidden HTD below.
+
 ## Export fidelity — blend maps keep their original resolution; 2D inside selection
 - Blend BMPs whose resolution differs from the shared layer resolution (e.g. Adl 476×476 beside 512×512) keep their original data (`TextureLayer::sourceBlend`). Export writes untouched layers byte-identically at the original size and resamples edited layers back to it instead of silently rescaling the file (`test_texture_layers`).
 - 2D box/lasso honour the marquee mode: "fully inside" requires the whole visible ground-contact contour inside the rectangle/lasso (crossing remains the default).

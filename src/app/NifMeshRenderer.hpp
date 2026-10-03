@@ -71,6 +71,16 @@ public:
     // Zeichnet alle Objekte mit erfolgreich geladenem Mesh in den aktuell gebundenen
     // Framebuffer (siehe HeightmapRenderer::BeginScene/EndScene).
     // hidden: optional, je Objektindex != 0 -> Objekt wird nicht gezeichnet (Sichtbarkeit/Kategorien).
+    // Wie RaycastObject, zusätzlich Trefferpunkt und nächstgelegene Dreiecksecke (Vertex-Snap).
+    struct RayHit {
+        float distance = 0.0f;
+        std::array<float, 3> point{};
+        std::array<float, 3> nearestVertex{};
+    };
+    [[nodiscard]] std::optional<RayHit> RaycastObjectDetailed(
+        const core::ObjectPlacementSet& set, std::size_t objectIndex, const OrbitCamera& camera,
+        const std::array<float, 3>& rayOrigin, const std::array<float, 3>& rayDirection) const;
+
     void Draw(const core::ObjectPlacementSet& set, const OrbitCamera& camera, int width, int height,
               const std::vector<char>* hidden = nullptr);
 
