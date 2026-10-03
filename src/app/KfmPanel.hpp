@@ -25,6 +25,7 @@ private:
     void MarkEdited(bool referencesChanged = true);
     char path_[4096]{}, exportPath_[4096]{}, filter_[256]{};
     std::filesystem::path source_;
+    std::filesystem::path workingSource_;
     std::optional<core::KfmFile> file_;
     std::optional<core::KfmReferences> references_;
     std::vector<std::size_t> visible_;
