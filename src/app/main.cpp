@@ -14236,7 +14236,10 @@ void DrawToolsContent(EditorState& state) {
 
         if (state.selectedLayer >= 0) {
             ImGui::Separator();
-            ImGui::Text(L("Gewichtssumme (Zelle 0,0): %.3f (sollte ~1.0 sein)","Weight sum (cell 0,0): %.3f (should be ~1.0)"), state.textureStack.WeightSumAt(0, 0));
+            ImGui::TextWrapped("%s", L("Jeder Layer hat seine eigene Maske und liegt über den Layern, die in der Liste vor ihm stehen. "
+                                       "Malen ändert nur den gewählten Layer.",
+                                       "Each layer has its own mask and lies over the layers listed before it. "
+                                       "Painting changes only the selected layer."));
         }
     } else if (state.editMode == EditMode::BlockWalk) {
         ImGui::TextWrapped("%s",L("Block & Walk: jede Zelle (6.25 Einheiten) ist blockiert (rot) oder begehbar. Klick/Ziehen im 2D-View setzt Zellen im Kreis um den Mauszeiger.",
@@ -15401,7 +15404,7 @@ bool ApplyBrushAtWorld(EditorState& state, float worldX, float worldZ) {
         // Layer mit eigener Region (z.B. Adl: linke/rechte Kartenhaelfte, siehe
         // TextureLayer::regionStartX): Welt-Position in die Region umrechnen, das Gitter
         // deckt nur die Region ab; nur Layer mit derselben Region nehmen an der
-        // Normalisierung teil. Ohne Region (0) bleibt alles wie bisher.
+        // (früheren) Normalisierung teil. Ohne Region (0) bleibt alles wie bisher.
         float paintX = worldX, paintZ = worldZ;
         core::TexturePaintSettings paintSettings = state.paintSettings;
         std::vector<char> sameRegion;

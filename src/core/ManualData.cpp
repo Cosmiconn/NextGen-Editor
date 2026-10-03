@@ -194,13 +194,13 @@ Below you find grid size and height range. Objects and NPCs follow the height wh
     {"map.texturing", "map",
      "Tab Map Texturen", "Map textures tab",
      R"MAN(Jede Karte hat mehrere Texturschichten (Layer). Jeder Layer hat eine Diffuse-Textur (Bild), einen UV-Scale (Kachelgröße) und ein Gewicht je Kartenpunkt (Blend), das Du malst.
-- Layer wählen (Liste), dann in der 2D-Ansicht malen: 'Erhöhen' verstärkt den Layer, 'Senken' schwächt ihn. Die Gewichte aller Layer derselben Region werden normalisiert.
+- Layer wählen (Liste), dann in der 2D-Ansicht oder im 3D-Viewport malen: 'Erhöhen' verstärkt den Layer, 'Senken' schwächt ihn. Jeder Layer hat seine eigene Maske; Malen ändert nur den gewählten Layer. Die Layer liegen in Listenreihenfolge übereinander (spätere über früheren), wie im Spiel.
 - Radius / Stärke: Pinsel.
 - Layer hinzufügen: Name, Diffuse-Datei ('Durchsuchen...') und UV-Scale angeben. 'Layer entfernen' löscht den gewählten Layer.
 - Rückgängig / Wiederholen für Textur-Pinselzüge.
 Einzelne Layer lassen sich im Bereich 'Sichtbarkeit' ein- und ausblenden, ohne die Daten zu ändern.)MAN",
      R"MAN(Every map has several texture layers. Each layer has a diffuse texture (image), a UV scale (tile size) and a weight per map point (blend) that you paint.
-- Select a layer (list), then paint in the 2D view: 'Increase' strengthens the layer, 'Decrease' weakens it. The weights of all layers of the same region are normalized.
+- Select a layer (list), then paint in the 2D view or the 3D viewport: 'Increase' strengthens the layer, 'Decrease' weakens it. Every layer has its own mask; painting changes only the selected layer. Layers lie on top of each other in list order (later over earlier), as in the game.
 - Radius / Strength: brush.
 - Add layer: enter name, diffuse file ('Browse...') and UV scale. 'Remove layer' deletes the selected layer.
 - Undo / Redo for texture strokes.

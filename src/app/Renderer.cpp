@@ -65,6 +65,7 @@ uniform float uMaxHeight;
 
 uniform bool uUseTextures;
 uniform int uLayerCount;
+uniform bool uFirstPass; // erster Layer-Durchgang deckend, weitere werden darübergelegt
 uniform float uUvScale[8];
 uniform float uLayerVisible[8]; // 0 = Layer ausgeblendet (Map-Editor "Sichtbarkeit")
 uniform vec4 uLayerRegion[8]; // Welt-X/Z-Start, Welt-Breite/Tiefe der Region, die die Blend-Map des Layers abdeckt
@@ -88,12 +89,12 @@ uniform sampler2D uBlend6;
 uniform sampler2D uDiffuse7;
 uniform sampler2D uBlend7;
 
-vec3 SampleLayer(sampler2D diffuseTex, sampler2D blendTex, float uvScale, vec4 region) {
+vec4 SampleLayer(sampler2D diffuseTex, sampler2D blendTex, float uvScale, vec4 region) {
     // Region des Layers (ini #StartPos/#Width/#Height): bei grossen Karten wie Adl deckt jeder Layer
     // nur einen Teil der Karte ab - Blend UND Diffuse-Kachelung beziehen sich auf diese Region
     // (vorher wurde jeder Layer ueber die ganze Karte gestreckt). Ausserhalb der Region Gewicht 0.
     vec2 mapUv = (vWorldPos.xz - region.xy) / region.zw;
-    if (mapUv.x < 0.0 || mapUv.y < 0.0 || mapUv.x > 1.0 || mapUv.y > 1.0) return vec3(0.0);
+    if (mapUv.x < 0.0 || mapUv.y < 0.0 || mapUv.x > 1.0 || mapUv.y > 1.0) return vec4(0.0);
     float weight = texture(blendTex, mapUv).r;
     // Diffuse detail density is a WORLD-space property, not a map-size property.
     // The previous mapUv*uvScale interpretation made one ground tile span thousands of
@@ -105,27 +106,37 @@ vec3 SampleLayer(sampler2D diffuseTex, sampler2D blendTex, float uvScale, vec4 r
     vec2 referenceTile = max(uBlockSize * 10.0, vec2(1.0));
     vec2 diffuseUv = (localWorld / referenceTile) * max(uvScale, 0.0001);
     vec3 diffuseColor = texture(diffuseTex, diffuseUv).rgb;
-    return diffuseColor * weight;
+    return vec4(diffuseColor, weight);
+}
+
+// Layer der Reihe nach übereinanderlegen: jede Blend-Map ist die Deckkraft ihres Layers über
+// allem darunter (belegt an Uruga/Bera/Teva: Masken summieren sich nicht zu 1, mehrere Layer
+// sind stellenweise gleichzeitig voll deckend). color = vorgemultiplizierte Farbe dieses
+// Durchgangs, transmit = Anteil, der von den Layern darunter noch durchscheint.
+void Over(vec4 layer, float visible, inout vec3 color, inout float transmit) {
+    float a = clamp(layer.a * visible, 0.0, 1.0);
+    color = color * (1.0 - a) + layer.rgb * a;
+    transmit *= 1.0 - a;
 }
 
 void main() {
     vec3 n = normalize(vNormal);
     float diff = max(dot(n, normalize(-uLightDir)), 0.0);
     vec3 baseColor;
+    float layerTransmit = 1.0;
 
     if (uUseTextures && uLayerCount > 0) {
-        // Blend weights remain normalized to each layer region. Diffuse textures are
-        // intentionally sampled in world scale inside SampleLayer(), so visual texel size does
-        // not grow with the overall map dimensions.
+        // Diffuse textures are intentionally sampled in world scale inside SampleLayer(), so
+        // visual texel size does not grow with the overall map dimensions.
         vec3 color = vec3(0.0);
-        if (uLayerCount > 0) color += SampleLayer(uDiffuse0, uBlend0, uUvScale[0], uLayerRegion[0]) * uLayerVisible[0];
-        if (uLayerCount > 1) color += SampleLayer(uDiffuse1, uBlend1, uUvScale[1], uLayerRegion[1]) * uLayerVisible[1];
-        if (uLayerCount > 2) color += SampleLayer(uDiffuse2, uBlend2, uUvScale[2], uLayerRegion[2]) * uLayerVisible[2];
-        if (uLayerCount > 3) color += SampleLayer(uDiffuse3, uBlend3, uUvScale[3], uLayerRegion[3]) * uLayerVisible[3];
-        if (uLayerCount > 4) color += SampleLayer(uDiffuse4, uBlend4, uUvScale[4], uLayerRegion[4]) * uLayerVisible[4];
-        if (uLayerCount > 5) color += SampleLayer(uDiffuse5, uBlend5, uUvScale[5], uLayerRegion[5]) * uLayerVisible[5];
-        if (uLayerCount > 6) color += SampleLayer(uDiffuse6, uBlend6, uUvScale[6], uLayerRegion[6]) * uLayerVisible[6];
-        if (uLayerCount > 7) color += SampleLayer(uDiffuse7, uBlend7, uUvScale[7], uLayerRegion[7]) * uLayerVisible[7];
+        if (uLayerCount > 0) Over(SampleLayer(uDiffuse0, uBlend0, uUvScale[0], uLayerRegion[0]), uLayerVisible[0], color, layerTransmit);
+        if (uLayerCount > 1) Over(SampleLayer(uDiffuse1, uBlend1, uUvScale[1], uLayerRegion[1]), uLayerVisible[1], color, layerTransmit);
+        if (uLayerCount > 2) Over(SampleLayer(uDiffuse2, uBlend2, uUvScale[2], uLayerRegion[2]), uLayerVisible[2], color, layerTransmit);
+        if (uLayerCount > 3) Over(SampleLayer(uDiffuse3, uBlend3, uUvScale[3], uLayerRegion[3]), uLayerVisible[3], color, layerTransmit);
+        if (uLayerCount > 4) Over(SampleLayer(uDiffuse4, uBlend4, uUvScale[4], uLayerRegion[4]), uLayerVisible[4], color, layerTransmit);
+        if (uLayerCount > 5) Over(SampleLayer(uDiffuse5, uBlend5, uUvScale[5], uLayerRegion[5]), uLayerVisible[5], color, layerTransmit);
+        if (uLayerCount > 6) Over(SampleLayer(uDiffuse6, uBlend6, uUvScale[6], uLayerRegion[6]), uLayerVisible[6], color, layerTransmit);
+        if (uLayerCount > 7) Over(SampleLayer(uDiffuse7, uBlend7, uUvScale[7], uLayerRegion[7]), uLayerVisible[7], color, layerTransmit);
         baseColor = color;
     } else {
         float t = clamp((vWorldPos.y - uMinHeight) / max(uMaxHeight - uMinHeight, 0.0001), 0.0, 1.0);
@@ -161,12 +172,20 @@ void main() {
     else if (uViewMode == 6) color = vec3(1.0);                                     // Terrain ist deckend
     else if (uViewMode == 7) color = vec3(0.55) * (0.45 + 0.55 * diff);             // Terrain: kein LOD
     else color = baseColor * lighting;
+    float fog = 0.0;
     if (uFogEnabled && uViewMode == 0) {
         float d = length(vWorldPos - uCameraPos);
-        float f = clamp((d - uFogStart) / max(uFogEnd - uFogStart, 1.0), 0.0, 1.0);
-        color = mix(color, uFogColor, f);
+        fog = clamp((d - uFogStart) / max(uFogEnd - uFogStart, 1.0), 0.0, 1.0);
     }
-    FragColor = vec4(color, 1.0);
+    if (uFirstPass) {
+        FragColor = vec4(mix(color, uFogColor, fog), 1.0);
+    } else if (uViewMode == 0 || uViewMode == 1) {
+        // Weitere Layer-Gruppe über das Bisherige legen: Blend (ONE, SRC_ALPHA) ergibt
+        // neu = src + alt * transmit. Nebel so verteilt, dass er insgesamt genau einmal wirkt.
+        FragColor = vec4(color * (1.0 - fog) + uFogColor * fog * (1.0 - layerTransmit), layerTransmit);
+    } else {
+        FragColor = vec4(0.0, 0.0, 0.0, 1.0); // Analyse-Ansichten zeigt der erste Durchgang vollständig
+    }
 }
 )";
 
@@ -716,9 +735,9 @@ void HeightmapRenderer::DrawTerrainMesh(const Mat4& viewProj, bool wireframe) {
 
     glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
     glBindVertexArray(vao_);
-    // Layer in Gruppen zu je kLayersPerPass zeichnen (Textur-Einheiten-Limit) und additiv
-    // zusammenfuehren: color = Summe(gewicht * diffuse), das ist linear - jeder Durchgang liefert
-    // seinen Teil, alle Layer ausserhalb ihrer Region tragen 0 bei (siehe SampleLayer).
+    // Layer in Gruppen zu je kLayersPerPass zeichnen (Textur-Einheiten-Limit). Jede Gruppe wird
+    // über die vorherigen gelegt (Blend ONE, SRC_ALPHA mit alpha = Durchlass der Gruppe), so dass
+    // das Ergebnis dem Übereinanderlegen aller Layer in Reihenfolge entspricht (siehe Over()).
     const int passes = std::max(1, (textureLayerCount_ + kLayersPerPass - 1) / kLayersPerPass);
     for (int pass = 0; pass < passes; ++pass) {
         const int first = pass * kLayersPerPass;
@@ -742,6 +761,7 @@ void HeightmapRenderer::DrawTerrainMesh(const Mat4& viewProj, bool wireframe) {
             }
         }
         glUniform1i(glGetUniformLocation(shaderProgram_, "uLayerCount"), inPass);
+        glUniform1i(glGetUniformLocation(shaderProgram_, "uFirstPass"), pass == 0 ? 1 : 0);
         glUniform1fv(glGetUniformLocation(shaderProgram_, "uUvScale"), kLayersPerPass, uvScales);
         glUniform4fv(glGetUniformLocation(shaderProgram_, "uLayerRegion"), kLayersPerPass, regions);
         float visible[kLayersPerPass] = {};
@@ -758,7 +778,7 @@ void HeightmapRenderer::DrawTerrainMesh(const Mat4& viewProj, bool wireframe) {
         }
         if (pass > 0) {
             glEnable(GL_BLEND);
-            glBlendFunc(GL_ONE, GL_ONE);
+            glBlendFuncSeparate(GL_ONE, GL_SRC_ALPHA, GL_ZERO, GL_ONE); // Ziel-Alpha unverändert lassen
             glDepthFunc(GL_LEQUAL);
             glDepthMask(GL_FALSE);
         }

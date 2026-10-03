@@ -1,7 +1,7 @@
 // test_texture_layers.cpp
 // GUI-freier Test, baubar direkt mit g++ (siehe README.md). Prüft:
 //   1) TextureLayerStack Grundfunktionen
-//   2) PaintLayerWeight inkl. Normalisierungs-Invariante + Undo/Redo
+//   2) PaintLayerWeight: nur der gewählte Layer ändert sich (unabhängige Masken) + Undo/Redo
 //   3)  Fiesta-BMP Save/Load-Roundtrip
 //   4) LegacyMapIni-Parser gegen den echten Inhalt der hochgeladenen Rou.ini
 //      (tests/fixtures/Rou.ini - inhaltlich identisch, Kommentartexte vereinfacht, da das
@@ -76,7 +76,7 @@ void TestLayerTakeInsert() {
     Check(stack.Layer(1).name == "Rock", "Inverse MoveLayer-Bewegung stellt Reihenfolge wieder her");
 }
 
-void TestPaintNormalization() {
+void TestPaintIndependentLayers() {
     TextureLayerStack stack(9, 9);
     stack.AddLayer("Base", "base.dds");
     const auto rock = stack.AddLayer("Rock", "rock.dds");
@@ -93,10 +93,20 @@ void TestPaintNormalization() {
 
     const float rockWeight = stack.Layer(rock).blend.At(4, 4);
     Check(rockWeight > 0.9f, "Rock-Layer nach mehrfachem Malen stark erh\u00f6ht");
-    Check(std::abs(stack.WeightSumAt(4, 4) - 1.0f) < 1e-4f, "Gewichtssumme bleibt nach Malen ~1.0 (Normalisierung)");
+    bool baseUntouched = true;
+    for (std::uint32_t z = 0; z < 9; ++z) for (std::uint32_t x = 0; x < 9; ++x) baseUntouched = baseUntouched && stack.Layer(0).blend.At(x, z) == 1.0f;
+    Check(baseUntouched, "Malen auf Rock verändert den Base-Layer nicht (unabhängige Masken)");
+
+    // Dritter Layer mit eigener Maske bleibt beim Malen anderer Layer exakt erhalten.
+    const auto moss = stack.AddLayer("Moss", "moss.dds");
+    stack.Layer(moss).blend.Set(4, 4, 0.3f);
+    auto other = PaintLayerWeight(stack, rock, PaintMode::Decrease, settings, 200.0f, 200.0f, 50.0f, 50.0f);
+    Check(stack.Layer(moss).blend.At(4, 4) == 0.3f && stack.Layer(0).blend.At(4, 4) == 1.0f,
+          "Absenken von Rock lässt Moss und Base unverändert");
+    undo.Push(std::move(other));
 
     Check(undo.Undo(stack), "Undo (Textur) erfolgreich");
-    Check(std::abs(stack.WeightSumAt(4, 4) - 1.0f) < 1e-4f, "Gewichtssumme bleibt auch nach Undo ~1.0");
+    Check(std::abs(stack.Layer(rock).blend.At(4, 4) - rockWeight) < 1e-6f, "Undo stellt den Rock-Wert wieder her");
 }
 
 void TestFiestaTextureRoundtrip() {
@@ -244,7 +254,7 @@ int main() {
     std::printf("== TextureLayerStack / TexturePaintOps /  Fiesta-BMP Tests ==\n");
     TestLayerStackBasics();
     TestLayerTakeInsert();
-    TestPaintNormalization();
+    TestPaintIndependentLayers();
     TestFiestaTextureRoundtrip();
     TestBmpRawRowOrder();
     TestMixedBlendResolutionExport();
