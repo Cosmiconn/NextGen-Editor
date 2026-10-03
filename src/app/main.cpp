@@ -658,7 +658,7 @@ struct EditorState {
     std::string mapRenderConfigPath;
     std::string mapVertexColorPath;
     std::string mapRenderDataNote; // Hinweis, falls etwas fehlt/nicht lesbar ist
-    int viewportViewMode = 0;      // 0 beleuchtet, 1 unbeleuchtet, 2 nur Licht, 3 Normalen
+    int viewportViewMode = 0;      // 0 beleuchtet, 1 unbeleuchtet, 2 nur Licht, 3 Normalen, 4 Vertexfarbe, 5 UV0, 6 Alpha
     int viewportMsaaSamples = 4;   // 1 = aus
     bool viewportGlow = true;      // Glow aus <Karte>.conf
     bool viewportVertexColors = true;
@@ -1568,7 +1568,7 @@ void LoadViewportSettings(EditorState& state) {
         else if (key == "rotate_snap" && f > 0.0f && std::isfinite(f)) state.objectRotateSnap = f;
         else if (key == "scale_snap" && f > 0.0f && std::isfinite(f)) state.objectScaleSnap = f;
         else if (key == "playtest_speed" && f >= 10.0f && f <= 2000.0f) state.playtestConfig.runSpeed = f;
-        else if (key == "view_mode") state.viewportViewMode = std::clamp(std::atoi(value), 0, 3);
+        else if (key == "view_mode") state.viewportViewMode = std::clamp(std::atoi(value), 0, 6);
         else if (key == "msaa") state.viewportMsaaSamples = std::clamp(std::atoi(value), 1, 8);
         else if (key == "glow") state.viewportGlow = b;
         else if (key == "vertex_colors") state.viewportVertexColors = b;
@@ -16375,8 +16375,9 @@ void DrawViewportShowFlagsMenu(EditorState& state) {
     ImGui::SeparatorText(L("Darstellung", "Rendering"));
     bool renderChanged = false;
     const char* viewModes[] = {L("Beleuchtet", "Lit"), L("Unbeleuchtet (nur Textur)", "Unlit (texture only)"),
-                               L("Nur Licht / Vertexfarbe", "Lighting / vertex color only"), L("Normalen", "Normals")};
-    for (int mode = 0; mode < 4; ++mode)
+                               L("Nur Licht", "Lighting only"), L("Normalen", "Normals"),
+                               L("Vertexfarben", "Vertex colors"), L("UV0", "UV0"), L("Alpha", "Alpha")};
+    for (int mode = 0; mode < 7; ++mode)
         if (ImGui::MenuItem(viewModes[mode], nullptr, state.viewportViewMode == mode)) {
             state.viewportViewMode = mode;
             renderChanged = true;
@@ -20822,7 +20823,7 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
     else if (cmd == "maplighting") onOff(state.viewportMapLighting);
     else if (cmd == "mapbackground") onOff(state.viewportMapBackground);
     else if (cmd == "fog") onOff(state.viewportFog);
-    else if (cmd == "viewmode") { in >> state.viewportViewMode; state.viewportViewMode = std::clamp(state.viewportViewMode, 0, 3); }
+    else if (cmd == "viewmode") { in >> state.viewportViewMode; state.viewportViewMode = std::clamp(state.viewportViewMode, 0, 6); }
     else if (cmd == "msaa") { in >> state.viewportMsaaSamples; state.viewportMsaaSamples = std::clamp(state.viewportMsaaSamples, 1, 8); }
     else if (cmd == "status") { std::string t; std::getline(in >> std::ws, t); state.statusMessage = t; }
     else if (cmd == "marquee") {

@@ -87,7 +87,7 @@ in vec4 vColor;
 out vec4 FragColor;
 
 uniform vec3 uLightDir;
-uniform int uViewMode; // 0 beleuchtet, 1 unbeleuchtet, 2 nur Licht, 3 Normalen
+uniform int uViewMode; // 0 beleuchtet, 1 unbeleuchtet, 2 nur Licht, 3 Normalen, 4 Vertexfarbe, 5 UV0, 6 Alpha
 uniform bool uSceneLightFromMap; // SHMD GlobalLight/DirectionLight* vorhanden
 uniform vec3 uSceneAmbient;
 uniform vec3 uSunColor;
@@ -371,6 +371,12 @@ void main() {
         FragColor = vec4(materialAmbient * 0.28 + vec3(0.22 + 0.78 * ndl) + specular, alpha);
     } else if (uViewMode == 3) {
         FragColor = vec4(n * 0.5 + 0.5, alpha);
+    } else if (uViewMode == 4) {
+        FragColor = vec4(vertexColor.rgb, 1.0);                 // Vertexfarben der NIF
+    } else if (uViewMode == 5) {
+        FragColor = vec4(fract(vUv0), 0.0, 1.0);                // UV0 (Rot = U, Grün = V)
+    } else if (uViewMode == 6) {
+        FragColor = vec4(vec3(alpha), 1.0);                     // effektives Alpha
     } else if (uAlphaTextureBlender) {
         FragColor = vec4(surface, alpha);
     } else {

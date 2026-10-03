@@ -50,7 +50,7 @@ out vec4 FragColor;
 uniform vec3 uLightDir;
 uniform bool uUseVertexColor; // Karte liefert eine Vertex-Color-Bitmap
 uniform bool uGroundLight;    // <Karte>.conf [WorldSetting] Ground_DL_Enable
-uniform int uViewMode;        // 0 beleuchtet, 1 unbeleuchtet, 2 nur Licht, 3 Normalen
+uniform int uViewMode;        // 0 beleuchtet, 1 unbeleuchtet, 2 nur Licht, 3 Normalen, 4 Vertexfarbe, 5 UV, 6 Alpha
 // SHMD-Szenenlicht (GlobalLight/DirectionLight*), Nebel (Fog/Frustum), siehe SceneLighting.hpp.
 uniform bool uSceneLightFromMap;
 uniform vec3 uSceneAmbient;
@@ -156,6 +156,9 @@ void main() {
     if (uViewMode == 1) color = baseColor;
     else if (uViewMode == 2) color = lighting;
     else if (uViewMode == 3) color = n * 0.5 + 0.5;
+    else if (uViewMode == 4) color = vc;                                            // Terrain-Vertexfarbe
+    else if (uViewMode == 5) color = vec3(fract(vWorldPos.xz / max(uBlockSize * 10.0, vec2(1.0))), 0.0); // Kachel-UV
+    else if (uViewMode == 6) color = vec3(1.0);                                     // Terrain ist deckend
     else color = baseColor * lighting;
     if (uFogEnabled && uViewMode == 0) {
         float d = length(vWorldPos - uCameraPos);

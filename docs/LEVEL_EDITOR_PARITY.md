@@ -32,7 +32,7 @@ Handbuch „Level-Editor-Werkzeuge“, Kern `core/LevelEditorTools` + `test_leve
 | Align / Distribute / Match Transform (§9) | **umgesetzt** (Objekte-Menü) |
 | Bookmarks / gespeicherte Kamerapositionen (§9) | **umgesetzt** – Strg+0..9 / 0..9, je Karte persistiert |
 | Orthographic Front/Side (§3.3) | **umgesetzt** – gemeinsame Projektion `OrbitCamera::ProjectionMatrix` für Renderer, Picking, Gizmo, Overlays |
-| Unlit / UV / Normals Debug-Modi (§8) | **teilweise** – Lit, Unlit, Nur Licht/Vertexfarbe, Normalen, Wireframe; UV/Alpha/LOD offen |
+| Unlit / UV / Normals Debug-Modi (§8) | **umgesetzt** – Lit, Unlit, Nur Licht, Normalen, Vertexfarben, UV0, Alpha, Wireframe; LOD-Stufen-Ansicht offen |
 | Karten-Lichtdaten (neu) | **umgesetzt** – Vertex-Color-Bitmap, `Ground_DL_Enable`, Glow aus `<Karte>.conf`, MSAA (siehe `docs/RENDERER.md`) |
 
 Zusätzlich (nicht im ursprünglichen Plan): Unreal-Navigation, Kameratempo 1..8, Spielansicht (G),

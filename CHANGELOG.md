@@ -1,3 +1,6 @@
+## Renderer — vertex color, UV0 and alpha debug views
+- View modes now also include vertex colors, UV0 (red = U, green = V) and effective alpha for NIF meshes; terrain shows its vertex colors, tile UVs and is opaque in the alpha view. Verified on Roumen (semi-transparent water stands out in the alpha view).
+
 ## KFM — animation list editing
 - KFM panel: duplicate an animation (next free event ID, KF file/index/transitions copied, 1.2.4b legacy name gets " Kopie", 2.0.0.0b keeps no name), delete with an explicit safety checkbox and a report of transitions/intermediates that now point to a missing event ID, editable NIF file and root node.
 - Core: `KfmNextFreeEventCode`, `KfmDuplicateAnimation`, `KfmRemoveAnimation`; `test_kfm_file` covers both KFM versions (encode/decode after duplicate, dangling-reference count after delete).
