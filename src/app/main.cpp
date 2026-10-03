@@ -249,6 +249,7 @@ template <class... A> bool SliderFloat(const char* l, A&&... a) { const bool r =
 template <class... A> bool SliderInt(const char* l, A&&... a) { const bool r = ImGui::SliderInt(l, std::forward<A>(a)...); Tip("SliderInt", l); return r; }
 template <class... A> bool InputInt(const char* l, A&&... a) { const bool r = ImGui::InputInt(l, std::forward<A>(a)...); Tip("InputInt", l); return r; }
 template <class... A> bool InputFloat(const char* l, A&&... a) { const bool r = ImGui::InputFloat(l, std::forward<A>(a)...); Tip("InputFloat", l); return r; }
+template <class... A> bool InputScalar(const char* l, A&&... a) { const bool r = ImGui::InputScalar(l, std::forward<A>(a)...); Tip("InputScalar", l); return r; }
 template <class... A> bool InputText(const char* l, A&&... a) { const bool r = ImGui::InputText(l, std::forward<A>(a)...); Tip("InputText", l); return r; }
 template <class... A> bool InputTextWithHint(const char* l, A&&... a) { const bool r = ImGui::InputTextWithHint(l, std::forward<A>(a)...); Tip("InputText", l); return r; }
 template <class... A> bool Combo(const char* l, A&&... a) { const bool r = ImGui::Combo(l, std::forward<A>(a)...); Tip("Combo", l); return r; }
@@ -953,6 +954,7 @@ struct EditorState {
     core::legacy::ShnFile questDialogShn;
     bool questDialogLoaded = false;
     int selectedQuestIdx = -1;
+    int automationQuestSection = 0; // nur Automatisierung (Screenshots): 1 Drops, 2 Belohnungen
     // Quest-Editor-Caches: Text-ID -> Text (statt Linearsuche pro Aufruf), Listen-Beschriftungen und
     // sichtbare Eintraege (Filter) - der alte Editor durchsuchte QuestDialog fuer JEDE Quest in JEDEM
     // Frame (CHANGELOG [0.44.29]).
@@ -9168,6 +9170,11 @@ void DrawQuestEditor(EditorState& state) {
         }
     };
 
+    auto u32Row = [&](const char* label, const char* id, std::uint32_t& value) {
+        rowLabel(label);
+        if (UI::InputScalar(id, ImGuiDataType_U32, &value)) markQuestChanged();
+    };
+
     ImGui::Text(L("Quest #%d", "Quest #%d"), q.id);
     ImGui::SameLine();
     ImGui::TextColored(kDim, "%s", QuestTextOf(state, q.title).c_str());
@@ -9176,12 +9183,12 @@ void DrawQuestEditor(EditorState& state) {
     if (UI::CollapsingHeader(L("Allgemein", "General"), ImGuiTreeNodeFlags_DefaultOpen) &&
         beginForm("##qGeneral")) {
         u16Row(L("Quest-ID", "Quest ID"), "##id", q.id);
-        u16Row(L("Titel-Text-ID", "Title text ID"), "##title", q.title);
+        u32Row(L("Titel-Text-ID", "Title text ID"), "##title", q.title);
         {
             const std::string t = QuestTextOf(state, q.title);
             infoText(t.empty() ? L("(kein Text)", "(no text)") : t, !t.empty());
         }
-        u16Row(L("Beschreibung-Text-ID", "Description text ID"), "##desc", q.description);
+        u32Row(L("Beschreibung-Text-ID", "Description text ID"), "##desc", q.description);
         {
             const std::string t = QuestTextOf(state, q.description);
             infoText(t.empty() ? L("(kein Text)", "(no text)") : t, !t.empty());
@@ -9271,8 +9278,9 @@ void DrawQuestEditor(EditorState& state) {
 
     ImGui::Spacing();
     if (UI::CollapsingHeader(L("Ziele · Monster", "Objectives · Monsters"), ImGuiTreeNodeFlags_DefaultOpen)) {
-        if (ImGui::BeginTable("##qmobs", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit)) {
+        if (ImGui::BeginTable("##qmobs", 6, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit)) {
             ImGui::TableSetupColumn(L("Aktiv", "Active"), ImGuiTableColumnFlags_WidthFixed, 46.0f);
+            ImGui::TableSetupColumn(L("Art", "Kind"), ImGuiTableColumnFlags_WidthFixed, 150.0f);
             ImGui::TableSetupColumn(L("Mob-ID", "Mob ID"), ImGuiTableColumnFlags_WidthFixed, 90.0f);
             ImGui::TableSetupColumn(L("Anzahl", "Amount"), ImGuiTableColumnFlags_WidthFixed, 80.0f);
             ImGui::TableSetupColumn(L("Name", "Name"), ImGuiTableColumnFlags_WidthStretch);
@@ -9283,9 +9291,17 @@ void DrawQuestEditor(EditorState& state) {
                 auto& m = q.mobs[mi];
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0); bool active = m.active != 0; if (UI::Checkbox("##a", &active)) { m.active = active ? 1 : 0; markQuestChanged(); }
-                ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(80.0f); int mid = m.id; if (UI::InputInt("##id", &mid, 0, 0)) { m.id = static_cast<std::uint16_t>(std::clamp(mid, 0, 65535)); markQuestChanged(); }
-                ImGui::TableSetColumnIndex(2); ImGui::SetNextItemWidth(70.0f); int amt = m.amount; if (UI::InputInt("##n", &amt, 0, 0)) { m.amount = static_cast<std::uint8_t>(std::clamp(amt, 0, 255)); markQuestChanged(); }
-                ImGui::TableSetColumnIndex(3);
+                ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(140.0f);
+                {
+                    // hasToBeKilled: 0 = NPC aufsuchen (Anzahl immer 0), 1 = Monster besiegen.
+                    const char* kinds[] = {L("NPC aufsuchen", "Visit NPC"), L("Monster besiegen", "Defeat monster")};
+                    int kind = m.hasToBeKilled != 0 ? 1 : 0;
+                    if (m.hasToBeKilled > 1) ImGui::Text("%s %u", L("Rohwert", "Raw value"), static_cast<unsigned>(m.hasToBeKilled));
+                    else if (UI::Combo("##kind", &kind, kinds, 2)) { m.hasToBeKilled = static_cast<std::uint8_t>(kind); markQuestChanged(); }
+                }
+                ImGui::TableSetColumnIndex(2); ImGui::SetNextItemWidth(80.0f); int mid = m.id; if (UI::InputInt("##id", &mid, 0, 0)) { m.id = static_cast<std::uint16_t>(std::clamp(mid, 0, 65535)); markQuestChanged(); }
+                ImGui::TableSetColumnIndex(3); ImGui::SetNextItemWidth(70.0f); int amt = m.amount; if (UI::InputInt("##n", &amt, 0, 0)) { m.amount = static_cast<std::uint8_t>(std::clamp(amt, 0, 255)); markQuestChanged(); }
+                ImGui::TableSetColumnIndex(4);
                 if (m.active != 0 || m.id != 0) {
                     auto r = ResolveMobNameForQuest(state, m.id);
                     ImGui::TextColored(r.second ? kOk : kBad, "%s", r.first.c_str());
@@ -9331,14 +9347,17 @@ void DrawQuestEditor(EditorState& state) {
             ImGui::EndTable();
         }
     }
+    if (state.automationQuestSection == 1) { ImGui::SetScrollHereY(0.0f); state.automationQuestSection = 0; }
     if (UI::CollapsingHeader(L("Ziele · Drops", "Objectives · Drops"), ImGuiTreeNodeFlags_DefaultOpen)) {
         int removeIdx = -1;
-        if (ImGui::BeginTable("##qdrops", 8, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit)) {
+        if (ImGui::BeginTable("##qdrops", 10, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit)) {
             ImGui::TableSetupColumn(L("Aktiv","Active"), ImGuiTableColumnFlags_WidthFixed, 48.0f);
             ImGui::TableSetupColumn(L("Mob-ID", "Mob ID"), ImGuiTableColumnFlags_WidthFixed, 86.0f);
             ImGui::TableSetupColumn(L("Item-ID", "Item ID"), ImGuiTableColumnFlags_WidthFixed, 86.0f);
             ImGui::TableSetupColumn(L("Menge", "Amount"), ImGuiTableColumnFlags_WidthFixed, 66.0f);
             ImGui::TableSetupColumn(L("Rate", "Rate"), ImGuiTableColumnFlags_WidthFixed, 76.0f);
+            ImGui::TableSetupColumn(L("Min?", "Min?"), ImGuiTableColumnFlags_WidthFixed, 50.0f);
+            ImGui::TableSetupColumn(L("Max?", "Max?"), ImGuiTableColumnFlags_WidthFixed, 50.0f);
             ImGui::TableSetupColumn(L("Mob", "Mob"), ImGuiTableColumnFlags_WidthStretch);
             ImGui::TableSetupColumn(L("Item", "Item"), ImGuiTableColumnFlags_WidthStretch);
             ImGui::TableSetupColumn("##x", ImGuiTableColumnFlags_WidthFixed, 26.0f);
@@ -9354,9 +9373,12 @@ void DrawQuestEditor(EditorState& state) {
                 ImGui::TableSetColumnIndex(2); ImGui::SetNextItemWidth(76.0f); if (UI::InputInt("##i", &itemId, 0, 0)) { d.itemId = static_cast<std::uint32_t>(std::max(0, itemId)); markQuestChanged(); }
                 ImGui::TableSetColumnIndex(3); ImGui::SetNextItemWidth(56.0f); if (UI::InputInt("##a", &amount, 0, 0)) { d.amount = static_cast<std::uint32_t>(std::max(0, amount)); markQuestChanged(); }
                 ImGui::TableSetColumnIndex(4); ImGui::SetNextItemWidth(66.0f); if (UI::InputInt("##r", &rate, 0, 0)) { d.rate = static_cast<std::uint32_t>(std::max(0, rate)); markQuestChanged(); }
+                // unk1/unk2: in NA2016 immer unk1 <= unk2 (1..20) - vermutlich Mindest-/Höchstanzahl, unbelegt.
+                ImGui::TableSetColumnIndex(5); ImGui::SetNextItemWidth(40.0f); if (UI::InputScalar("##u1", ImGuiDataType_U32, &d.unk1)) markQuestChanged();
+                ImGui::TableSetColumnIndex(6); ImGui::SetNextItemWidth(40.0f); if (UI::InputScalar("##u2", ImGuiDataType_U32, &d.unk2)) markQuestChanged();
                 auto mobName = ResolveMobNameForQuest(state, mobId);
                 auto itemName = ResolveItemNameForQuest(state, itemId);
-                ImGui::TableSetColumnIndex(5);
+                ImGui::TableSetColumnIndex(7);
                 ImGui::TextColored(mobName.second ? kOk : kBad, "%s", mobName.first.c_str());
                 if (mobName.second && mobId != 0) {
                     ImGui::SameLine();
@@ -9364,26 +9386,108 @@ void DrawQuestEditor(EditorState& state) {
                         OpenShnRecordById(state, {"MobInfo.shn","MobViewInfo.shn"},
                                           EditorState::ShnSource::Client, mobId);
                 }
-                ImGui::TableSetColumnIndex(6);
+                ImGui::TableSetColumnIndex(8);
                 ImGui::TextColored(itemName.second ? kOk : kBad, "%s", itemName.first.c_str());
                 if (itemName.second && itemId != 0) {
                     ImGui::SameLine();
                     if (UI::SmallButton(L("Öffnen##dropItemRef", "Open##dropItemRef")))
                         OpenShnRecordById(state, {"ItemInfo.shn"}, EditorState::ShnSource::Server, itemId);
                 }
-                ImGui::TableSetColumnIndex(7); if (UI::SmallButton("X")) removeIdx = static_cast<int>(di);
+                ImGui::TableSetColumnIndex(9); if (UI::SmallButton("X")) removeIdx = static_cast<int>(di);
                 ImGui::PopID();
             }
             ImGui::EndTable();
         }
         if (removeIdx >= 0) { q.drops.erase(q.drops.begin() + removeIdx); markQuestChanged(); }
-        if (q.drops.size() < 11 && UI::Button(L("+ Drop hinzufügen", "+ Add drop"))) { q.drops.push_back({}); markQuestChanged(); }
+        if (q.drops.size() < core::legacy::kQuestDropSlots && UI::Button(L("+ Drop hinzufügen", "+ Add drop"))) {
+            core::legacy::QuestDrop d;
+            d.active = 1; d.amount = 1; d.unk1 = 1; d.unk2 = 1; // häufigste Werte in NA2016
+            q.drops.push_back(d);
+            markQuestChanged();
+        }
     }
 
     ImGui::Spacing();
-    if (UI::CollapsingHeader(L("Belohnungen", "Rewards"))) {
-        ImGui::TextDisabled("%s", L("144 Byte Belohnungsdaten sind noch nicht semantisch kartiert.", "144 bytes of reward data are not semantically mapped yet."));
-        ImGui::TextWrapped("%s", L("Der Editor bewahrt diesen Bereich beim Speichern unverändert auf, statt unbekannte Felder zu erraten.", "The editor preserves this area unchanged when saving instead of guessing unknown fields."));
+    if (state.automationQuestSection == 2) { ImGui::SetScrollHereY(0.0f); state.automationQuestSection = 0; }
+    if (UI::CollapsingHeader(L("Belohnungen", "Rewards"), ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::TextWrapped("%s", L("12 Einträge. Struktur an allen 2304 NA2016-Quests belegt; die Bedeutung von Verwendung "
+                                   "und der Typen EXP/Geld/4 ist aus den Wertebereichen abgeleitet (mit * markiert).",
+                                   "12 entries. Structure verified on all 2304 NA2016 quests; the meaning of usage and of "
+                                   "the EXP/money/4 types is inferred from value ranges (marked with *)."));
+        constexpr int kRewardTypes[] = {0, 1, 2, 4};
+        const char* typeNames[] = {L("EXP*", "EXP*"), L("Geld*", "Money*"), L("Item", "Item"), L("Typ 4 (?)", "Type 4 (?)")};
+        const char* useNames[] = {L("unbelegt", "unused"), L("fest*", "fixed*"), L("Auswahl*", "choice*")};
+        int clearIdx = -1;
+        if (ImGui::BeginTable("##qrewards", 6, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit)) {
+            ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed, 24.0f);
+            ImGui::TableSetupColumn(L("Verwendung", "Usage"), ImGuiTableColumnFlags_WidthFixed, 110.0f);
+            ImGui::TableSetupColumn(L("Typ", "Type"), ImGuiTableColumnFlags_WidthFixed, 110.0f);
+            ImGui::TableSetupColumn(L("Wert", "Value"), ImGuiTableColumnFlags_WidthFixed, 190.0f);
+            ImGui::TableSetupColumn(L("Name", "Name"), ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("##x", ImGuiTableColumnFlags_WidthFixed, 26.0f);
+            ImGui::TableHeadersRow();
+            for (std::size_t ri = 0; ri < q.rewards.size(); ++ri) {
+                auto& e = q.rewards[ri];
+                if (e.Empty()) continue;
+                ImGui::PushID(static_cast<int>(ri) + 300);
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0); ImGui::Text("%zu", ri + 1);
+                ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(100.0f);
+                if (e.use <= 2) {
+                    int use = e.use;
+                    if (UI::Combo("##use", &use, useNames, 3)) { e.use = static_cast<std::uint8_t>(use); markQuestChanged(); }
+                } else ImGui::Text("%s %u", L("Rohwert", "Raw value"), static_cast<unsigned>(e.use));
+                ImGui::TableSetColumnIndex(2); ImGui::SetNextItemWidth(100.0f);
+                const auto typeIt = std::find(std::begin(kRewardTypes), std::end(kRewardTypes), static_cast<int>(e.type));
+                if (typeIt != std::end(kRewardTypes)) {
+                    int typeIdx = static_cast<int>(typeIt - std::begin(kRewardTypes));
+                    if (UI::Combo("##type", &typeIdx, typeNames, 4)) {
+                        const bool wasItem = e.type == 2;
+                        e.type = static_cast<std::uint8_t>(kRewardTypes[typeIdx]);
+                        if (wasItem != (e.type == 2)) e.value = e.type == 2 ? (std::uint64_t{1} << 16) : 0;
+                        markQuestChanged();
+                    }
+                } else ImGui::Text("%s %u", L("Typ", "Type"), static_cast<unsigned>(e.type));
+                ImGui::TableSetColumnIndex(3);
+                if (e.type == 2) {
+                    int itemId = e.ItemId(), count = e.ItemCount();
+                    ImGui::SetNextItemWidth(80.0f);
+                    if (UI::InputInt("##rid", &itemId, 0, 0)) { e.SetItem(static_cast<std::uint16_t>(std::clamp(itemId, 0, 65535)), e.ItemCount()); markQuestChanged(); }
+                    ImGui::SameLine(); ImGui::TextUnformatted("×"); ImGui::SameLine();
+                    ImGui::SetNextItemWidth(60.0f);
+                    if (UI::InputInt("##rcount", &count, 0, 0)) { e.SetItem(e.ItemId(), static_cast<std::uint16_t>(std::clamp(count, 0, 65535))); markQuestChanged(); }
+                } else {
+                    ImGui::SetNextItemWidth(180.0f);
+                    if (UI::InputScalar("##rvalue", ImGuiDataType_U64, &e.value)) markQuestChanged();
+                }
+                ImGui::TableSetColumnIndex(4);
+                if (e.type == 2) {
+                    const auto r = ResolveItemNameForQuest(state, e.ItemId());
+                    ImGui::TextColored(r.second ? kOk : kBad, "%s", r.first.c_str());
+                    if (r.second) {
+                        ImGui::SameLine();
+                        if (UI::SmallButton(L("Öffnen##rewardItemRef", "Open##rewardItemRef")))
+                            OpenShnRecordById(state, {"ItemInfo.shn"}, EditorState::ShnSource::Server, e.ItemId());
+                    }
+                } else if (e.pad != 0 || (e.value >> 32) != 0) {
+                    ImGui::TextColored(kDim, "%s", L("ungewöhnliche Rohbytes (in NA2016 nie belegt)", "unusual raw bytes (never set in NA2016)"));
+                }
+                ImGui::TableSetColumnIndex(5); if (UI::SmallButton("X")) clearIdx = static_cast<int>(ri);
+                ImGui::PopID();
+            }
+            ImGui::EndTable();
+        }
+        if (clearIdx >= 0) { q.rewards[static_cast<std::size_t>(clearIdx)] = {}; markQuestChanged(); }
+        const auto freeSlot = std::find_if(q.rewards.begin(), q.rewards.end(), [](const auto& e) { return e.Empty(); });
+        if (freeSlot != q.rewards.end()) {
+            if (UI::Button(L("+ EXP", "+ EXP"))) { *freeSlot = {1, 0, 0, 0}; markQuestChanged(); }
+            ImGui::SameLine();
+            if (UI::Button(L("+ Geld", "+ Money"))) { *freeSlot = {1, 1, 0, 0}; markQuestChanged(); }
+            ImGui::SameLine();
+            if (UI::Button(L("+ Item", "+ Item"))) { *freeSlot = {1, 2, 0, std::uint64_t{1} << 16}; markQuestChanged(); }
+        } else {
+            ImGui::TextDisabled("%s", L("Alle 12 Einträge belegt.", "All 12 entries in use."));
+        }
     }
 
     if (UI::CollapsingHeader(L("Dialoge", "Dialogs"))) {
@@ -21080,6 +21184,22 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         else if (m == "objects") state.editMode = EditMode::ObjectPlacement;
         else if (m == "npcs") state.editMode = EditMode::Npcs;
         else if (m == "portals") state.editMode = EditMode::Portals;
+    }
+    else if (cmd == "shn") {
+        // shn <Unterreiter> <Server-Shine-Ordner>: öffnet den SHN-Editor (4 = Quest-Editor).
+        int tab = 0; in >> tab;
+        std::string root; std::getline(in >> std::ws, root);
+        if (!root.empty()) state.shnServerRoot = root;
+        state.shnSubTab = tab;
+        state.screen = AppScreen::ShnEditor;
+    }
+    else if (cmd == "quest") {
+        int id = 0; in >> id;
+        EnsureQuestDataLoaded(state);
+        for (std::size_t i = 0; i < state.questDataFile.records.size(); ++i)
+            if (state.questDataFile.records[i].id == id) state.selectedQuestIdx = static_cast<int>(i);
+        std::string section; in >> section;
+        state.automationQuestSection = section == "drops" ? 1 : section == "rewards" ? 2 : 0;
     }
     else if (cmd == "selectall") SelectAllNormalObjects(state);
     else if (cmd == "select") { int id = -1; in >> id; state.selectedObjects = {id}; state.selectedObject = id; state.objectGizmoMatrixValid = false; }

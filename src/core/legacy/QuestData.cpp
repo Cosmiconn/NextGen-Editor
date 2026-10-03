@@ -84,10 +84,11 @@ std::expected<QuestDataFile, std::string> LoadQuestData(const std::filesystem::p
         QuestRecord rec;
         rec.dataLen = r.U32();
 
-        rec.id = r.U16(); rec.title = r.U16(); rec.description = r.U16();
+        rec.id = r.U16(); rec.idPad = r.U16();
+        rec.title = r.U32(); rec.description = r.U32();
         rec.unk1 = r.U8();
         rec.questGrade = r.U8(); rec.multiQuest = r.U8(); rec.dailyQuest = r.U8();
-        rec.unk2 = r.U16();
+        rec.unk2 = r.U16(); rec.unk2Pad = r.U16();
         rec.enableQuest = r.U8(); rec.instAcc = r.U8(); rec.needLevel = r.U8();
         rec.minLevel = r.U8(); rec.maxLevel = r.U8(); rec.needNpc = r.U8();
         rec.startingNpc = r.U16();
@@ -116,19 +117,22 @@ std::expected<QuestDataFile, std::string> LoadQuestData(const std::filesystem::p
         }
 
         const std::uint32_t dropCount = r.U32();
-        if (!r.Ok() || dropCount > 11) return std::unexpected("Quest drop count exceeds the 11 stored slots");
+        if (!r.Ok() || dropCount > kQuestDropSlots) return std::unexpected("Quest drop count exceeds the 10 stored slots");
         rec.drops.reserve(dropCount);
         for (std::uint32_t i = 0; i < dropCount; ++i) {
             QuestDrop d;
             d.active = r.U32(); d.mobId = r.U32(); d.amount = r.U32(); d.itemId = r.U32();
-            d.rate = r.U32(); d.unk1 = r.U32(); d.unk2 = r.U32();
+            d.rate = r.U32(); d.unk1 = r.U32(); d.unk2 = r.U32(); d.unk3 = r.U32();
             rec.drops.push_back(d);
         }
-        const std::size_t paddingLen = 28u * (11u - dropCount) + 12u;
-        rec.itemDropPadding = r.Bytes(paddingLen);
+        rec.unusedDropSlots = r.Bytes(kQuestDropBytes * (kQuestDropSlots - dropCount));
 
-        rec.rewardsRaw = r.Bytes(144);
-        rec.extra8 = r.BytesArray<8>();
+        for (auto& e : rec.rewards) {
+            e.use = r.U8(); e.type = r.U8(); e.pad = r.U16();
+            const std::uint64_t lo = r.U32();
+            const std::uint64_t hi = r.U32();
+            e.value = lo | (hi << 32);
+        }
 
         const std::uint16_t startLen = r.U16();
         const std::uint16_t finishLen = r.U16();
@@ -191,10 +195,11 @@ std::expected<void, std::string> SaveQuestData(const QuestDataFile& file, const 
     for (const auto& rec : file.records) {
         std::vector<std::uint8_t> body; // alles NACH dataLen selbst
 
-        AppendU16(body, rec.id); AppendU16(body, rec.title); AppendU16(body, rec.description);
+        AppendU16(body, rec.id); AppendU16(body, rec.idPad);
+        AppendU32(body, rec.title); AppendU32(body, rec.description);
         AppendU8(body, rec.unk1);
         AppendU8(body, rec.questGrade); AppendU8(body, rec.multiQuest); AppendU8(body, rec.dailyQuest);
-        AppendU16(body, rec.unk2);
+        AppendU16(body, rec.unk2); AppendU16(body, rec.unk2Pad);
         AppendU8(body, rec.enableQuest); AppendU8(body, rec.instAcc); AppendU8(body, rec.needLevel);
         AppendU8(body, rec.minLevel); AppendU8(body, rec.maxLevel); AppendU8(body, rec.needNpc);
         AppendU16(body, rec.startingNpc);
@@ -222,23 +227,29 @@ std::expected<void, std::string> SaveQuestData(const QuestDataFile& file, const 
             AppendU16(body, it.id); AppendU16(body, it.amount);
         }
 
+        if (rec.drops.size() > kQuestDropSlots)
+            return std::unexpected("Quest " + std::to_string(rec.id) + " hat mehr als 10 Drops.");
         AppendU32(body, static_cast<std::uint32_t>(rec.drops.size()));
         for (const auto& d : rec.drops) {
             AppendU32(body, d.active); AppendU32(body, d.mobId); AppendU32(body, d.amount);
             AppendU32(body, d.itemId); AppendU32(body, d.rate); AppendU32(body, d.unk1); AppendU32(body, d.unk2);
+            AppendU32(body, d.unk3);
         }
-        // Padding-Länge MUSS zur (evtl. geänderten) Drop-Anzahl passen - siehe LoadQuestData.
-        // Vorhandene Bytes so weit wie möglich beibehalten (unbekannter Inhalt, kein reines
-        // Füllmaterial), Rest mit 0 auffüllen bzw. abschneiden.
-        const std::size_t neededPadding = 28u * (11u - rec.drops.size()) + 12u;
-        std::vector<std::uint8_t> padding = rec.itemDropPadding;
-        padding.resize(neededPadding, 0);
-        AppendBytes(body, padding);
+        // Freie Slots liegen hinter den belegten: ein hinzugefügter Drop belegt den vordersten
+        // freien Slot (vorne abschneiden), ein entfernter gibt vorne einen frei (vorne mit 0 füllen).
+        {
+            const std::size_t needed = kQuestDropBytes * (kQuestDropSlots - rec.drops.size());
+            const auto& have = rec.unusedDropSlots;
+            const std::size_t keep = std::min(have.size(), needed);
+            body.insert(body.end(), needed - keep, 0);
+            body.insert(body.end(), have.end() - static_cast<std::ptrdiff_t>(keep), have.end());
+        }
 
-        std::vector<std::uint8_t> rewards = rec.rewardsRaw;
-        rewards.resize(144, 0);
-        AppendBytes(body, rewards);
-        AppendArray(body, rec.extra8);
+        for (const auto& e : rec.rewards) {
+            AppendU8(body, e.use); AppendU8(body, e.type); AppendU16(body, e.pad);
+            AppendU32(body, static_cast<std::uint32_t>(e.value & 0xFFFFFFFFu));
+            AppendU32(body, static_cast<std::uint32_t>(e.value >> 32));
+        }
 
         // Skript-Längen inkl. NUL-Terminator neu berechnen (nicht die evtl. veralteten
         // gespeicherten storedLength-Werte übernehmen) - Reihenfolge im Kopf ist Start/Finish/

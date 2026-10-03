@@ -1,3 +1,11 @@
+## Quest editor — corrected QuestData layout, rewards decoded
+- Fixed the QuestData.shn byte layout. The reference parser read title and description as uint16 and missed two padding fields, so every field from the title on sat 8 bytes off (levels, start NPC, required item, predecessor, class, objectives, drops). The roundtrip was still byte-exact because an end "padding"/"extra8" block absorbed the difference, so the error went unnoticed. Proof on all 2304 NA2016 quests: description = title + 1 in 2295 quests, all 1390 predecessors exist, all 2099 level ranges have min <= max, 941 of 960 drop items are also item objectives of the same quest (0 with the old layout), and all padding and free slots are zero. Quest 251 now reads title 10300 / description 10301, and its start script begins with `SAY 10302`.
+- Drops are 10 slots × 32 bytes (one more field than before); the editor allows at most 10 and new drops start with the most common values. The quest flow now shows real predecessor chains (with the old layout `needPred` was never set).
+- Rewards: 12 entries × 12 bytes (`use`, `type`, `value`; items store ID and count). The quest editor shows them as an editable table with item names and buttons to add EXP, money or item entries. Only the structure is proven; EXP/money and fixed/choice are inferred from value ranges and marked with *.
+- Monster objectives show their kind (`hasToBeKilled`: visit NPC with count 0, or defeat monster).
+- `test_quest_layout` checks all of the above against the real file, plus editing rewards and drops, saving and reloading, and a byte-identical file after restoring the original. Passes on Linux and in the MinGW build under Wine.
+- Automation: `shn <subtab> <server shine folder>` and `quest <id> [drops|rewards]` open the quest editor for screenshots (`screenshots/quest_editor_rewards.png`).
+
 ## Level Editor — responsive viewport toolbar
 - Narrow viewports wrap the coordinate-space/pivot/snap controls into a second toolbar row; very narrow 2×2 cells put the transform buttons on the second row and leave snap values to the Properties panel. The stats overlay moves below the toolbar rows. Verified in the single and 2×2 layouts, and with the Windows build under Wine.
 

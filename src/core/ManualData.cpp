@@ -402,19 +402,19 @@ The percentage editors change ALL rows of the column - check first, then save.)M
      "Quest-Editor", "Quest editor",
      R"MAN(Links die Liste (Titel oder Beschreibung, Suche nach ID oder Text), rechts die Details:
 - Quest-ID, Titel-Text-ID und Beschreibung-Text-ID (Texte aus QuestDialog.shn werden daneben aufgelöst), Mindest-/Maximal-Level, Start-NPC (Mob-ID), Aktiviert, Tägliche Quest, benötigtes Item, Vorgänger-Quest.
-- Monster-Ziele (5 Plätze), Item-Ziele (10 Plätze): aktiv, ID, Anzahl; der Name wird aufgelöst (rot = nicht gefunden).
-- Drops: Mob, Item, Menge, Rate.
+- Monster-/NPC-Ziele (5 Plätze, Art 'NPC aufsuchen' oder 'Monster besiegen'), Item-Ziele (10 Plätze): aktiv, ID, Anzahl; der Name wird aufgelöst (rot = nicht gefunden).
+- Drops (bis 10): Mob, Item, Menge, Rate, Min?/Max? (vermutlich Mindest-/Höchstanzahl, nicht belegt).
 - Skripte Start / Action / Finish: die Quest-Skriptsprache (SAY, IF, GOTO, ACCEPT, CREATE_ITEM ...). 'SAY-Text-ID nachschlagen' zeigt den Text zu einer ID.
-- Belohnungen (144 Byte) sind noch nicht entschlüsselt und werden unverändert gespeichert.
+- Belohnungen (12 Einträge): Verwendung (fest/Auswahl), Typ (EXP, Geld, Item, Typ 4) und Wert bzw. Item-ID × Anzahl. Die Struktur ist an allen 2304 NA2016-Quests belegt; mit * markierte Bedeutungen sind aus den Wertebereichen abgeleitet.
 - 'QuestData.shn speichern'.)MAN",
      R"MAN(On the left the list (title or description, search by ID or text), on the right the details:
 - Quest ID, title text ID and description text ID (texts from QuestDialog.shn are resolved next to them), minimum/maximum level, start NPC (mob ID), enabled, daily quest, required item, predecessor quest.
-- Monster targets (5 slots), item targets (10 slots): active, ID, count; the name is resolved (red = not found).
-- Drops: mob, item, amount, rate.
+- Monster/NPC targets (5 slots, kind 'visit NPC' or 'defeat monster'), item targets (10 slots): active, ID, count; the name is resolved (red = not found).
+- Drops (up to 10): mob, item, amount, rate, Min?/Max? (probably minimum/maximum count, unproven).
 - Scripts Start / Action / Finish: the quest script language (SAY, IF, GOTO, ACCEPT, CREATE_ITEM ...). 'Look up SAY text ID' shows the text for an ID.
-- Rewards (144 bytes) are not decoded yet and are saved unchanged.
+- Rewards (12 entries): usage (fixed/choice), type (EXP, money, item, type 4) and value or item ID × count. The structure is verified on all 2304 NA2016 quests; meanings marked with * are inferred from value ranges.
 - 'Save QuestData.shn'.)MAN",
-     "quest questdata skript say if goto"},
+     "quest questdata skript say if goto belohnung reward drop exp"},
     {"creators.npcmob", "creators",
      "Custom NPC / Mob erstellen", "Creating a custom NPC / mob",
      R"MAN(Tab 'Custom NPC/Mob' im SHN-Editor. Der Assistent klont eine Vorlage in alle Tabellen (MobInfo, MobInfoServer, MobViewInfo, MobSpecies, QuestSpecies, MobWeapon) mit einer überall freien ID.
