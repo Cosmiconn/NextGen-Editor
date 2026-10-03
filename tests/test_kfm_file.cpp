@@ -63,14 +63,35 @@ int main() {
     const auto out=dir/"catalog.kfm";assert(SaveKfmFile(*f,out));
     assert(!SaveKfmFile(*f,out)); // exclusive copy must preserve an existing file
     auto saved=LoadKfmFile(out);assert(saved && EncodeKfm(*saved)==EncodeKfm(*f));
+    assert(saved->loadedPath==out);
     auto refs=InspectKfmReferences(*f,out);
     assert(refs.nif && refs.animations[0] && !refs.animations[1] && refs.missingKfFiles==1);
     assert(refs.duplicateEventCodes==0 && refs.missingTransitionTargets==0 && refs.missingIntermediateTargets==0);
+
+    // Copy-on-write references: a KFM loaded from a project override must resolve sibling
+    // project NIF/KF files first, while missing project siblings fall back to the original
+    // read-only source KFM directory. Runtime provenance must not affect KFM bytes.
+    const auto projectDir=dir/"project";
+    fs::create_directories(projectDir);
+    std::ofstream(projectDir/"model.nif").put('p');
+    const auto projectKfm=projectDir/"catalog.kfm";
+    assert(SaveKfmFile(*f,projectKfm));
+    auto projectLoaded=LoadKfmFile(projectKfm);assert(projectLoaded);
+    assert(projectLoaded->loadedPath==projectKfm);
+    assert(EncodeKfm(*projectLoaded)==EncodeKfm(*f));
+    auto cowRefs=InspectKfmReferences(*projectLoaded,out);
+    assert(cowRefs.nif && *cowRefs.nif==projectDir/"model.nif");
+    assert(cowRefs.animations[0] && *cowRefs.animations[0]==dir/"IDLE.KF");
+    std::ofstream(projectDir/"idle.kf").put('p');
+    cowRefs=InspectKfmReferences(*projectLoaded,out);
+    assert(cowRefs.animations[0] && *cowRefs.animations[0]==projectDir/"idle.kf");
+    assert(!cowRefs.animations[1] && cowRefs.missingKfFiles==1);
+
     f->animations.push_back(f->animations.front());f->animations[0].transitions[1].eventCode=999;
     f->animations[0].transitions[1].intermediateAnimations[0].eventCode=888;
     f->nifFileName="..\\model.nif";
     refs=InspectKfmReferences(*f,dir/"sub"/"catalog.kfm");
     assert(refs.nif && refs.duplicateEventCodes==1 && refs.missingTransitionTargets==1 && refs.missingIntermediateTargets==1);
     f->nifFileName="C:\\model.nif";assert(!InspectKfmReferences(*f,out).nif);
-    std::cout<<"KFM: golden layouts, full truncation sweep, malformed fields, edits, bit preservation, exclusive copy and references passed\n";
+    std::cout<<"KFM: golden layouts, full truncation sweep, malformed fields, edits, bit preservation, exclusive copy and COW references passed\n";
 }
