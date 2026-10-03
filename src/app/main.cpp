@@ -966,7 +966,20 @@ struct EditorState {
     core::legacy::ShnFile questDialogShn;
     bool questDialogLoaded = false;
     int selectedQuestIdx = -1;
-    int automationQuestSection = 0; // nur Automatisierung (Screenshots): 1 Drops, 2 Belohnungen
+    // NPC-Auswahl im Quest-Editor (Start-NPC, Ziel "NPC aufsuchen"): MobInfo + Platzierungen aus NPC.txt.
+    struct QuestNpcEntry {
+        int id = 0;
+        std::string inx, name;
+        bool isNpc = false;
+        std::vector<std::string> placements; // "Karte X/Y · Rolle"
+    };
+    std::vector<QuestNpcEntry> questNpcCatalog;
+    bool questNpcCatalogBuilt = false;
+    int questNpcPickerTarget = -2; // -1 = Start-NPC, 0..4 = Monster-/NPC-Ziel, -2 = keins
+    bool questNpcPickerOpenRequest = false; // Zielzeilen öffnen das Popup außerhalb ihres ID-Scopes
+    char questNpcFilter[64] = "";
+    bool questNpcOnlyPlaced = true;
+    int automationQuestSection = 0; // nur Automatisierung (Screenshots): 1 Drops, 2 Belohnungen, 3 NPC-Auswahl, 4 Ziele
     // Quest-Editor-Caches: Text-ID -> Text (statt Linearsuche pro Aufruf), Listen-Beschriftungen und
     // sichtbare Eintraege (Filter) - der alte Editor durchsuchte QuestDialog fuer JEDE Quest in JEDEM
     // Frame (CHANGELOG [0.44.29]).
@@ -9091,6 +9104,118 @@ bool SaveQuestDataProject(EditorState& state) {
     return true;
 }
 
+// Katalog aller Mobs/NPCs aus MobInfo.shn (Client) mit ihren Platzierungen aus World/NPC.txt.
+// Belegt an NA2016: alle 137 Start-NPCs der Originalquests stehen in NPC.txt (Rollen QuestNpc,
+// Merchant, Guard, ...); ein Start-NPC ohne Platzierung kann im Spiel nicht angesprochen werden.
+void EnsureQuestNpcCatalog(EditorState& state) {
+    if (state.questNpcCatalogBuilt) return;
+    state.questNpcCatalogBuilt = true;
+    state.questNpcCatalog.clear();
+    EnsureNpcTextLoaded(state);
+    std::unordered_map<std::string, std::vector<std::string>> placements;
+    if (state.npcTextLoaded) {
+        if (const auto* table = state.npcTextFile.FindTable("ShineNPC")) {
+            for (const auto& rec : table->records) {
+                if (rec.values.size() < 7) continue;
+                placements[LowerAscii(rec.values[0])].push_back(
+                    rec.values[1] + " " + rec.values[2] + "/" + rec.values[3] + " · " + rec.values[6]);
+            }
+        }
+    }
+    int doc = FindOrLoadShnDoc(state, "MobInfo.shn", EditorState::ShnSource::Client);
+    if (doc < 0) doc = FindOrLoadShnDoc(state, "MobInfo.shn", EditorState::ShnSource::Server);
+    if (doc < 0) return;
+    const auto& file = state.shnFiles[static_cast<std::size_t>(doc)].file;
+    const int cId = ExactShnColumnIndex(file, "ID"), cInx = ExactShnColumnIndex(file, "InxName");
+    const int cName = ExactShnColumnIndex(file, "Name"), cNpc = ExactShnColumnIndex(file, "IsNPC");
+    if (cId < 0 || cInx < 0) return;
+    for (const auto& row : file.rows) {
+        EditorState::QuestNpcEntry e;
+        long long id = 0;
+        if (!ShnValueAsInt(row.values[static_cast<std::size_t>(cId)], id)) continue;
+        e.id = static_cast<int>(id);
+        e.inx = core::legacy::ShnValueToString(row.values[static_cast<std::size_t>(cInx)]);
+        if (cName >= 0) e.name = core::legacy::ShnValueToString(row.values[static_cast<std::size_t>(cName)]);
+        long long npcFlag = 0;
+        e.isNpc = cNpc >= 0 && ShnValueAsInt(row.values[static_cast<std::size_t>(cNpc)], npcFlag) && npcFlag != 0;
+        if (const auto it = placements.find(LowerAscii(e.inx)); it != placements.end()) e.placements = it->second;
+        state.questNpcCatalog.push_back(std::move(e));
+    }
+}
+
+const EditorState::QuestNpcEntry* FindQuestNpc(EditorState& state, int id) {
+    EnsureQuestNpcCatalog(state);
+    for (const auto& e : state.questNpcCatalog) if (e.id == id) return &e;
+    return nullptr;
+}
+
+// Platzierung eines NPCs als eine Zeile; leer = steht auf keiner Karte.
+std::string QuestNpcPlacementText(const EditorState::QuestNpcEntry& e) {
+    std::string out;
+    for (std::size_t i = 0; i < e.placements.size() && i < 3; ++i) out += (i ? ",  " : "") + e.placements[i];
+    if (e.placements.size() > 3) out += ",  +" + std::to_string(e.placements.size() - 3);
+    return out;
+}
+
+// Auswahl-Popup; gibt die gewählte ID zurück (oder -1, solange nichts gewählt wurde).
+int DrawQuestNpcPickerPopup(EditorState& state) {
+    int chosen = -1;
+    ImGui::SetNextWindowSize(ImVec2(760.0f, 520.0f), ImGuiCond_Appearing);
+    if (ImGui::BeginPopupModal(L("NPC wählen###questNpcPicker", "Choose NPC###questNpcPicker"), nullptr)) {
+        EnsureQuestNpcCatalog(state);
+        ImGui::SetNextItemWidth(320.0f);
+        if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+        UI::InputTextWithHint("##questNpcFilter", L("Name, InxName oder ID...", "Name, InxName or ID..."),
+                              state.questNpcFilter, sizeof(state.questNpcFilter));
+        ImGui::SameLine();
+        UI::Checkbox(L("Nur NPCs mit Platzierung", "Only NPCs with a placement"), &state.questNpcOnlyPlaced);
+        const std::string needle = LowerAscii(state.questNpcFilter);
+        std::vector<const EditorState::QuestNpcEntry*> rows;
+        for (const auto& e : state.questNpcCatalog) {
+            if (state.questNpcOnlyPlaced && e.placements.empty()) continue;
+            if (!needle.empty() && LowerAscii(e.name).find(needle) == std::string::npos &&
+                LowerAscii(e.inx).find(needle) == std::string::npos && std::to_string(e.id).find(needle) == std::string::npos)
+                continue;
+            rows.push_back(&e);
+        }
+        ImGui::TextDisabled(L("%zu Treffer", "%zu matches"), rows.size());
+        if (ImGui::BeginTable("##questNpcRows", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_BordersInnerV,
+                              ImVec2(0.0f, ImGui::GetContentRegionAvail().y - 36.0f))) {
+            ImGui::TableSetupScrollFreeze(0, 1);
+            ImGui::TableSetupColumn("ID", ImGuiTableColumnFlags_WidthFixed, 60.0f);
+            ImGui::TableSetupColumn(L("Name", "Name"), ImGuiTableColumnFlags_WidthStretch, 1.0f);
+            ImGui::TableSetupColumn("InxName", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+            ImGui::TableSetupColumn(L("Platzierung (NPC.txt)", "Placement (NPC.txt)"), ImGuiTableColumnFlags_WidthStretch, 1.4f);
+            ImGui::TableHeadersRow();
+            ImGuiListClipper clipper;
+            clipper.Begin(static_cast<int>(rows.size()));
+            while (clipper.Step()) {
+                for (int r = clipper.DisplayStart; r < clipper.DisplayEnd; ++r) {
+                    const auto& e = *rows[static_cast<std::size_t>(r)];
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    if (ImGui::Selectable((std::to_string(e.id) + "##npcPick" + std::to_string(r)).c_str(), false,
+                                          ImGuiSelectableFlags_SpanAllColumns))
+                        chosen = e.id;
+                    ImGui::TableSetColumnIndex(1); ImGui::TextUnformatted(e.name.c_str());
+                    ImGui::TableSetColumnIndex(2); ImGui::TextDisabled("%s", e.inx.c_str());
+                    ImGui::TableSetColumnIndex(3);
+                    const std::string place = QuestNpcPlacementText(e);
+                    if (place.empty()) ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.35f, 1.0f), "%s", L("keine", "none"));
+                    else ImGui::TextUnformatted(place.c_str());
+                }
+            }
+            ImGui::EndTable();
+        }
+        if (UI::Button(L("Abbrechen##questNpcPicker", "Cancel##questNpcPicker")) || chosen >= 0) {
+            state.questNpcPickerTarget = chosen >= 0 ? state.questNpcPickerTarget : -2;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+    return chosen;
+}
+
 void DrawQuestEditor(EditorState& state) {
     EnsureQuestDataLoaded(state);
     EnsureQuestDialogLoaded(state);
@@ -9251,7 +9376,8 @@ void DrawQuestEditor(EditorState& state) {
                 (q.predecessor == 0 || q.predecessor == q.id || !knownQuests.contains(q.predecessor))) return true;
             for (const auto& m : q.mobs) {
                 if (m.active == 0) continue;
-                if (m.id == 0 || m.amount == 0 || !knownMobs.contains(m.id)) return true;
+                // "NPC aufsuchen" (hasToBeKilled 0) hat im Original Anzahl 0 (2289 von 2291 Zielen).
+                if (m.id == 0 || (m.hasToBeKilled != 0 && m.amount == 0) || !knownMobs.contains(m.id)) return true;
             }
             for (const auto& item : q.items) {
                 if (item.active == 0) continue;
@@ -9391,13 +9517,46 @@ void DrawQuestEditor(EditorState& state) {
         { bool need = q.needNpc != 0; if (UI::Checkbox("##needNpc",&need)) { q.needNpc = need ? 1 : 0; markQuestChanged(); } }
         u16Row(L("Start-NPC (Mob-ID)", "Starting NPC (mob ID)"), "##startnpc", q.startingNpc);
         {
-            auto r = ResolveMobNameForQuest(state, q.startingNpc);
-            infoText(r.first == "-" ? std::string() : r.first, r.second);
-            if (r.second && q.startingNpc != 0) {
+            const auto* npc = q.startingNpc != 0 ? FindQuestNpc(state, q.startingNpc) : nullptr;
+            ImGui::TableSetColumnIndex(2);
+            ImGui::AlignTextToFramePadding();
+            if (UI::SmallButton(L("Auswählen...##startNpcPick", "Choose...##startNpcPick")) || state.automationQuestSection == 3) {
+                state.automationQuestSection = 0;
+                state.questNpcPickerTarget = -1;
+                state.questNpcOnlyPlaced = true;
+                ImGui::OpenPopup(L("NPC wählen###questNpcPicker", "Choose NPC###questNpcPicker"));
+            }
+            ImGui::SameLine();
+            if (q.startingNpc == 0) {
+                ImGui::TextColored(kDim, "%s", L("kein Start-NPC", "no starting NPC"));
+            } else if (!npc) {
+                ImGui::TextColored(kBad, "%s", L("ID nicht in MobInfo.shn", "ID not in MobInfo.shn"));
+            } else {
+                ImGui::TextColored(kOk, "%s (%s)", npc->name.c_str(), npc->inx.c_str());
                 ImGui::SameLine();
                 if (UI::SmallButton(L("Öffnen##startNpcRef", "Open##startNpcRef")))
                     OpenShnRecordById(state, {"MobInfo.shn","MobViewInfo.shn"},
                                       EditorState::ShnSource::Client, q.startingNpc);
+            }
+            if (npc) {
+                rowLabel(L("Platzierung", "Placement"));
+                ImGui::TableSetColumnIndex(1);
+                ImGui::TableSetColumnIndex(2);
+                const std::string place = QuestNpcPlacementText(*npc);
+                if (place.empty())
+                    ImGui::TextColored(kBad, "%s", L("steht auf keiner Karte (World/NPC.txt) - die Quest kann im Spiel nicht angenommen werden",
+                                                     "not placed on any map (World/NPC.txt) - the quest cannot be accepted in the game"));
+                else ImGui::TextWrapped("%s", place.c_str());
+            }
+            if (q.needNpc == 0 && q.startingNpc != 0)
+                ImGui::TextColored(kDim, "%s", L("(Start-NPC erforderlich ist aus - die ID wird nicht verwendet)",
+                                                 "(starting NPC required is off - the ID is not used)"));
+            const int chosen = DrawQuestNpcPickerPopup(state);
+            if (chosen >= 0 && state.questNpcPickerTarget == -1) {
+                q.startingNpc = static_cast<std::uint16_t>(chosen);
+                q.needNpc = 1;
+                markQuestChanged();
+                state.questNpcPickerTarget = -2;
             }
         }
         rowLabel(L("Aktiviert", "Enabled"));
@@ -9471,6 +9630,7 @@ void DrawQuestEditor(EditorState& state) {
     }
 
     ImGui::Spacing();
+    if (state.automationQuestSection == 4) { ImGui::SetScrollHereY(0.0f); state.automationQuestSection = 0; }
     if (UI::CollapsingHeader(L("Ziele · Monster", "Objectives · Monsters"), ImGuiTreeNodeFlags_DefaultOpen)) {
         if (ImGui::BeginTable("##qmobs", 6, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit)) {
             ImGui::TableSetupColumn(L("Aktiv", "Active"), ImGuiTableColumnFlags_WidthFixed, 46.0f);
@@ -9505,10 +9665,41 @@ void DrawQuestEditor(EditorState& state) {
                             OpenShnRecordById(state, {"MobInfo.shn","MobViewInfo.shn"},
                                               EditorState::ShnSource::Client, m.id);
                     }
+                    // Ein aufzusuchender NPC muss auf einer Karte stehen, sonst ist das Ziel unerfüllbar.
+                    if (m.hasToBeKilled == 0 && m.id != 0) {
+                        const auto* npc = FindQuestNpc(state, m.id);
+                        if (npc && npc->placements.empty()) {
+                            ImGui::SameLine();
+                            ImGui::TextColored(kBad, "%s", L("(auf keiner Karte)", "(not on any map)"));
+                        } else if (npc) {
+                            ImGui::SameLine();
+                            ImGui::TextColored(kDim, "%s", npc->placements.front().c_str());
+                        }
+                    }
+                }
+                if (m.active != 0 || m.id != 0) ImGui::SameLine();
+                if (UI::SmallButton(L("Auswählen...##mobQuestPick", "Choose...##mobQuestPick"))) {
+                    state.questNpcPickerTarget = static_cast<int>(mi);
+                    state.questNpcPickerOpenRequest = true;
+                    state.questNpcOnlyPlaced = m.hasToBeKilled == 0; // Monster stehen nicht in NPC.txt
                 }
                 ImGui::PopID();
             }
             ImGui::EndTable();
+        }
+        if (state.questNpcPickerOpenRequest) {
+            ImGui::OpenPopup(L("NPC wählen###questNpcPicker", "Choose NPC###questNpcPicker"));
+            state.questNpcPickerOpenRequest = false;
+        }
+        const int chosen = DrawQuestNpcPickerPopup(state);
+        const int target = state.questNpcPickerTarget;
+        if (chosen >= 0 && target >= 0 && static_cast<std::size_t>(target) < q.mobs.size()) {
+            auto& m = q.mobs[static_cast<std::size_t>(target)];
+            m.id = static_cast<std::uint16_t>(chosen);
+            m.active = 1;
+            if (m.hasToBeKilled == 0) m.amount = 0; // "NPC aufsuchen" hat im Original immer Anzahl 0
+            markQuestChanged();
+            state.questNpcPickerTarget = -2;
         }
     }
     if (UI::CollapsingHeader(L("Ziele · Items", "Objectives · Items"), ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -21641,8 +21832,12 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         for (std::size_t i = 0; i < state.questDataFile.records.size(); ++i)
             if (state.questDataFile.records[i].id == id) state.selectedQuestIdx = static_cast<int>(i);
         std::string section; in >> section;
-        state.automationQuestSection = section == "drops" ? 1 : section == "rewards" ? 2 : 0;
+        state.automationQuestSection = section == "drops" ? 1 : section == "rewards" ? 2 : section == "npcpick" ? 3 : section == "objectives" ? 4 : 0;
         state.questShowFlow = section == "flow";
+        if (section == "npcpick") { // quest <id> npcpick [Filter]: öffnet die Start-NPC-Auswahl
+            std::string filter; std::getline(in >> std::ws, filter);
+            std::snprintf(state.questNpcFilter, sizeof(state.questNpcFilter), "%s", filter.c_str());
+        }
     }
     else if (cmd == "projectfolder") {
         // projectfolder <Ordner>: beschreibbarer Projektordner (Ausgabe für alle Speicherpfade).
@@ -21672,6 +21867,8 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
             if (SaveShnDocument(state, i)) ++shnSaved; else { ++shnFailed; report += " SHN-Fehler: " + state.shnStatus; }
         }
         report += "SHN " + std::to_string(shnSaved) + " gespeichert, " + std::to_string(shnFailed) + " Fehler";
+        if (!everything && state.questDirty)
+            report += SaveQuestDataProject(state) ? " · Quest ok" : " · Quest FEHLER " + state.statusMessage;
         if (everything) {
             EnsureQuestDataLoaded(state);
             if (state.questDataLoaded) report += SaveQuestDataProject(state) ? " · Quest ok" : " · Quest FEHLER " + state.statusMessage;

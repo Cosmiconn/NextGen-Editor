@@ -412,19 +412,21 @@ The percentage editors change ALL rows of the column - check first, then save.)M
      "Quest-Editor", "Quest editor",
      R"MAN(Links die Liste (Titel oder Beschreibung, Suche nach ID oder Text), rechts die Details:
 - Quest-ID, Titel-Text-ID und Beschreibung-Text-ID (Texte aus QuestDialog.shn werden daneben aufgelöst), Mindest-/Maximal-Level, Start-NPC (Mob-ID), Aktiviert, Tägliche Quest, benötigtes Item, Vorgänger-Quest.
-- Monster-/NPC-Ziele (5 Plätze, Art 'NPC aufsuchen' oder 'Monster besiegen'), Item-Ziele (10 Plätze): aktiv, ID, Anzahl; der Name wird aufgelöst (rot = nicht gefunden).
+- Start-NPC: 'Auswählen...' öffnet eine Liste aller NPCs aus MobInfo.shn mit ihrer Platzierung aus World/NPC.txt (Karte, Position, Rolle); Suche nach Name, InxName oder ID. Die Auswahl setzt die ID und schaltet 'Start-NPC erforderlich' ein. Steht der NPC auf keiner Karte, wird das rot angezeigt - die Quest kann dann im Spiel nicht angenommen werden.
+- Monster-/NPC-Ziele (5 Plätze, Art 'NPC aufsuchen' oder 'Monster besiegen'), Item-Ziele (10 Plätze): aktiv, ID, Anzahl; der Name wird aufgelöst (rot = nicht gefunden). 'Auswählen...' wählt auch hier aus der Liste; 'NPC aufsuchen' hat im Original Anzahl 0.
 - Drops (bis 10): Mob, Item, Menge, Rate, Min?/Max? (vermutlich Mindest-/Höchstanzahl, nicht belegt).
 - Skripte Start / Action / Finish: die Quest-Skriptsprache (SAY, IF, GOTO, ACCEPT, CREATE_ITEM ...). 'SAY-Text-ID nachschlagen' zeigt den Text zu einer ID.
 - Belohnungen (12 Einträge): Verwendung (fest/Auswahl), Typ (EXP, Geld, Item, Typ 4) und Wert bzw. Item-ID × Anzahl. Die Struktur ist an allen 2304 NA2016-Quests belegt; mit * markierte Bedeutungen sind aus den Wertebereichen abgeleitet.
 - 'QuestData.shn speichern'.)MAN",
      R"MAN(On the left the list (title or description, search by ID or text), on the right the details:
 - Quest ID, title text ID and description text ID (texts from QuestDialog.shn are resolved next to them), minimum/maximum level, start NPC (mob ID), enabled, daily quest, required item, predecessor quest.
-- Monster/NPC targets (5 slots, kind 'visit NPC' or 'defeat monster'), item targets (10 slots): active, ID, count; the name is resolved (red = not found).
+- Start NPC: 'Choose...' opens a list of all NPCs from MobInfo.shn with their placement from World/NPC.txt (map, position, role); search by name, InxName or ID. Choosing one sets the ID and turns on 'Starting NPC required'. An NPC that stands on no map is shown in red - the quest cannot be accepted in the game then.
+- Monster/NPC targets (5 slots, kind 'visit NPC' or 'defeat monster'), item targets (10 slots): active, ID, count; the name is resolved (red = not found). 'Choose...' picks from the list here too; 'visit NPC' has count 0 in the original.
 - Drops (up to 10): mob, item, amount, rate, Min?/Max? (probably minimum/maximum count, unproven).
 - Scripts Start / Action / Finish: the quest script language (SAY, IF, GOTO, ACCEPT, CREATE_ITEM ...). 'Look up SAY text ID' shows the text for an ID.
 - Rewards (12 entries): usage (fixed/choice), type (EXP, money, item, type 4) and value or item ID × count. The structure is verified on all 2304 NA2016 quests; meanings marked with * are inferred from value ranges.
 - 'Save QuestData.shn'.)MAN",
-     "quest questdata skript say if goto belohnung reward drop exp"},
+     "quest questdata skript say if goto belohnung reward drop exp start npc auswählen choose platzierung"},
     {"creators.npcmob", "creators",
      "Custom NPC / Mob erstellen", "Creating a custom NPC / mob",
      R"MAN(Tab 'Custom NPC/Mob' im SHN-Editor. Der Assistent klont eine Vorlage in alle Tabellen (MobInfo, MobInfoServer, MobViewInfo, MobSpecies, QuestSpecies, MobWeapon) mit einer überall freien ID.

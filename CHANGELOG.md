@@ -1,3 +1,10 @@
+## Quest editor — choosing the start NPC
+- The start NPC can now be chosen from a list: "Choose..." next to the mob ID opens all NPCs from MobInfo.shn with their placement from `World/NPC.txt` (map, position, role), searchable by name, InxName or ID. Choosing one sets the ID and turns on "Starting NPC required". Below it the editor shows where the NPC stands, or in red that it stands on no map (the quest cannot be accepted in the game then).
+- The same list is available for the five monster/NPC objectives ("visit NPC" opens filtered to placed NPCs, "defeat monster" without the filter).
+- Fixed: the "Problems" filter flagged every "visit NPC" objective because its count is 0. In NA2016 2289 of 2291 such objectives have count 0, so 0 is correct there.
+- Checked on the real data: quest 251 changed from 88 (Weapon Title Merchant Zach) to 92 (Town Chief Roumenus); saving into the project folder changes exactly that one byte in the client and server QuestData.shn, the source stays unchanged.
+- Automation: `quest <id> npcpick [filter]` opens the list, `quest <id> objectives` scrolls to the objectives; `saveall` now also saves a changed QuestData.
+
 ## Texturing — layers no longer influence each other
 - Painting one layer changed the masks of the other layers. The editor treated the masks as weights that must add up to 1 and moved the difference onto all other layers; those changes were then saved into BMPs that were never painted. The real maps show that Fiesta layers are independent opacity masks laid over each other in order. In Uruga the masks add up to more than 1.2 at 37 % of the sampled points; in Bera and Teva several layers are fully opaque at the same spot.
 - Painting now changes only the selected layer. Checked on Uruga in the 3D viewport: painting layer 3 changes only `Urg_way_alp.bmp`, the other 7 masks stay byte-identical, the missing base mask is not created.
