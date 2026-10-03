@@ -98,3 +98,18 @@ Die ZIP im Verzeichnis `releases` enthält Quellen, Fixtures, Berichte und den W
 `bin/`. Historische Berichte sind ausdrücklich versionsgebunden; neue Ergebnisse stehen in
 `docs/v14-results`. Das Handbuch wird direkt in C++ gepflegt, siehe
 [MANUAL_MAINTENANCE.md](docs/MANUAL_MAINTENANCE.md).
+
+## Level-Editor-Automatisierung (Screenshots / visuelle Regression)
+
+Ohne gesetzte Umgebungsvariable ist der Hook inaktiv. Beispiel unter Linux mit Xvfb:
+
+```bash
+NEXTGEN_EDITOR_SCRIPT="open $PWD/tests/fixtures/Rou.ini; wait 30; mode objects; select 40; focus; \
+  grid on; wait 10; screenshot grid.ppm; collision on; playtest; wait 30; screenshot playtest.ppm; quit" \
+  xvfb-run -a -s "-screen 0 1600x900x24" ./build/Editor
+```
+
+Befehle: `open <pfad>`, `wait <frames>`, `mode terrain|texture|walk|objects|npcs|portals`,
+`select <id>`, `selectall`, `focus`, `hide`, `isolate`, `showall`, `marquee x0 y0 x1 y1 [inside|crossing]`,
+`playtest`, `preset 0..5`, `camera tx ty tz yaw pitch dist`, `grid|stats|collision|gameview|surfacesnap on|off`,
+`status <text>`, `screenshot <datei.ppm>`, `quit`.

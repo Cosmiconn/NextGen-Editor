@@ -71,6 +71,7 @@ add_library(mapeditor_core
     src/core/AvatarPreview.cpp
     src/core/Manual.cpp
     src/core/ManualData.cpp
+    src/core/LevelEditorTools.cpp
     src/core/legacy/LegacyMapProject.cpp
 )
 target_include_directories(mapeditor_core PUBLIC include)
@@ -313,6 +314,11 @@ add_test(NAME camera_handedness COMMAND test_camera_handedness)
 add_executable(test_avatar_preview tests/test_avatar_preview.cpp)
 target_link_libraries(test_avatar_preview PRIVATE mapeditor_core)
 add_test(NAME avatar_preview COMMAND test_avatar_preview)
+
+add_executable(test_level_editor_tools tests/test_level_editor_tools.cpp)
+target_link_libraries(test_level_editor_tools PRIVATE mapeditor_core)
+add_test(NAME level_editor_tools COMMAND test_level_editor_tools
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/Rou.shbd)
 
 add_executable(test_manual tests/test_manual.cpp)
 target_link_libraries(test_manual PRIVATE mapeditor_core)

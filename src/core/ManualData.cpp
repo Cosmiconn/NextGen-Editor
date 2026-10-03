@@ -81,27 +81,27 @@ The selection tolerance shrinks with the zoom - to hit precisely just zoom in cl
      "2d zoom pan draufsicht mausrad"},
     {"controls.view3d", "controls",
      "3D-Ansicht (Kamera)", "3D view (camera)",
-     R"MAN(Die Kamera arbeitet wie in einem Level-Editor:
+     R"MAN(Die Kamera arbeitet wie in einem Level-Editor. Standard ist die Unreal-Navigation (umschaltbar unter Einstellungen, im Menü Ansicht oder im Ansicht-Menü der Viewport-Leiste):
 - Rechte Maustaste halten + Maus bewegen: umsehen (die Kamera bleibt stehen, Du drehst Dich).
-- W / A / S / D (oder Pfeiltasten): vorwärts, links, rückwärts, rechts laufen.
-- Q / E (oder Leertaste): runter / hoch.
-- Shift: 4-fach schneller. Strg: langsam (0,2-fach). Das Grundtempo wächst mit der Entfernung.
-- Mausrad: Zoom, bis dicht an den Punkt heran. Die Kamera schneidet dabei nichts Nahes ab.
-- Mittlere Maustaste ziehen: Ansicht schieben.
-- Linke Maustaste ziehen: um das Ziel kreisen.
+- Rechte Maustaste halten + W / A / S / D: fliegen; Q / E: runter / hoch. Mausrad bei gehaltener rechter Taste: Kameratempo 1..8.
+- Pfeiltasten: bewegen, auch ohne Maustaste.
+- Linke Maustaste ziehen: vor/zurück und drehen. Alt + linke Maustaste: um das Ziel kreisen. Alt + rechte Maustaste: Dolly (näher/weiter).
+- Mittlere Maustaste ziehen: Ansicht schieben. Mausrad: Zoom, bis dicht an den Punkt heran. Die Kamera schneidet dabei nichts Nahes ab.
+- Shift: 4-fach schneller. Strg: langsam (0,2-fach). Das Grundtempo wächst mit der Entfernung und mit der Tempo-Stufe.
 - Knöpfe + / - unten rechts: Zoom. 'Kamera zentrieren' (Werkzeugleiste): ganze Karte.
-Die Tasten wirken nur, solange die Maus über dem 3D-Bild ist und kein Textfeld aktiv ist.)MAN",
-     R"MAN(The camera works like in a level editor:
+Klassische Navigation: W / A / S / D wirken, sobald die Maus über dem 3D-Bild ist; linke Maustaste ziehen kreist um das Ziel.
+Die Tasten wirken nur, solange kein Textfeld aktiv ist.)MAN",
+     R"MAN(The camera works like in a level editor. The default is Unreal navigation (switchable in Settings, in the View menu or in the view menu of the viewport toolbar):
 - Hold the right mouse button + move the mouse: look around (the camera stays in place, you turn).
-- W / A / S / D (or arrow keys): walk forward, left, backward, right.
-- Q / E (or space): down / up.
-- Shift: 4 times faster. Ctrl: slow (0.2 times). The base speed grows with the distance.
-- Mouse wheel: zoom, up to very close to the point. Nothing nearby is clipped.
-- Drag with the middle mouse button: pan the view.
-- Drag with the left mouse button: orbit around the target.
+- Hold the right mouse button + W / A / S / D: fly; Q / E: down / up. Mouse wheel while holding the right button: camera speed 1..8.
+- Arrow keys: move, also without a mouse button.
+- Drag with the left mouse button: forward/back and turn. Alt + left mouse button: orbit around the target. Alt + right mouse button: dolly (closer/farther).
+- Drag with the middle mouse button: pan the view. Mouse wheel: zoom, up to very close to the point. Nothing nearby is clipped.
+- Shift: 4 times faster. Ctrl: slow (0.2 times). The base speed grows with the distance and the speed level.
 - Buttons + / - at the bottom right: zoom. 'Center camera' (toolbar): whole map.
-The keys only work while the mouse is over the 3D image and no text field is active.)MAN",
-     "3d kamera wasd rechte maustaste umsehen fly"},
+Classic navigation: W / A / S / D work whenever the mouse is over the 3D image; dragging with the left mouse button orbits the target.
+The keys only work while no text field is active.)MAN",
+     "3d kamera wasd rechte maustaste umsehen fly unreal navigation tempo speed orbit dolly"},
     {"controls.keys", "controls",
      "Tastenkürzel im Überblick", "Shortcut overview",
      R"MAN(# Allgemein
@@ -112,7 +112,13 @@ The keys only work while the mouse is over the 3D image and no text field is act
 - Rechte Maustaste + Maus: umsehen
 - W A S D / Pfeile: laufen; Q E / Leertaste: runter/hoch
 - Shift: schnell; Strg: langsam
-- Mausrad: Zoom; Mitte ziehen: schieben; Links ziehen: kreisen
+- Mausrad: Zoom; Mitte ziehen: schieben; Alt+Links ziehen: kreisen
+- W / E / R oder Leertaste: Gizmo Verschieben / Rotieren / Skalieren (Unreal-Navigation)
+- Strg+0..9: Kamera-Lesezeichen setzen; 0..9: anspringen
+- F: Auswahl fokussieren; Ende: auf den Boden setzen; G: Spielansicht
+- H: Auswahl ausblenden; Shift+H: Auswahl isolieren; Strg+H: alle einblenden
+- Strg+Alt+Links ziehen: Rahmenauswahl (Shift ergänzt); Alt+Ziehen am Gizmo: duplizieren
+- Alt+P: Spieltest starten/beenden; Esc: Spieltest beenden bzw. Auswahl aufheben
 # 2D-Ansicht
 - Mausrad: Zoom um den Zeiger; Mitte oder Rechts ziehen: verschieben
 # SHN-Tabellen
@@ -126,7 +132,13 @@ The keys only work while the mouse is over the 3D image and no text field is act
 - Right mouse button + mouse: look around
 - W A S D / arrows: walk; Q E / space: down/up
 - Shift: fast; Ctrl: slow
-- Mouse wheel: zoom; drag middle: pan; drag left: orbit
+- Mouse wheel: zoom; drag middle: pan; Alt+drag left: orbit
+- W / E / R or space: gizmo move / rotate / scale (Unreal navigation)
+- Ctrl+0..9: set camera bookmark; 0..9: jump to it
+- F: focus selection; End: drop to ground; G: game view
+- H: hide selection; Shift+H: isolate selection; Ctrl+H: show all
+- Ctrl+Alt+drag left: marquee selection (Shift adds); Alt+drag on the gizmo: duplicate
+- Alt+P: start/stop playtest; Esc: stop playtest or clear selection
 # 2D view
 - Mouse wheel: zoom around the pointer; drag middle or right: pan
 # SHN tables
@@ -237,6 +249,43 @@ Objects can be shown/hidden by category (trees, buildings, rocks ...) in the Vis
 - 'NPC names and facing arrows': names and facing direction of NPCs in the 3D image (NPC mode).
 - If NPCs lack a model they are listed here by name.)MAN",
      "sichtbarkeit visibility ausblenden einblenden kategorie layer"},
+    {"map.leveltools", "map",
+     "Level-Editor-Werkzeuge (Viewport-Leiste, Spieltest, Ausgabe)", "Level editor tools (viewport toolbar, playtest, output log)",
+     R"MAN(Die Leiste oben im 3D-Bild bündelt die Level-Editor-Werkzeuge. Alles davon ist reiner Editor-Zustand und verändert keine Fiesta-Datei.
+# Viewport-Leiste
+- Ansicht: Perspektive oder Achsenansichten (Oben mit Norden oben, von Süden/Norden/Westen/Osten), Kamera-Lesezeichen 0..9 und Navigationsart. Die Achsenansichten nutzen die Perspektivkamera.
+- Anzeigen: Show Flags für Terrain, NIF-Meshes, Platzhalter, SHMD Sky/Water/GroundObject, NPCs, Routen, Drahtgitter sowie Raster, Achsen-Anzeige, Statistik und SHBD-Kollision um den Mauszeiger.
+- Objekte-Modus: Verschieben/Rotieren/Skalieren, World/Local, 'Boden' (Surface Snap), Raster-, Winkel- und Skalierungs-Snap. Die Raster-Presets sind Fiesta-Einheiten: 6,25 = eine SHBD-Walk-Zelle, 50 = ein HTD-Block.
+- Surface Snap und 'Auf den Boden setzen' im Spieltest beachten das HTD-Terrain UND die SHMD-Kategorie GroundObject (z.B. das Pflaster von Roumen liegt über dem HTD).
+- Tempo 1..8, G (Spielansicht: alle Editor-Helfer aus) und Spieltest.
+# Statistik
+FPS, Objekt-/Mesh-/NPC-Anzahl, ausgeblendete Objekte, Kameraziel sowie Weltposition unter dem Mauszeiger mit Höhe und SHBD-Zelle (begehbar/blockiert).
+# Spieltest
+Startet eine Spielfigur direkt im Viewport (Alt+P oder Knopf 'Spieltest'). Spawn: MapInfo.shn RegenX/RegenY der offenen Karte, sonst das Kameraziel; danach die nächste begehbare SHBD-Zelle. W/A/S/D laufen relativ zur Kamera, Shift geht langsam, rechte/linke Maustaste dreht, Mausrad zoomt, C schaltet die Kollision, Esc beendet und stellt die Editor-Kamera wieder her. Die Kollision nutzt das geladene Block&Walk-Gitter (gesetztes Bit = blockiert, 6,25 Einheiten je Zelle) mit 1,5 Zellen Radius und gleitet an Wänden entlang. Laufgeschwindigkeit und Radius sind Editorwerte, keine aus dem Client belegten Konstanten. Ist kein begehbares SHBD geladen, läuft der Spieltest ohne Kollision und meldet das.
+# Auswahl und Sichtbarkeit
+Strg+Alt+linke Maustaste ziehen wählt per Rahmen; Shift ergänzt. 'Überschneidung' wählt alles, dessen projizierte NIF-Bounds den Rahmen berühren, 'vollständig innen' nur vollständig enthaltene Objekte. H blendet die Auswahl aus, Shift+H isoliert sie, Strg+H blendet alles wieder ein (nur Editor-Sichtbarkeit). Alt beim Ziehen des Verschieben-Gizmos dupliziert die Auswahl an Ort und Stelle; Duplikat und Verschiebung sind ein Undo-Schritt.
+# Objekte-Menü
+Ausrichten (X/Y/Z auf Minimum, Mitte, Maximum oder das aktive = zuletzt gewählte Objekt), Verteilen (gleichmäßige Abstände, Reihenfolge bleibt) und Rotation/Skalierung vom aktiven Objekt übernehmen. Alles ist rückgängig machbar.
+# Ausgabe
+Das Fenster 'Ausgabe' sammelt alle Statusmeldungen mit Zeit, Kategorie und Schweregrad (Info/Warnung/Fehler), filterbar und kopierbar.)MAN",
+     R"MAN(The bar at the top of the 3D image groups the level editor tools. All of it is editor state only and never changes a Fiesta file.
+# Viewport toolbar
+- View: perspective or axis views (top with north up, from south/north/west/east), camera bookmarks 0..9 and the navigation scheme. Axis views use the perspective camera.
+- Show: show flags for terrain, NIF meshes, placeholders, SHMD Sky/Water/GroundObject, NPCs, routes, wireframe as well as grid, axis indicator, stats and SHBD collision around the mouse pointer.
+- Objects mode: move/rotate/scale, world/local, 'Surface' (surface snap), grid, angle and scale snap. Grid presets are Fiesta units: 6.25 = one SHBD walk cell, 50 = one HTD block.
+- Surface snap and ground placement in the playtest respect the HTD terrain AND the SHMD GroundObject category (e.g. the Roumen pavement lies above the HTD).
+- Speed 1..8, G (game view: all editor helpers off) and playtest.
+# Stats
+FPS, object/mesh/NPC counts, hidden objects, camera target and the world position under the mouse pointer with height and SHBD cell (walkable/blocked).
+# Playtest
+Starts a player character directly in the viewport (Alt+P or the 'Playtest' button). Spawn: MapInfo.shn RegenX/RegenY of the open map, otherwise the camera target; then the nearest walkable SHBD cell. W/A/S/D run relative to the camera, Shift walks, right/left mouse button turns, mouse wheel zooms, C toggles collision, Esc ends and restores the editor camera. Collision uses the loaded block & walk grid (set bit = blocked, 6.25 units per cell) with a 1.5 cell radius and slides along walls. Run speed and radius are editor values, not constants verified from the client. If no walkable SHBD is loaded, the playtest runs without collision and says so.
+# Selection and visibility
+Ctrl+Alt+left mouse drag selects by marquee; Shift adds. 'Crossing' selects everything whose projected NIF bounds touch the rectangle, 'fully inside' only fully contained objects. H hides the selection, Shift+H isolates it, Ctrl+H shows everything again (editor visibility only). Holding Alt while dragging the move gizmo duplicates the selection in place; duplicate and move are one undo step.
+# Objects menu
+Align (X/Y/Z to minimum, center, maximum or the active = last selected object), distribute (even spacing, order is kept) and match rotation/scale to the active object. Everything can be undone.
+# Output log
+The 'Output' window collects all status messages with time, category and severity (info/warning/error), filterable and copyable.)MAN",
+     "spieltest playtest pie unreal viewport leiste toolbar snap raster grid lesezeichen bookmark ausgabe output log rahmen marquee isolieren isolate ausrichten align verteilen distribute shbd kollision"},
     {"map.npcs", "map",
      "Tab NPC Platzierung", "NPC placement tab",
      R"MAN(NPCs kommen aus World/NPC.txt (Server-Ordner) und gehören zu einer Karte. Wähle einen NPC durch Klick auf sein Quadrat in der 2D-Ansicht.

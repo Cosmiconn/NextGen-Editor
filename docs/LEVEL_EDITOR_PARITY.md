@@ -17,6 +17,33 @@ Wichtig: Die Referenzeditoren definieren den UX-Maßstab. Fiesta-Dateisemantik w
 
 ---
 
+## 0. Nachtrag 03.10.2026 – Unreal-ähnliche Viewport-Workflows
+
+Umgesetzt (Details: CHANGELOG „Level Editor — Unreal-style viewport workflows“,
+Handbuch „Level-Editor-Werkzeuge“, Kern `core/LevelEditorTools` + `test_level_editor_tools`):
+
+| Punkt aus diesem Dokument | Stand |
+|---|---|
+| Surface Snap während des Ziehens (§5) | **umgesetzt** – HTD + SHMD-GroundObject (Raycast) |
+| Duplicate-while-dragging (§5) | **umgesetzt** – Alt+Ziehen, ein Undo-Schritt |
+| Hide Selected / Hide Unselected (Isolate) / Show All, Anzahl versteckter Objekte (§6) | **umgesetzt** – H / Shift+H / Strg+H, Statusleiste |
+| Show Flags im Viewport (§3.3, §8) | **teilweise** – globales Show-Menü (Szene + Editor-Helfer), noch nicht je Viewport |
+| Marquee Inside vs. Crossing, Replace/Add (§7) | **3D umgesetzt** auf projizierten NIF-Bounds; Remove-Modifier und Lasso in 3D offen |
+| Align / Distribute / Match Transform (§9) | **umgesetzt** (Objekte-Menü) |
+| Bookmarks / gespeicherte Kamerapositionen (§9) | **umgesetzt** – Strg+0..9 / 0..9, je Karte persistiert |
+| Orthographic Front/Side (§3.3) | **Achsenansichten mit Perspektivkamera**; echte Orthografie weiterhin offen |
+| Unlit / UV / Normals Debug-Modi (§8) | offen (nur Lit + Wireframe) |
+
+Zusätzlich (nicht im ursprünglichen Plan): Unreal-Navigation, Kameratempo 1..8, Spielansicht (G),
+Statistik-Overlay mit SHBD-Zelle unter dem Cursor, Weltraster, Achsen-Anzeige, Ausgabeprotokoll,
+**Spieltest** auf dem echten SHBD-Gitter (Spawn aus MapInfo.shn RegenX/RegenY) und ein
+Automatisierungs-Hook (`NEXTGEN_EDITOR_SCRIPT`) für reproduzierbare Viewport-Screenshots.
+
+Weiterhin ehrlich offen: echte orthografische Projektion, per-Viewport-Show-Flags, Vertex-/Actor-
+Snap, Pivot-Bearbeitung, Debug-Viewmodes, 2D-Marquee auf Kontaktgeometrie, Windows-Build dieser Stufe.
+
+---
+
 ## 1. Reifegrad-Skala
 
 | Stufe | Bedeutung |

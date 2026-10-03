@@ -2,6 +2,7 @@
 #include "mapeditor/core/DdsImage.hpp"
 #include "mapeditor/core/legacy/LegacyPathResolve.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cctype>
 #include <cmath>

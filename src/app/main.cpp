@@ -70,6 +70,7 @@
 #include "mapeditor/core/legacy/ShnFile.hpp"
 #include "mapeditor/core/legacy/ShineText.hpp"
 #include "mapeditor/core/legacy/QuestData.hpp"
+#include "mapeditor/core/LevelEditorTools.hpp"
 #include "mapeditor/app/Localization.hpp"
 
 #include "Camera.hpp"
@@ -610,6 +611,46 @@ struct EditorState {
     bool objectGizmoMatrixValid = false;
     bool objectGizmoWasUsing = false;
     std::string objectGizmoSelectionKey;
+
+    // ---- Unreal-aehnliche Viewport-Werkzeuge (core/LevelEditorTools.hpp, docs/LEVEL_EDITOR_PARITY.md) ----
+    // Reiner Editor-Zustand: nichts davon wird in Fiesta-Dateien geschrieben. Persistiert in
+    // <Einstellungen>/viewport.txt (Bedienung) bzw. bookmarks/<Karte>.txt (Kamera-Lesezeichen).
+    bool viewportSettingsLoaded = false;
+    bool viewportSettingsDirty = false;
+    // Unreal-Navigation: WASD/Q/E nur bei gehaltener rechter Maustaste, Alt+LMB = Orbit,
+    // Alt+RMB = Dolly, LMB-Ziehen = vor/zurueck + drehen, W/E/R = Gizmo, Ziffern = Lesezeichen.
+    bool unrealNavigation = true;
+    int cameraSpeedSetting = core::level::kDefaultCameraSpeedSetting;
+    bool surfaceSnap = false;         // Verschieben setzt Objekte laufend auf das HTD-Terrain
+    bool gameView = false;            // G: alle Editor-Helfer im Viewport ausblenden
+    bool showViewportStats = true;
+    bool showViewportGrid = false;
+    bool showViewportAxes = true;
+    bool showWalkCollision3D = false; // SHBD-Zellen um den Mauszeiger im 3D-View
+    int viewportViewPreset = 0;       // 0 Perspektive, 1 Oben, 2 Sueden, 3 Norden, 4 Westen, 5 Osten
+    core::level::MarqueeMode marqueeMode = core::level::MarqueeMode::Crossing;
+    bool marqueeActive = false;
+    ImVec2 marqueeStart{};
+    std::optional<std::array<float, 3>> viewportCursorWorld; // Terraintreffer unter der Maus
+    ImVec2 viewport3dPos{};   // Bildschirmrechteck des 3D-Bilds im letzten Frame (Automatisierung)
+    ImVec2 viewport3dSize{};
+    core::level::CameraBookmarkSet cameraBookmarks;
+    std::string cameraBookmarksForMap;
+    // Ausgabeprotokoll (Output Log): alle Statusmeldungen mit Zeit und Schweregrad.
+    core::level::EditorLog editorLog;
+    std::string lastLoggedStatus;
+    char outputLogFilter[128] = "";
+    bool outputLogShowInfo = true;
+    bool outputLogShowWarnings = true;
+    bool outputLogShowErrors = true;
+    bool outputLogAutoScroll = true;
+    // Spieltest (Play-in-Editor): Spielfigur laeuft auf dem geladenen SHBD-Block&Walk-Gitter.
+    bool playtestActive = false;
+    core::level::PlaytestPawn playtestPawn;
+    core::level::PlaytestConfig playtestConfig;
+    bool playtestWalkGridUsable = false;
+    std::string playtestSpawnSource;
+    float playtestBlockedFlash = 0.0f;
     std::vector<core::PlacedObject> objectClipboard;
     std::vector<std::string> objectClipboardLabels;
     std::vector<std::string> objectClipboardGroups;
@@ -638,6 +679,7 @@ struct EditorState {
     char zoneNameBuf[256] = "";
 
     app::OrbitCamera camera;
+    app::OrbitCamera playtestSavedCamera; // Editor-Kamera vor dem Spieltest (wird danach wiederhergestellt)
     bool cameraLooking = false;       // rechte Maustaste im 3D-View gedrueckt (Umsehen + WASD)
     // 2D-Ansicht: Zoom (1 = ganze Karte) und Mittelpunkt des sichtbaren Ausschnitts in Kartenkoordinaten
     // (u = x/spanX, v = Bildzeile, Norden oben, siehe DrawEditor2DContent).
@@ -1450,6 +1492,89 @@ void LoadShortcutSettings(EditorState& state) {
     }
 }
 
+// ---- Viewport-Einstellungen (Unreal-Navigation, Overlays, Snap-Raster) -------------------------
+void SaveViewportSettings(EditorState& state) {
+    state.viewportSettingsDirty = false;
+    const auto dir = NextGenUserSettingsDir();
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    if (ec) return;
+    std::ofstream out(dir / "viewport.txt", std::ios::binary | std::ios::trunc);
+    if (!out) return;
+    out << "unreal_navigation=" << (state.unrealNavigation ? 1 : 0) << "\n"
+        << "camera_speed=" << state.cameraSpeedSetting << "\n"
+        << "surface_snap=" << (state.surfaceSnap ? 1 : 0) << "\n"
+        << "show_stats=" << (state.showViewportStats ? 1 : 0) << "\n"
+        << "show_grid=" << (state.showViewportGrid ? 1 : 0) << "\n"
+        << "show_axes=" << (state.showViewportAxes ? 1 : 0) << "\n"
+        << "show_walk_collision=" << (state.showWalkCollision3D ? 1 : 0) << "\n"
+        << "marquee_crossing=" << (state.marqueeMode == core::level::MarqueeMode::Crossing ? 1 : 0) << "\n"
+        << "gizmo_snap=" << (state.objectGizmoSnap ? 1 : 0) << "\n"
+        << "move_snap=" << state.objectMoveSnap << "\n"
+        << "rotate_snap=" << state.objectRotateSnap << "\n"
+        << "scale_snap=" << state.objectScaleSnap << "\n"
+        << "playtest_speed=" << state.playtestConfig.runSpeed << "\n";
+}
+
+void LoadViewportSettings(EditorState& state) {
+    if (state.viewportSettingsLoaded) return;
+    state.viewportSettingsLoaded = true;
+    std::ifstream in(NextGenUserSettingsDir() / "viewport.txt", std::ios::binary);
+    if (!in) return;
+    std::string line;
+    while (std::getline(in, line)) {
+        const auto eq = line.find('=');
+        if (eq == std::string::npos) continue;
+        const std::string key = line.substr(0, eq);
+        const char* value = line.c_str() + static_cast<std::ptrdiff_t>(eq + 1);
+        const float f = static_cast<float>(std::atof(value));
+        const bool b = std::atoi(value) != 0;
+        if (key == "unreal_navigation") state.unrealNavigation = b;
+        else if (key == "camera_speed")
+            state.cameraSpeedSetting = std::clamp(std::atoi(value), core::level::kMinCameraSpeedSetting,
+                                                  core::level::kMaxCameraSpeedSetting);
+        else if (key == "surface_snap") state.surfaceSnap = b;
+        else if (key == "show_stats") state.showViewportStats = b;
+        else if (key == "show_grid") state.showViewportGrid = b;
+        else if (key == "show_axes") state.showViewportAxes = b;
+        else if (key == "show_walk_collision") state.showWalkCollision3D = b;
+        else if (key == "marquee_crossing")
+            state.marqueeMode = b ? core::level::MarqueeMode::Crossing : core::level::MarqueeMode::Inside;
+        else if (key == "gizmo_snap") state.objectGizmoSnap = b;
+        else if (key == "move_snap" && f > 0.0f && std::isfinite(f)) state.objectMoveSnap = f;
+        else if (key == "rotate_snap" && f > 0.0f && std::isfinite(f)) state.objectRotateSnap = f;
+        else if (key == "scale_snap" && f > 0.0f && std::isfinite(f)) state.objectScaleSnap = f;
+        else if (key == "playtest_speed" && f >= 10.0f && f <= 2000.0f) state.playtestConfig.runSpeed = f;
+    }
+}
+
+// ---- Kamera-Lesezeichen je Karte (Strg+0..9 setzen, 0..9 anspringen) ---------------------------
+std::filesystem::path CameraBookmarkFile(const std::string& mapStem) {
+    return NextGenUserSettingsDir() / "bookmarks" / (core::level::BookmarkFileStem(mapStem) + ".txt");
+}
+
+void EnsureCameraBookmarksLoaded(EditorState& state) {
+    const std::string stem = state.legacySaveStem;
+    if (state.cameraBookmarksForMap == stem) return;
+    state.cameraBookmarksForMap = stem;
+    state.cameraBookmarks = {};
+    if (stem.empty()) return;
+    std::ifstream in(CameraBookmarkFile(stem), std::ios::binary);
+    if (!in) return;
+    const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    state.cameraBookmarks = core::level::CameraBookmarkSet::Parse(text);
+}
+
+void SaveCameraBookmarks(const EditorState& state) {
+    if (state.cameraBookmarksForMap.empty()) return;
+    const auto file = CameraBookmarkFile(state.cameraBookmarksForMap);
+    std::error_code ec;
+    std::filesystem::create_directories(file.parent_path(), ec);
+    if (ec) return;
+    std::ofstream out(file, std::ios::binary | std::ios::trunc);
+    if (out) out << state.cameraBookmarks.Serialize();
+}
+
 std::string CompactToastText(const std::string& message) {
     std::string text = message;
     if (const auto nl = text.find('\n'); nl != std::string::npos) text.resize(nl);
@@ -1480,6 +1605,22 @@ void SyncStatusToast(EditorState& state) {
                        lower.find("fehlgeschlagen") != std::string::npos ||
                        lower.find("nicht gefunden") != std::string::npos;
     PushToast(state, state.statusMessage, error);
+
+    // Jede neue Statusmeldung landet zusätzlich dauerhaft im Ausgabeprotokoll (Output Log),
+    // damit Meldungen nicht mit dem Toast verschwinden.
+    const char* category = "Editor";
+    switch (state.screen) {
+        case AppScreen::MapEditorWorkspace: category = state.playtestActive ? "Spieltest" : "Karte"; break;
+        case AppScreen::ShnEditor: category = "SHN"; break;
+        case AppScreen::KfmBrowser: category = "KFM"; break;
+        case AppScreen::ProjectHub:
+        case AppScreen::NewProjectConfig:
+        case AppScreen::MapEditorLauncher: category = "Projekt"; break;
+        default: break;
+    }
+    const auto severity = error ? core::level::LogSeverity::Error
+                                : core::level::ClassifyLogMessage(state.statusMessage);
+    state.editorLog.Push(severity, category, state.statusMessage, ImGui::GetTime());
 }
 
 void DrawToasts(EditorState& state) {
@@ -2532,7 +2673,8 @@ void PasteObjectClipboard(EditorState& state) {
     FinishObjectMutation(state, std::move(historyBefore));
 }
 
-void DuplicateSelectedObjects(EditorState& state) {
+// offsetOverride: 0 = exakt an Ort und Stelle (Alt+Ziehen mit dem Gizmo wie in Unreal).
+void DuplicateSelectedObjects(EditorState& state, std::optional<float> offsetOverride = std::nullopt) {
     if (!RequireWritableMapGeometry(state)) return;
     if (state.selectedObjects.empty()) return;
     auto historyBefore = BeginObjectMutation(state);
@@ -2542,7 +2684,8 @@ void DuplicateSelectedObjects(EditorState& state) {
         if (const auto* obj=EditableObject(state,id))
             copies.push_back({*obj,ObjectEditorLabel(state,id),ObjectEditorGroup(state,id)});
     if (copies.empty()) return;
-    const float offset=state.objectGizmoSnap ? std::max(1.0f,state.objectMoveSnap) : 50.0f;
+    const float offset=offsetOverride ? *offsetOverride
+                                      : (state.objectGizmoSnap ? std::max(1.0f,state.objectMoveSnap) : 50.0f);
     SyncObjectEditorMetadata(state);
     std::vector<int> ids;
     for (auto& copy : copies) {
@@ -2595,6 +2738,185 @@ void FocusSelectedObjects(EditorState& state) {
     state.camera.SetTarget(pivot.position.x,pivot.position.y,pivot.position.z);
     const float desired=std::clamp(radius*2.8f,120.0f,25000.0f);
     state.camera.Zoom(desired-state.camera.Distance());
+}
+
+// ---- Editor-Sichtbarkeit: Hide Selected (H) / Hide Unselected (Shift+H) / Show All (Strg+H) ----
+// Rein editorseitig (objectEditorHidden bzw. shmdEditorHiddenKeys) - SHMD-Export bleibt unberührt.
+void SetObjectEditorHiddenFlag(EditorState& state, int id, bool hidden) {
+    if (id >= 0) {
+        SyncObjectEditorMetadata(state);
+        const auto index = static_cast<std::size_t>(id);
+        if (index < state.objectEditorHidden.size()) state.objectEditorHidden[index] = hidden ? 1 : 0;
+        state.objectVisKey.clear();
+        return;
+    }
+    const std::string key = ShmdEditorObjectKey(state, id);
+    if (key.empty()) return;
+    if (hidden) state.shmdEditorHiddenKeys.insert(key);
+    else state.shmdEditorHiddenKeys.erase(key);
+}
+
+std::size_t CountEditorHiddenObjects(const EditorState& state) {
+    const auto normal = static_cast<std::size_t>(
+        std::count_if(state.objectEditorHidden.begin(), state.objectEditorHidden.end(), [](char c) { return c != 0; }));
+    return normal + state.shmdEditorHiddenKeys.size();
+}
+
+void HideSelectedObjects(EditorState& state) {
+    if (state.selectedObjects.empty()) return;
+    const std::size_t count = state.selectedObjects.size();
+    for (const int id : state.selectedObjects) SetObjectEditorHiddenFlag(state, id, true);
+    state.selectedObjects.clear();
+    state.selectedObject = kNoObjectSelection;
+    state.objectGizmoMatrixValid = false;
+    state.statusMessage = std::to_string(count) + L(" Objekt(e) im Editor ausgeblendet (Strg+H blendet alle ein).",
+                                                   " object(s) hidden in the editor (Ctrl+H shows all).");
+}
+
+void HideUnselectedObjects(EditorState& state) {
+    if (state.selectedObjects.empty()) return;
+    const std::unordered_set<int> keep(state.selectedObjects.begin(), state.selectedObjects.end());
+    std::size_t hidden = 0;
+    for (std::size_t i = 0; i < state.placementSet.Count(); ++i) {
+        if (keep.contains(static_cast<int>(i))) continue;
+        SetObjectEditorHiddenFlag(state, static_cast<int>(i), true);
+        ++hidden;
+    }
+    for (std::size_t i = 0; i < state.shmdCategoryRenderSet.Count(); ++i) {
+        const int id = ShmdSelectionId(i);
+        if (keep.contains(id)) continue;
+        SetObjectEditorHiddenFlag(state, id, true);
+        ++hidden;
+    }
+    state.statusMessage = std::string(L("Auswahl isoliert: ", "Selection isolated: ")) + std::to_string(hidden) +
+                          L(" andere Objekte ausgeblendet.", " other objects hidden.");
+}
+
+void ShowAllObjects(EditorState& state) {
+    const std::size_t count = CountEditorHiddenObjects(state);
+    std::fill(state.objectEditorHidden.begin(), state.objectEditorHidden.end(), 0);
+    state.shmdEditorHiddenKeys.clear();
+    state.objectVisKey.clear();
+    state.statusMessage = std::to_string(count) + L(" ausgeblendete(s) Objekt(e) wieder eingeblendet.",
+                                                   " hidden object(s) shown again.");
+}
+
+// ---- Ausrichten / Verteilen / Transform übernehmen -------------------------------------------
+// axis: 0 = X (Ost), 1 = Y (Höhe), 2 = Z (Server-Y / Nord). Der zuletzt gewählte Eintrag ist
+// das "aktive" Objekt (wie in Unreal das zuletzt angeklickte Objekt).
+std::vector<int> EditableSelectedPlacementIds(const EditorState& state) {
+    std::vector<int> ids;
+    for (const int id : state.selectedObjects)
+        if (id >= 0 && static_cast<std::size_t>(id) < state.placementSet.Count() && !IsObjectEditorLocked(state, id))
+            ids.push_back(id);
+    return ids;
+}
+
+float& PlacementAxis(core::PlacedObject& object, int axis) {
+    return axis == 0 ? object.posX : (axis == 1 ? object.posY : object.posZ);
+}
+
+void AlignSelectedObjects(EditorState& state, int axis, core::level::AlignTarget target) {
+    if (!RequireWritableMapGeometry(state) || state.selectedObjects.size() < 2) return;
+    auto historyBefore = BeginObjectMutation(state);
+    bool changed = PromoteSelectedShmdObjectsToPlacements(state);
+    const auto ids = EditableSelectedPlacementIds(state);
+    if (ids.size() < 2) { FinishObjectMutation(state, std::move(historyBefore), changed); return; }
+    std::vector<float> values;
+    for (const int id : ids) values.push_back(PlacementAxis(state.placementSet.At(static_cast<std::size_t>(id)), axis));
+    const std::size_t active = ids.size() - 1;
+    const auto aligned = core::level::AlignValues(values, target, active);
+    for (std::size_t i = 0; i < ids.size(); ++i) {
+        float& v = PlacementAxis(state.placementSet.At(static_cast<std::size_t>(ids[i])), axis);
+        changed = changed || std::abs(v - aligned[i]) > 1.0e-6f;
+        v = aligned[i];
+    }
+    state.objectGizmoMatrixValid = false;
+    state.statusMessage = std::to_string(ids.size()) + L(" Objekte ausgerichtet.", " objects aligned.");
+    FinishObjectMutation(state, std::move(historyBefore), changed);
+}
+
+void DistributeSelectedObjects(EditorState& state, int axis) {
+    if (!RequireWritableMapGeometry(state) || state.selectedObjects.size() < 3) return;
+    auto historyBefore = BeginObjectMutation(state);
+    bool changed = PromoteSelectedShmdObjectsToPlacements(state);
+    const auto ids = EditableSelectedPlacementIds(state);
+    std::vector<float> values;
+    for (const int id : ids) values.push_back(PlacementAxis(state.placementSet.At(static_cast<std::size_t>(id)), axis));
+    const auto distributed = core::level::DistributeValues(values);
+    for (std::size_t i = 0; i < ids.size(); ++i) {
+        float& v = PlacementAxis(state.placementSet.At(static_cast<std::size_t>(ids[i])), axis);
+        changed = changed || std::abs(v - distributed[i]) > 1.0e-6f;
+        v = distributed[i];
+    }
+    state.objectGizmoMatrixValid = false;
+    state.statusMessage = std::to_string(ids.size()) + L(" Objekte gleichmäßig verteilt.", " objects distributed evenly.");
+    FinishObjectMutation(state, std::move(historyBefore), changed);
+}
+
+// Rotation und/oder Skalierung des aktiven (zuletzt gewählten) Objekts auf die übrige Auswahl übertragen.
+void MatchSelectedObjectsToActive(EditorState& state, bool rotation, bool scale) {
+    if (!RequireWritableMapGeometry(state) || state.selectedObjects.size() < 2) return;
+    auto historyBefore = BeginObjectMutation(state);
+    bool changed = PromoteSelectedShmdObjectsToPlacements(state);
+    const auto ids = EditableSelectedPlacementIds(state);
+    if (ids.size() < 2) { FinishObjectMutation(state, std::move(historyBefore), changed); return; }
+    const core::PlacedObject active = state.placementSet.At(static_cast<std::size_t>(ids.back()));
+    for (std::size_t i = 0; i + 1 < ids.size(); ++i) {
+        auto& o = state.placementSet.At(static_cast<std::size_t>(ids[i]));
+        if (rotation) { o.rotX = active.rotX; o.rotY = active.rotY; o.rotZ = active.rotZ; o.rotW = active.rotW; }
+        if (scale) o.scale = active.scale;
+        changed = true;
+    }
+    state.objectGizmoMatrixValid = false;
+    state.statusMessage = L("Transform vom aktiven Objekt übernommen.", "Transform matched to the active object.");
+    FinishObjectMutation(state, std::move(historyBefore), changed);
+}
+
+// Begehbarer Boden einer Fiesta-Karte = HTD-Terrain UND die SHMD-Kategorie "GroundObject"
+// (z.B. das Pflaster von Roumen, Rou_ground2_CD.nif, liegt deutlich über dem HTD). Die
+// GroundObject-Meshes werden senkrecht von oben per Dreiecks-Raycast abgetastet.
+std::optional<float> GroundObjectHeightAt(const EditorState& state, float x, float z) {
+    constexpr float kRayTop = 100000.0f;
+    std::optional<float> best;
+    const std::size_t count = std::min(state.shmdCategoryRenderSet.Count(), state.shmdCategoryRenderKind.size());
+    for (std::size_t i = 0; i < count; ++i) {
+        if (state.shmdCategoryRenderKind[i] != 2 || !state.shmdCategoryMeshRenderer.HasRealMesh(i)) continue;
+        if (const auto t = state.shmdCategoryMeshRenderer.RaycastObject(
+                state.shmdCategoryRenderSet, i, state.camera, {x, kRayTop, z}, {0.0f, -1.0f, 0.0f})) {
+            const float y = kRayTop - *t;
+            if (!best || y > *best) best = y;
+        }
+    }
+    return best;
+}
+
+// Höchste begehbare Oberfläche (HTD bzw. GroundObject); `fallback`, wenn keine vorhanden ist.
+float SurfaceHeightAt(const EditorState& state, float x, float z, float fallback, bool* found = nullptr) {
+    const bool terrain = MapSupportsTerrainEditing(state);
+    float y = terrain ? state.heightmap.SampleWorld(x, z) : fallback;
+    bool any = terrain;
+    if (const auto ground = GroundObjectHeightAt(state, x, z)) {
+        y = any ? std::max(y, *ground) : *ground;
+        any = true;
+    }
+    if (found) *found = any;
+    return y;
+}
+
+// Surface Snap: verschobene Objekte folgen dem begehbaren Boden (HTD + SHMD-GroundObject).
+void SnapSelectedObjectsToTerrainSilently(EditorState& state) {
+    for (const int id : state.selectedObjects) {
+        if (id < 0 || static_cast<std::size_t>(id) >= state.placementSet.Count() || IsObjectEditorLocked(state, id)) continue;
+        auto& obj = state.placementSet.At(static_cast<std::size_t>(id));
+        bool found = false;
+        const float grounded = SurfaceHeightAt(state, obj.posX, obj.posZ, obj.posY, &found);
+        if (!found) continue;
+        if (std::abs(obj.posY - grounded) > 1.0e-6f) {
+            obj.posY = grounded;
+            if (state.pendingObjectEdit) state.pendingObjectEditChanged = true;
+        }
+    }
 }
 
 void SelectObjectId(EditorState& state, int id, bool ctrl) {
@@ -3112,6 +3434,10 @@ bool OpenStandaloneNifMapIntoState(EditorState& state, const std::filesystem::pa
 
 bool OpenMapPathIntoState(EditorState& state, const std::filesystem::path& path,
                           bool preferProjectOutput = true) {
+    // Ein laufender Spieltest/Rahmen gehört zur bisherigen Karte; die Editor-Kamera wird von
+    // der neuen Karte ohnehin neu ausgerichtet.
+    state.playtestActive = false;
+    state.marqueeActive = false;
     std::string ext = path.extension().string();
     std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) {
         return static_cast<char>(std::tolower(c));
@@ -4594,9 +4920,16 @@ bool FocusCurrentSceneSelection(EditorState& state);
 // Tabs, rechts Credits/Donate/? und die Sprachumschaltung (DE/EN, siehe Localization.hpp).
 // tabs==nullptr blendet die linken Tabs aus (Detail-Bildschirme zeigen stattdessen NUR den
 // aktuellen Titel als "Breadcrumb", siehe Mockup rechtes/zweites Bild).
+// Vorwärtsdeklarationen der Viewport-/Spieltest-Werkzeuge (Definitionen beim 3D-Viewport).
+const char* ViewportPresetName(int preset);
+void ApplyViewportPreset(EditorState& state, int preset);
+void DrawViewportShowFlagsMenu(EditorState& state);
+void TogglePlaytest(EditorState& state);
+
 void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
     LoadRecentEntries(state);
     LoadShortcutSettings(state);
+    LoadViewportSettings(state);
     LoadWorkspaceSettings(state);
 
     ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::PanelDeep);
@@ -4702,9 +5035,28 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
             if (ImGui::MenuItem(L("Löschen","Delete"), ShortcutLabel(state.shortcutDelete).c_str(), false,
                                 objectMode && !state.selectedObjects.empty()))
                 DeleteSelectedObjects(state);
+            ImGui::Separator();
+            if (ImGui::MenuItem(L("Alles auswählen","Select all"), nullptr, false, objectMode))
+                SelectAllNormalObjects(state);
+            if (ImGui::MenuItem(L("Auswahl aufheben","Deselect"), "Esc", false,
+                                objectMode && !state.selectedObjects.empty()))
+                ClearObjectSelection(state);
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu(L("Ansicht","View"))) {
+            if (ImGui::BeginMenu(L("Kamera-Ansicht","Camera view"), mapWorkspace)) {
+                for (int preset = 0; preset <= 5; ++preset)
+                    if (ImGui::MenuItem(ViewportPresetName(preset), nullptr, state.viewportViewPreset == preset))
+                        ApplyViewportPreset(state, preset);
+                ImGui::EndMenu();
+            }
+            if (ImGui::BeginMenu(L("Anzeigen (Show Flags)","Show flags"), mapWorkspace)) {
+                DrawViewportShowFlagsMenu(state);
+                ImGui::EndMenu();
+            }
+            if (ImGui::MenuItem(L("Unreal-Navigation","Unreal navigation"), nullptr, &state.unrealNavigation))
+                SaveViewportSettings(state);
+            ImGui::Separator();
             if (ImGui::MenuItem(L("Workspace: Standard","Workspace: Standard")))
                 RequestMapWorkspacePreset(state,0);
             if (ImGui::MenuItem(L("Workspace: 3D-Fokus","Workspace: 3D focus")))
@@ -4746,6 +5098,42 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
                                 mapWorkspace && state.editMode==EditMode::ObjectPlacement &&
                                 !state.selectedObjects.empty()))
                 GroundSelectedObjects(state);
+            const bool objectTools = mapWorkspace && state.editMode==EditMode::ObjectPlacement;
+            const std::size_t selCount = state.selectedObjects.size();
+            ImGui::Separator();
+            if (ImGui::MenuItem(L("Auswahl ausblenden","Hide selected"), "H", false, objectTools && selCount > 0))
+                HideSelectedObjects(state);
+            if (ImGui::MenuItem(L("Auswahl isolieren","Isolate selection"), L("Shift+H","Shift+H"), false, objectTools && selCount > 0))
+                HideUnselectedObjects(state);
+            if (ImGui::MenuItem(L("Alle einblenden","Show all"), L("Strg+H","Ctrl+H"), false,
+                                objectTools && CountEditorHiddenObjects(state) > 0))
+                ShowAllObjects(state);
+            ImGui::Separator();
+            if (ImGui::BeginMenu(L("Ausrichten","Align"), objectTools && selCount >= 2)) {
+                const char* axisNames[3] = {L("X (Ost)","X (east)"), L("Y (Höhe)","Y (height)"), L("Z (Server-Y)","Z (server Y)")};
+                for (int axis = 0; axis < 3; ++axis) {
+                    if (ImGui::BeginMenu(axisNames[axis])) {
+                        if (ImGui::MenuItem(L("Minimum","Minimum"))) AlignSelectedObjects(state, axis, core::level::AlignTarget::Min);
+                        if (ImGui::MenuItem(L("Mitte","Center"))) AlignSelectedObjects(state, axis, core::level::AlignTarget::Center);
+                        if (ImGui::MenuItem(L("Maximum","Maximum"))) AlignSelectedObjects(state, axis, core::level::AlignTarget::Max);
+                        if (ImGui::MenuItem(L("Aktives Objekt","Active object"))) AlignSelectedObjects(state, axis, core::level::AlignTarget::Active);
+                        ImGui::EndMenu();
+                    }
+                }
+                ImGui::EndMenu();
+            }
+            if (ImGui::BeginMenu(L("Verteilen","Distribute"), objectTools && selCount >= 3)) {
+                if (ImGui::MenuItem(L("Entlang X (Ost)","Along X (east)"))) DistributeSelectedObjects(state, 0);
+                if (ImGui::MenuItem(L("Entlang Z (Server-Y)","Along Z (server Y)"))) DistributeSelectedObjects(state, 2);
+                if (ImGui::MenuItem(L("Entlang Y (Höhe)","Along Y (height)"))) DistributeSelectedObjects(state, 1);
+                ImGui::EndMenu();
+            }
+            if (ImGui::BeginMenu(L("Vom aktiven Objekt übernehmen","Match active object"), objectTools && selCount >= 2)) {
+                if (ImGui::MenuItem(L("Rotation","Rotation"))) MatchSelectedObjectsToActive(state, true, false);
+                if (ImGui::MenuItem(L("Skalierung","Scale"))) MatchSelectedObjectsToActive(state, false, true);
+                if (ImGui::MenuItem(L("Rotation + Skalierung","Rotation + scale"))) MatchSelectedObjectsToActive(state, true, true);
+                ImGui::EndMenu();
+            }
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu(L("Terrain","Terrain"))) {
@@ -4783,6 +5171,11 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
                 state.commandPaletteSelection = 0;
             }
             if (ImGui::MenuItem(L("Einstellungen","Settings"))) state.settingsOpen = true;
+            ImGui::Separator();
+            if (ImGui::MenuItem(state.playtestActive ? L("Spieltest beenden","Stop playtest")
+                                                     : L("Spieltest starten","Start playtest"),
+                                state.playtestActive ? "Esc" : "Alt+P", false, mapWorkspace))
+                TogglePlaytest(state);
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu(L("Fenster","Window"))) {
@@ -12658,6 +13051,160 @@ void DrawGlobalHelpBar(EditorState& state, const ImVec2& displaySize) {
     ImGui::PopStyleVar();
 }
 
+// ---- Kamera-Lesezeichen / Ansichts-Presets ----------------------------------------------------
+void SetCameraBookmark(EditorState& state, int slot) {
+    if (slot < 0 || slot >= static_cast<int>(core::level::CameraBookmarkSet::kSlots)) return;
+    EnsureCameraBookmarksLoaded(state);
+    if (state.cameraBookmarksForMap.empty()) {
+        state.statusMessage = L("Kamera-Lesezeichen brauchen eine geöffnete Karte.",
+                                "Camera bookmarks need an open map.");
+        return;
+    }
+    auto& b = state.cameraBookmarks.slots[static_cast<std::size_t>(slot)];
+    b.valid = true;
+    b.targetX = state.camera.TargetX(); b.targetY = state.camera.TargetY(); b.targetZ = state.camera.TargetZ();
+    b.yaw = state.camera.Yaw(); b.pitch = state.camera.Pitch(); b.distance = state.camera.Distance();
+    SaveCameraBookmarks(state);
+    state.statusMessage = std::string(L("Kamera-Lesezeichen ", "Camera bookmark ")) + std::to_string(slot) +
+                          L(" gesetzt.", " set.");
+}
+
+bool JumpToCameraBookmark(EditorState& state, int slot) {
+    if (slot < 0 || slot >= static_cast<int>(core::level::CameraBookmarkSet::kSlots)) return false;
+    EnsureCameraBookmarksLoaded(state);
+    const auto& b = state.cameraBookmarks.slots[static_cast<std::size_t>(slot)];
+    if (!b.valid) return false;
+    state.camera.SetTarget(b.targetX, b.targetY, b.targetZ);
+    state.camera.SetDistance(b.distance);
+    state.camera.SetOrientation(b.yaw, b.pitch);
+    state.viewportViewPreset = 0;
+    state.statusMessage = std::string(L("Kamera-Lesezeichen ", "Camera bookmark ")) + std::to_string(slot);
+    return true;
+}
+
+const char* ViewportPresetName(int preset) {
+    switch (preset) {
+        case 1: return L("Oben (Nord oben)", "Top (north up)");
+        case 2: return L("Von Süden", "From south");
+        case 3: return L("Von Norden", "From north");
+        case 4: return L("Von Westen", "From west");
+        case 5: return L("Von Osten", "From east");
+        default: return L("Perspektive", "Perspective");
+    }
+}
+
+// Achsen-Ansichten mit der Perspektivkamera (echte Orthografie bleibt laut
+// docs/LEVEL_EDITOR_PARITY.md an eine gemeinsame Projektionsabstraktion gebunden).
+// Yaw 0 = Kamera südlich des Ziels mit Blick nach Norden (+Z in Fiesta-Weltkoordinaten).
+void ApplyViewportPreset(EditorState& state, int preset) {
+    constexpr float kPi = 3.14159265f;
+    state.viewportViewPreset = std::clamp(preset, 0, 5);
+    switch (state.viewportViewPreset) {
+        case 1: state.camera.SetOrientation(0.0f, 1.5f); break;
+        case 2: state.camera.SetOrientation(0.0f, 0.06f); break;
+        case 3: state.camera.SetOrientation(kPi, 0.06f); break;
+        case 4: state.camera.SetOrientation(-kPi * 0.5f, 0.06f); break;
+        case 5: state.camera.SetOrientation(kPi * 0.5f, 0.06f); break;
+        default: state.camera.SetOrientation(0.7f, 0.6f); break;
+    }
+}
+
+// ---- Spieltest (Play-in-Editor) --------------------------------------------------------------
+constexpr float kPlaytestEyeHeight = 45.0f;    // Editorwert für die Kamerahöhe über dem Boden
+constexpr float kPlaytestPawnHeight = 60.0f;   // nur Darstellung des Spielermarkers
+
+float PlaytestGroundHeight(const EditorState& state, float x, float z, float fallback) {
+    return SurfaceHeightAt(state, x, z, fallback);
+}
+
+void StartPlaytest(EditorState& state) {
+    if (state.playtestActive) return;
+    if (!state.hasLegacyIniMeta && state.legacySaveStem[0] == '\0') {
+        state.statusMessage = L("Spieltest: zuerst eine Karte öffnen.", "Playtest: open a map first.");
+        return;
+    }
+    state.playtestSavedCamera = state.camera;
+    state.marqueeActive = false;
+    state.cameraLooking = false;
+
+    float x = state.camera.TargetX(), z = state.camera.TargetZ();
+    state.playtestSpawnSource = L("Kameraziel", "camera target");
+    EnsurePortalDataLoaded(state);
+    float regenX = 0.0f, regenY = 0.0f;
+    if (FindMapRegen(state, regenX, regenY)) {
+        x = regenX; z = regenY;
+        state.playtestSpawnSource = "MapInfo.shn RegenX/RegenY";
+    }
+
+    state.playtestWalkGridUsable = core::level::WalkableFraction(state.walkGrid, 11) > 0.0005;
+    state.playtestConfig.collideWithWalkGrid = state.playtestWalkGridUsable;
+    if (state.playtestWalkGridUsable) {
+        if (const auto spot = core::level::FindNearestWalkable(state.walkGrid, x, z, 480)) {
+            x = (*spot)[0]; z = (*spot)[1];
+        }
+    }
+    state.playtestPawn = {};
+    state.playtestPawn.x = x;
+    state.playtestPawn.z = z;
+    state.playtestPawn.y = PlaytestGroundHeight(state, x, z, state.camera.TargetY());
+    state.playtestPawn.facingYaw = -state.camera.Yaw();
+    state.playtestActive = true;
+
+    state.camera.SetTarget(x, state.playtestPawn.y + kPlaytestEyeHeight, z);
+    state.camera.SetDistance(420.0f);
+    state.camera.SetOrientation(state.camera.Yaw(), 0.38f);
+
+    std::string msg = std::string(L("Spieltest gestartet (Spawn: ", "Playtest started (spawn: ")) +
+                      state.playtestSpawnSource + "). " +
+                      L("WASD laufen · Shift gehen · RMB drehen · Esc beendet.",
+                        "WASD run · Shift walk · RMB turn · Esc ends.");
+    if (!state.playtestWalkGridUsable)
+        msg += L(" Warnung: kein begehbares SHBD-Gitter geladen - Kollision deaktiviert.",
+                 " Warning: no walkable SHBD grid loaded - collision disabled.");
+    state.statusMessage = msg;
+}
+
+void StopPlaytest(EditorState& state) {
+    if (!state.playtestActive) return;
+    state.playtestActive = false;
+    state.camera = state.playtestSavedCamera;
+    char buf[160];
+    std::snprintf(buf, sizeof(buf), L("Spieltest beendet · %.0f Einheiten gelaufen.",
+                                      "Playtest ended · %.0f units travelled."),
+                  state.playtestPawn.distanceTravelled);
+    state.statusMessage = buf;
+}
+
+void TogglePlaytest(EditorState& state) {
+    if (state.playtestActive) StopPlaytest(state);
+    else StartPlaytest(state);
+}
+
+// Ziffern 0..9 springen zu Kamera-Lesezeichen, sofern die Ziffer nicht an ein anderes Kürzel
+// gebunden ist. Unter Unreal-Navigation gelten die Gizmo-Ziffern 1/2/3 nicht (dort W/E/R).
+bool GizmoShortcutPressed(const EditorState& state, const EditorState::ShortcutBinding& binding) {
+    const bool plainDigit = binding.key >= ImGuiKey_0 && binding.key <= ImGuiKey_9 &&
+                            !binding.ctrl && !binding.shift && !binding.alt;
+    if (state.unrealNavigation && plainDigit) return false;
+    return ShortcutPressed(binding);
+}
+
+bool DigitReservedByShortcut(EditorState& state, ImGuiKey key) {
+    for (const auto& [name, binding] : ShortcutSettings(state)) {
+        if (binding->key != key || binding->ctrl || binding->shift || binding->alt) continue;
+        const bool gizmo = binding == &state.shortcutGizmoMove || binding == &state.shortcutGizmoRotate ||
+                           binding == &state.shortcutGizmoScale;
+        if (gizmo && state.unrealNavigation) continue;
+        return true;
+    }
+    return false;
+}
+
+void SetGizmoOperation(EditorState& state, int op) {
+    state.objectGizmoOperation = op;
+    state.objectGizmoMatrixValid = false;
+}
+
 // Globale Tastenkuerzel: F1 = Handbuch, Strg+Z / Strg+Y (Strg+Shift+Z) = Rueckgaengig/Wiederholen im aktiven Karten-Werkzeug.
 void HandleGlobalShortcuts(EditorState& state) {
     ImGuiIO& io = ImGui::GetIO();
@@ -12667,7 +13214,38 @@ void HandleGlobalShortcuts(EditorState& state) {
         state.commandPaletteSelection = 0;
     }
 
+    if (state.playtestActive && state.screen != AppScreen::MapEditorWorkspace) StopPlaytest(state);
     if (io.WantTextInput || state.screen != AppScreen::MapEditorWorkspace) return;
+
+    // Spieltest: Esc oder Alt+P beendet; währenddessen keine Editor-Kürzel.
+    if (state.playtestActive) {
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape, false) ||
+            (io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_P, false)))
+            StopPlaytest(state);
+        return;
+    }
+    if (io.KeyAlt && !io.KeyCtrl && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_P, false)) {
+        StartPlaytest(state);
+        return;
+    }
+
+    const bool noMods = !io.KeyCtrl && !io.KeyShift && !io.KeyAlt;
+    const bool flying = state.cameraLooking; // rechte Maustaste: WASD gehört der Kamera
+    if (!flying && noMods && ImGui::IsKeyPressed(ImGuiKey_G, false)) {
+        state.gameView = !state.gameView;
+        state.statusMessage = state.gameView
+            ? L("Spielansicht: Editor-Helfer ausgeblendet (G)", "Game view: editor helpers hidden (G)")
+            : L("Spielansicht aus", "Game view off");
+    }
+    for (int digit = 0; digit <= 9; ++digit) {
+        const auto key = static_cast<ImGuiKey>(static_cast<int>(ImGuiKey_0) + digit);
+        if (!ImGui::IsKeyPressed(key, false)) continue;
+        if (io.KeyCtrl && !io.KeyShift && !io.KeyAlt) SetCameraBookmark(state, digit);
+        else if (noMods && !flying && !DigitReservedByShortcut(state, key) && !JumpToCameraBookmark(state, digit))
+            state.statusMessage = std::string(L("Kamera-Lesezeichen ", "Camera bookmark ")) + std::to_string(digit) +
+                                  L(" ist leer (Strg+", " is empty (Ctrl+") + std::to_string(digit) +
+                                  L(" setzt es).", " sets it).");
+    }
 
     if (ShortcutPressed(state.shortcutSave) &&
         state.legacySaveDir[0] != '\0' && state.legacySaveStem[0] != '\0') {
@@ -12688,18 +13266,26 @@ void HandleGlobalShortcuts(EditorState& state) {
         if (ShortcutPressed(state.shortcutGround)) GroundSelectedObjects(state);
         if (ShortcutPressed(state.shortcutDelete)) DeleteSelectedObjects(state);
 
-        if (ShortcutPressed(state.shortcutGizmoMove)) {
-            state.objectGizmoOperation = 0;
-            state.objectGizmoMatrixValid = false;
+        if (GizmoShortcutPressed(state, state.shortcutGizmoMove)) SetGizmoOperation(state, 0);
+        if (GizmoShortcutPressed(state, state.shortcutGizmoRotate)) SetGizmoOperation(state, 1);
+        if (GizmoShortcutPressed(state, state.shortcutGizmoScale)) SetGizmoOperation(state, 2);
+        // Unreal: W/E/R wählen das Gizmo, Leertaste schaltet weiter (nicht während des Fliegens).
+        if (state.unrealNavigation && !flying && noMods) {
+            if (ImGui::IsKeyPressed(ImGuiKey_W, false)) SetGizmoOperation(state, 0);
+            if (ImGui::IsKeyPressed(ImGuiKey_E, false)) SetGizmoOperation(state, 1);
+            if (ImGui::IsKeyPressed(ImGuiKey_R, false)) SetGizmoOperation(state, 2);
+            if (ImGui::IsKeyPressed(ImGuiKey_Space, false))
+                SetGizmoOperation(state, (std::max(0, state.objectGizmoOperation) + 1) % 3);
         }
-        if (ShortcutPressed(state.shortcutGizmoRotate)) {
-            state.objectGizmoOperation = 1;
-            state.objectGizmoMatrixValid = false;
+        // Editor-Sichtbarkeit wie in Unreal: H / Shift+H / Strg+H.
+        if (ImGui::IsKeyPressed(ImGuiKey_H, false)) {
+            if (io.KeyCtrl && !io.KeyShift && !io.KeyAlt) ShowAllObjects(state);
+            else if (io.KeyShift && !io.KeyCtrl && !io.KeyAlt) HideUnselectedObjects(state);
+            else if (noMods) HideSelectedObjects(state);
         }
-        if (ShortcutPressed(state.shortcutGizmoScale)) {
-            state.objectGizmoOperation = 2;
-            state.objectGizmoMatrixValid = false;
-        }
+        if (noMods && ImGui::IsKeyPressed(ImGuiKey_Escape, false) && !state.selectedObjects.empty() &&
+            !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId))
+            ClearObjectSelection(state);
     }
 
     const bool undo = io.KeyCtrl && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z, false);
@@ -12820,6 +13406,21 @@ void DrawSettingsWindow(EditorState& state) {
     ImGui::TextDisabled(L("Auswahl gespeichert in %s","Selection saved in %s"),
                         (NextGenUserSettingsDir() / "workspace.txt").string().c_str());
     ImGui::TextWrapped("%s",L("Gizmo-Shortcuts verwenden standardmäßig 1 / 2 / 3, damit sie nicht mit der WASD-Kamera kollidieren.","Gizmo shortcuts default to 1 / 2 / 3 so they do not conflict with the WASD camera."));
+
+    ImGui::SeparatorText(L("Viewport-Navigation","Viewport navigation"));
+    if (UI::Checkbox(L("Unreal-Navigation","Unreal navigation"), &state.unrealNavigation)) SaveViewportSettings(state);
+    ImGui::TextWrapped("%s", state.unrealNavigation
+        ? L("Aktiv: RMB halten + WASD/Q/E fliegen (Mausrad = Tempo 1..8), LMB-Ziehen vor/zurück + drehen, Alt+LMB Orbit, "
+            "Alt+RMB Dolly, MMB schieben. W/E/R bzw. Leertaste wählen das Gizmo, 0..9 springen zu Kamera-Lesezeichen "
+            "(Strg+0..9 setzt sie), G Spielansicht, H/Shift+H/Strg+H Ausblenden/Isolieren/Alle zeigen, "
+            "Strg+Alt+LMB Rahmenauswahl, Alt+Ziehen am Gizmo dupliziert, Alt+P Spieltest.",
+            "Active: hold RMB + WASD/Q/E to fly (mouse wheel = speed 1..8), LMB drag forward/back + turn, Alt+LMB orbit, "
+            "Alt+RMB dolly, MMB pan. W/E/R or Space select the gizmo, 0..9 jump to camera bookmarks "
+            "(Ctrl+0..9 sets them), G game view, H/Shift+H/Ctrl+H hide/isolate/show all, "
+            "Ctrl+Alt+LMB marquee, Alt+drag on the gizmo duplicates, Alt+P playtest.")
+        : L("Klassisch: WASD bewegt die Kamera, sobald der 3D-View gehovert ist; LMB-Ziehen kreist um das Ziel.",
+            "Classic: WASD moves the camera whenever the 3D view is hovered; LMB drag orbits the target."));
+    ImGui::TextDisabled("%s", (NextGenUserSettingsDir() / "viewport.txt").string().c_str());
 
     ImGui::End();
 }
@@ -15403,7 +16004,7 @@ std::string CurrentGizmoSelectionKey(const EditorState& state) {
 
 bool DrawObjectTransformGizmo(EditorState& state, const ImVec2& imageScreenPos, int w, int h) {
     if (state.editMode != EditMode::ObjectPlacement || state.selectedObjects.empty() ||
-        state.objectGizmoOperation < 0) {
+        state.objectGizmoOperation < 0 || state.playtestActive || state.gameView) {
         state.objectGizmoMatrixValid = false;
         state.objectGizmoWasUsing = false;
         return false;
@@ -15451,7 +16052,17 @@ bool DrawObjectTransformGizmo(EditorState& state, const ImVec2& imageScreenPos, 
     const bool overGizmo = ImGuizmo::IsOver();
 
     if (usingGizmo) {
-        if (!state.objectGizmoWasUsing) BeginObjectEditTransaction(state);
+        if (!state.objectGizmoWasUsing) {
+            BeginObjectEditTransaction(state);
+            // Unreal: Alt beim Ziehen dupliziert die Auswahl an Ort und Stelle; bewegt werden
+            // danach die Kopien. Duplikat + Verschiebung bilden einen gemeinsamen Undo-Schritt.
+            if (ImGui::GetIO().KeyAlt && state.objectGizmoOperation == 0 && !state.standaloneNifMap) {
+                DuplicateSelectedObjects(state, 0.0f);
+                state.objectGizmoSelectionKey = CurrentGizmoSelectionKey(state);
+                state.statusMessage = std::to_string(state.selectedObjects.size()) +
+                    L(" Objekt(e) per Alt+Ziehen dupliziert.", " object(s) duplicated with Alt+drag.");
+            }
+        }
         app::Mat4 after{};
         std::copy(state.objectGizmoMatrix.begin(), state.objectGizmoMatrix.end(), std::begin(after.m));
         const EditVec3 oldPivot{before.m[12], before.m[13], before.m[14]};
@@ -15460,8 +16071,10 @@ bool DrawObjectTransformGizmo(EditorState& state, const ImVec2& imageScreenPos, 
             const float dx = after.m[12] - before.m[12];
             const float dy = after.m[13] - before.m[13];
             const float dz = after.m[14] - before.m[14];
-            if (std::abs(dx)+std::abs(dy)+std::abs(dz) > 1.0e-6f)
+            if (std::abs(dx)+std::abs(dy)+std::abs(dz) > 1.0e-6f) {
                 MoveSelectedObjectsBy(state, dx, dy, dz);
+                if (state.surfaceSnap) SnapSelectedObjectsToTerrainSilently(state);
+            }
         } else if (state.objectGizmoOperation == 1) {
             const EditQuat beforeQ = MatrixRotationQuat(before);
             const EditQuat afterQ = MatrixRotationQuat(after);
@@ -15484,62 +16097,550 @@ bool DrawObjectTransformGizmo(EditorState& state, const ImVec2& imageScreenPos, 
     return usingGizmo || overGizmo;
 }
 
-bool DrawObjectGizmoToolbar(EditorState& state, const ImVec2& imageScreenPos) {
-    if (state.editMode != EditMode::ObjectPlacement) return false;
+// ---- Unreal-ähnliche Viewport-Leiste --------------------------------------------------------
+// Links: Ansicht ▾ / Anzeigen ▾ / Transform-Modi / World-Local / Surface-, Grid-, Winkel- und
+// Skalierungs-Snap. Rechts: Kameratempo, Spielansicht, Spieltest. Alles editorseitig.
+namespace viewport_ui {
+
+void Tooltip(const char* text) {
+    if (text && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) ImGui::SetTooltip("%s", text);
+}
+
+bool ToggleChip(const char* label, bool* value, const char* tooltip) {
+    const bool on = *value;
+    if (on) {
+        ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(18, 96, 150, 245));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(26, 120, 186, 255));
+    }
+    const bool clicked = ImGui::SmallButton(label);
+    if (on) ImGui::PopStyleColor(2);
+    Tooltip(tooltip);
+    if (clicked) *value = !*value;
+    return clicked;
+}
+
+// Die Editorschrift enthält keine Pfeil-/Symbolglyphen (▾ ▶ ■) - Symbole werden gezeichnet.
+enum class ButtonGlyph { DropDown, Play, Stop };
+
+bool GlyphButton(const char* label, ButtonGlyph glyph) {
+    const bool leading = glyph != ButtonGlyph::DropDown;
+    // Abstand für das gezeichnete Symbol muss VOR einem "##id"-Suffix stehen, sonst ist er unsichtbar.
+    const std::string_view full(label);
+    const std::size_t idPos = full.find("##");
+    const std::string visible(full.substr(0, idPos));
+    const std::string idSuffix = idPos == std::string_view::npos ? std::string() : std::string(full.substr(idPos));
+    const std::string text = (leading ? "    " + visible : visible + "    ") + idSuffix;
+    const bool clicked = ImGui::SmallButton(text.c_str());
+    const ImVec2 mn = ImGui::GetItemRectMin(), mx = ImGui::GetItemRectMax();
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const float cy = (mn.y + mx.y) * 0.5f;
+    const ImU32 col = ImGui::GetColorU32(ImGuiCol_Text);
+    if (glyph == ButtonGlyph::DropDown) {
+        const float cx = mx.x - 10.0f;
+        dl->AddTriangleFilled(ImVec2(cx - 4.0f, cy - 2.0f), ImVec2(cx + 4.0f, cy - 2.0f), ImVec2(cx, cy + 3.0f), col);
+    } else if (glyph == ButtonGlyph::Play) {
+        const float cx = mn.x + 11.0f;
+        dl->AddTriangleFilled(ImVec2(cx - 3.0f, cy - 5.0f), ImVec2(cx - 3.0f, cy + 5.0f), ImVec2(cx + 5.0f, cy), col);
+    } else {
+        const float cx = mn.x + 11.0f;
+        dl->AddRectFilled(ImVec2(cx - 4.0f, cy - 4.0f), ImVec2(cx + 4.0f, cy + 4.0f), col);
+    }
+    return clicked;
+}
+
+std::string FormatSnap(float v, const char* suffix) {
+    char buf[32];
+    if (std::abs(v - std::round(v)) < 1.0e-4f) std::snprintf(buf, sizeof(buf), "%.0f%s", v, suffix);
+    else std::snprintf(buf, sizeof(buf), "%.3g%s", v, suffix);
+    return buf;
+}
+
+// Snap-Schalter + Wert-Dropdown (Presets in Fiesta-Einheiten, siehe core::level).
+bool SnapCombo(const char* id, const char* label, bool* enabled, float* value, std::span<const float> presets,
+               const char* suffix, const char* tooltip) {
+    bool changed = false;
+    ImGui::PushID(id);
+    const std::string current = FormatSnap(*value, suffix);
+    changed |= ToggleChip(label, enabled, tooltip);
+    ImGui::SameLine(0.0f, 1.0f);
+    ImGui::SetNextItemWidth(std::max(46.0f, ImGui::CalcTextSize(current.c_str()).x + 26.0f));
+    // Gleiche Höhe wie SmallButton (FramePadding.y = 0), damit die Leiste bündig bleibt.
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(4.0f, 0.0f));
+    const bool comboOpen = ImGui::BeginCombo("##snapValue", current.c_str(), ImGuiComboFlags_HeightLarge);
+    ImGui::PopStyleVar();
+    if (comboOpen) {
+        for (const float preset : presets) {
+            const std::string label = FormatSnap(preset, suffix);
+            if (ImGui::Selectable(label.c_str(), std::abs(preset - *value) < 1.0e-5f)) {
+                *value = preset;
+                *enabled = true;
+                changed = true;
+            }
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::PopID();
+    return changed;
+}
+
+} // namespace viewport_ui
+
+void DrawViewportShowFlagsMenu(EditorState& state) {
+    ImGui::SeparatorText(L("Szene", "Scene"));
+    ImGui::MenuItem(L("Terrain (HTD)", "Terrain (HTD)"), nullptr, &state.showTerrain);
+    ImGui::MenuItem(L("Objekt-Meshes (NIF)", "Object meshes (NIF)"), nullptr, &state.showObjectMeshes);
+    ImGui::MenuItem(L("Platzhalter ohne Mesh", "Placeholders without mesh"), nullptr, &state.showObjectMarkers);
+    ImGui::MenuItem("SHMD Sky", nullptr, &state.showShmdSky);
+    ImGui::MenuItem("SHMD Water", nullptr, &state.showShmdWater);
+    ImGui::MenuItem("SHMD GroundObject", nullptr, &state.showShmdGroundObject);
+    ImGui::MenuItem(L("NPC-Modelle", "NPC models"), nullptr, &state.showNpcModels);
+    ImGui::MenuItem(L("NPC-Namen", "NPC labels"), nullptr, &state.showNpcLabels);
+    ImGui::MenuItem(L("Patrouillenrouten", "Patrol routes"), nullptr, &state.showRoamRoutes);
+    ImGui::MenuItem(L("Drahtgitter", "Wireframe"), nullptr, &state.wireframe);
+    ImGui::SeparatorText(L("Editor-Helfer", "Editor helpers"));
+    bool changed = false;
+    changed |= ImGui::MenuItem(L("Raster", "Grid"), nullptr, &state.showViewportGrid);
+    changed |= ImGui::MenuItem(L("Achsen-Anzeige", "Axis indicator"), nullptr, &state.showViewportAxes);
+    changed |= ImGui::MenuItem(L("Statistik", "Stats"), nullptr, &state.showViewportStats);
+    changed |= ImGui::MenuItem(L("SHBD-Kollision um Cursor", "SHBD collision near cursor"), nullptr,
+                               &state.showWalkCollision3D);
+    ImGui::MenuItem(L("Spielansicht (alle Helfer aus)", "Game view (all helpers off)"), "G", &state.gameView);
+    if (changed) state.viewportSettingsDirty = true;
+}
+
+void DrawViewportViewMenu(EditorState& state) {
+    ImGui::SeparatorText(L("Ansicht", "View"));
+    for (int preset = 0; preset <= 5; ++preset)
+        if (ImGui::MenuItem(ViewportPresetName(preset), nullptr, state.viewportViewPreset == preset))
+            ApplyViewportPreset(state, preset);
+    ImGui::TextDisabled("%s", L("Achsenansichten nutzen die Perspektivkamera.",
+                                "Axis views use the perspective camera."));
+    ImGui::SeparatorText(L("Kamera-Lesezeichen", "Camera bookmarks"));
+    EnsureCameraBookmarksLoaded(state);
+    for (int slot = 0; slot < static_cast<int>(core::level::CameraBookmarkSet::kSlots); ++slot) {
+        const auto& b = state.cameraBookmarks.slots[static_cast<std::size_t>(slot)];
+        ImGui::PushID(slot);
+        char label[96];
+        if (b.valid) std::snprintf(label, sizeof(label), "%d  ·  %.0f / %.0f", slot, b.targetX, b.targetZ);
+        else std::snprintf(label, sizeof(label), "%d  ·  %s", slot, L("leer", "empty"));
+        const std::string jumpKey = std::to_string(slot);
+        if (ImGui::MenuItem(label, jumpKey.c_str(), false, b.valid)) JumpToCameraBookmark(state, slot);
+        ImGui::SameLine(ImGui::GetContentRegionMax().x - 54.0f);
+        if (ImGui::SmallButton(L("Setzen", "Set"))) SetCameraBookmark(state, slot);
+        ImGui::PopID();
+    }
+    ImGui::TextDisabled("%s", L("Strg+0..9 setzen · 0..9 anspringen", "Ctrl+0..9 set · 0..9 jump"));
+    ImGui::SeparatorText(L("Bedienung", "Controls"));
+    if (ImGui::MenuItem(L("Unreal-Navigation", "Unreal navigation"), nullptr, &state.unrealNavigation))
+        state.viewportSettingsDirty = true;
+    viewport_ui::Tooltip(L("RMB halten + WASD/Q/E fliegen, Mausrad bei RMB = Tempo, Alt+LMB Orbit, Alt+RMB Dolly, "
+                           "LMB-Ziehen vor/zurück, W/E/R Gizmo, Leertaste wechselt Gizmo.",
+                           "Hold RMB + WASD/Q/E to fly, wheel while RMB = speed, Alt+LMB orbit, Alt+RMB dolly, "
+                           "LMB drag forward/back, W/E/R gizmo, Space cycles gizmo."));
+    bool crossing = state.marqueeMode == core::level::MarqueeMode::Crossing;
+    if (ImGui::MenuItem(L("Rahmenauswahl: Überschneidung", "Marquee: crossing"), nullptr, crossing)) {
+        state.marqueeMode = core::level::MarqueeMode::Crossing;
+        state.viewportSettingsDirty = true;
+    }
+    if (ImGui::MenuItem(L("Rahmenauswahl: vollständig innen", "Marquee: fully inside"), nullptr, !crossing)) {
+        state.marqueeMode = core::level::MarqueeMode::Inside;
+        state.viewportSettingsDirty = true;
+    }
+    ImGui::TextDisabled("%s", L("Strg+Alt+LMB-Ziehen = Rahmen · +Shift ergänzt",
+                                "Ctrl+Alt+LMB drag = marquee · +Shift adds"));
+}
+
+// Liefert true, solange die Maus über der Leiste liegt (Klicks dürfen nicht in den Viewport fallen).
+bool DrawViewportToolbar(EditorState& state, const ImVec2& imageScreenPos, float width) {
     const ImVec2 restore = ImGui::GetCursorScreenPos();
-    ImGui::SetCursorScreenPos(ImVec2(imageScreenPos.x + 10.0f, imageScreenPos.y + 10.0f));
-    ImGui::BeginGroup();
+    bool capturing = false;
     ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(11, 27, 41, 235));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(18, 67, 104, 245));
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, IM_COL32(11, 27, 41, 235));
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6.0f, 3.0f));
 
-    // Die drei Transform-Modi haben finale Paketicons. Im Viewport deshalb dieselben
-    // semantischen Assets wie in Command-Bar/Inspector verwenden statt lokale Textbuttons.
-    auto opButton = [&](const char* id, const char* label, IconDrawFn fallbackIcon,
-                        const char* semanticIcon, int op,
-                        const EditorState::ShortcutBinding& shortcut) {
-        const bool active = state.objectGizmoOperation == op;
-        const std::string hint = std::string(label) + " · " + ShortcutLabel(shortcut);
-        if (DrawTinyIconButton(id, fallbackIcon, active, hint.c_str(),
-                               ImVec2(26.0f,26.0f), semanticIcon)) {
-            state.objectGizmoOperation = op;
+    // ---- linke Gruppe ----
+    ImGui::SetCursorScreenPos(ImVec2(imageScreenPos.x + 10.0f, imageScreenPos.y + 10.0f));
+    ImGui::BeginGroup();
+    const std::string viewLabel = std::string(ViewportPresetName(state.viewportViewPreset)) + "##vpView";
+    if (viewport_ui::GlyphButton(viewLabel.c_str(), viewport_ui::ButtonGlyph::DropDown)) ImGui::OpenPopup("##viewportViewMenu");
+    viewport_ui::Tooltip(L("Ansicht, Kamera-Lesezeichen und Navigation", "View, camera bookmarks and navigation"));
+    if (ImGui::BeginPopup("##viewportViewMenu")) { DrawViewportViewMenu(state); ImGui::EndPopup(); }
+    ImGui::SameLine();
+    if (viewport_ui::GlyphButton(L("Anzeigen##vpShow", "Show##vpShow"), viewport_ui::ButtonGlyph::DropDown))
+        ImGui::OpenPopup("##viewportShowMenu");
+    viewport_ui::Tooltip(L("Show Flags: was der Viewport zeichnet", "Show flags: what the viewport draws"));
+    if (ImGui::BeginPopup("##viewportShowMenu")) { DrawViewportShowFlagsMenu(state); ImGui::EndPopup(); }
+
+    if (state.editMode == EditMode::ObjectPlacement && !state.playtestActive) {
+        ImGui::SameLine(0.0f, 12.0f);
+        auto opButton = [&](const char* id, const char* label, IconDrawFn fallbackIcon,
+                            const char* semanticIcon, int op, const char* unrealKey,
+                            const EditorState::ShortcutBinding& shortcut) {
+            const bool active = state.objectGizmoOperation == op;
+            const std::string hint = std::string(label) + " · " +
+                (state.unrealNavigation ? std::string(unrealKey) : ShortcutLabel(shortcut));
+            if (DrawTinyIconButton(id, fallbackIcon, active, hint.c_str(), ImVec2(24.0f, 22.0f), semanticIcon))
+                SetGizmoOperation(state, op);
+            ImGui::SameLine(0.0f, 2.0f);
+        };
+        opButton("viewportMove", L("Verschieben", "Move"), DrawIconMove, "transform.move", 0, "W", state.shortcutGizmoMove);
+        opButton("viewportRotate", L("Rotieren", "Rotate"), DrawIconRotate, "transform.rotate", 1, "E", state.shortcutGizmoRotate);
+        opButton("viewportScale", L("Skalieren", "Scale"), DrawIconScale, "transform.scale", 2, "R", state.shortcutGizmoScale);
+        ImGui::SameLine(0.0f, 6.0f);
+        if (ImGui::SmallButton(state.objectGizmoLocal ? "Local##vpSpace" : "World##vpSpace")) {
+            state.objectGizmoLocal = !state.objectGizmoLocal;
             state.objectGizmoMatrixValid = false;
         }
-        ImGui::SameLine();
-    };
-    opButton("viewportMove", L("Verschieben","Move"), DrawIconMove,
-             "transform.move", 0, state.shortcutGizmoMove);
-    opButton("viewportRotate", L("Rotieren","Rotate"), DrawIconRotate,
-             "transform.rotate", 1, state.shortcutGizmoRotate);
-    opButton("viewportScale", L("Skalieren","Scale"), DrawIconScale,
-             "transform.scale", 2, state.shortcutGizmoScale);
+        viewport_ui::Tooltip(L("Koordinatensystem des Gizmos (Welt/Lokal)", "Gizmo coordinate space (world/local)"));
+        ImGui::SameLine(0.0f, 6.0f);
+        if (viewport_ui::ToggleChip(L("Boden", "Surface"), &state.surfaceSnap,
+                                    L("Surface Snap: verschobene Objekte folgen dem begehbaren Boden (HTD + SHMD-GroundObject)",
+                                      "Surface snap: moved objects follow the walkable ground (HTD + SHMD GroundObject)")))
+            state.viewportSettingsDirty = true;
+        ImGui::SameLine(0.0f, 6.0f);
+        const bool snapBefore = state.objectGizmoSnap;
+        bool rotSnap = state.objectGizmoSnap, scaleSnap = state.objectGizmoSnap;
+        bool changed = viewport_ui::SnapCombo("##grid", L("Raster","Grid"), &state.objectGizmoSnap, &state.objectMoveSnap,
+                                              core::level::kGridSnapPresets, "",
+                                              L("Raster-Snap in Welteinheiten (6.25 = SHBD-Zelle, 50 = HTD-Block)",
+                                                "Grid snap in world units (6.25 = SHBD cell, 50 = HTD block)"));
+        ImGui::SameLine(0.0f, 4.0f);
+        changed |= viewport_ui::SnapCombo("##rot", L("Winkel","Angle"), &rotSnap, &state.objectRotateSnap,
+                                          core::level::kRotationSnapPresets, "°",
+                                          L("Winkel-Snap", "Rotation snap"));
+        ImGui::SameLine(0.0f, 4.0f);
+        changed |= viewport_ui::SnapCombo("##scale", L("Skal.","Scale"), &scaleSnap, &state.objectScaleSnap,
+                                          core::level::kScaleSnapPresets, "",
+                                          L("Skalierungs-Snap", "Scale snap"));
+        // Ein gemeinsamer Snap-Schalter (bestehendes Verhalten); jede Chip schaltet ihn um.
+        if (rotSnap != snapBefore) state.objectGizmoSnap = rotSnap;
+        else if (scaleSnap != snapBefore) state.objectGizmoSnap = scaleSnap;
+        if (changed) state.viewportSettingsDirty = true;
+    }
+    ImGui::EndGroup();
+    capturing |= ImGui::IsMouseHoveringRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), false);
 
-    if (UI::SmallButton(state.objectGizmoLocal ? "Local" : "World")) {
-        state.objectGizmoLocal = !state.objectGizmoLocal;
-        state.objectGizmoMatrixValid = false;
+    // ---- rechte Gruppe ----
+    char speedLabel[48];
+    std::snprintf(speedLabel, sizeof(speedLabel), "%s %d##vpSpeed", L("Tempo", "Speed"), state.cameraSpeedSetting);
+    const char* playLabel = state.playtestActive ? L("Stopp##vpPlay", "Stop##vpPlay")
+                                                 : L("Spieltest##vpPlay", "Playtest##vpPlay");
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const auto buttonW = [&](const char* label) {
+        return ImGui::CalcTextSize(label, nullptr, true).x + style.FramePadding.x * 2.0f;
+    };
+    const float glyphPad = ImGui::CalcTextSize("    ").x;
+    const float rightW = buttonW(speedLabel) + glyphPad + buttonW("G##vpGame") + buttonW(playLabel) + glyphPad +
+                         style.ItemSpacing.x * 2.0f;
+    ImGui::SetCursorScreenPos(ImVec2(imageScreenPos.x + std::max(10.0f, width - rightW - 10.0f),
+                                     imageScreenPos.y + 10.0f));
+    ImGui::BeginGroup();
+    if (viewport_ui::GlyphButton(speedLabel, viewport_ui::ButtonGlyph::DropDown)) ImGui::OpenPopup("##viewportSpeedMenu");
+    viewport_ui::Tooltip(L("Kameratempo (Stufe 1..8, wie Unreal). Mausrad bei gehaltener RMB ändert es.",
+                           "Camera speed (level 1..8, like Unreal). Mouse wheel while holding RMB changes it."));
+    if (ImGui::BeginPopup("##viewportSpeedMenu")) {
+        ImGui::SetNextItemWidth(160.0f);
+        if (ImGui::SliderInt("##camSpeed", &state.cameraSpeedSetting, core::level::kMinCameraSpeedSetting,
+                             core::level::kMaxCameraSpeedSetting))
+            state.viewportSettingsDirty = true;
+        ImGui::TextDisabled("× %.3g", core::level::CameraSpeedMultiplier(state.cameraSpeedSetting));
+        ImGui::SeparatorText(L("Spieltest", "Playtest"));
+        ImGui::SetNextItemWidth(160.0f);
+        if (ImGui::SliderFloat(L("Laufen##ptSpeed", "Run##ptSpeed"), &state.playtestConfig.runSpeed, 30.0f, 600.0f, "%.0f"))
+            state.viewportSettingsDirty = true;
+        viewport_ui::Tooltip(L("Editorwert in Welteinheiten/s - kein aus dem Client belegter Wert.",
+                               "Editor value in world units/s - not a value verified from the client."));
+        ImGui::EndPopup();
     }
     ImGui::SameLine();
-    UI::Checkbox("Snap##gizmoOverlay", &state.objectGizmoSnap);
+    viewport_ui::ToggleChip("G##vpGame", &state.gameView,
+                            L("Spielansicht: Editor-Helfer ausblenden (G)", "Game view: hide editor helpers (G)"));
     ImGui::SameLine();
-    const std::string focusHint =
-        std::string(L("Auswahl fokussieren","Focus selection")) + " · " +
-        ShortcutLabel(state.shortcutFocus);
-    if (UI::SmallButton(L("Fokus","Focus"))) FocusSelectedObjects(state);
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", focusHint.c_str());
-    ImGui::SameLine();
-    const std::string groundHint =
-        std::string(L("Auf Terrain setzen","Drop to terrain")) + " · " +
-        ShortcutLabel(state.shortcutGround);
-    if (UI::SmallButton(L("Boden","Ground"))) GroundSelectedObjects(state);
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", groundHint.c_str());
-
-    ImGui::PopStyleColor(2);
+    if (state.playtestActive) ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(150, 40, 40, 245));
+    else ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(22, 110, 60, 245));
+    if (viewport_ui::GlyphButton(playLabel, state.playtestActive ? viewport_ui::ButtonGlyph::Stop
+                                                                  : viewport_ui::ButtonGlyph::Play))
+        TogglePlaytest(state);
+    ImGui::PopStyleColor();
+    viewport_ui::Tooltip(L("Spieltest auf dem SHBD-Block&Walk-Gitter (Alt+P, Esc beendet). "
+                           "Spawn: MapInfo.shn RegenX/RegenY, sonst Kameraziel.",
+                           "Playtest on the SHBD block & walk grid (Alt+P, Esc ends). "
+                           "Spawn: MapInfo.shn RegenX/RegenY, otherwise camera target."));
     ImGui::EndGroup();
-    const ImVec2 toolbarMin = ImGui::GetItemRectMin();
-    const ImVec2 toolbarMax = ImGui::GetItemRectMax();
-    const bool toolbarCapturing =
-        ImGui::IsMouseHoveringRect(toolbarMin, toolbarMax, false);
+    capturing |= ImGui::IsMouseHoveringRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), false);
+
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor(3);
     ImGui::SetCursorScreenPos(restore);
-    return toolbarCapturing;
+    return capturing;
+}
+
+// Bodentreffer unter der Maus: HTD-Terrain, für NIF-only-Karten die Ebene auf Höhe des Kameraziels.
+std::optional<EditVec3> PickViewportGround(EditorState& state, const ImVec2& imagePos, int w, int h,
+                                           const ImVec2& mouse) {
+    if (MapSupportsTerrainEditing(state)) return PickTerrainFrom3D(state, imagePos, w, h, mouse);
+    const auto nearP = Unproject3D(state, imagePos, w, h, mouse, -1.0f);
+    const auto farP = Unproject3D(state, imagePos, w, h, mouse, 1.0f);
+    if (!nearP || !farP) return std::nullopt;
+    const float dy = farP->y - nearP->y;
+    if (std::abs(dy) < 1.0e-6f) return std::nullopt;
+    const float t = (state.camera.TargetY() - nearP->y) / dy;
+    if (t < 0.0f || t > 1.0f) return std::nullopt;
+    return EditVec3{nearP->x + (farP->x - nearP->x) * t, state.camera.TargetY(), nearP->z + (farP->z - nearP->z) * t};
+}
+
+// Weltraster auf Höhe des Kameraziels; Abstand = Raster-Snap, automatisch vergröbert.
+void DrawViewportGrid(EditorState& state, const ImVec2& imagePos, int w, int h) {
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    float spacing = state.objectGizmoSnap ? std::max(1.0f, state.objectMoveSnap) : 50.0f;
+    const float extent = std::clamp(state.camera.Distance() * 1.4f, 300.0f, 30000.0f);
+    while (extent / spacing > 40.0f) spacing *= 2.0f;
+    const float cx = std::floor(state.camera.TargetX() / spacing) * spacing;
+    const float cz = std::floor(state.camera.TargetZ() / spacing) * spacing;
+    const float y = state.camera.TargetY();
+    const int n = static_cast<int>(extent / spacing);
+    constexpr int kSegments = 16;
+    dl->PushClipRect(imagePos, ImVec2(imagePos.x + w, imagePos.y + h), true);
+    for (int axis = 0; axis < 2; ++axis) {
+        for (int i = -n; i <= n; ++i) {
+            const float lineCoord = (axis == 0 ? cx : cz) + static_cast<float>(i) * spacing;
+            const long long gridIndex = static_cast<long long>(std::llround(lineCoord / spacing));
+            const bool major = gridIndex % 10 == 0;
+            // Dunkle Linien bleiben auf hellem Fiesta-Sand- und Schneeterrain sichtbar.
+            const ImU32 col = major ? IM_COL32(10, 40, 70, 170) : IM_COL32(20, 50, 80, 95);
+            ImVec2 prev{};
+            bool prevOk = false;
+            for (int sgm = 0; sgm <= kSegments; ++sgm) {
+                const float along = -extent + 2.0f * extent * static_cast<float>(sgm) / kSegments;
+                const EditVec3 p = axis == 0 ? EditVec3{lineCoord, y, cz + along} : EditVec3{cx + along, y, lineCoord};
+                ImVec2 sp;
+                const bool ok = ProjectWorldTo3DView(state, imagePos, w, h, p, sp);
+                if (ok && prevOk) dl->AddLine(prev, sp, col, major ? 1.4f : 1.0f);
+                prev = sp;
+                prevOk = ok;
+            }
+        }
+    }
+    dl->PopClipRect();
+}
+
+// SHBD-Block&Walk-Zellen (6.25 Einheiten) um einen Weltpunkt als halbtransparente Quads.
+void DrawWalkCollision3D(EditorState& state, const ImVec2& imagePos, int w, int h, float centerX, float centerZ) {
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    constexpr int kRadiusCells = 26;
+    const float cs = core::WalkGrid::kCellSize;
+    const int ccx = static_cast<int>(std::floor(centerX / cs));
+    const int ccz = static_cast<int>(std::floor(centerZ / cs));
+    const float fallbackY = state.playtestActive ? state.playtestPawn.y : state.camera.TargetY();
+    // Ein GroundObject-Raycast je Frame (Mitte) statt je Zellecke: Plattformen wie das Roumen-
+    // Pflaster sind lokal eben; das HTD wird pro Ecke abgetastet.
+    const std::optional<float> platformY = GroundObjectHeightAt(state, centerX, centerZ);
+    const bool terrain = MapSupportsTerrainEditing(state);
+    const auto cornerY = [&](float x, float z) {
+        float y = terrain ? state.heightmap.SampleWorld(x, z) : fallbackY;
+        if (platformY) y = terrain ? std::max(y, *platformY) : *platformY;
+        return y + 1.5f;
+    };
+    dl->PushClipRect(imagePos, ImVec2(imagePos.x + w, imagePos.y + h), true);
+    for (int dz = -kRadiusCells; dz <= kRadiusCells; ++dz) {
+        for (int dx = -kRadiusCells; dx <= kRadiusCells; ++dx) {
+            if (dx * dx + dz * dz > kRadiusCells * kRadiusCells) continue;
+            const int cx = ccx + dx, cz = ccz + dz;
+            if (cx < 0 || cz < 0) continue;
+            const bool blocked = state.walkGrid.CellBlocked(static_cast<std::uint32_t>(cx), static_cast<std::uint32_t>(cz));
+            if (!blocked) continue;
+            const float x0 = static_cast<float>(cx) * cs, z0 = static_cast<float>(cz) * cs;
+            const float corners[4][2] = {{x0, z0}, {x0 + cs, z0}, {x0 + cs, z0 + cs}, {x0, z0 + cs}};
+            ImVec2 quad[4];
+            bool ok = true;
+            for (int k = 0; k < 4 && ok; ++k) {
+                const float gy = cornerY(corners[k][0], corners[k][1]);
+                ok = ProjectWorldTo3DView(state, imagePos, w, h, {corners[k][0], gy, corners[k][1]}, quad[k]);
+            }
+            if (!ok) continue;
+            dl->AddQuadFilled(quad[0], quad[1], quad[2], quad[3], IM_COL32(235, 70, 70, 70));
+        }
+    }
+    dl->PopClipRect();
+}
+
+void DrawViewportAxisIndicator(EditorState& state, const ImVec2& imagePos, int h) {
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const app::Mat4 view = state.camera.ViewMatrix();
+    const ImVec2 origin(imagePos.x + 38.0f, imagePos.y + static_cast<float>(h) - 38.0f);
+    constexpr float kLen = 24.0f;
+    struct Axis { const char* name; float sx, sy; ImU32 col; };
+    // Bildschirmrichtung je Weltachse aus Rechts-/Oben-Zeile der View-Matrix; Welt-Z ist im
+    // Anzeigeraum gespiegelt (siehe OrbitCamera::SetTarget).
+    const Axis axes[3] = {
+        {"X", view.m[0], view.m[1], IM_COL32(235, 80, 80, 255)},
+        {"Y", view.m[4], view.m[5], IM_COL32(110, 220, 110, 255)},
+        {"Z", -view.m[8], -view.m[9], IM_COL32(90, 150, 255, 255)},
+    };
+    dl->AddCircleFilled(origin, 32.0f, IM_COL32(8, 16, 24, 150));
+    for (const auto& a : axes) {
+        const ImVec2 tip(origin.x + a.sx * kLen, origin.y - a.sy * kLen);
+        dl->AddLine(origin, tip, a.col, 2.0f);
+        dl->AddText(ImVec2(tip.x - 3.0f, tip.y - 7.0f), a.col, a.name);
+    }
+}
+
+void DrawViewportStats(EditorState& state, const ImVec2& imagePos, int w) {
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    std::vector<std::string> lines;
+    char buf[256];
+    const ImGuiIO& io = ImGui::GetIO();
+    std::snprintf(buf, sizeof(buf), "%.0f FPS  ·  %.2f ms", io.Framerate, io.Framerate > 0.0f ? 1000.0f / io.Framerate : 0.0f);
+    lines.emplace_back(buf);
+    const std::size_t objects = state.placementSet.Count() + state.shmdCategoryRenderSet.Count();
+    std::snprintf(buf, sizeof(buf), L("Objekte %zu  ·  Meshes %zu  ·  ausgeblendet %zu", "Objects %zu  ·  meshes %zu  ·  hidden %zu"),
+                  objects, state.nifMeshRenderer.RealMeshCount() + state.shmdCategoryMeshRenderer.RealMeshCount(),
+                  CountEditorHiddenObjects(state));
+    lines.emplace_back(buf);
+    std::snprintf(buf, sizeof(buf), L("NPCs %zu  ·  Auswahl %zu", "NPCs %zu  ·  selection %zu"),
+                  state.npcRenderSet.Count(), state.selectedObjects.size());
+    lines.emplace_back(buf);
+    std::snprintf(buf, sizeof(buf), L("Kamera %.0f / %.0f / %.0f  ·  Abstand %.0f", "Camera %.0f / %.0f / %.0f  ·  distance %.0f"),
+                  state.camera.TargetX(), state.camera.TargetY(), state.camera.TargetZ(), state.camera.Distance());
+    lines.emplace_back(buf);
+    if (state.viewportCursorWorld) {
+        const auto& c = *state.viewportCursorWorld;
+        const bool blocked = core::level::WalkBlockedAtWorld(state.walkGrid, c[0], c[2]);
+        std::snprintf(buf, sizeof(buf), L("Cursor X %.0f  Y(Server) %.0f  Höhe %.1f  ·  SHBD %d,%d %s",
+                                          "Cursor X %.0f  Y(server) %.0f  height %.1f  ·  SHBD %d,%d %s"),
+                      c[0], c[2], c[1],
+                      static_cast<int>(std::floor(c[0] / core::WalkGrid::kCellSize)),
+                      static_cast<int>(std::floor(c[2] / core::WalkGrid::kCellSize)),
+                      blocked ? L("blockiert", "blocked") : L("begehbar", "walkable"));
+        lines.emplace_back(buf);
+    }
+    float maxW = 0.0f;
+    for (const auto& l : lines) maxW = std::max(maxW, ImGui::CalcTextSize(l.c_str()).x);
+    const float lineH = ImGui::GetTextLineHeight();
+    const ImVec2 p0(imagePos.x + static_cast<float>(w) - maxW - 22.0f, imagePos.y + 42.0f);
+    const ImVec2 p1(p0.x + maxW + 12.0f, p0.y + lineH * static_cast<float>(lines.size()) + 10.0f);
+    dl->AddRectFilled(p0, p1, IM_COL32(6, 14, 22, 175), 5.0f);
+    float y = p0.y + 5.0f;
+    for (std::size_t i = 0; i < lines.size(); ++i) {
+        const ImU32 col = i == 0 ? IM_COL32(120, 230, 160, 255) : IM_COL32(205, 220, 232, 235);
+        dl->AddText(ImVec2(p0.x + 6.0f, y), col, lines[i].c_str());
+        y += lineH;
+    }
+}
+
+// Spielermarker (Kapsel, Boden-Kreis, Blickrichtung) + HUD.
+void DrawPlaytestOverlay(EditorState& state, const ImVec2& imagePos, int w, int h) {
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const auto& pawn = state.playtestPawn;
+    const float r = state.playtestConfig.radius;
+    const bool flash = state.playtestBlockedFlash > 0.0f;
+    const ImU32 col = flash ? IM_COL32(255, 90, 80, 255) : IM_COL32(60, 225, 255, 255);
+    ImVec2 base, top, rim, nose;
+    if (ProjectWorldTo3DView(state, imagePos, w, h, {pawn.x, pawn.y + 1.0f, pawn.z}, base) &&
+        ProjectWorldTo3DView(state, imagePos, w, h, {pawn.x, pawn.y + kPlaytestPawnHeight, pawn.z}, top)) {
+        float screenR = 6.0f;
+        if (ProjectWorldTo3DView(state, imagePos, w, h, {pawn.x + r, pawn.y + 1.0f, pawn.z}, rim))
+            screenR = std::max(4.0f, std::hypot(rim.x - base.x, rim.y - base.y));
+        dl->AddCircle(base, screenR, col, 24, 2.0f);
+        dl->AddLine(base, top, col, std::max(3.0f, screenR * 0.8f));
+        dl->AddCircleFilled(top, std::max(3.0f, screenR * 0.55f), col);
+        const float fx = std::sin(pawn.facingYaw), fz = std::cos(pawn.facingYaw);
+        if (ProjectWorldTo3DView(state, imagePos, w, h, {pawn.x + fx * r * 3.0f, pawn.y + 1.0f, pawn.z + fz * r * 3.0f}, nose))
+            dl->AddLine(base, nose, IM_COL32(255, 220, 90, 255), 2.5f);
+    }
+    char buf[256];
+    std::snprintf(buf, sizeof(buf),
+                  L("SPIELTEST  ·  X %.0f  Y(Server) %.0f  ·  SHBD %s  ·  %s",
+                    "PLAYTEST  ·  X %.0f  Y(server) %.0f  ·  SHBD %s  ·  %s"),
+                  pawn.x, pawn.z,
+                  state.playtestConfig.collideWithWalkGrid ? L("Kollision an", "collision on")
+                                                           : L("Kollision aus", "collision off"),
+                  L("WASD · Shift gehen · RMB/LMB drehen · Rad Zoom · C Kollision · Esc Ende",
+                    "WASD · Shift walk · RMB/LMB turn · wheel zoom · C collision · Esc end"));
+    const ImVec2 ts = ImGui::CalcTextSize(buf);
+    const ImVec2 p0(imagePos.x + (static_cast<float>(w) - ts.x) * 0.5f - 10.0f, imagePos.y + 40.0f);
+    dl->AddRectFilled(p0, ImVec2(p0.x + ts.x + 20.0f, p0.y + ts.y + 12.0f), IM_COL32(6, 14, 22, 200), 6.0f);
+    dl->AddRect(p0, ImVec2(p0.x + ts.x + 20.0f, p0.y + ts.y + 12.0f), col, 6.0f, 0, 1.5f);
+    dl->AddText(ImVec2(p0.x + 10.0f, p0.y + 6.0f), IM_COL32(230, 245, 255, 255), buf);
+}
+
+// Spieltest-Steuerung: ersetzt im Viewport die Editor-Kamera, solange der Spieltest läuft.
+void UpdatePlaytest(EditorState& state, bool viewportHovered) {
+    ImGuiIO& io = ImGui::GetIO();
+    if (viewportHovered) {
+        if (ImGui::IsMouseDragging(ImGuiMouseButton_Right) || ImGui::IsMouseDragging(ImGuiMouseButton_Left))
+            state.camera.OrbitBy(io.MouseDelta.x * 0.008f, -io.MouseDelta.y * 0.006f);
+        if (io.MouseWheel != 0.0f) {
+            state.camera.ZoomSteps(io.MouseWheel);
+            state.camera.SetDistance(std::clamp(state.camera.Distance(), 90.0f, 3000.0f));
+        }
+    }
+    core::level::PlaytestInput in;
+    if (!io.WantTextInput) {
+        if (ImGui::IsKeyDown(ImGuiKey_W) || ImGui::IsKeyDown(ImGuiKey_UpArrow)) in.forward += 1.0f;
+        if (ImGui::IsKeyDown(ImGuiKey_S) || ImGui::IsKeyDown(ImGuiKey_DownArrow)) in.forward -= 1.0f;
+        if (ImGui::IsKeyDown(ImGuiKey_D) || ImGui::IsKeyDown(ImGuiKey_RightArrow)) in.right += 1.0f;
+        if (ImGui::IsKeyDown(ImGuiKey_A) || ImGui::IsKeyDown(ImGuiKey_LeftArrow)) in.right -= 1.0f;
+        if (ImGui::IsKeyPressed(ImGuiKey_C, false)) {
+            if (state.playtestWalkGridUsable) {
+                state.playtestConfig.collideWithWalkGrid = !state.playtestConfig.collideWithWalkGrid;
+            } else {
+                state.statusMessage = L("Kein begehbares SHBD-Gitter geladen - Kollision bleibt aus.",
+                                        "No walkable SHBD grid loaded - collision stays off.");
+            }
+        }
+    }
+    in.walk = io.KeyShift;
+    // Kamera-Yaw -> Weltrichtung: vorwärts = (-sin yaw, +cos yaw), also viewYaw = -yaw.
+    in.viewYaw = -state.camera.Yaw();
+    const auto blocked = [&state](float x, float z) { return core::level::WalkBlockedAtWorld(state.walkGrid, x, z); };
+    const float fallbackY = state.playtestPawn.y;
+    const auto height = [&state, fallbackY](float x, float z) { return PlaytestGroundHeight(state, x, z, fallbackY); };
+    core::level::StepPlaytest(state.playtestPawn, in, io.DeltaTime, state.playtestConfig, blocked, height);
+    if (state.playtestPawn.lastStepBlocked) state.playtestBlockedFlash = 0.25f;
+    state.playtestBlockedFlash = std::max(0.0f, state.playtestBlockedFlash - io.DeltaTime);
+    state.camera.SetTarget(state.playtestPawn.x, state.playtestPawn.y + kPlaytestEyeHeight, state.playtestPawn.z);
+}
+
+// Rahmenauswahl (Strg+Alt+LMB): Treffer über die projizierten Ecken der Objekt-Bounds
+// (NIF-Footprint-Bounds), für Modelle ohne Bounds über den Objektursprung.
+std::vector<int> CollectMarqueeHits(EditorState& state, const ImVec2& imagePos, int w, int h,
+                                    const core::level::ScreenRect& rect) {
+    std::vector<int> hits;
+    RefreshObjectVisibility(state);
+    RefreshShmdCategoryVisibility(state);
+    auto testObject = [&](int id, const core::PlacedObject& obj) {
+        std::vector<core::level::ScreenPoint> pts;
+        const auto& fp = GetOrComputeFootprint(state, obj.modelPath);
+        if (fp.valid) {
+            const float angle = 2.0f * std::atan2(obj.rotY, obj.rotW);
+            const float c = std::cos(angle), sn = std::sin(angle);
+            for (float lx : {fp.minX, fp.maxX}) for (float ly : {fp.minY, fp.maxY}) for (float lz : {fp.minZ, fp.maxZ}) {
+                const float sx = lx * obj.scale, sy = ly * obj.scale, sz = lz * obj.scale;
+                ImVec2 p;
+                if (ProjectWorldTo3DView(state, imagePos, w, h,
+                                         {obj.posX + sx * c + sz * sn, obj.posY + sy, obj.posZ - sx * sn + sz * c}, p))
+                    pts.push_back({p.x, p.y});
+            }
+            if (pts.size() != 8 && state.marqueeMode == core::level::MarqueeMode::Inside) return; // teilweise hinter der Kamera
+        } else {
+            ImVec2 p;
+            if (ProjectWorldTo3DView(state, imagePos, w, h, {obj.posX, obj.posY, obj.posZ}, p)) pts.push_back({p.x, p.y});
+        }
+        if (core::level::MarqueeHits(rect, pts, state.marqueeMode)) hits.push_back(id);
+    };
+    for (std::size_t i = 0; i < state.placementSet.Count(); ++i) {
+        if (IsObjectHidden(state, i) || IsObjectEditorLocked(state, static_cast<int>(i))) continue;
+        testObject(static_cast<int>(i), state.placementSet.At(i));
+    }
+    for (std::size_t i = 0; i < state.shmdCategoryRenderSet.Count(); ++i) {
+        const int id = ShmdSelectionId(i);
+        if ((i < state.shmdCategoryHidden.size() && state.shmdCategoryHidden[i]) || IsObjectEditorLocked(state, id) ||
+            IsObjectEditorHidden(state, id)) continue;
+        testObject(id, state.shmdCategoryRenderSet.At(i));
+    }
+    return hits;
 }
 
 void DrawPreview3DContent(EditorState& state) {
@@ -15570,15 +16671,17 @@ void DrawPreview3DContent(EditorState& state) {
         state.renderer.SetLayerVisible(static_cast<int>(li), li >= state.layerHidden.size() || state.layerHidden[li] == 0);
     }
     const std::unordered_set<int> selectedPlacementIds(state.selectedObjects.begin(), state.selectedObjects.end());
+    // Spielansicht (G) und Spieltest blenden Editor-Helfer aus - Platzhalter-Pyramiden gehören dazu.
+    const bool editorHelpers = !state.gameView && !state.playtestActive;
     state.objectMarkerRenderer.RebuildInstances(state.placementSet, state.selectedObjects,
-        [&state, &selectedPlacementIds](std::size_t i) {
+        [&state, &selectedPlacementIds, editorHelpers](std::size_t i) {
             const bool selected = selectedPlacementIds.contains(static_cast<int>(i));
-            return IsObjectHidden(state, i) ||
+            return IsObjectHidden(state, i) || !editorHelpers ||
                    (!state.showObjectMarkers && !selected) ||
                    (state.nifMeshRenderer.HasRealMesh(i) && !selected);
         });
     state.objectMarkerRenderer.Draw(state.camera, w, h);
-    if (state.editMode == EditMode::Portals) {
+    if (state.editMode == EditMode::Portals && editorHelpers) {
         // Portal-Ziele als grosse Marker (wie die Objekt-Platzhalter, aber 3-4x so gross): TownPortal
         // etwas groesser als Schriftrollen-Ziele; das gewaehlte Ziel wird weiss. Jeden Frame neu
         // aufgebaut (nur wenige Eintraege).
@@ -15620,13 +16723,33 @@ void DrawPreview3DContent(EditorState& state) {
         }
         ImGui::EndDragDropTarget();
     }
-    Draw3DBrushOverlay(state,imageScreenPos,w,h,viewImageHovered);
-    DrawMobZones3D(state,imageScreenPos,w,h);
-    DrawPortals3D(state,imageScreenPos,w,h);
-    DrawRoamRoutes3D(state,imageScreenPos,w,h);
+    state.viewport3dPos = imageScreenPos;
+    state.viewport3dSize = ImVec2(static_cast<float>(w), static_cast<float>(h));
+    // Bodentreffer unter der Maus (Statistik-Overlay, SHBD-Kollisionsanzeige).
+    state.viewportCursorWorld.reset();
+    if (viewImageHovered) {
+        if (const auto hit = PickViewportGround(state, imageScreenPos, w, h, ImGui::GetMousePos()))
+            state.viewportCursorWorld = std::array<float, 3>{hit->x, hit->y, hit->z};
+    }
+    if (editorHelpers) {
+        if (state.showViewportGrid) DrawViewportGrid(state, imageScreenPos, w, h);
+        Draw3DBrushOverlay(state,imageScreenPos,w,h,viewImageHovered);
+        DrawMobZones3D(state,imageScreenPos,w,h);
+        DrawPortals3D(state,imageScreenPos,w,h);
+        DrawRoamRoutes3D(state,imageScreenPos,w,h);
+    }
+    if (state.showWalkCollision3D && !state.gameView) {
+        if (state.playtestActive)
+            DrawWalkCollision3D(state, imageScreenPos, w, h, state.playtestPawn.x, state.playtestPawn.z);
+        else if (state.viewportCursorWorld)
+            DrawWalkCollision3D(state, imageScreenPos, w, h, (*state.viewportCursorWorld)[0], (*state.viewportCursorWorld)[2]);
+    }
     const bool gizmoCapturing = DrawObjectTransformGizmo(state, imageScreenPos, w, h);
-    const bool gizmoToolbarCapturing = DrawObjectGizmoToolbar(state, imageScreenPos);
-    DrawNpcOverlay3D(state, imageScreenPos, w, h);
+    if (editorHelpers) DrawNpcOverlay3D(state, imageScreenPos, w, h);
+    if (state.playtestActive) DrawPlaytestOverlay(state, imageScreenPos, w, h);
+    if (editorHelpers && state.showViewportAxes) DrawViewportAxisIndicator(state, imageScreenPos, h);
+    if (state.showViewportStats && !state.gameView && !state.playtestActive) DrawViewportStats(state, imageScreenPos, w);
+    const bool gizmoToolbarCapturing = DrawViewportToolbar(state, imageScreenPos, avail.x);
 
     // Viewport-Overlays liegen absichtlich über dem Image. Ihre Hit-Flächen müssen deshalb
     // vor Picking/Kamera explizit berücksichtigt werden, sonst kann ein Button-Klick in die
@@ -15643,7 +16766,42 @@ void DrawPreview3DContent(EditorState& state) {
 
     // Direktes 3D-Picking: echte NIF-Dreiecke haben Vorrang. Nur Objekte ohne
     // ladbares Mesh fallen weiterhin auf den projizierten Ursprung/Footprint zurück.
-    if (state.editMode==EditMode::ObjectPlacement && viewImageHovered && !viewportUiCapturing &&
+    // Rahmenauswahl wie in Unreal: Strg+Alt+LMB ziehen (Shift ergänzt die Auswahl).
+    const ImGuiIO& pickIo = ImGui::GetIO();
+    const bool objectPicking = state.editMode==EditMode::ObjectPlacement && !state.playtestActive;
+    if (objectPicking && viewImageHovered && !viewportUiCapturing && pickIo.KeyCtrl && pickIo.KeyAlt &&
+        ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        state.marqueeActive = true;
+        state.marqueeStart = ImGui::GetMousePos();
+    }
+    if (state.marqueeActive) {
+        const ImVec2 cur = ImGui::GetMousePos();
+        const auto rect = core::level::ScreenRect::FromCorners({state.marqueeStart.x, state.marqueeStart.y}, {cur.x, cur.y});
+        ImDrawList* mdl = ImGui::GetWindowDrawList();
+        const bool crossing = state.marqueeMode == core::level::MarqueeMode::Crossing;
+        mdl->AddRectFilled(ImVec2(rect.minX, rect.minY), ImVec2(rect.maxX, rect.maxY),
+                           crossing ? IM_COL32(80, 200, 120, 40) : IM_COL32(70, 150, 255, 40));
+        mdl->AddRect(ImVec2(rect.minX, rect.minY), ImVec2(rect.maxX, rect.maxY),
+                     crossing ? IM_COL32(110, 235, 150, 230) : IM_COL32(110, 180, 255, 230), 0.0f, 0, 1.5f);
+        if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+            state.marqueeActive = false;
+            if (rect.Width() > 3.0f || rect.Height() > 3.0f) {
+                const auto hits = CollectMarqueeHits(state, imageScreenPos, w, h, rect);
+                const auto mode = pickIo.KeyShift ? core::level::SelectionCombine::Add
+                                                  : core::level::SelectionCombine::Replace;
+                state.selectedObjects = core::level::CombineSelection(state.selectedObjects, hits, mode);
+                state.selectedObject = state.selectedObjects.empty() ? kNoObjectSelection : state.selectedObjects.back();
+                state.selectedObjectModelPathFor = kNoObjectSelection;
+                state.objectGizmoMatrixValid = false;
+                state.objectPlaceMode = 0;
+                state.statusMessage = std::to_string(hits.size()) + L(" Objekt(e) per Rahmen gewählt.",
+                                                                    " object(s) selected by marquee.");
+            }
+        }
+    }
+
+    if (objectPicking && viewImageHovered && !viewportUiCapturing && !state.marqueeActive &&
+        !(state.unrealNavigation && pickIo.KeyAlt) && !(pickIo.KeyCtrl && pickIo.KeyAlt) &&
         ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
         const ImVec2 mouse=ImGui::GetMousePos();
         int bestId=kNoObjectSelection;
@@ -15732,52 +16890,103 @@ void DrawPreview3DContent(EditorState& state) {
         }
     }
 
-    // ---- Kamera-Steuerung (CHANGELOG [0.44.32]): Ego-Kamera wie in einem Level-Editor
-    //  rechte Maustaste halten + Maus = umsehen | W/A/S/D = laufen | Q/E = runter/hoch | Shift = schnell,
-    //  Strg = langsam | Mausrad = Zoom (multiplikativ, bis ganz nah) | mittlere Taste = schieben |
-    //  linke Maustaste ziehen = um das Ziel kreisen (wie bisher).
+    // ---- Kamera-Steuerung ----
+    //  Klassisch (CHANGELOG [0.44.32]): RMB = umsehen, WASD/Q/E sobald der Viewport gehovert ist,
+    //  LMB-Ziehen = Orbit, MMB = schieben, Rad = Zoom.
+    //  Unreal-Navigation (Standard): RMB halten = umsehen + WASD/Q/E fliegen (Rad ändert dabei
+    //  das Tempo), LMB-Ziehen = vor/zurück + drehen, Alt+LMB = Orbit, Alt+RMB = Dolly,
+    //  MMB = schieben, Rad = Zoom, Pfeiltasten bewegen ohne Maustaste.
     {
         ImGuiIO& io = ImGui::GetIO();
         const bool hovered3d = viewImageHovered;
-        if (hovered3d && !viewportUiCapturing && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) state.cameraLooking = true;
-        if (!ImGui::IsMouseDown(ImGuiMouseButton_Right)) state.cameraLooking = false;
-        if (state.cameraLooking) {
-            const ImVec2 delta = io.MouseDelta;
-            // Maus nach rechts = nach rechts drehen (Yaw sinkt), Maus nach oben = nach oben schauen (Pitch sinkt).
-            state.camera.LookBy(-delta.x * 0.0045f, delta.y * 0.0045f);
-        }
-        if (hovered3d && !viewportUiCapturing) {
-            if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+        const float speedMul = core::level::CameraSpeedMultiplier(state.cameraSpeedSetting);
+        if (state.playtestActive) {
+            state.cameraLooking = false;
+            UpdatePlaytest(state, hovered3d && !viewportUiCapturing);
+        } else {
+            const bool ue = state.unrealNavigation;
+            if (hovered3d && !viewportUiCapturing && ImGui::IsMouseClicked(ImGuiMouseButton_Right) &&
+                !(ue && io.KeyAlt))
+                state.cameraLooking = true;
+            if (!ImGui::IsMouseDown(ImGuiMouseButton_Right)) state.cameraLooking = false;
+            if (state.cameraLooking) {
                 const ImVec2 delta = io.MouseDelta;
-                state.camera.OrbitBy(delta.x * 0.01f, -delta.y * 0.01f);
+                // Maus nach rechts = nach rechts drehen (Yaw sinkt), Maus nach oben = nach oben schauen.
+                state.camera.LookBy(-delta.x * 0.0045f, delta.y * 0.0045f);
+                if (delta.x != 0.0f || delta.y != 0.0f) state.viewportViewPreset = 0;
             }
-            if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
+            if (hovered3d && !viewportUiCapturing && !state.marqueeActive) {
                 const ImVec2 delta = io.MouseDelta;
-                const float panScale = std::max(state.camera.Distance(), 30.0f) * 0.0015f;
-                state.camera.PanBy(-delta.x * panScale, delta.y * panScale);
+                if (ue) {
+                    if (io.KeyAlt && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+                        state.camera.OrbitBy(delta.x * 0.01f, -delta.y * 0.01f);
+                        state.viewportViewPreset = 0;
+                    } else if (io.KeyAlt && ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
+                        state.camera.ZoomSteps((delta.x - delta.y) * 0.04f);
+                    } else if (!io.KeyAlt && !io.KeyCtrl && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+                        const float moveScale = std::max(state.camera.Distance(), 30.0f) * 0.004f * speedMul;
+                        state.camera.LookBy(-delta.x * 0.0045f, 0.0f);
+                        state.camera.MoveLocal(-delta.y * moveScale, 0.0f, 0.0f);
+                        state.viewportViewPreset = 0;
+                    }
+                } else if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+                    state.camera.OrbitBy(delta.x * 0.01f, -delta.y * 0.01f);
+                    state.viewportViewPreset = 0;
+                }
+                if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
+                    const float panScale = std::max(state.camera.Distance(), 30.0f) * 0.0015f;
+                    state.camera.PanBy(-delta.x * panScale, delta.y * panScale);
+                }
+                if (io.MouseWheel != 0.0f) {
+                    if (ue && state.cameraLooking) {
+                        const int before = state.cameraSpeedSetting;
+                        state.cameraSpeedSetting = std::clamp(state.cameraSpeedSetting + (io.MouseWheel > 0.0f ? 1 : -1),
+                                                              core::level::kMinCameraSpeedSetting,
+                                                              core::level::kMaxCameraSpeedSetting);
+                        if (before != state.cameraSpeedSetting) {
+                            state.viewportSettingsDirty = true;
+                            state.statusMessage = std::string(L("Kameratempo ", "Camera speed ")) +
+                                                  std::to_string(state.cameraSpeedSetting);
+                        }
+                    } else {
+                        state.camera.ZoomSteps(io.MouseWheel);
+                    }
+                }
             }
-            if (io.MouseWheel != 0.0f) state.camera.ZoomSteps(io.MouseWheel);
-        }
-        if ((hovered3d || state.cameraLooking) && !viewportUiCapturing && !io.WantTextInput) {
-            float fwd = 0.0f, right = 0.0f, up = 0.0f;
-            if (ImGui::IsKeyDown(ImGuiKey_W) || ImGui::IsKeyDown(ImGuiKey_UpArrow)) fwd += 1.0f;
-            if (ImGui::IsKeyDown(ImGuiKey_S) || ImGui::IsKeyDown(ImGuiKey_DownArrow)) fwd -= 1.0f;
-            if (ImGui::IsKeyDown(ImGuiKey_D) || ImGui::IsKeyDown(ImGuiKey_RightArrow)) right += 1.0f;
-            if (ImGui::IsKeyDown(ImGuiKey_A) || ImGui::IsKeyDown(ImGuiKey_LeftArrow)) right -= 1.0f;
-            if (ImGui::IsKeyDown(ImGuiKey_E) || ImGui::IsKeyDown(ImGuiKey_Space)) up += 1.0f;
-            if (ImGui::IsKeyDown(ImGuiKey_Q)) up -= 1.0f;
-            if (fwd != 0.0f || right != 0.0f || up != 0.0f) {
-                // Tempo waechst mit der Entfernung (weit weg = grosse Spruenge, nah dran = feinfuehlig).
-                float speed = std::clamp(state.camera.Distance() * 1.0f, 150.0f, 6000.0f);
-                if (io.KeyShift) speed *= 4.0f;
-                if (io.KeyCtrl) speed *= 0.2f;
-                const float step = speed * std::min(io.DeltaTime, 0.1f);
-                state.camera.MoveLocal(fwd * step, right * step, up * step);
+            const bool letterKeys = ue ? state.cameraLooking : ((hovered3d || state.cameraLooking) && !viewportUiCapturing);
+            const bool arrowKeys = (hovered3d || state.cameraLooking) && !viewportUiCapturing;
+            if ((letterKeys || arrowKeys) && !io.WantTextInput) {
+                float fwd = 0.0f, right = 0.0f, up = 0.0f;
+                if (letterKeys) {
+                    if (ImGui::IsKeyDown(ImGuiKey_W)) fwd += 1.0f;
+                    if (ImGui::IsKeyDown(ImGuiKey_S)) fwd -= 1.0f;
+                    if (ImGui::IsKeyDown(ImGuiKey_D)) right += 1.0f;
+                    if (ImGui::IsKeyDown(ImGuiKey_A)) right -= 1.0f;
+                    if (ImGui::IsKeyDown(ImGuiKey_E) || (!ue && ImGui::IsKeyDown(ImGuiKey_Space))) up += 1.0f;
+                    if (ImGui::IsKeyDown(ImGuiKey_Q)) up -= 1.0f;
+                }
+                if (arrowKeys) {
+                    if (ImGui::IsKeyDown(ImGuiKey_UpArrow)) fwd += 1.0f;
+                    if (ImGui::IsKeyDown(ImGuiKey_DownArrow)) fwd -= 1.0f;
+                    if (ImGui::IsKeyDown(ImGuiKey_RightArrow)) right += 1.0f;
+                    if (ImGui::IsKeyDown(ImGuiKey_LeftArrow)) right -= 1.0f;
+                }
+                fwd = std::clamp(fwd, -1.0f, 1.0f);
+                right = std::clamp(right, -1.0f, 1.0f);
+                if (fwd != 0.0f || right != 0.0f || up != 0.0f) {
+                    // Tempo waechst mit der Entfernung (weit weg = grosse Spruenge, nah dran = feinfuehlig).
+                    float speed = std::clamp(state.camera.Distance() * 1.0f, 150.0f, 6000.0f) * speedMul;
+                    if (io.KeyShift) speed *= 4.0f;
+                    if (io.KeyCtrl) speed *= 0.2f;
+                    const float step = speed * std::min(io.DeltaTime, 0.1f);
+                    state.camera.MoveLocal(fwd * step, right * step, up * step);
+                }
             }
         }
         // Deliberately no permanent mouse-help banner inside the 3D viewport. It was
         // perceived as a popup that never disappeared and also competed visually with the
         // transform gizmo. Camera bindings stay available in the manual/settings UI.
+        if (state.viewportSettingsDirty) SaveViewportSettings(state);
     }
 
     // Zoom +/- Knöpfe unten rechts über dem 3D-Bild (siehe Mockup) - zusätzlich zum
@@ -18952,6 +20161,58 @@ void DrawWorkspaceAssetBrowser(EditorState& state) {
 
 // Der eigentliche Arbeitsbereich (siehe Mockup, zweites/rechtes Bild): Tab-Leiste oben,
 // darunter drei Spalten - "Datei"+"Tools/etc" links, "2D View" Mitte, "3D View" rechts.
+// Ausgabeprotokoll (Output Log) wie in Unreal: alle Statusmeldungen mit Zeit, Kategorie und
+// Schweregrad, filterbar, kopierbar. Rein editorseitig, nichts wird in Fiesta-Dateien geschrieben.
+void DrawOutputLogPanel(EditorState& state) {
+    using core::level::LogSeverity;
+    DrawPanelHeader("outputLogHeader", L("AUSGABE", "OUTPUT LOG"), DrawIconBook, "panel.properties",
+                    L("Statusmeldungen", "Status messages"));
+    const auto& log = state.editorLog;
+    char infoLabel[48], warnLabel[48], errLabel[48];
+    std::snprintf(infoLabel, sizeof(infoLabel), "Info %zu##logInfo", log.Count(LogSeverity::Info));
+    std::snprintf(warnLabel, sizeof(warnLabel), "%s %zu##logWarn", L("Warnungen", "Warnings"), log.Count(LogSeverity::Warning));
+    std::snprintf(errLabel, sizeof(errLabel), "%s %zu##logErr", L("Fehler", "Errors"), log.Count(LogSeverity::Error));
+    ImGui::Checkbox(infoLabel, &state.outputLogShowInfo);
+    ImGui::SameLine();
+    ImGui::Checkbox(warnLabel, &state.outputLogShowWarnings);
+    ImGui::SameLine();
+    ImGui::Checkbox(errLabel, &state.outputLogShowErrors);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(std::max(80.0f, ImGui::GetContentRegionAvail().x - 220.0f));
+    ImGui::InputTextWithHint("##logFilter", L("Filter…", "Filter…"), state.outputLogFilter, sizeof(state.outputLogFilter));
+    ImGui::SameLine();
+    if (ImGui::SmallButton(L("Kopieren", "Copy"))) ImGui::SetClipboardText(log.ExportText().c_str());
+    ImGui::SameLine();
+    if (ImGui::SmallButton(L("Leeren", "Clear"))) state.editorLog.Clear();
+    ImGui::SameLine();
+    ImGui::Checkbox(L("Folgen", "Follow"), &state.outputLogAutoScroll);
+
+    std::string filter = state.outputLogFilter;
+    std::transform(filter.begin(), filter.end(), filter.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    ImGui::BeginChild("##outputLogLines", ImVec2(0, 0), true, ImGuiWindowFlags_HorizontalScrollbar);
+    for (const auto& e : log.Entries()) {
+        if ((e.severity == LogSeverity::Info && !state.outputLogShowInfo) ||
+            (e.severity == LogSeverity::Warning && !state.outputLogShowWarnings) ||
+            (e.severity == LogSeverity::Error && !state.outputLogShowErrors)) continue;
+        if (!filter.empty()) {
+            std::string hay = e.category + " " + e.text;
+            std::transform(hay.begin(), hay.end(), hay.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (hay.find(filter) == std::string::npos) continue;
+        }
+        const ImVec4 col = e.severity == LogSeverity::Error ? ImVec4(1.0f, 0.45f, 0.40f, 1.0f)
+                         : e.severity == LogSeverity::Warning ? ImVec4(1.0f, 0.80f, 0.35f, 1.0f)
+                         : ImVec4(0.80f, 0.86f, 0.92f, 1.0f);
+        ImGui::TextDisabled("%8.1fs", e.timeSeconds);
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.45f, 0.75f, 1.0f, 1.0f), "[%s]", e.category.c_str());
+        ImGui::SameLine();
+        if (e.repeat > 1) ImGui::TextColored(col, "%s  (x%d)", e.text.c_str(), e.repeat);
+        else ImGui::TextColored(col, "%s", e.text.c_str());
+    }
+    if (state.outputLogAutoScroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 4.0f) ImGui::SetScrollHereY(1.0f);
+    ImGui::EndChild();
+}
+
 void DrawMapEditorWorkspace(EditorState& state) {
     DrawTopNav(state, L("Karte","Map"));
     DrawWorkspaceTabBar(state);
@@ -19017,6 +20278,7 @@ void DrawMapEditorWorkspace(EditorState& state) {
             ImGui::DockBuilderDockWindow("Asset Browser##assetBrowser", assetId);
             ImGui::DockBuilderDockWindow("Minimap##minimapPanel", assetId);
             ImGui::DockBuilderDockWindow("2D-Ansicht##view2d", view2dId);
+            ImGui::DockBuilderDockWindow("Ausgabe##outputLog", view2dId);
             ImGui::DockBuilderDockWindow("3D-Ansicht##view3d", view3dId);
             ImGui::DockBuilderFinish(dockspaceId);
             state.statusMessage=std::string(L("Workspace-Preset angewendet: ","Workspace preset applied: "))+MapWorkspacePresetName(state.mapWorkspacePreset);
@@ -19155,6 +20417,17 @@ void DrawMapEditorWorkspace(EditorState& state) {
     ImGui::End();
     ImGui::PopStyleColor();
 
+    // Bestehende layout.ini kennen das Ausgabeprotokoll noch nicht: beim ersten Auftauchen
+    // als Tab neben die 2D-Ansicht docken statt frei schwebend zu öffnen.
+    if (ImGuiWindow* view2dWindow = ImGui::FindWindowByName("2D-Ansicht##view2d");
+        view2dWindow && view2dWindow->DockId != 0)
+        ImGui::SetNextWindowDockID(view2dWindow->DockId, ImGuiCond_FirstUseEver);
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
+    ImGui::Begin("Ausgabe##outputLog");
+    DrawOutputLogPanel(state);
+    ImGui::End();
+    ImGui::PopStyleColor();
+
     ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
     ImGui::Begin("2D-Ansicht##view2d");
     DrawPanelHeader("view2dHeader", L("2D DRAUFSICHT","2D TOP VIEW"),
@@ -19174,6 +20447,14 @@ void DrawMapEditorWorkspace(EditorState& state) {
                           "Map: %s  ·  Tool: %s  ·  Selection: %zu  ·  %.0f FPS"),
                         state.legacySaveStem[0] ? state.legacySaveStem : "-",
                         modeName(), state.selectedObjects.size(), ImGui::GetIO().Framerate);
+    if (const std::size_t hiddenCount = CountEditorHiddenObjects(state); hiddenCount > 0) {
+        ImGui::SameLine();
+        ImGui::TextColored(UiTheme::Warning, L("  ·  %zu ausgeblendet (Strg+H)", "  ·  %zu hidden (Ctrl+H)"), hiddenCount);
+    }
+    if (state.playtestActive) {
+        ImGui::SameLine();
+        ImGui::TextColored(UiTheme::AccentBlue, "%s", L("  ·  SPIELTEST AKTIV", "  ·  PLAYTEST ACTIVE"));
+    }
     if (state.selectedObject != kNoObjectSelection) {
         if (const auto* selected = EditableObject(state, state.selectedObject)) {
             ImGui::SameLine();
@@ -19189,6 +20470,110 @@ void DrawMapEditorWorkspace(EditorState& state) {
 }
 
 
+
+// ---- Automatisierung für Screenshots / visuelle Regression ------------------------------------
+// NEXTGEN_EDITOR_SCRIPT="open tests/fixtures/Rou.ini; wait 30; mode objects; screenshot a.ppm; quit"
+// Befehle werden der Reihe nach ausgeführt (je Frame höchstens einer, "wait N" pausiert N Frames).
+// Nur für Entwicklung/CI gedacht; ohne Umgebungsvariable ist die Funktion vollständig inaktiv.
+struct AutomationScript {
+    std::deque<std::string> commands;
+    int waitFrames = 0;
+    std::string pendingScreenshot;
+    bool quitRequested = false;
+};
+
+AutomationScript LoadAutomationScriptFromEnvironment() {
+    AutomationScript script;
+    const char* env = std::getenv("NEXTGEN_EDITOR_SCRIPT");
+    if (!env) return script;
+    std::string text = env;
+    std::size_t pos = 0;
+    while (pos <= text.size()) {
+        const std::size_t sep = text.find(';', pos);
+        std::string cmd = text.substr(pos, sep == std::string::npos ? std::string::npos : sep - pos);
+        pos = sep == std::string::npos ? text.size() + 1 : sep + 1;
+        const auto first = cmd.find_first_not_of(" \t\r\n");
+        if (first == std::string::npos) continue;
+        cmd = cmd.substr(first, cmd.find_last_not_of(" \t\r\n") - first + 1);
+        script.commands.push_back(cmd);
+    }
+    return script;
+}
+
+void RunAutomationStep(EditorState& state, AutomationScript& script) {
+    if (script.waitFrames > 0) { --script.waitFrames; return; }
+    if (script.commands.empty() || !script.pendingScreenshot.empty()) return;
+    std::istringstream in(script.commands.front());
+    script.commands.pop_front();
+    std::string cmd;
+    in >> cmd;
+    auto onOff = [&](bool& target) { std::string v; in >> v; target = v != "off" && v != "0"; };
+    if (cmd == "wait") { in >> script.waitFrames; }
+    else if (cmd == "open") {
+        std::string path; std::getline(in >> std::ws, path);
+        if (OpenMapPathIntoState(state, std::filesystem::path(path), true)) state.screen = AppScreen::MapEditorWorkspace;
+    }
+    else if (cmd == "mode") {
+        std::string m; in >> m;
+        if (m == "terrain") state.editMode = EditMode::Heightmap;
+        else if (m == "texture") state.editMode = EditMode::TexturePaint;
+        else if (m == "walk") state.editMode = EditMode::BlockWalk;
+        else if (m == "objects") state.editMode = EditMode::ObjectPlacement;
+        else if (m == "npcs") state.editMode = EditMode::Npcs;
+        else if (m == "portals") state.editMode = EditMode::Portals;
+    }
+    else if (cmd == "selectall") SelectAllNormalObjects(state);
+    else if (cmd == "select") { int id = -1; in >> id; state.selectedObjects = {id}; state.selectedObject = id; state.objectGizmoMatrixValid = false; }
+    else if (cmd == "focus") FocusCurrentSceneSelection(state);
+    else if (cmd == "hide") HideSelectedObjects(state);
+    else if (cmd == "isolate") HideUnselectedObjects(state);
+    else if (cmd == "showall") ShowAllObjects(state);
+    else if (cmd == "playtest") TogglePlaytest(state);
+    else if (cmd == "preset") { int p = 0; in >> p; ApplyViewportPreset(state, p); }
+    else if (cmd == "camera") {
+        float tx = 0, ty = 0, tz = 0, yaw = 0, pitch = 0, dist = 1000;
+        in >> tx >> ty >> tz >> yaw >> pitch >> dist;
+        state.camera.SetTarget(tx, ty, tz); state.camera.SetDistance(dist); state.camera.SetOrientation(yaw, pitch);
+    }
+    else if (cmd == "grid") onOff(state.showViewportGrid);
+    else if (cmd == "stats") onOff(state.showViewportStats);
+    else if (cmd == "collision") onOff(state.showWalkCollision3D);
+    else if (cmd == "gameview") onOff(state.gameView);
+    else if (cmd == "surfacesnap") onOff(state.surfaceSnap);
+    else if (cmd == "status") { std::string t; std::getline(in >> std::ws, t); state.statusMessage = t; }
+    else if (cmd == "marquee") {
+        // marquee <x0> <y0> <x1> <y1> [inside|crossing] - Anteile 0..1 des 3D-Bilds
+        float x0 = 0, y0 = 0, x1 = 1, y1 = 1; std::string mode;
+        in >> x0 >> y0 >> x1 >> y1 >> mode;
+        if (mode == "inside") state.marqueeMode = core::level::MarqueeMode::Inside;
+        else if (mode == "crossing") state.marqueeMode = core::level::MarqueeMode::Crossing;
+        const ImVec2 p = state.viewport3dPos, sz = state.viewport3dSize;
+        const auto rect = core::level::ScreenRect::FromCorners({p.x + x0 * sz.x, p.y + y0 * sz.y},
+                                                               {p.x + x1 * sz.x, p.y + y1 * sz.y});
+        state.selectedObjects = CollectMarqueeHits(state, p, static_cast<int>(sz.x), static_cast<int>(sz.y), rect);
+        state.selectedObject = state.selectedObjects.empty() ? kNoObjectSelection : state.selectedObjects.back();
+        state.objectGizmoMatrixValid = false;
+        state.statusMessage = "marquee " + std::to_string(state.selectedObjects.size());
+        std::printf("[automation] marquee %s -> %zu\n", mode.c_str(), state.selectedObjects.size());
+    }
+    else if (cmd == "screenshot") { in >> script.pendingScreenshot; }
+    else if (cmd == "quit") script.quitRequested = true;
+}
+
+// Schreibt den aktuellen Backbuffer als binäres PPM (P6), oben = erste Zeile.
+void WriteFramebufferPpm(const std::string& file, int w, int h) {
+    if (w <= 0 || h <= 0) return;
+    std::vector<unsigned char> pixels(static_cast<std::size_t>(w) * static_cast<std::size_t>(h) * 3u);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
+    std::ofstream out(file, std::ios::binary | std::ios::trunc);
+    if (!out) return;
+    out << "P6\n" << w << " " << h << "\n255\n";
+    const std::size_t row = static_cast<std::size_t>(w) * 3u;
+    for (int y = h - 1; y >= 0; --y)
+        out.write(reinterpret_cast<const char*>(pixels.data() + static_cast<std::size_t>(y) * row),
+                  static_cast<std::streamsize>(row));
+}
 
 } // namespace
 
@@ -19267,8 +20652,11 @@ int main() {
     UpdatePreviewTexture(state);
     state.selectedLayer = static_cast<int>(state.textureStack.AddLayer("Base", "base.dds", 1.0f));
 
-    while (!glfwWindowShouldClose(window)) {
+    AutomationScript automation = LoadAutomationScriptFromEnvironment();
+
+    while (!glfwWindowShouldClose(window) && !automation.quitRequested) {
         glfwPollEvents();
+        RunAutomationStep(state, automation);
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
@@ -19341,6 +20729,10 @@ int main() {
         glClearColor(UiTheme::Root.x, UiTheme::Root.y, UiTheme::Root.z, UiTheme::Root.w);
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        if (!automation.pendingScreenshot.empty()) {
+            WriteFramebufferPpm(automation.pendingScreenshot, displayW, displayH);
+            automation.pendingScreenshot.clear();
+        }
 
         glfwSwapBuffers(window);
     }

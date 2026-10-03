@@ -42,6 +42,13 @@ public:
     // Ziel in WELT-Koordinaten. Die Kamera rechnet intern im gespiegelten "Anzeigeraum"
     // (Z -> -Z, siehe ViewMatrix), deshalb wird Z hier umgerechnet - Aufrufer bemerken davon nichts.
     void SetTarget(float x, float y, float z) { targetX_ = x; targetY_ = y; targetZ_ = -z; }
+    // Direkte Ausrichtung (Kamera-Lesezeichen, Ansichts-Presets Oben/Vorne/Seite, Spieltest).
+    // Erst SetDistance, dann SetOrientation aufrufen - die Pitch-Grenze haengt von der Entfernung ab.
+    void SetDistance(float distance) { distance_ = std::clamp(distance, kMinDistance, kMaxDistance); }
+    void SetOrientation(float yawRad, float pitchRad) {
+        yaw_ = yawRad;
+        pitch_ = std::clamp(pitchRad, -1.5f, kMaxPitch);
+    }
 
     [[nodiscard]] Mat4 ViewMatrix() const;
     [[nodiscard]] static Mat4 PerspectiveMatrix(float fovYRad, float aspect, float nearZ, float farZ);
