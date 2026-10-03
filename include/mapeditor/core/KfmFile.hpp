@@ -35,6 +35,10 @@ struct KfmFile {
     float unknownFloat1 = 0.25f, unknownFloat2 = 0;
     std::vector<KfmAnimation> animations;
     std::int32_t unknownInt3 = 0;
+    // Runtime-only provenance. Never encoded into the KFM. LoadKfmFile sets this to the
+    // actual working copy that supplied the bytes so relative NIF/KF references can honor
+    // project copy-on-write without losing the separate read-only source identity.
+    std::filesystem::path loadedPath;
 };
 const char* KfmVersionName(KfmVersion version);
 std::expected<KfmFile, std::string> DecodeKfm(std::span<const std::uint8_t> bytes);
@@ -49,13 +53,11 @@ struct KfmReferences {
     std::size_t missingKfFiles = 0, duplicateEventCodes = 0;
     std::size_t missingTransitionTargets = 0, missingIntermediateTargets = 0;
 };
-// Explicit relative references, resolved against the KFM directory. No recursive
-// basename guesses. Work is performed once per request, never per rendered row.
+// Explicit relative references. If file.loadedPath is set, project/working siblings are
+// checked first and the source directory is the read-only fallback. No recursive basename
+// guesses. Work is performed once per request, never per rendered row.
 KfmReferences InspectKfmReferences(const KfmFile& file, const std::filesystem::path& source);
-// Copy-on-write variant: resolve each relative NIF/KF reference against the working KFM
-// directory first (normally <Project>/Client/...), then fall back to the original read-only
-// source KFM directory. This keeps partial project overrides usable without copying every
-// referenced asset into the project.
+// Explicit copy-on-write variant for callers that already know both paths.
 KfmReferences InspectKfmReferences(const KfmFile& file,
                                    const std::filesystem::path& source,
                                    const std::filesystem::path& workingSource);
