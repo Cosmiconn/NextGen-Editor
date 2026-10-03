@@ -40,13 +40,28 @@ Statistik-Overlay mit SHBD-Zelle unter dem Cursor, Weltraster, Achsen-Anzeige, A
 **Spieltest** auf dem echten SHBD-Gitter (Spawn aus MapInfo.shn RegenX/RegenY) und ein
 Automatisierungs-Hook (`NEXTGEN_EDITOR_SCRIPT`) für reproduzierbare Viewport-Screenshots.
 
-Inzwischen ergänzt: Vertex-Snap (V beim Ziehen), Kartenlicht/Nebel aus der SHMD, IDM-Pflege beim
-Export, Blendmaps in Originalauflösung.
+Weitere Stufen am 03.10.2026 (jeweils mit Tests gegen echte NA2016-Daten, siehe CHANGELOG):
 
-Ebenfalls ergänzt: Pivot-Modus (Auswahlmitte / aktives Objekt), Debug-Ansichten Vertexfarbe/UV0/Alpha,
-KFM-Animationen duplizieren/löschen.
+| Bereich | Stand |
+|---|---|
+| Kartenlicht | SHMD `GlobalLight`/`DirectionLight*`, `Fog`/`Frustum`, `BackGroundColor`; Vertex-Color-Bitmap; `<Karte>.conf` Bodenlicht + Glow (`docs/RENDERER.md`) |
+| Bildqualität | MSAA (bis 8×), Glow-Nachbearbeitung, orthografische Achsenansichten |
+| Debug-Ansichten | Lit, Unlit, Nur Licht, Normalen, Vertexfarben, UV0, Alpha, Wireframe |
+| Transform | Vertex-Snap (V), Surface Snap auf HTD + GroundObject, Alt-Duplizieren, Pivot Mitte/aktiv |
+| Auswahl | 3D-Rahmen auf NIF-Bounds, 2D-Rahmen/Lasso auf Kontaktgeometrie, jeweils Überschneidung oder vollständig innen |
+| Export-Sicherheit | IDM-Zuordnungen folgen der SHMD-Schreibreihenfolge (Indexsemantik an Rou belegt), Blendmaps in Originalauflösung |
+| KFM | Animationen duplizieren/löschen, NIF-Datei und Wurzel bearbeiten |
 
-Weiterhin ehrlich offen: per-Viewport-Show-Flags, Actor-Snap, frei verschiebbarer Pivot, Debug-Viewmodes, 2D-Marquee auf Kontaktgeometrie, Windows-Build dieser Stufe.
+Weiterhin offen – jeweils mit dem, was dafür fehlt:
+
+| Punkt | Benötigt |
+|---|---|
+| Visueller Abgleich Renderer ↔ Client (Lichtrichtung, Glow-/Nebel-Formel, `APPLY_HILIGHT2`, proprietäre Shader) | Referenz-Screenshots aus dem NA2016-Client mit bekannter Kameraposition und die vollständigen `resmap`-Texturen/NIFs |
+| Bedeutung der IDM-Gruppen (Neuberechnung statt Abbildung) | weitere Karten mit IDM + Client-Verhalten bei veränderten Gruppen |
+| SHBD-Bitsemantik jenseits „gesetzt = blockiert“, Spielnavigation | Server-/Client-Verhalten an Testkarten |
+| Skill-Editor: physische Existenz von KF/NIF/Effekt-Dateien | vollständiger Client-Datenbestand (ActiveSkillView-/Effekt-Tabellen + `resEffect`) |
+| Per-Viewport-Show-Flags, Mehrfach-Viewport-Layout, Actor-Snap, frei verschiebbarer Pivot, LOD-Stufen-Ansicht | reine Editorarbeit, nicht datenabhängig – nächste Ausbaustufe |
+| Windows/MSVC-Build dieser Stufe | Build auf dem Windows-Rechner (unter Linux/GCC 13 vollständig gebaut und getestet) |
 
 ---
 
