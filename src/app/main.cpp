@@ -5449,18 +5449,18 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
     if (state.mapDirty || dirtyShn > 0 || state.questDirty || state.townPortalDirty ||
         state.recallCoordDirty || state.aiScriptDirty || state.dropTableDirty) {
         ImGui::SameLine();
-        ImGui::TextColored(UiTheme::Warning, "●");
+        ImGui::TextColored(UiTheme::Warning, "*");
         if (ImGui::IsItemHovered()) {
             std::string dirtyText = L("Ungespeichert","Unsaved changes");
-            if (state.mapDirty) dirtyText += L("\n• Karte geändert","\n• Map modified");
+            if (state.mapDirty) dirtyText += L("\n· Karte geändert","\n· Map modified");
             if (dirtyShn > 0)
-                dirtyText += "\n• " + std::to_string(dirtyShn) +
+                dirtyText += "\n· " + std::to_string(dirtyShn) +
                              L(" SHN-Datei(en) geändert"," SHN file(s) modified");
-            if (state.questDirty) dirtyText += L("\n• QuestData.shn geändert","\n• QuestData.shn modified");
-            if (state.townPortalDirty) dirtyText += L("\n• TownPortal.shn geändert","\n• TownPortal.shn modified");
-            if (state.recallCoordDirty) dirtyText += L("\n• RecallCoord.txt geändert","\n• RecallCoord.txt modified");
-            if (state.aiScriptDirty) dirtyText += L("\n• AI-Skript geändert","\n• AI script modified");
-            if (state.dropTableDirty) dirtyText += L("\n• ItemDropTable geändert","\n• ItemDropTable modified");
+            if (state.questDirty) dirtyText += L("\n· QuestData.shn geändert","\n· QuestData.shn modified");
+            if (state.townPortalDirty) dirtyText += L("\n· TownPortal.shn geändert","\n· TownPortal.shn modified");
+            if (state.recallCoordDirty) dirtyText += L("\n· RecallCoord.txt geändert","\n· RecallCoord.txt modified");
+            if (state.aiScriptDirty) dirtyText += L("\n· AI-Skript geändert","\n· AI script modified");
+            if (state.dropTableDirty) dirtyText += L("\n· ItemDropTable geändert","\n· ItemDropTable modified");
             ImGui::SetTooltip("%s", dirtyText.c_str());
         }
     }
@@ -5807,7 +5807,7 @@ static std::string KnownShnReferenceTooltip(const std::vector<LoadedShnFamilyPee
                                             long long id) {
     std::string out = L("Verifizierte Familien-ID #","Verified family ID #") + std::to_string(id);
     for (const auto& peer : peers) {
-        out += "\n• " + peer.fileName + ": ";
+        out += "\n· " + peer.fileName + ": ";
         if (peer.document < 0 || peer.idColumn < 0) out += L("nicht geladen","not loaded");
         else if (!peer.rowById.contains(id)) out += L("FEHLT","MISSING");
         else if (peer.duplicateIds.contains(id)) out += L("mehrdeutig (ID mehrfach)","ambiguous (duplicate ID)");
@@ -5856,16 +5856,16 @@ static bool DrawKnownShnFamilyReferenceStrip(EditorState& state, int currentDocu
         }
         const auto found = peer.rowById.find(id);
         if (found == peer.rowById.end()) {
-            ImGui::TextColored(UiTheme::Error, "✕ %s", peer.fileName.c_str());
+            ImGui::TextColored(UiTheme::Error, "× %s", peer.fileName.c_str());
             continue;
         }
         if (peer.duplicateIds.contains(id) || currentDuplicates.contains(id)) {
-            ImGui::TextColored(UiTheme::Warning, "⚠ %s %s", peer.fileName.c_str(),
+            ImGui::TextColored(UiTheme::Warning, "! %s %s", peer.fileName.c_str(),
                                L("(ID mehrfach)","(duplicate ID)"));
             continue;
         }
         ImGui::PushID(static_cast<int>(i));
-        if (UI::SmallButton((std::string("↗ ") + peer.fileName).c_str())) {
+        if (UI::SmallButton((std::string("» ") + peer.fileName).c_str())) {
             const int row = found->second;
             SelectShnDocument(state, peer.document);
             state.shnSelectedRow = row;
@@ -6309,7 +6309,7 @@ void DrawShnGrid(EditorState& state) {
             dirtyCells+=static_cast<std::size_t>(std::count_if(row.begin(),row.end(),[](std::uint8_t v){return v!=0;}));
         ImGui::SameLine();
         ImGui::TextColored(ImVec4(1.0f,0.68f,0.25f,1.0f),
-                           L("● geändert · %zu Zellen","● modified · %zu cells"),dirtyCells);
+                           L("* geändert · %zu Zellen","* modified · %zu cells"),dirtyCells);
     }
     ImGui::SameLine();
     ImGui::TextDisabled("%zu Zeilen · %zu Spalten · V%u · %s",
@@ -6420,7 +6420,7 @@ void DrawShnGrid(EditorState& state) {
             ImGui::TableSetColumnIndex(static_cast<int>(ci + 1));
             ImGui::PushID(static_cast<int>(ci));
             ImGui::SetNextItemWidth(-1.0f);
-            if (UI::InputTextWithHint("##columnFilter", "…",
+            if (UI::InputTextWithHint("##columnFilter", "...",
                                       state.shnColumnFilters[ci].data(),
                                       state.shnColumnFilters[ci].size())) {
                 state.shnVisibleKey.clear();
@@ -7026,7 +7026,7 @@ void DrawShnMultiProfiles(EditorState& state) {
         ImGui::SameLine(160.0f);
         if (isShn) {
             ImGui::TextColored(shnLoaded ? UiTheme::Success : UiTheme::TextSecondary,
-                               "%s %s", shnLoaded ? "✓" : "·",
+                               "%s %s", shnLoaded ? "OK" : "·",
                                std::string(rule.relativePath).c_str());
         } else {
             ImGui::TextUnformatted(std::string(rule.relativePath).c_str());
@@ -7460,7 +7460,7 @@ void DrawShnEditor(EditorState& state) {
     if (dataDirtyShn > 0 || state.questDirty || state.townPortalDirty || state.recallCoordDirty) {
         ImGui::SameLine();
         ImGui::TextColored(ImVec4(1.0f,0.68f,0.25f,1.0f), "%s",
-                           L("● ungespeichert","● unsaved"));
+                           L("* ungespeichert","* unsaved"));
     }
     if (dataDirtyShn > 0) {
         ImGui::SameLine();
@@ -8011,8 +8011,8 @@ void DrawMapEditorLauncher(EditorState& state) {
                 ImGui::TextDisabled("%s", resmapFound
                     ? L("Keine .ini- oder eigenständigen NIF-Karten im gefundenen resmap-Ordner.",
                         "No .ini or standalone NIF maps in the discovered resmap folder.")
-                    : L("resmap nicht gefunden – Client-Pfad im Projekt prüfen.",
-                        "resmap not found – check the client path in the project."));
+                    : L("resmap nicht gefunden - Client-Pfad im Projekt prüfen.",
+                        "resmap not found - check the client path in the project."));
             }
             for (int i = 0; i < static_cast<int>(state.discoveredMaps.size()); ++i) {
                 const bool selected = state.selectedMapIndex == i;
@@ -8646,23 +8646,23 @@ void DrawQuestFlowView(EditorState& state,
         ImGui::TextDisabled("%s",L("Kein Vorgänger.","No predecessor."));
     } else {
         const std::size_t first=ancestors.size()>6 ? ancestors.size()-6 : 0;
-        if (first>0) ImGui::TextDisabled(L("… %zu frühere Quest(s)","… %zu earlier quest(s)"),first);
+        if (first>0) ImGui::TextDisabled(L("... %zu frühere Quest(s)","... %zu earlier quest(s)"),first);
         for (std::size_t ai=first;ai<ancestors.size();++ai) {
             const std::size_t idx=ancestors[ai];
-            if (questButton("←",idx)) state.selectedQuestIdx=static_cast<int>(idx);
+            if (questButton("<",idx)) state.selectedQuestIdx=static_cast<int>(idx);
             if (ai+1<ancestors.size()) {
                 const float x=ImGui::GetCursorPosX()+18.0f;
                 ImGui::SetCursorPosX(x);
-                ImGui::TextColored(UiTheme::TextSecondary,"↓");
+                ImGui::TextColored(UiTheme::TextSecondary,"v");
             }
         }
         if (missingPredecessor!=0)
-            ImGui::TextColored(UiTheme::Error,L("✕ Vorgänger #%u fehlt oder ist mehrdeutig",
-                                                "✕ predecessor #%u missing or ambiguous"),
+            ImGui::TextColored(UiTheme::Error,L("× Vorgänger #%u fehlt oder ist mehrdeutig",
+                                                "× predecessor #%u missing or ambiguous"),
                                static_cast<unsigned>(missingPredecessor));
         if (cycle)
             ImGui::TextColored(UiTheme::Error,"%s",
-                L("✕ Zyklus in der predecessor-Kette erkannt","✕ cycle detected in predecessor chain"));
+                L("× Zyklus in der predecessor-Kette erkannt","× cycle detected in predecessor chain"));
     }
 
     ImGui::TableSetColumnIndex(1);
@@ -8675,7 +8675,7 @@ void DrawQuestFlowView(EditorState& state,
     ImGui::Separator();
 
     if (current.needLevel!=0)
-        ImGui::Text(L("Level: %u–%u","Level: %u–%u"),
+        ImGui::Text(L("Level: %u-%u","Level: %u-%u"),
                     static_cast<unsigned>(current.minLevel),static_cast<unsigned>(current.maxLevel));
     else
         ImGui::TextDisabled("%s",L("Keine Level-Bedingung","No level requirement"));
@@ -8713,9 +8713,9 @@ void DrawQuestFlowView(EditorState& state,
 
     ImGui::SeparatorText(L("Scripts","Scripts"));
     ImGui::TextDisabled("Start %s · Action %s · Finish %s",
-        current.start.text.empty()?"—":"✓",
-        current.action.text.empty()?"—":"✓",
-        current.finish.text.empty()?"—":"✓");
+        current.start.text.empty()?"-":"OK",
+        current.action.text.empty()?"-":"OK",
+        current.finish.text.empty()?"-":"OK");
     ImGui::EndChild();
     ImGui::PopStyleColor();
 
@@ -8731,7 +8731,7 @@ void DrawQuestFlowView(EditorState& state,
         ImGui::BeginChild("##questFlowSuccessors",ImVec2(0.0f,0.0f),false);
         for (const std::size_t idx:successors) {
             if (duplicateIds.contains(quests[idx].id)) ImGui::PushStyleColor(ImGuiCol_Button,IM_COL32(112,70,24,210));
-            if (questButton("→",idx,duplicateIds.contains(quests[idx].id)?L("⚠ ID mehrfach","⚠ duplicate ID"):nullptr))
+            if (questButton(">",idx,duplicateIds.contains(quests[idx].id)?L("! ID mehrfach","! duplicate ID"):nullptr))
                 state.selectedQuestIdx=static_cast<int>(idx);
             if (duplicateIds.contains(quests[idx].id)) ImGui::PopStyleColor();
         }
@@ -8977,7 +8977,7 @@ void DrawQuestEditor(EditorState& state) {
                     "module.quest", questHeaderMeta.c_str());
     if (state.questDirty) {
         ImGui::SameLine();
-        ImGui::TextColored(ImVec4(1.0f,0.68f,0.25f,1.0f), "%s", L("● geändert","● modified"));
+        ImGui::TextColored(ImVec4(1.0f,0.68f,0.25f,1.0f), "%s", L("* geändert","* modified"));
     }
     const float questSaveW = 190.0f;
     ImGui::SameLine(std::max(ImGui::GetCursorPosX() + 8.0f,
@@ -9508,7 +9508,7 @@ void DrawQuestEditor(EditorState& state) {
     }
 
     if (UI::CollapsingHeader(L("Scripts", "Scripts"), ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::TextDisabled("SAY / IF / GOTO / ACCEPT / CREATE_ITEM / …");
+        ImGui::TextDisabled("SAY / IF / GOTO / ACCEPT / CREATE_ITEM / ...");
         auto scriptEditor = [&](const char* label, core::legacy::QuestScript& script) {
             ImGui::TextColored(kDim, "%s", label);
             std::vector<char> buf(script.text.begin(), script.text.end());
@@ -9928,7 +9928,7 @@ std::vector<PortalMarker> CollectPortalMarkers(EditorState& state) {
                 m.targetDirect = std::atoi(link.values[5].c_str());
                 m.targetParty = std::atoi(link.values[6].c_str()) != 0;
                 const std::string target = !m.targetMapClient.empty() ? m.targetMapClient : m.targetMapServer;
-                m.label = (npc.values[0].empty() ? m.linkKey : npc.values[0]) + " → " + target;
+                m.label = (npc.values[0].empty() ? m.linkKey : npc.values[0]) + " -> " + target;
                 out.push_back(std::move(m));
             }
         }
@@ -12115,7 +12115,7 @@ void DrawCustomCreatureEditor(EditorState& state) {
     ImGui::Text("%s  ·  %s", w.newInx[0] ? w.newInx : L("(InxName fehlt)", "(InxName missing)"),
                 w.displayName[0] ? w.displayName : L("(Name fehlt)", "(name missing)"));
     ImGui::TextDisabled("ID");
-    ImGui::Text("%s", w.autoId ? L("automatisch – erste konsistent freie ID", "automatic – first consistently free ID") : std::to_string(w.manualId).c_str());
+    ImGui::Text("%s", w.autoId ? L("automatisch - erste konsistent freie ID", "automatic - first consistently free ID") : std::to_string(w.manualId).c_str());
     ImGui::TextDisabled("%s", L("Aussehen", "Appearance"));
     ImGui::Text("%s", w.lookMode == 0 ? L("wie Vorlage", "like template") : w.lookMode == 1 ? L("anderes Modell", "different model") : L("Spieler-Avatar", "player avatar"));
     if (w.isNpc) {
@@ -12145,11 +12145,11 @@ void DrawCustomCreatureEditor(EditorState& state) {
     const bool canAdvance =
         !(w.step == 0 && w.templateId < 0) &&
         !(w.step == 1 && (w.newInx[0] == '\0' || w.displayName[0] == '\0'));
-    if (w.step > 0 && UI::Button(L("← Zurück", "← Back"), ImVec2(120,0))) --w.step;
+    if (w.step > 0 && UI::Button(L("< Zurück", "< Back"), ImVec2(120,0))) --w.step;
     if (w.step > 0 && w.step < 4) ImGui::SameLine();
     if (w.step < 4) {
         ImGui::BeginDisabled(!canAdvance);
-        if (UI::Button(L("Weiter →", "Next →"), ImVec2(120,0))) ++w.step;
+        if (UI::Button(L("Weiter >", "Next >"), ImVec2(120,0))) ++w.step;
         ImGui::EndDisabled();
         if (!canAdvance) {
             ImGui::SameLine();
@@ -12530,7 +12530,7 @@ static bool SkillPresentationPickerPopup(EditorState& state,const SkillDocs& d,
         const std::string& label=i<labels.size()?labels[i]:value;
         if (!needle.empty() && LowerAscii(label).find(needle)==std::string::npos) continue;
         if (++shown > 400) {
-            ImGui::TextDisabled("%s",L("… weitere Treffer – Suche eingrenzen","… more matches – narrow the search"));
+            ImGui::TextDisabled("%s",L("... weitere Treffer - Suche eingrenzen","... more matches - narrow the search"));
             break;
         }
         if (UI::Selectable((label+"##presentation"+std::to_string(i)).c_str(),
@@ -12554,8 +12554,8 @@ static bool SkillPresentationPickerPopup(EditorState& state,const SkillDocs& d,
     } else {
         ImGui::TextWrapped("%s",preview.c_str());
         ImGui::TextDisabled("%s",field.kind == skilled::Kind::Anim
-            ? L("Animation – aus vorhandenen ActiveSkillView-Werten","Animation – from existing ActiveSkillView values")
-            : L("Effekt/VFX – aus vorhandenen ActiveSkillView-Werten","Effect/VFX – from existing ActiveSkillView values"));
+            ? L("Animation - aus vorhandenen ActiveSkillView-Werten","Animation - from existing ActiveSkillView values")
+            : L("Effekt/VFX - aus vorhandenen ActiveSkillView-Werten","Effect/VFX - from existing ActiveSkillView values"));
         ImGui::SeparatorText(L("Verwendet von","Used by"));
 
         int totalUses=0,shownRefs=0;
@@ -12584,7 +12584,7 @@ static bool SkillPresentationPickerPopup(EditorState& state,const SkillDocs& d,
                 const std::string name=skillRow>=0 ? ShnCellText(state.shnFiles[static_cast<std::size_t>(d.skillC)].file,
                                                                 static_cast<std::size_t>(skillRow),"Name") : std::string();
                 ImGui::PushID(static_cast<int>(row));
-                if (UI::SmallButton((std::string("↗ ")+inx).c_str())) {
+                if (UI::SmallButton((std::string("» ")+inx).c_str())) {
                     state.skill.selectedId=id;
                     ImGui::CloseCurrentPopup();
                 }
@@ -12639,7 +12639,7 @@ static void DrawSkillField(EditorState& state, const SkillDocs& d, const skilled
     if (copiesDiffer) ImGui::PopStyleColor();
     if (copiesDiffer) {
         ImGui::SameLine();
-        ImGui::TextColored(ImVec4(1.0f,0.68f,0.25f,1.0f),"⚠");
+        ImGui::TextColored(ImVec4(1.0f,0.68f,0.25f,1.0f),"!");
     }
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
         const std::string tip=std::string(de ? fld.tipDe : fld.tipEn)+"\n["+fld.col+"]"+
@@ -12686,7 +12686,7 @@ static void DrawSkillField(EditorState& state, const SkillDocs& d, const skilled
             if (!dataReferenced && (fld.kind==K::Anim || fld.kind==K::Effect ||
                                     fld.kind==K::Sound || fld.kind==K::Icon)) {
                 ImGui::SameLine();
-                ImGui::TextColored(UiTheme::Warning,"⚠");
+                ImGui::TextColored(UiTheme::Warning,"!");
                 if (ImGui::IsItemHovered())
                     ImGui::SetTooltip("%s",L("Dieser Wert kommt in den geladenen Vergleichsdaten nicht vor. Das ist eine Warnung, kein Beweis für ein fehlendes Asset.",
                                              "This value does not occur in the loaded reference data. This is a warning, not proof of a missing asset."));
@@ -12819,7 +12819,7 @@ void DrawSkillEditor(EditorState& state) {
     const std::size_t dirtySkillDocs = DirtyShnDocumentCount(state);
     if (dirtySkillDocs > 0) {
         ImGui::SameLine();
-        ImGui::TextColored(ImVec4(1.0f,0.68f,0.25f,1.0f), L("● %zu SHN geändert","● %zu SHN modified"), dirtySkillDocs);
+        ImGui::TextColored(ImVec4(1.0f,0.68f,0.25f,1.0f), L("* %zu SHN geändert","* %zu SHN modified"), dirtySkillDocs);
     }
     ImGui::TextWrapped("%s", L("Vorhandene Skills bearbeiten, neue Skills aus Vorlagen klonen und vorhandene Animationen/Effekte zuweisen. Eine Zeile entspricht einer Stufe einer Skillreihe.",
                                "Edit existing skills, clone new skills from templates and assign existing animations/effects. One row represents one step of a skill series."));
@@ -12832,8 +12832,8 @@ void DrawSkillEditor(EditorState& state) {
     auto& asf = state.shnFiles[static_cast<std::size_t>(d.skillC)].file;
     if (d.skillS < 0 || d.viewS < 0) {
         ImGui::TextColored(ImVec4(1.0f,0.68f,0.25f,1.0f),"%s",L(
-            "⚠ Mindestens eine Server-Kopie (ActiveSkill / ActiveSkillView) fehlt. Der Sync-Filter zeigt deshalb alle betroffenen Skills.",
-            "⚠ At least one server copy (ActiveSkill / ActiveSkillView) is missing. The sync filter therefore shows all affected skills."));
+            "! Mindestens eine Server-Kopie (ActiveSkill / ActiveSkillView) fehlt. Der Sync-Filter zeigt deshalb alle betroffenen Skills.",
+            "! At least one server copy (ActiveSkill / ActiveSkillView) is missing. The sync filter therefore shows all affected skills."));
     }
 
     // Toolbar: speichern
@@ -12996,7 +12996,7 @@ void DrawSkillEditor(EditorState& state) {
                     std::string label =
                         std::string("Stufe ") + std::to_string(step) + "  ·  #" + std::to_string(id) +
                         (name.empty() ? std::string() : "  " + name);
-                    if (ed.syncIssues.contains(id)) label += L("  ⚠ Sync","  ⚠ Sync");
+                    if (ed.syncIssues.contains(id)) label += L("  ! Sync","  ! Sync");
                     if (UI::Selectable((label + "##skillStep" + std::to_string(row)).c_str(), ed.selectedId == id)) {
                         ed.selectedId = id;
                         ed.report.clear();
@@ -13992,9 +13992,9 @@ void DrawToolsContent(EditorState& state) {
     } else if (state.editMode == EditMode::BlockWalk) {
         ImGui::TextWrapped("%s",L("Block & Walk: jede Zelle (6.25 Einheiten) ist blockiert (rot) oder begehbar. Klick/Ziehen im 2D-View setzt Zellen im Kreis um den Mauszeiger.",
                                 "Block & Walk: each cell (6.25 units) is blocked (red) or walkable. Click/drag in the 2D view paints cells in a circle around the cursor."));
-        ImGui::TextColored(ImVec4(1.0f,0.38f,0.38f,1.0f),"%s",L("● blockiert","● blocked"));
+        ImGui::TextColored(ImVec4(1.0f,0.38f,0.38f,1.0f),"%s",L("* blockiert","* blocked"));
         ImGui::SameLine();
-        ImGui::TextColored(ImVec4(0.32f,0.90f,0.58f,1.0f),"%s",L("● begehbar","● walkable"));
+        ImGui::TextColored(ImVec4(0.32f,0.90f,0.58f,1.0f),"%s",L("* begehbar","* walkable"));
         if (SceneQuickFilterButton("walkBlock",L("Sperren","Block"),state.walkBlockMode)) state.walkBlockMode=true;
         ImGui::SameLine();
         if (SceneQuickFilterButton("walkOpen",L("Freigeben","Walkable"),!state.walkBlockMode)) state.walkBlockMode=false;
@@ -14028,8 +14028,8 @@ void DrawToolsContent(EditorState& state) {
             const ImVec4 previewColor = state.walkFootprintPreviewBlocked
                 ? ImVec4(1.0f,0.38f,0.38f,1.0f)
                 : ImVec4(0.32f,0.90f,0.58f,1.0f);
-            ImGui::TextColored(previewColor, L("Vorschau aktiv: %zu Grundflächen → %s",
-                                               "Preview active: %zu footprints → %s"),
+            ImGui::TextColored(previewColor, L("Vorschau aktiv: %zu Grundflächen -> %s",
+                                               "Preview active: %zu footprints -> %s"),
                                previewPolygons.size(),
                                state.walkFootprintPreviewBlocked ? L("blockiert","blocked")
                                                                  : L("begehbar","walkable"));
@@ -14059,8 +14059,8 @@ void DrawToolsContent(EditorState& state) {
                                        "Choose a preview first, inspect it in the 2D view, then apply."));
         }
 
-        ImGui::TextDisabled("%s",L("Wirkt nur auf aktuell sichtbare Kategorien – ideal für Gebäude, Deko oder einzelne Gruppen.",
-                                   "Affects only currently visible categories – ideal for buildings, decoration or selected groups."));
+        ImGui::TextDisabled("%s",L("Wirkt nur auf aktuell sichtbare Kategorien - ideal für Gebäude, Deko oder einzelne Gruppen.",
+                                   "Affects only currently visible categories - ideal for buildings, decoration or selected groups."));
         ImGui::TextDisabled(L("Zellen im Gitter: %u x %u (%.0f x %.0f Einheiten)","Grid cells: %u x %u (%.0f x %.0f units)"), state.walkGrid.Cols(), state.walkGrid.Rows(),
                             state.walkGrid.Cols() * WalkGridCellSize(), state.walkGrid.Rows() * WalkGridCellSize());
 
@@ -18238,7 +18238,7 @@ void DrawSceneOutlinerPanel(EditorState& state) {
                         ImGui::Indent(24.0f);
                         if (m.kind == kPortalKindGateLink) {
                             const std::string target=PortalTargetMapName(m);
-                            ImGui::TextDisabled("→ %s  (%.0f, %.0f)",target.empty()?L("(kein Ziel)","(no target)"):target.c_str(),m.targetX,m.targetY);
+                            ImGui::TextDisabled("-> %s  (%.0f, %.0f)",target.empty()?L("(kein Ziel)","(no target)"):target.c_str(),m.targetX,m.targetY);
                             ImGui::SameLine();
                             if (DrawTinyIconButton("portalInlineOpen",DrawIconPortal,false,L("Zielkarte öffnen","Open target map"),ImVec2(19,19)))
                                 NavigateToPortalTarget(state,m);
@@ -19297,11 +19297,11 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                     part.vertexColorMode == 1 ? L("Emission","Emission") :
                     part.vertexColorMode == 2
                         ? (part.vertexLightingMode == 0
-                            ? L("Ambient+Diffuse / LightMode Emissive → ignoriert",
-                                "Ambient+Diffuse / emissive light mode → ignored")
+                            ? L("Ambient+Diffuse / LightMode Emissive -> ignoriert",
+                                "Ambient+Diffuse / emissive light mode -> ignored")
                             : L("Ambient+Diffuse","Ambient+Diffuse"))
-                        : L("Unbekannter Modus → Ambient+Diffuse-Fallback",
-                            "Unknown mode → Ambient+Diffuse fallback");
+                        : L("Unbekannter Modus -> Ambient+Diffuse-Fallback",
+                            "Unknown mode -> Ambient+Diffuse fallback");
                 ImGui::TextDisabled(
                     L("Vertexfarben: %zu · %s","Vertex colors: %zu · %s"),
                     part.vertexColors.size(), vertexMode);
@@ -19390,8 +19390,8 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                                         slot.uvSet, slot.clampMode, slot.filterMode);
                 } else if (slotHasBaseFallbackUvs) {
                     ImGui::TextDisabled(
-                        L("UV %u nicht verfügbar → UV0-Fallback · Clamp %u · Filter %u",
-                          "UV %u unavailable → UV0 fallback · Clamp %u · Filter %u"),
+                        L("UV %u nicht verfügbar -> UV0-Fallback · Clamp %u · Filter %u",
+                          "UV %u unavailable -> UV0 fallback · Clamp %u · Filter %u"),
                         slot.uvSet, slot.clampMode, slot.filterMode);
                 } else {
                     ImGui::TextColored(
@@ -19539,7 +19539,7 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                                       NifTextureTransformOperationLabel(animation.operation));
                     ImGui::Indent();
                     const auto& track = animation.track;
-                    ImGui::TextDisabled("%.3f – %.3f s · %zu Keys · %s · %s",
+                    ImGui::TextDisabled("%.3f - %.3f s · %zu Keys · %s · %s",
                                         track.startTime, track.stopTime, track.keys.size(),
                                         NifTextureInterpolationLabel(track.interpolation),
                                         NifTextureExtrapolationLabel(track.extrapolation));
@@ -19581,7 +19581,7 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                                       NifTextureSlotLabel(animation.slot), animation.frames.size());
                     ImGui::Indent();
                     const auto& track = animation.track;
-                    ImGui::TextDisabled("%.3f – %.3f s · %zu Keys · %s · %s",
+                    ImGui::TextDisabled("%.3f - %.3f s · %zu Keys · %s · %s",
                                         track.startTime, track.stopTime, track.keys.size(),
                                         NifTextureInterpolationLabel(track.interpolation),
                                         NifTextureExtrapolationLabel(track.extrapolation));
@@ -19612,7 +19612,7 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                         ImGui::TextDisabled("%s", frameLabel.c_str());
                     }
                     if (animation.frames.size() > framePreviewCount)
-                        ImGui::TextDisabled(L("… %zu weitere Frames","… %zu more frames"),
+                        ImGui::TextDisabled(L("... %zu weitere Frames","... %zu more frames"),
                                             animation.frames.size() - framePreviewCount);
                     ImGui::Unindent();
                     ImGui::PopID();
@@ -19623,7 +19623,7 @@ void DrawNifAssetInspector(EditorState& state, const std::filesystem::path& root
                 ImGui::TextDisabled(L("Skinning: %u Bones · max. %u Einflüsse","Skinning: %u bones · max. %u influences"),
                                     part.skinBoneCount, part.maxSkinInfluences);
             if (part.billboard) ImGui::TextDisabled("Billboard-Modus: %u", part.billboardMode);
-            if (part.lodControlled) ImGui::TextDisabled("LOD: %.1f – %.1f", part.lodNear, part.lodFar);
+            if (part.lodControlled) ImGui::TextDisabled("LOD: %.1f - %.1f", part.lodNear, part.lodFar);
         }
         ImGui::PopID();
     }
@@ -19956,7 +19956,7 @@ void DrawDropTableEditor(EditorState& state) {
     if (!mob.empty() && mob != "-" && !knownMobs.empty()) {
         ImGui::SameLine();
         if (knownMobs.count(mob))
-            ImGui::TextColored(ImVec4(0.42f,0.86f,0.62f,1.0f), "MobViewInfo ✓");
+            ImGui::TextColored(ImVec4(0.42f,0.86f,0.62f,1.0f), "MobViewInfo OK");
         else
             ImGui::TextColored(ImVec4(1.0f,0.48f,0.34f,1.0f), "%s",L("nicht in MobViewInfo","not in MobViewInfo"));
     }
@@ -19964,7 +19964,7 @@ void DrawDropTableEditor(EditorState& state) {
     const std::string map = ShineRecordValue(record, cMap);
     if (!map.empty() && map != "-") ImGui::TextDisabled("MapArea %s", map.c_str());
 
-    ImGui::TextDisabled("Level %s–%s · Cen %s–%s · CenRate %s",
+    ImGui::TextDisabled("Level %s-%s · Cen %s-%s · CenRate %s",
                         ShineRecordValue(record,cMinLevel).c_str(),
                         ShineRecordValue(record,cMaxLevel).c_str(),
                         ShineRecordValue(record,cMinCen).c_str(),
@@ -20033,7 +20033,7 @@ void DrawDropTableEditor(EditorState& state) {
                 std::atoi(checkText.c_str()) == std::atoi(maxText.c_str()) + 1;
             if (checksumMatches)
                 ImGui::TextColored(ImVec4(0.42f,0.86f,0.62f,1.0f),
-                                   "CheckSum %s · NA2016: MaxLevel + 1 ✓",checkText.c_str());
+                                   "CheckSum %s · NA2016: MaxLevel + 1 OK",checkText.c_str());
             else
                 ImGui::TextColored(ImVec4(1.0f,0.48f,0.34f,1.0f),
                                    "CheckSum %s · erwartet MaxLevel + 1",checkText.c_str());
@@ -20111,7 +20111,7 @@ void DrawDropTableEditor(EditorState& state) {
                 if (EditDropTableValue("##upgradeMin",*minV,34.0f)) state.dropTableDirty=true;
             }
             ImGui::SameLine(0,2);
-            ImGui::TextDisabled("–");
+            ImGui::TextDisabled("-");
             ImGui::SameLine(0,2);
             if (auto* maxV=valueRef(slot.upgradeMaxCol)) {
                 if (EditDropTableValue("##upgradeMax",*maxV,34.0f)) state.dropTableDirty=true;
@@ -20842,7 +20842,7 @@ void DrawOutputLogPanel(EditorState& state) {
     ImGui::Checkbox(errLabel, &state.outputLogShowErrors);
     ImGui::SameLine();
     ImGui::SetNextItemWidth(std::max(80.0f, ImGui::GetContentRegionAvail().x - 220.0f));
-    ImGui::InputTextWithHint("##logFilter", L("Filter…", "Filter…"), state.outputLogFilter, sizeof(state.outputLogFilter));
+    ImGui::InputTextWithHint("##logFilter", L("Filter...", "Filter..."), state.outputLogFilter, sizeof(state.outputLogFilter));
     ImGui::SameLine();
     if (ImGui::SmallButton(L("Kopieren", "Copy"))) ImGui::SetClipboardText(log.ExportText().c_str());
     ImGui::SameLine();
@@ -21104,7 +21104,7 @@ void DrawMapEditorWorkspace(EditorState& state) {
     ImGui::BeginChild("##mapStatusBar", ImVec2(0.0f, 27.0f), true,
                       ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     ImGui::TextColored(state.mapDirty ? UiTheme::Warning : UiTheme::TextSecondary,
-                       "%s", state.mapDirty ? "●" : "●");
+                       "%s", state.mapDirty ? "*" : "*");
     ImGui::SameLine(0.0f, 6.0f);
     ImGui::TextDisabled(L("Map: %s  ·  Werkzeug: %s  ·  Auswahl: %zu  ·  %.0f FPS",
                           "Map: %s  ·  Tool: %s  ·  Selection: %zu  ·  %.0f FPS"),
@@ -21200,6 +21200,7 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
             if (state.questDataFile.records[i].id == id) state.selectedQuestIdx = static_cast<int>(i);
         std::string section; in >> section;
         state.automationQuestSection = section == "drops" ? 1 : section == "rewards" ? 2 : 0;
+        state.questShowFlow = section == "flow";
     }
     else if (cmd == "selectall") SelectAllNormalObjects(state);
     else if (cmd == "select") { int id = -1; in >> id; state.selectedObjects = {id}; state.selectedObject = id; state.objectGizmoMatrixValid = false; }

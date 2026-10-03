@@ -1,3 +1,7 @@
+## UI — characters the editor font cannot draw
+- The editor uses ImGui's built-in font (Latin-1 only), so about 70 UI strings showed "?" for –, —, …, →, ←, ↓, ↗, •, ●, ✓, ✕ and ⚠ (on Windows too). They now use drawable equivalents (-, ..., ->, <, >, v, », ·, *, OK, ×, !). Verified in the quest flow view, which showed "?" for its navigation arrows, level range dash and script check marks.
+- Automation: `quest <id> flow` opens the quest flow view.
+
 ## Quest editor — corrected QuestData layout, rewards decoded
 - Fixed the QuestData.shn byte layout. The reference parser read title and description as uint16 and missed two padding fields, so every field from the title on sat 8 bytes off (levels, start NPC, required item, predecessor, class, objectives, drops). The roundtrip was still byte-exact because an end "padding"/"extra8" block absorbed the difference, so the error went unnoticed. Proof on all 2304 NA2016 quests: description = title + 1 in 2295 quests, all 1390 predecessors exist, all 2099 level ranges have min <= max, 941 of 960 drop items are also item objectives of the same quest (0 with the old layout), and all padding and free slots are zero. Quest 251 now reads title 10300 / description 10301, and its start script begins with `SAY 10302`.
 - Drops are 10 slots × 32 bytes (one more field than before); the editor allows at most 10 and new drops start with the most common values. The quest flow now shows real predecessor chains (with the old layout `needPred` was never set).
