@@ -70,6 +70,7 @@
 #include "mapeditor/core/legacy/ShnFile.hpp"
 #include "mapeditor/core/legacy/ShineText.hpp"
 #include "mapeditor/core/legacy/QuestData.hpp"
+#include "mapeditor/core/legacy/ItemDropGroups.hpp"
 #include "mapeditor/core/LevelEditorTools.hpp"
 #include "mapeditor/core/legacy/MapRenderSettings.hpp"
 #include "mapeditor/app/Localization.hpp"
@@ -1138,6 +1139,10 @@ struct EditorState {
     char dropTableFilter[128] = "";
     bool dropTableOnlyActive = true;
     bool dropTableProblemsOnly = false;
+    // ItemDropGroup.txt + ItemInfoServer DropGroupA/B: löst DrItem-Gruppennamen auf (s. ItemDropGroups.hpp).
+    core::legacy::DropGroupCatalog dropGroups;
+    bool dropGroupsTried = false;
+    std::string dropGroupsStatus;
 
     std::string statusMessage;
 
@@ -1905,6 +1910,9 @@ void SyncProjectRoots(EditorState& state) {
     state.dropTableSelectedRecord = -1;
     state.dropTableFilter[0] = '\0';
     state.dropTableProblemsOnly = false;
+    state.dropGroups = core::legacy::DropGroupCatalog{};
+    state.dropGroupsTried = false;
+    state.dropGroupsStatus.clear();
 }
 
 // Die Textur-Layer-Auflösung bleibt unabhängig von der Heightmap. Neue Karten verwenden
@@ -9411,11 +9419,11 @@ void DrawQuestEditor(EditorState& state) {
     if (state.automationQuestSection == 2) { ImGui::SetScrollHereY(0.0f); state.automationQuestSection = 0; }
     if (UI::CollapsingHeader(L("Belohnungen", "Rewards"), ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::TextWrapped("%s", L("12 Einträge. Struktur an allen 2304 NA2016-Quests belegt; die Bedeutung von Verwendung "
-                                   "und der Typen EXP/Geld/4 ist aus den Wertebereichen abgeleitet (mit * markiert).",
+                                   "und der Typen EXP/Geld/Ruhm ist aus Wertebereichen und Quest-Texten abgeleitet (mit * bzw. ? markiert).",
                                    "12 entries. Structure verified on all 2304 NA2016 quests; the meaning of usage and of "
-                                   "the EXP/money/4 types is inferred from value ranges (marked with *)."));
+                                   "the EXP/money/fame types is inferred from value ranges and quest texts (marked with * or ?)."));
         constexpr int kRewardTypes[] = {0, 1, 2, 4};
-        const char* typeNames[] = {L("EXP*", "EXP*"), L("Geld*", "Money*"), L("Item", "Item"), L("Typ 4 (?)", "Type 4 (?)")};
+        const char* typeNames[] = {L("EXP*", "EXP*"), L("Geld*", "Money*"), L("Item", "Item"), L("Ruhm?", "Fame?")};
         const char* useNames[] = {L("unbelegt", "unused"), L("fest*", "fixed*"), L("Auswahl*", "choice*")};
         int clearIdx = -1;
         if (ImGui::BeginTable("##qrewards", 6, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit)) {
@@ -19682,6 +19690,30 @@ void EnsureDropTableLoaded(EditorState& state) {
     state.dropTableSelectedRecord = table->records.empty() ? -1 : 0;
 }
 
+// Lädt einmalig World/ItemDropGroup.txt, ItemInfoServer.shn (DropGroupA/B) und die ItemInfo-
+// Namen für die Auflösung der DrItem-Gruppen. Fehlt eine Datei, bleibt die Prüfung "unbekannt".
+void EnsureDropGroupCatalog(EditorState& state) {
+    if (state.dropGroupsTried) return;
+    state.dropGroupsTried = true;
+    if (state.shineTextRoot.empty()) return;
+    const auto groupPath = PreferProjectOverride(state.project, core::ProjectOutputSide::Server,
+                                                 std::filesystem::path(state.shineTextRoot) / "World" / "ItemDropGroup.txt");
+    auto groups = core::legacy::LoadShineTextFile(groupPath);
+    const auto* table = groups ? groups->FindTable("ItemDropGroup") : nullptr;
+    if (!table || !state.dropGroups.SetGroups(*table)) {
+        state.dropGroupsStatus = groups ? std::string("ItemDropGroup.txt: Tabelle ItemDropGroup fehlt")
+                                        : "ItemDropGroup.txt: " + groups.error();
+        return;
+    }
+    const std::string serverRoot = state.shnServerRoot.empty() ? state.shineTextRoot : state.shnServerRoot;
+    const auto serverPath = PreferProjectOverride(state.project, core::ProjectOutputSide::Server,
+                                                  std::filesystem::path(serverRoot) / "ItemInfoServer.shn");
+    if (auto server = core::legacy::LoadShnFile(serverPath)) state.dropGroups.AddItemInfoServer(*server);
+    else state.dropGroupsStatus = "ItemInfoServer.shn: " + server.error();
+    EnsureItemLookup(state);
+    for (const auto& item : state.itemEntries) state.dropGroups.AddItem(item.inx, item.name);
+}
+
 bool SaveDropTable(EditorState& state) {
     if (!state.dropTableLoaded || state.dropTableFile.path.empty()) return false;
     auto saved = SaveProjectShineOverride(
@@ -19752,6 +19784,7 @@ void DrawDropTableEditor(EditorState& state) {
     const int cChecksum = FindShineColumn(*table, "CheckSum");
 
     EnsureItemLookup(state);
+    EnsureDropGroupCatalog(state);
     EnsureMobViewInfoLoaded(state);
     std::unordered_set<std::string> knownMobs;
     if (state.mobViewInfoLoaded) {
@@ -19793,7 +19826,8 @@ void DrawDropTableEditor(EditorState& state) {
 
     struct DropRecordValidation {
         bool missingMob = false;
-        int missingDropItems = 0;
+        int missingDropItems = 0;  // Gruppenname fehlt in ItemDropGroup.txt
+        int emptyDropGroups = 0;   // Gruppe ohne auflösbares Item (Hinweis, kein Fehler)
         int missingExclusionItems = 0;
         bool levelRange = false;
         bool cenRange = false;
@@ -19820,10 +19854,11 @@ void DrawDropTableEditor(EditorState& state) {
 
         for (std::size_t slot=0; slot<dropItemColumns.size(); ++slot) {
             const std::string item = ShineRecordValue(candidate,dropItemColumns[slot]);
-            const bool active = !item.empty() && item != "-";
-            if (!active) continue;
-            if (!state.itemEntries.empty() && state.itemByInx.count(item)==0)
-                ++result.missingDropItems;
+            const auto status = state.dropGroups.Check(item);
+            if (status == core::legacy::DropSlotStatus::Empty) continue;
+            // DrItem nennt eine ItemDropGroup-Gruppe, kein Item (NA2016: 29009/29402 Slots).
+            if (status == core::legacy::DropSlotStatus::MissingGroup) ++result.missingDropItems;
+            else if (status == core::legacy::DropSlotStatus::GroupWithoutItems) ++result.emptyDropGroups;
             if (invalidOrderedRange(candidate,
                                     dropUpgradeMinColumns[slot],
                                     dropUpgradeMaxColumns[slot]))
@@ -19832,7 +19867,7 @@ void DrawDropTableEditor(EditorState& state) {
         if (!state.itemEntries.empty()) {
             for (const int col : exclusionColumns) {
                 const std::string item = ShineRecordValue(candidate,col);
-                if (!item.empty() && item != "-" && state.itemByInx.count(item)==0)
+                if (!core::legacy::DropGroupCatalog::IsEmptySlot(item) && state.itemByInx.count(item)==0)
                     ++result.missingExclusionItems;
             }
         }
@@ -19852,7 +19887,7 @@ void DrawDropTableEditor(EditorState& state) {
         std::vector<std::string> issues;
         if (validation.missingMob) issues.push_back("MobViewInfo");
         if (validation.missingDropItems > 0)
-            issues.push_back("DropItem x" + std::to_string(validation.missingDropItems));
+            issues.push_back("DropGroup x" + std::to_string(validation.missingDropItems));
         if (validation.missingExclusionItems > 0)
             issues.push_back("ExcItem x" + std::to_string(validation.missingExclusionItems));
         if (validation.levelRange) issues.push_back("MinLevel>MaxLevel");
@@ -19975,14 +20010,22 @@ void DrawDropTableEditor(EditorState& state) {
         ImGui::TextDisabled("· CheckSum %s", ShineRecordValue(record,cChecksum).c_str());
 
     const DropRecordValidation selectedValidation = validateDropRecord(record);
+    if (!state.dropGroups.HasGroups())
+        ImGui::TextColored(ImVec4(1.0f,0.68f,0.25f,1.0f), "%s",
+                           (std::string(L("Drop-Gruppen nicht prüfbar: ","Drop groups cannot be checked: ")) +
+                            (state.dropGroupsStatus.empty() ? std::string("ItemDropGroup.txt") : state.dropGroupsStatus)).c_str());
+    if (selectedValidation.emptyDropGroups > 0)
+        ImGui::TextDisabled(L("%d Slot(s) nennen eine Gruppe ohne auflösbares Item (in NA2016 v. a. inaktive Event-Gruppen).",
+                              "%d slot(s) name a group without a resolvable item (in NA2016 mostly inactive event groups)."),
+                            selectedValidation.emptyDropGroups);
     if (selectedValidation.Any()) {
         ImGui::SeparatorText(L("Validierung","Validation"));
         const ImVec4 issueColor(1.0f,0.48f,0.34f,1.0f);
         if (selectedValidation.missingMob)
             ImGui::TextColored(issueColor,"%s",L("MobId fehlt in MobViewInfo.shn","MobId is missing from MobViewInfo.shn"));
         if (selectedValidation.missingDropItems > 0)
-            ImGui::TextColored(issueColor,L("%d Drop-Item-Referenz(en) fehlen in ItemInfo.shn",
-                                             "%d drop item reference(s) are missing from ItemInfo.shn"),
+            ImGui::TextColored(issueColor,L("%d Drop-Gruppe(n) fehlen in ItemDropGroup.txt",
+                                             "%d drop group(s) are missing from ItemDropGroup.txt"),
                                selectedValidation.missingDropItems);
         if (selectedValidation.missingExclusionItems > 0)
             ImGui::TextColored(issueColor,L("%d Ausschluss-Item-Referenz(en) fehlen in ItemInfo.shn",
@@ -20076,12 +20119,12 @@ void DrawDropTableEditor(EditorState& state) {
             ImGuiTableFlags_Resizable, ImVec2(0, std::max(180.0f, ImGui::GetContentRegionAvail().y - 100.0f)))) {
         ImGui::TableSetupScrollFreeze(0,1);
         ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed, 36.0f);
-        ImGui::TableSetupColumn("Item", ImGuiTableColumnFlags_WidthStretch, 0.32f);
-        ImGui::TableSetupColumn("Rate", ImGuiTableColumnFlags_WidthFixed, 72.0f);
+        ImGui::TableSetupColumn(L("Drop-Gruppe","Drop group"), ImGuiTableColumnFlags_WidthStretch, 0.32f);
+        ImGui::TableSetupColumn("Rate", ImGuiTableColumnFlags_WidthFixed, 90.0f);
         ImGui::TableSetupColumn(L("Anzahl","Amount"), ImGuiTableColumnFlags_WidthFixed, 58.0f);
         ImGui::TableSetupColumn("Upgrade", ImGuiTableColumnFlags_WidthFixed, 85.0f);
         ImGui::TableSetupColumn("Rule", ImGuiTableColumnFlags_WidthFixed, 58.0f);
-        ImGui::TableSetupColumn("ItemInfo", ImGuiTableColumnFlags_WidthStretch, 0.25f);
+        ImGui::TableSetupColumn("ItemDropGroup", ImGuiTableColumnFlags_WidthStretch, 0.25f);
         ImGui::TableHeadersRow();
 
         for (const auto& slot : slots) {
@@ -20122,13 +20165,33 @@ void DrawDropTableEditor(EditorState& state) {
 
             ImGui::TableSetColumnIndex(6);
             if (active) {
-                if (const auto it = state.itemByInx.find(*itemValue); it != state.itemByInx.end()) {
-                    const auto& item = state.itemEntries[it->second];
-                    if (!item.name.empty()) ImGui::TextUnformatted(item.name.c_str());
-                    else ImGui::TextDisabled("ID %lld", item.id);
-                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("InxName %s\nID %lld", item.inx.c_str(), item.id);
-                } else if (!state.itemEntries.empty()) {
-                    ImGui::TextColored(ImVec4(1.0f,0.48f,0.34f,1.0f), "%s",L("nicht in ItemInfo","not in ItemInfo"));
+                switch (state.dropGroups.Check(*itemValue)) {
+                case core::legacy::DropSlotStatus::Resolved: {
+                    const auto items = state.dropGroups.ItemsForGroup(*itemValue);
+                    const auto* rows = state.dropGroups.Group(*itemValue);
+                    std::string qty;
+                    if (rows && !rows->empty()) qty = rows->front().minQty + "-" + rows->front().maxQty;
+                    ImGui::BeginGroup();
+                    if (items.size() == 1) ImGui::TextUnformatted(state.dropGroups.DisplayName(items.front()).c_str());
+                    else ImGui::Text(L("%zu Items","%zu items"), items.size());
+                    if (!qty.empty()) { ImGui::SameLine(); ImGui::TextDisabled(L("· Menge %s","· qty %s"), qty.c_str()); }
+                    ImGui::EndGroup();
+                    if (ImGui::IsItemHovered()) {
+                        std::string tip = std::string(L("Gruppe ","Group ")) + *itemValue + "\n";
+                        for (std::size_t i = 0; i < items.size() && i < 20; ++i)
+                            tip += "\n" + state.dropGroups.DisplayName(items[i]) + "  (" + items[i] + ")";
+                        if (items.size() > 20) tip += "\n...";
+                        ImGui::SetTooltip("%s", tip.c_str());
+                    }
+                    break;
+                }
+                case core::legacy::DropSlotStatus::GroupWithoutItems:
+                    ImGui::TextDisabled("%s", L("Gruppe ohne Items","group without items"));
+                    break;
+                case core::legacy::DropSlotStatus::MissingGroup:
+                    ImGui::TextColored(ImVec4(1.0f,0.48f,0.34f,1.0f), "%s",L("fehlt in ItemDropGroup","missing from ItemDropGroup"));
+                    break;
+                default: break;
                 }
             }
             ImGui::PopID();
@@ -21184,6 +21247,15 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         else if (m == "objects") state.editMode = EditMode::ObjectPlacement;
         else if (m == "npcs") state.editMode = EditMode::Npcs;
         else if (m == "portals") state.editMode = EditMode::Portals;
+    }
+    else if (cmd == "project") {
+        // project <Client-Ordner>|<Server-Ordner>: setzt die Projekt-Quellordner (read-only Quellen).
+        std::string rest; std::getline(in >> std::ws, rest);
+        const auto bar = rest.find('|');
+        const std::string client = rest.substr(0, bar);
+        const std::string server = bar == std::string::npos ? std::string() : rest.substr(bar + 1);
+        std::snprintf(state.project.clientFolder, sizeof(state.project.clientFolder), "%s", client.c_str());
+        std::snprintf(state.project.serverFolder, sizeof(state.project.serverFolder), "%s", server.c_str());
     }
     else if (cmd == "shn") {
         // shn <Unterreiter> <Server-Shine-Ordner>: öffnet den SHN-Editor (4 = Quest-Editor).

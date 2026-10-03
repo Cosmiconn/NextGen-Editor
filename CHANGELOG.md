@@ -1,3 +1,11 @@
+## Drop table editor — drop groups resolved (checked against the real NA2016 server data)
+- `DrItemN` in `World/ItemDropTable.txt` names a drop group in `World/ItemDropGroup.txt`, not an item. The group's `ItemID` then selects items via `ItemInfoServer.shn` `DropGroupA/B`, or names a single item directly. The editor used to check the slot names against ItemInfo and reported 1456 of 1485 mobs as broken. Measured on the real files: 29009 of 29402 filled slots name an existing group; 724 of 970 group rows resolve via DropGroupA/B and 103 via an InxName.
+- New core module `ItemDropGroups` (`DropGroupCatalog`). Problems now mean a group missing from ItemDropGroup.txt (393 slots, 20 names such as Potion06 or T6Product): 185 mobs instead of 1456. Groups without any resolvable item, mostly inactive event groups (EventItem01-08, Choco01; 4850 slots), are shown as a note. `ExcItem` value `0` counts as empty.
+- The slot table shows the group's item count and quantity range; the tooltip lists the items with their names.
+- `test_item_drop_groups`: synthetic chain always; with `-DNEXTGEN_NA2016_DATA=<folder with Client/ and Shine/>` also the measured numbers of the real files (the data is not committed).
+- Quest rewards: type 4 is labelled "Fame?". It appears only in Guard Captain Shutian's daily boss quests, a kingdom quest and one event chain (checked with the real QuestDialog texts). With the real texts, quest 251 also shows that the corrected layout matches: title "Interpretation of the Ancient Book 4", start NPC 88 = RouWeaponTitleMctZach, drops Q_TornOldBook01-05 from Bat/IceViVi/FlyingStaff/Zombie, one choice helmet per class.
+- Automation: `project <client>|<server>` sets the project source folders.
+
 ## UI — characters the editor font cannot draw
 - The editor uses ImGui's built-in font (Latin-1 only), so about 70 UI strings showed "?" for –, —, …, →, ←, ↓, ↗, •, ●, ✓, ✕ and ⚠ (on Windows too). They now use drawable equivalents (-, ..., ->, <, >, v, », ·, *, OK, ×, !). Verified in the quest flow view, which showed "?" for its navigation arrows, level range dash and script check marks.
 - Automation: `quest <id> flow` opens the quest flow view.
