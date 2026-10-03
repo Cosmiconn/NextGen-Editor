@@ -1,3 +1,7 @@
+## Level Editor — actor snap and free pivot
+- Toolbar "Actor": while moving with the gizmo, the pivot snaps exactly onto another visible object's pivot within the grid-snap radius.
+- Alt + middle click places the gizmo pivot on the ground hit (HTD or target plane) for rotate/scale; it follows gizmo moves, is valid until the selection changes, and Alt + middle double-click resets it.
+
 ## Level Editor — pivot mode
 - Viewport toolbar "Pivot: center/active": multi-selections rotate and scale around the selection center (default) or around the active (last selected) object with its orientation, like Unreal. Persisted in `viewport.txt`.
 

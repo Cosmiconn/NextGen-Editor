@@ -624,6 +624,10 @@ struct EditorState {
     int cameraSpeedSetting = core::level::kDefaultCameraSpeedSetting;
     bool surfaceSnap = false;         // Verschieben setzt Objekte laufend auf das HTD-Terrain
     bool pivotAtActiveObject = false; // Gizmo-Pivot: false = Auswahlmitte, true = aktives (zuletzt gewähltes) Objekt
+    bool actorSnap = false;           // Verschieben rastet am Pivot anderer Objekte ein (Radius = Raster-Snap)
+    // Frei gesetzter Pivot (Alt+MMB-Klick, wie Unreal): gilt bis zur nächsten Auswahländerung.
+    std::optional<std::array<float, 3>> pivotOverride;
+    std::string pivotOverrideSelectionKey;
     bool gameView = false;            // G: alle Editor-Helfer im Viewport ausblenden
     bool showViewportStats = true;
     bool showViewportGrid = false;
@@ -1522,6 +1526,7 @@ void SaveViewportSettings(EditorState& state) {
         << "camera_speed=" << state.cameraSpeedSetting << "\n"
         << "surface_snap=" << (state.surfaceSnap ? 1 : 0) << "\n"
         << "pivot_active=" << (state.pivotAtActiveObject ? 1 : 0) << "\n"
+        << "actor_snap=" << (state.actorSnap ? 1 : 0) << "\n"
         << "show_stats=" << (state.showViewportStats ? 1 : 0) << "\n"
         << "show_grid=" << (state.showViewportGrid ? 1 : 0) << "\n"
         << "show_axes=" << (state.showViewportAxes ? 1 : 0) << "\n"
@@ -1560,6 +1565,7 @@ void LoadViewportSettings(EditorState& state) {
                                                   core::level::kMaxCameraSpeedSetting);
         else if (key == "surface_snap") state.surfaceSnap = b;
         else if (key == "pivot_active") state.pivotAtActiveObject = b;
+        else if (key == "actor_snap") state.actorSnap = b;
         else if (key == "show_stats") state.showViewportStats = b;
         else if (key == "show_grid") state.showViewportGrid = b;
         else if (key == "show_axes") state.showViewportAxes = b;
@@ -2643,6 +2649,18 @@ ObjectSelectionPivot ComputeObjectSelectionPivot(const EditorState& state) {
     if (p.editableCount == 0 || !orientationSource) return p;
     const float inv = 1.0f/static_cast<float>(p.editableCount);
     p.position.x*=inv; p.position.y*=inv; p.position.z*=inv;
+    if (state.pivotOverride) {
+        std::string key;
+        for (const int id : state.selectedObjects) key += std::to_string(id) + ",";
+        if (key == state.pivotOverrideSelectionKey) {
+            p.position = {(*state.pivotOverride)[0], (*state.pivotOverride)[1], (*state.pivotOverride)[2]};
+            p.rotation = NormalizeEditQuat({orientationSource->rotX,orientationSource->rotY,
+                                            orientationSource->rotZ,orientationSource->rotW});
+            p.scale = p.editableCount == 1 ? std::max(0.001f,orientationSource->scale) : 1.0f;
+            p.valid = true;
+            return p;
+        }
+    }
     if (state.pivotAtActiveObject) {
         // Wie in Unreal: Pivot und Ausrichtung des aktiven (zuletzt gewählten) Objekts.
         for (auto it = state.selectedObjects.rbegin(); it != state.selectedObjects.rend(); ++it) {
@@ -16261,8 +16279,35 @@ bool DrawObjectTransformGizmo(EditorState& state, const ImVec2& imageScreenPos, 
                     ImGui::GetWindowDrawList()->AddCircleFilled(sp, 2.5f, IM_COL32(255, 220, 60, 255));
                 }
             } else if (std::abs(dx)+std::abs(dy)+std::abs(dz) > 1.0e-6f) {
-                MoveSelectedObjectsBy(state, dx, dy, dz);
+                float mx = dx, my = dy, mz = dz;
+                if (state.actorSnap) {
+                    // Actor-Snap: liegt der neue Pivot innerhalb des Raster-Snap-Radius um den Pivot
+                    // eines anderen sichtbaren Objekts, rastet er dort exakt ein.
+                    const EditVec3 want{after.m[12], after.m[13], after.m[14]};
+                    const float radius = std::max(5.0f, state.objectMoveSnap);
+                    const std::unordered_set<int> sel(state.selectedObjects.begin(), state.selectedObjects.end());
+                    float bestD = radius * radius;
+                    std::optional<EditVec3> snap;
+                    for (std::size_t i = 0; i < state.placementSet.Count(); ++i) {
+                        if (sel.contains(static_cast<int>(i)) || IsObjectHidden(state, i)) continue;
+                        const auto& o = state.placementSet.At(i);
+                        const float ex = o.posX - want.x, ey = o.posY - want.y, ez = o.posZ - want.z;
+                        const float d = ex * ex + ey * ey + ez * ez;
+                        if (d < bestD) { bestD = d; snap = EditVec3{o.posX, o.posY, o.posZ}; }
+                    }
+                    if (snap) {
+                        mx = snap->x - before.m[12]; my = snap->y - before.m[13]; mz = snap->z - before.m[14];
+                        state.objectGizmoMatrix[12] = snap->x;
+                        state.objectGizmoMatrix[13] = snap->y;
+                        state.objectGizmoMatrix[14] = snap->z;
+                    }
+                }
+                MoveSelectedObjectsBy(state, mx, my, mz);
                 if (state.surfaceSnap) SnapSelectedObjectsToTerrainSilently(state);
+                // Ein frei gesetzter Pivot wandert mit der Auswahl.
+                if (state.pivotOverride) {
+                    (*state.pivotOverride)[0] += mx; (*state.pivotOverride)[1] += my; (*state.pivotOverride)[2] += mz;
+                }
             }
         } else if (state.objectGizmoOperation == 1) {
             const EditQuat beforeQ = MatrixRotationQuat(before);
@@ -16556,6 +16601,11 @@ bool DrawViewportToolbar(EditorState& state, const ImVec2& imageScreenPos, float
         if (viewport_ui::ToggleChip(L("Boden", "Surface"), &state.surfaceSnap,
                                     L("Surface Snap: verschobene Objekte folgen dem begehbaren Boden (HTD + SHMD-GroundObject)",
                                       "Surface snap: moved objects follow the walkable ground (HTD + SHMD GroundObject)")))
+            state.viewportSettingsDirty = true;
+        ImGui::SameLine(0.0f, 4.0f);
+        if (viewport_ui::ToggleChip(L("Objekt", "Actor"), &state.actorSnap,
+                                    L("Actor Snap: Verschieben rastet am Pivot anderer Objekte ein (Radius = Raster-Snap)",
+                                      "Actor snap: moving snaps to other objects' pivots (radius = grid snap)")))
             state.viewportSettingsDirty = true;
         ImGui::SameLine(0.0f, 6.0f);
         const bool snapBefore = state.objectGizmoSnap;
@@ -17056,6 +17106,26 @@ void DrawPreview3DContent(EditorState& state) {
 
     // Direktes 3D-Picking: echte NIF-Dreiecke haben Vorrang. Nur Objekte ohne
     // ladbares Mesh fallen weiterhin auf den projizierten Ursprung/Footprint zurück.
+    // Frei gesetzter Pivot wie in Unreal: Alt + mittlere Maustaste klicken setzt den Gizmo-Pivot auf
+    // den Bodentreffer (HTD bzw. Zielebene); Alt+MMB-Doppelklick setzt ihn zurück.
+    if (state.editMode == EditMode::ObjectPlacement && !state.playtestActive && viewImageHovered &&
+        ImGui::GetIO().KeyAlt && !state.selectedObjects.empty()) {
+        if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Middle)) {
+            state.pivotOverride.reset();
+            state.objectGizmoMatrixValid = false;
+            state.statusMessage = L("Pivot zurückgesetzt.", "Pivot reset.");
+        } else if (ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) {
+            if (const auto hit = PickViewportGround(state, imageScreenPos, w, h, ImGui::GetMousePos())) {
+                state.pivotOverride = std::array<float, 3>{hit->x, hit->y, hit->z};
+                state.pivotOverrideSelectionKey.clear();
+                for (const int id : state.selectedObjects) state.pivotOverrideSelectionKey += std::to_string(id) + ",";
+                state.objectGizmoMatrixValid = false;
+                state.statusMessage = L("Pivot gesetzt (Alt+MMB-Doppelklick setzt zurück).",
+                                        "Pivot set (Alt+MMB double-click resets).");
+            }
+        }
+    }
+
     // Rahmenauswahl wie in Unreal: Strg+Alt+LMB ziehen (Shift ergänzt die Auswahl).
     const ImGuiIO& pickIo = ImGui::GetIO();
     const bool objectPicking = state.editMode==EditMode::ObjectPlacement && !state.playtestActive;

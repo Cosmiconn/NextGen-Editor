@@ -119,6 +119,7 @@ The keys only work while no text field is active.)MAN",
 - H: Auswahl ausblenden; Shift+H: Auswahl isolieren; Strg+H: alle einblenden
 - Strg+Alt+Links ziehen: Rahmenauswahl (Shift ergänzt); Alt+Ziehen am Gizmo: duplizieren
 - V beim Ziehen des Verschieben-Gizmos: Vertex-Snap (Mesh-Ecke bzw. HTD-Vertex unter dem Zeiger)
+- Alt + mittlere Maustaste: Pivot frei setzen; Alt + mittlerer Doppelklick: Pivot zurücksetzen
 - Alt+P: Spieltest starten/beenden; Esc: Spieltest beenden bzw. Auswahl aufheben
 # 2D-Ansicht
 - Mausrad: Zoom um den Zeiger; Mitte oder Rechts ziehen: verschieben
@@ -140,6 +141,7 @@ The keys only work while no text field is active.)MAN",
 - H: hide selection; Shift+H: isolate selection; Ctrl+H: show all
 - Ctrl+Alt+drag left: marquee selection (Shift adds); Alt+drag on the gizmo: duplicate
 - V while dragging the move gizmo: vertex snap (mesh corner or HTD vertex under the pointer)
+- Alt + middle mouse button: place the pivot freely; Alt + middle double-click: reset the pivot
 - Alt+P: start/stop playtest; Esc: stop playtest or clear selection
 # 2D view
 - Mouse wheel: zoom around the pointer; drag middle or right: pan
@@ -257,7 +259,7 @@ Objects can be shown/hidden by category (trees, buildings, rocks ...) in the Vis
 # Viewport-Leiste
 - Ansicht: Perspektive oder Achsenansichten (Oben mit Norden oben, von Süden/Norden/Westen/Osten), Kamera-Lesezeichen 0..9 und Navigationsart. Die Achsenansichten nutzen die Perspektivkamera.
 - Anzeigen: Show Flags für Terrain, NIF-Meshes, Platzhalter, SHMD Sky/Water/GroundObject, NPCs, Routen, Drahtgitter sowie Raster, Achsen-Anzeige, Statistik und SHBD-Kollision um den Mauszeiger.
-- Objekte-Modus: Verschieben/Rotieren/Skalieren, World/Local, Pivot (Auswahlmitte oder aktives = zuletzt gewähltes Objekt), 'Boden' (Surface Snap), Raster-, Winkel- und Skalierungs-Snap. Die Raster-Presets sind Fiesta-Einheiten: 6,25 = eine SHBD-Walk-Zelle, 50 = ein HTD-Block.
+- Objekte-Modus: Verschieben/Rotieren/Skalieren, World/Local, Pivot (Auswahlmitte oder aktives = zuletzt gewähltes Objekt; Alt+MMB setzt ihn frei), 'Boden' (Surface Snap), 'Objekt' (Actor Snap: rastet am Pivot anderer Objekte im Raster-Snap-Radius ein), Raster-, Winkel- und Skalierungs-Snap. Die Raster-Presets sind Fiesta-Einheiten: 6,25 = eine SHBD-Walk-Zelle, 50 = ein HTD-Block.
 - Surface Snap und 'Auf den Boden setzen' im Spieltest beachten das HTD-Terrain UND die SHMD-Kategorie GroundObject (z.B. das Pflaster von Roumen liegt über dem HTD).
 - Tempo 1..8, G (Spielansicht: alle Editor-Helfer aus) und Spieltest.
 - Anzeigen → Darstellung: Ansichtsmodus (beleuchtet, unbeleuchtet, nur Licht/Vertexfarbe, Normalen), Terrain-Vertexfarben der Karte (#VerTexColorTexture), Glow aus <Karte>.conf und Kantenglättung. Die Achsenansichten sind orthografisch: Ziehen verschiebt, Mausrad zoomt, Drehen kehrt zur Perspektive zurück. Details und Datenherkunft: docs/RENDERER.md.
@@ -275,7 +277,7 @@ Das Fenster 'Ausgabe' sammelt alle Statusmeldungen mit Zeit, Kategorie und Schwe
 # Viewport toolbar
 - View: perspective or axis views (top with north up, from south/north/west/east), camera bookmarks 0..9 and the navigation scheme. Axis views use the perspective camera.
 - Show: show flags for terrain, NIF meshes, placeholders, SHMD Sky/Water/GroundObject, NPCs, routes, wireframe as well as grid, axis indicator, stats and SHBD collision around the mouse pointer.
-- Objects mode: move/rotate/scale, world/local, pivot (selection center or active = last selected object), 'Surface' (surface snap), grid, angle and scale snap. Grid presets are Fiesta units: 6.25 = one SHBD walk cell, 50 = one HTD block.
+- Objects mode: move/rotate/scale, world/local, pivot (selection center or active = last selected object; Alt+MMB places it freely), 'Surface' (surface snap), 'Actor' (actor snap: snaps to other objects' pivots within the grid snap radius), grid, angle and scale snap. Grid presets are Fiesta units: 6.25 = one SHBD walk cell, 50 = one HTD block.
 - Surface snap and ground placement in the playtest respect the HTD terrain AND the SHMD GroundObject category (e.g. the Roumen pavement lies above the HTD).
 - Speed 1..8, G (game view: all editor helpers off) and playtest.
 - Show → Rendering: view mode (lit, unlit, lighting/vertex color only, normals), the map's terrain vertex colors (#VerTexColorTexture), glow from <map>.conf and anti-aliasing. Axis views are orthographic: dragging pans, the mouse wheel zooms, rotating returns to perspective. Details and data sources: docs/RENDERER.md.
