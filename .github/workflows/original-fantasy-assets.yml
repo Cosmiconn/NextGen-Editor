@@ -1,0 +1,45 @@
+name: Original Fantasy NIF Assets
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - tools/nif/generate_original_fantasy_assets.py
+      - .github/workflows/original-fantasy-assets.yml
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Generate NIF asset pack
+        run: python3 tools/nif/generate_original_fantasy_assets.py --output build/original-fantasy-nifs
+      - name: Verify generated files
+        run: |
+          test "$(find build/original-fantasy-nifs -maxdepth 1 -name '*.nif' | wc -l)" -eq 13
+          test -s build/NextGen_FiestaStyle_NIF_AssetPack_v1.zip
+          python3 - <<'PY'
+          from pathlib import Path
+          sig = b"Gamebryo File Format, Version 20.0.0.4\n"
+          files = sorted(Path("build/original-fantasy-nifs").glob("*.nif"))
+          assert len(files) == 13
+          for path in files:
+              data = path.read_bytes()
+              assert data.startswith(sig), path
+              assert len(data) > 128, path
+          print("verified", len(files), "NIF assets")
+          PY
+      - name: Upload NIF asset pack
+        uses: actions/upload-artifact@v4
+        with:
+          name: NextGen-FiestaStyle-NIF-AssetPack-v1
+          path: |
+            build/NextGen_FiestaStyle_NIF_AssetPack_v1.zip
+            build/original-fantasy-nifs/*.nif
+            build/original-fantasy-nifs/manifest.json
+            build/original-fantasy-nifs/README.txt
+          if-no-files-found: error
+          retention-days: 30
