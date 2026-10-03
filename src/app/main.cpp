@@ -72,6 +72,8 @@
 #include "mapeditor/core/legacy/QuestData.hpp"
 #include "mapeditor/core/legacy/ItemDropGroups.hpp"
 #include "mapeditor/core/LevelEditorTools.hpp"
+#include "mapeditor/core/MapCheck.hpp"
+#include "mapeditor/core/Autosave.hpp"
 #include "mapeditor/core/legacy/MapRenderSettings.hpp"
 #include "mapeditor/app/Localization.hpp"
 
@@ -94,6 +96,10 @@
 #include <deque>
 #include <functional>
 #include <map>
+#include <memory>
+#include <future>
+#include <chrono>
+#include <ctime>
 #include <limits>
 #include <optional>
 #include <unordered_map>
@@ -548,6 +554,7 @@ struct EditorState {
     // no NIF writer in the editor yet. Persistent scene-geometry edits must stay read-only.
     bool standaloneNifMap = false;
     core::UndoStack undo;
+    std::uint64_t mapEditRevision = 0; // zählt jede Kartenänderung über die Historie (Autosave)
     std::vector<MapHistoryDomain> mapHistoryUndo;
     std::vector<MapHistoryDomain> mapHistoryRedo;
     std::vector<ObjectEditSnapshot> objectUndo;
@@ -977,6 +984,27 @@ struct EditorState {
     bool questNpcCatalogBuilt = false;
     int questNpcPickerTarget = -2; // -1 = Start-NPC, 0..4 = Monster-/NPC-Ziel, -2 = keins
     bool questNpcPickerOpenRequest = false; // Zielzeilen öffnen das Popup außerhalb ihres ID-Scopes
+
+    // Kartenprüfung (Werkzeuge > Kartenprüfung): Ergebnisliste der letzten Prüfung.
+    bool mapCheckOpen = false;
+    bool mapCheckRunRequest = false;
+    std::vector<core::MapCheckIssue> mapCheckIssues;
+    std::string mapCheckForMap;          // Karte, für die die Liste gilt
+    std::string mapCheckSummary;
+    bool mapCheckShowErrors = true, mapCheckShowWarnings = true, mapCheckShowInfo = false;
+    bool mapCheckIncludeQuests = true;
+    std::map<std::string, std::shared_ptr<core::WalkGrid>> mapCheckGridCache; // Zielkarten der Gates
+
+    // Automatisches Speichern der offenen Karte nach <Projekt>/Autosave (siehe core/Autosave.hpp).
+    bool autosaveEnabled = true;
+    int autosaveMinutes = 5;
+    double autosaveLastTime = 0.0;          // ImGui::GetTime() der letzten Sicherung bzw. des Kartenöffnens
+    std::uint64_t autosaveSavedRevision = 0; // mapEditRevision zum Zeitpunkt der letzten Sicherung
+    bool autosaveWasDirty = false;
+    std::future<std::string> autosaveTask;   // Hintergrund-Schreibvorgang; Ergebnis = Fehlertext oder leer
+    std::string autosaveStatus;
+    bool autosaveRecoveryPrompt = false;
+    core::AutosaveMeta autosaveRecoveryMeta;
     char questNpcFilter[64] = "";
     bool questNpcOnlyPlaced = true;
     int automationQuestSection = 0; // nur Automatisierung (Screenshots): 1 Drops, 2 Belohnungen, 3 NPC-Auswahl, 4 Ziele
@@ -1340,6 +1368,8 @@ void SaveWorkspaceSettings(const EditorState& state) {
     std::ofstream out(dir / "workspace.txt", std::ios::binary | std::ios::trunc);
     if (!out) return;
     out << "map_preset=" << std::clamp(state.mapWorkspacePreset,0,3) << "\n";
+    out << "autosave_enabled=" << (state.autosaveEnabled ? 1 : 0) << "\n";
+    out << "autosave_minutes=" << std::clamp(state.autosaveMinutes,1,60) << "\n";
 }
 
 void LoadWorkspaceSettings(EditorState& state) {
@@ -1350,6 +1380,8 @@ void LoadWorkspaceSettings(EditorState& state) {
     std::string line;
     while (std::getline(in,line)) {
         constexpr std::string_view prefix="map_preset=";
+        if (line.rfind("autosave_enabled=",0) == 0) { state.autosaveEnabled = std::atoi(line.c_str()+17) != 0; continue; }
+        if (line.rfind("autosave_minutes=",0) == 0) { state.autosaveMinutes = std::clamp(std::atoi(line.c_str()+17),1,60); continue; }
         if (line.rfind(prefix,0) != 0) continue;
         state.mapWorkspacePreset=std::clamp(std::atoi(line.c_str()+static_cast<std::ptrdiff_t>(prefix.size())),0,3);
     }
@@ -1979,6 +2011,8 @@ core::legacy::LegacyMapProject BuildProjectFromState(const EditorState& state,
     return project;
 }
 
+void FinishMapAutosave(EditorState& state, bool wait);
+
 bool SaveLegacyMapProject(EditorState& state) {
     if (state.project.projectFolder[0] == '\0') {
         state.statusMessage = L("Karte speichern blockiert: kein Projektordner konfiguriert.",
@@ -2055,6 +2089,9 @@ bool SaveLegacyMapProject(EditorState& state) {
 
     state.legacyIniMeta = project.ini;
     state.mapDirty = false;
+    FinishMapAutosave(state, true);
+    core::RemoveAutosave(state.project.projectFolder, state.legacySaveStem); // Projekt ist jetzt aktuell
+    state.autosaveSavedRevision = state.mapEditRevision;
     const auto ini = outputDir / (std::string(state.legacySaveStem) + ".ini");
     TouchRecentMap(state, ini.string());
     state.statusMessage = std::string(T("workspace.savedas")) + outputDir.string();
@@ -2347,6 +2384,7 @@ void InvalidateMapHistoryRedo(EditorState& state) {
 }
 
 void RegisterMapHistoryAction(EditorState& state, MapHistoryDomain domain) {
+    ++state.mapEditRevision;
     InvalidateMapHistoryRedo(state);
     state.mapHistoryUndo.push_back(domain);
 }
@@ -2419,6 +2457,7 @@ bool CanRedoMapEdit(const EditorState& state) { return !state.mapHistoryRedo.emp
 
 bool UndoMapEdit(EditorState& state) {
     if (state.mapHistoryUndo.empty()) return false;
+    ++state.mapEditRevision;
     const auto domain = state.mapHistoryUndo.back();
     bool ok = false;
     switch (domain) {
@@ -2466,6 +2505,7 @@ bool UndoMapEdit(EditorState& state) {
 
 bool RedoMapEdit(EditorState& state) {
     if (state.mapHistoryRedo.empty()) return false;
+    ++state.mapEditRevision;
     const auto domain = state.mapHistoryRedo.back();
     bool ok = false;
     switch (domain) {
@@ -3547,6 +3587,8 @@ void LoadMapRenderData(EditorState& state, const std::filesystem::path& mapDir, 
     state.meshDirty = true; // Vertexfarben liegen im Terrain-Vertexpuffer
 }
 
+void CheckAutosaveRecovery(EditorState& state);
+
 bool OpenLegacyMapIntoState(EditorState& state, const std::filesystem::path& iniPath,
                             bool preferProjectOutput = true) {
     const auto workingIniPath = LegacyMapWorkingIniPath(state, iniPath, preferProjectOutput);
@@ -3577,6 +3619,7 @@ bool OpenLegacyMapIntoState(EditorState& state, const std::filesystem::path& ini
     std::snprintf(state.legacySaveStem, sizeof(state.legacySaveStem), "%s", iniPath.stem().string().c_str());
 
     TouchRecentMap(state, iniPath.string());
+    CheckAutosaveRecovery(state);
     state.statusMessage = "Karte geöffnet" +
                           std::string(workingIniPath != iniPath ? " (Projekt-Override)" : "") +
                           " (" + std::to_string(report.issues.size()) + " Hinweis(e)) - " +
@@ -3640,6 +3683,182 @@ bool OpenMapPathIntoState(EditorState& state, const std::filesystem::path& path,
     });
     if (ext == ".nif") return OpenStandaloneNifMapIntoState(state, path);
     return OpenLegacyMapIntoState(state, path, preferProjectOutput);
+}
+
+// ============================================================================
+// Automatisches Speichern: Die offene Karte wird bei Änderungen alle N Minuten mit SaveLegacyMap
+// nach <Projekt>/Autosave/Client/resmap/field/<Karte>/ geschrieben (Hintergrund-Thread auf einer
+// Kopie). Beim nächsten Öffnen der Karte bietet der Editor die Wiederherstellung an; normales
+// Speichern ins Projekt oder "Verwerfen" löscht die Sicherung.
+// ============================================================================
+bool MapAutosaveSupported(const EditorState& state) {
+    return state.project.projectFolder[0] != '\0' && state.legacySaveStem[0] != '\0' && !state.standaloneNifMap &&
+           state.hasLegacyIniMeta;
+}
+
+void CheckAutosaveRecovery(EditorState& state) {
+    state.autosaveRecoveryPrompt = false;
+    state.autosaveLastTime = ImGui::GetTime();
+    state.autosaveSavedRevision = state.mapEditRevision;
+    state.autosaveWasDirty = false;
+    if (!MapAutosaveSupported(state)) return;
+    const auto dir = core::AutosaveMapDir(state.project.projectFolder, state.legacySaveStem);
+    if (auto meta = core::ReadAutosaveMeta(dir)) {
+        state.autosaveRecoveryMeta = *meta;
+        state.autosaveRecoveryPrompt = true;
+    }
+}
+
+// Startet eine Sicherung, falls keine läuft. Kopiert den Zustand sofort; geschrieben wird im Hintergrund.
+bool StartMapAutosave(EditorState& state) {
+    if (!MapAutosaveSupported(state)) return false;
+    if (state.autosaveTask.valid()) return false;
+    auto project = std::make_shared<core::legacy::LegacyMapProject>(BuildProjectFromState(state));
+    const auto dir = core::AutosaveMapDir(state.project.projectFolder, state.legacySaveStem);
+    core::AutosaveMeta meta;
+    meta.sourceIni = state.legacyMapIniPath;
+    meta.mapStem = state.legacySaveStem;
+    meta.savedAtUnix = std::chrono::duration_cast<std::chrono::seconds>(
+                           std::chrono::system_clock::now().time_since_epoch()).count();
+    state.autosaveTask = std::async(std::launch::async, [project, dir, meta]() -> std::string {
+        // Alte Sicherung erst nach erfolgreichem Schreiben ersetzen: in einen Nachbarordner schreiben.
+        const auto tmp = dir.parent_path() / (dir.filename().string() + ".tmp");
+        std::error_code ec;
+        std::filesystem::remove_all(tmp, ec);
+        if (auto r = core::legacy::SaveLegacyMap(*project, tmp, meta.mapStem); !r) return r.error();
+        if (auto r = core::WriteAutosaveMeta(tmp, meta); !r) return r.error();
+        std::filesystem::remove_all(dir, ec);
+        std::filesystem::rename(tmp, dir, ec);
+        if (ec) return "Autosave-Ordner nicht ersetzbar: " + ec.message();
+        return {};
+    });
+    state.autosaveLastTime = ImGui::GetTime();
+    state.autosaveSavedRevision = state.mapEditRevision;
+    return true;
+}
+
+void FinishMapAutosave(EditorState& state, bool wait) {
+    if (!state.autosaveTask.valid()) return;
+    if (!wait && state.autosaveTask.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
+    const std::string error = state.autosaveTask.get();
+    char when[32];
+    const std::time_t now = std::time(nullptr);
+    std::strftime(when, sizeof(when), "%H:%M:%S", std::localtime(&now));
+    state.autosaveStatus = error.empty() ? std::string(L("Automatisch gesichert um ", "Autosaved at ")) + when
+                                         : std::string(L("Automatisches Speichern fehlgeschlagen: ", "Autosave failed: ")) + error;
+    if (!error.empty()) state.statusMessage = state.autosaveStatus;
+}
+
+void TickAutosave(EditorState& state) {
+    FinishMapAutosave(state, false);
+    if (!MapAutosaveSupported(state)) return;
+    const double now = ImGui::GetTime();
+    // Erste Änderung nach dem Öffnen/Sichern startet die Wartezeit.
+    if (state.mapDirty && !state.autosaveWasDirty) state.autosaveLastTime = now;
+    state.autosaveWasDirty = state.mapDirty;
+    const bool changedSinceAutosave = state.mapDirty && state.mapEditRevision != state.autosaveSavedRevision;
+    if (!core::AutosaveDue(state.autosaveEnabled, changedSinceAutosave, now, state.autosaveLastTime,
+                           static_cast<double>(state.autosaveMinutes) * 60.0))
+        return;
+    // Nicht mitten in einem Pinselstrich oder Ziehvorgang sichern.
+    if (ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsMouseDown(ImGuiMouseButton_Right) || state.objectDragActive) return;
+    StartMapAutosave(state);
+}
+
+// Übernimmt die gesicherten Kartenmodule in die frisch geöffnete Karte. Texturen, Render-Daten und
+// Pfade kommen aus der normal geöffneten Karte; aus der Sicherung stammen Heightmap, Layer-Masken,
+// Block&Walk, Objekte und die dazu passende IDM-Zuordnung.
+bool RestoreMapAutosave(EditorState& state) {
+    FinishMapAutosave(state, true);
+    const auto dir = core::AutosaveMapDir(state.project.projectFolder, state.legacySaveStem);
+    const auto ini = core::legacy::FindSiblingFileByStem(dir, state.legacySaveStem, ".ini");
+    if (!ini) {
+        state.statusMessage = L("Sicherung unvollständig (keine INI).", "Autosave incomplete (no INI).");
+        return false;
+    }
+    auto loaded = core::legacy::OpenLegacyMap(*ini);
+    if (!loaded) {
+        state.statusMessage = std::string(L("Sicherung nicht lesbar: ", "Autosave not readable: ")) + loaded.error();
+        return false;
+    }
+    auto& saved = *loaded;
+    std::size_t restoredParts = 0;
+    if (saved.hasHeightmap && saved.heightmap.Width() == state.heightmap.Width() && saved.heightmap.Height() == state.heightmap.Height()) {
+        state.heightmap = std::move(saved.heightmap);
+        state.meshDirty = true;
+        ++restoredParts;
+    }
+    if (saved.textureStack.LayerCount() == state.textureStack.LayerCount()) {
+        for (std::size_t l = 0; l < state.textureStack.LayerCount(); ++l) {
+            auto& dst = state.textureStack.Layer(l);
+            const auto& src = saved.textureStack.Layer(l);
+            if (dst.name != src.name || dst.blend.Width() != src.blend.Width() || dst.blend.Height() != src.blend.Height()) continue;
+            dst.blend = src.blend;
+        }
+        state.layerPreviewDirty = true;
+        ++restoredParts;
+    }
+    if (saved.hasWalkGrid && saved.walkGrid.Width() == state.walkGrid.Width() && saved.walkGrid.Height() == state.walkGrid.Height()) {
+        state.walkGrid = std::move(saved.walkGrid);
+        state.walkPreviewDirty = true;
+        state.modelBlockStatsKey.clear();
+        ++restoredParts;
+    }
+    if (saved.hasObjects) {
+        state.placementSet = std::move(saved.objects);
+        // Die Sicherung ist eine eigene SHMD/IDM-Generation: ihre Reihenfolge ist die neue Quelle.
+        state.legacyShmdSourceCount = static_cast<std::int32_t>(state.placementSet.Count());
+        state.legacySpatialIndex = std::move(saved.spatialIndex);
+        state.hasLegacySpatialIndex = saved.hasSpatialIndex;
+        state.selectedObjects.clear();
+        state.selectedObject = kNoObjectSelection;
+        state.objectEditorHidden.assign(state.placementSet.Count(), 0);
+        state.objectEditorLocked.assign(state.placementSet.Count(), 0);
+        state.objectEditorLabels.assign(state.placementSet.Count(), {});
+        state.objectEditorGroups.assign(state.placementSet.Count(), {});
+        state.nifMeshRenderer.LoadModelsForSet(state.placementSet, CurrentObjectAssetMapDir(state));
+        ++restoredParts;
+    }
+    ClearMapHistory(state);
+    state.mapDirty = true;
+    state.autosaveRecoveryPrompt = false;
+    state.statusMessage = std::string(L("Sicherung wiederhergestellt (", "Autosave restored (")) + std::to_string(restoredParts) +
+                          L(" Module) - mit Speichern ins Projekt übernehmen.", " modules) - save to write it to the project.");
+    return true;
+}
+
+void DrawAutosaveRecoveryPopup(EditorState& state) {
+    if (state.autosaveRecoveryPrompt && !ImGui::IsPopupOpen(L("Sicherung gefunden###autosaveRecovery", "Autosave found###autosaveRecovery")))
+        ImGui::OpenPopup(L("Sicherung gefunden###autosaveRecovery", "Autosave found###autosaveRecovery"));
+    if (!ImGui::BeginPopupModal(L("Sicherung gefunden###autosaveRecovery", "Autosave found###autosaveRecovery"), nullptr,
+                                ImGuiWindowFlags_AlwaysAutoResize))
+        return;
+    char when[64] = "?";
+    const std::time_t t = static_cast<std::time_t>(state.autosaveRecoveryMeta.savedAtUnix);
+    if (const std::tm* tm = std::localtime(&t)) std::strftime(when, sizeof(when), "%d.%m.%Y %H:%M:%S", tm);
+    ImGui::Text(L("Für die Karte %s gibt es eine automatische Sicherung vom %s,", "There is an autosave of map %s from %s"),
+                state.legacySaveStem, when);
+    ImGui::TextUnformatted(L("die nicht ins Projekt gespeichert wurde (z.B. nach einem Absturz).",
+                             "that was not saved to the project (e.g. after a crash)."));
+    ImGui::TextDisabled("%s", core::AutosaveMapDir(state.project.projectFolder, state.legacySaveStem).string().c_str());
+    ImGui::Spacing();
+    if (UI::Button(L("Wiederherstellen##autosave", "Restore##autosave"))) {
+        RestoreMapAutosave(state);
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (UI::Button(L("Verwerfen##autosave", "Discard##autosave"))) {
+        core::RemoveAutosave(state.project.projectFolder, state.legacySaveStem);
+        state.autosaveRecoveryPrompt = false;
+        state.statusMessage = L("Sicherung verworfen.", "Autosave discarded.");
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (UI::Button(L("Später##autosave", "Later##autosave"))) {
+        state.autosaveRecoveryPrompt = false;
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
 }
 
 // Leitet die Block&Walk-Gitterauflösung aus der Heightmap ab: Breite = QuadsBreite/2, Höhe =
@@ -5387,6 +5606,10 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
             }
             if (ImGui::MenuItem(L("Einstellungen","Settings"))) state.settingsOpen = true;
             ImGui::Separator();
+            if (ImGui::MenuItem(L("Kartenprüfung","Map check"), nullptr, false, mapWorkspace)) {
+                state.mapCheckOpen = true;
+                state.mapCheckRunRequest = true;
+            }
             if (ImGui::MenuItem(state.playtestActive ? L("Spieltest beenden","Stop playtest")
                                                      : L("Spieltest starten","Start playtest"),
                                 state.playtestActive ? "Esc" : "Alt+P", false, mapWorkspace))
@@ -8502,12 +8725,21 @@ void EnsureNpcTextLoaded(EditorState& state) {
 // entspricht (state.legacySaveStem) - Map-Spaltenwerte in NPC.txt entsprechen echten Karten-
 // Ordnernamen (z.B. "Rou", "RouN", "EldCem01"), byte-exakt gegen die echten NA2016-Daten
 // geprüft, siehe docs (CHANGELOG [0.44.15]).
+// Servername der offenen Karte für World/NPC.txt, MobRegen, TownPortal und MapInfo. Der Kartenordner
+// kann anders geschrieben sein als der Servername (NA2016: bera/bera.ini, Server "Bera"); maßgeblich
+// ist MapInfo.shn (MapFolderName -> MapName), sonst der Ordnername.
+std::string CurrentMapServerName(EditorState& state);
+std::string TrimAscii(const std::string& in);
+bool SameMapName(const std::string& a, const std::string& b) {
+    return LowerAscii(TrimAscii(a)) == LowerAscii(TrimAscii(b));
+}
+
 std::vector<std::size_t> NpcRecordsForCurrentMap(EditorState& state) {
     std::vector<std::size_t> out;
     auto* table = state.npcTextFile.FindTable("ShineNPC");
     if (!table) return out;
     for (std::size_t i = 0; i < table->records.size(); ++i) {
-        if (table->records[i].values.size() > 1 && table->records[i].values[1] == state.legacySaveStem) {
+        if (table->records[i].values.size() > 1 && SameMapName(table->records[i].values[1], state.legacySaveStem)) {
             out.push_back(i);
         }
     }
@@ -8519,7 +8751,9 @@ std::vector<std::size_t> NpcRecordsForCurrentMap(EditorState& state) {
 void EnsureMobRegenLoaded(EditorState& state) {
     if (state.shineTextRoot.empty()) return;
     if (state.mobRegenTextLoaded && state.mobRegenLoadedForMap == state.legacySaveStem) return;
-    const auto sourcePath = std::filesystem::path(state.shineTextRoot) / "MobRegen" / (std::string(state.legacySaveStem) + ".txt");
+    const std::filesystem::path regenDir = std::filesystem::path(state.shineTextRoot) / "MobRegen";
+    const std::string regenFile = CurrentMapServerName(state) + ".txt";
+    const auto sourcePath = core::legacy::ResolveCaseInsensitivePath(regenDir, regenFile).value_or(regenDir / regenFile);
     const auto path = PreferProjectOverride(state.project, core::ProjectOutputSide::Server, sourcePath);
     auto result = core::legacy::LoadShineTextFile(path);
     if (result) {
@@ -10219,6 +10453,26 @@ bool FindGateTownNpc(EditorState& state, float& x, float& y) {
     return false;
 }
 
+std::string CurrentMapServerName(EditorState& state) {
+    const std::string stem = state.legacySaveStem;
+    EnsureMapInfoLoaded(state);
+    if (!state.mapInfoLoaded || stem.empty()) return stem;
+    const auto& f = state.mapInfoShn;
+    const int cName = FindShnColumnByName(f, "MapName");
+    const int cFolder = FindShnColumnByName(f, "MapFolderName");
+    if (cName < 0) return stem;
+    std::string byName;
+    for (const auto& row : f.rows) {
+        if (static_cast<std::size_t>(cName) >= row.values.size()) continue;
+        const std::string name = TrimAscii(core::legacy::ShnValueToString(row.values[static_cast<std::size_t>(cName)]));
+        if (cFolder >= 0 && static_cast<std::size_t>(cFolder) < row.values.size() &&
+            SameMapName(core::legacy::ShnValueToString(row.values[static_cast<std::size_t>(cFolder)]), stem) && SameMapName(name, stem))
+            return name; // Ordner und Name passen: eindeutig
+        if (byName.empty() && SameMapName(name, stem)) byName = name;
+    }
+    return byName.empty() ? stem : byName;
+}
+
 // Wiederbelebungspunkt der offenen Karte (MapInfo.shn: MapName == Kartenname).
 bool FindMapRegen(EditorState& state, float& x, float& y) {
     if (!state.mapInfoLoaded) return false;
@@ -10229,13 +10483,40 @@ bool FindMapRegen(EditorState& state, float& x, float& y) {
     if (cName < 0 || cX < 0 || cY < 0) return false;
     for (std::size_t r = 0; r < f.rows.size(); ++r) {
         if (static_cast<std::size_t>(cName) >= f.rows[r].values.size()) continue;
-        if (core::legacy::ShnValueToString(f.rows[r].values[static_cast<std::size_t>(cName)]) == state.legacySaveStem) {
+        if (SameMapName(core::legacy::ShnValueToString(f.rows[r].values[static_cast<std::size_t>(cName)]), CurrentMapServerName(state))) {
             x = static_cast<float>(ShnCellInt(f, r, cX));
             y = static_cast<float>(ShnCellInt(f, r, cY));
             return true;
         }
     }
     return false;
+}
+
+// LinkTable-Spalten aus World/NPC.txt per Namen: in NA2016 stehen vor "argument" sieben leere
+// Spalten (die Records beginnen mit 7 leeren Werten); feste Indizes 0..6 lasen deshalb nichts.
+struct LinkTableColumns {
+    int argument = 0, mapServer = 1, mapClient = 2, x = 3, y = 4, direct = 5, party = 6;
+};
+LinkTableColumns FindLinkTableColumns(const core::legacy::ShineTable& table) {
+    LinkTableColumns c;
+    const auto find = [&](const char* name, int fallback) {
+        for (std::size_t i = 0; i < table.columns.size(); ++i)
+            if (LowerAscii(table.columns[i].name) == LowerAscii(name)) return static_cast<int>(i);
+        return fallback;
+    };
+    c.argument = find("argument", c.argument);
+    const int base = c.argument; // Fallback: die übrigen Spalten folgen in fester Reihenfolge
+    c.mapServer = find("MapServer", base + 1);
+    c.mapClient = find("MapClient", base + 2);
+    c.x = find("Coord-X", base + 3);
+    c.y = find("Coord-Y", base + 4);
+    c.direct = find("Direct", base + 5);
+    c.party = find("Party", base + 6);
+    return c;
+}
+const std::string& LinkValue(const core::legacy::ShineRecord& record, int column) {
+    static const std::string empty;
+    return column >= 0 && static_cast<std::size_t>(column) < record.values.size() ? record.values[static_cast<std::size_t>(column)] : empty;
 }
 
 // Alle Teleport-Ziele (TownPortal + Schriftrollen), die auf der offenen Karte liegen.
@@ -10252,7 +10533,7 @@ std::vector<PortalMarker> CollectPortalMarkers(EditorState& state) {
         if (cMap >= 0 && cX >= 0 && cY >= 0) {
             for (std::size_t r = 0; r < f.rows.size(); ++r) {
                 if (static_cast<std::size_t>(cMap) >= f.rows[r].values.size()) continue;
-                if (core::legacy::ShnValueToString(f.rows[r].values[static_cast<std::size_t>(cMap)]) != stem) continue;
+                if (!SameMapName(core::legacy::ShnValueToString(f.rows[r].values[static_cast<std::size_t>(cMap)]), stem)) continue;
                 PortalMarker m;
                 m.kind = kPortalKindTown;
                 m.idx = r;
@@ -10268,7 +10549,7 @@ std::vector<PortalMarker> CollectPortalMarkers(EditorState& state) {
         if (table && table->columns.size() >= 5) {
             for (std::size_t r = 0; r < table->records.size(); ++r) {
                 const auto& rec = table->records[r];
-                if (rec.values.size() < 5 || TrimAscii(rec.values[2]) != stem) continue;
+                if (rec.values.size() < 5 || !SameMapName(rec.values[2], stem)) continue;
                 PortalMarker m;
                 m.kind = kPortalKindRecall;
                 m.idx = r;
@@ -10287,10 +10568,11 @@ std::vector<PortalMarker> CollectPortalMarkers(EditorState& state) {
         auto* npcs = state.npcTextFile.FindTable("ShineNPC");
         auto* links = state.npcTextFile.FindTable("LinkTable");
         if (npcs && links) {
+            const LinkTableColumns lc = FindLinkTableColumns(*links);
             std::unordered_map<std::string,const core::legacy::ShineRecord*> byArgument;
             for (const auto& link : links->records) {
-                if (link.values.size() >= 7 && !link.values[0].empty())
-                    byArgument.emplace(link.values[0], &link);
+                if (!LinkValue(link, lc.argument).empty())
+                    byArgument.emplace(LinkValue(link, lc.argument), &link);
             }
             for (const std::size_t idx : NpcRecordsForCurrentMap(state)) {
                 if (idx >= npcs->records.size()) continue;
@@ -10306,12 +10588,12 @@ std::vector<PortalMarker> CollectPortalMarkers(EditorState& state) {
                 m.y = static_cast<float>(std::atof(npc.values[3].c_str()));
                 m.linkKey = npc.values[7];
                 m.sourceRole = npc.values.size() > 6 ? npc.values[6] : std::string();
-                m.targetMapServer = TrimAscii(link.values[1]);
-                m.targetMapClient = TrimAscii(link.values[2]);
-                m.targetX = static_cast<float>(std::atof(link.values[3].c_str()));
-                m.targetY = static_cast<float>(std::atof(link.values[4].c_str()));
-                m.targetDirect = std::atoi(link.values[5].c_str());
-                m.targetParty = std::atoi(link.values[6].c_str()) != 0;
+                m.targetMapServer = TrimAscii(LinkValue(link, lc.mapServer));
+                m.targetMapClient = TrimAscii(LinkValue(link, lc.mapClient));
+                m.targetX = static_cast<float>(std::atof(LinkValue(link, lc.x).c_str()));
+                m.targetY = static_cast<float>(std::atof(LinkValue(link, lc.y).c_str()));
+                m.targetDirect = std::atoi(LinkValue(link, lc.direct).c_str());
+                m.targetParty = std::atoi(LinkValue(link, lc.party).c_str()) != 0;
                 const std::string target = !m.targetMapClient.empty() ? m.targetMapClient : m.targetMapServer;
                 m.label = (npc.values[0].empty() ? m.linkKey : npc.values[0]) + " -> " + target;
                 out.push_back(std::move(m));
@@ -10438,7 +10720,7 @@ void AddTownPortalForCurrentMap(EditorState& state) {
     core::legacy::ShnRow row = f.rows.back();
     f.rows.push_back(std::move(row));
     const std::size_t r = f.rows.size() - 1;
-    if (auto pv = core::legacy::ParseShnValue(f.columns[static_cast<std::size_t>(cMap)], state.legacySaveStem)) {
+    if (auto pv = core::legacy::ParseShnValue(f.columns[static_cast<std::size_t>(cMap)], CurrentMapServerName(state))) {
         f.rows[r].values[static_cast<std::size_t>(cMap)] = std::move(*pv);
     }
     if (cIdx >= 0) SetShnCellInt(f, r, cIdx, maxIdx + 1);
@@ -12082,7 +12364,7 @@ static void RunCreateCreature(EditorState& state) {
             core::legacy::ShineRecord rec;
             rec.sourceLine = 0;
             const std::string role = kNpcRoles[std::clamp(w.roleIdx, 0, 5)];
-            rec.values = {newInx, state.legacySaveStem, std::to_string(w.placeX), std::to_string(w.placeY), std::to_string(w.placeDir), "1", role, w.roleArg};
+            rec.values = {newInx, CurrentMapServerName(state), std::to_string(w.placeX), std::to_string(w.placeY), std::to_string(w.placeDir), "1", role, w.roleArg};
             table->records.push_back(std::move(rec));
             w.report.push_back(std::string("+ World/NPC.txt: NPC auf '") + state.legacySaveStem + "' bei (" + std::to_string(w.placeX) + ", " + std::to_string(w.placeY) + ") vorgemerkt (Speichern im NPC-Tab oder unten).");
         } else {
@@ -13952,6 +14234,573 @@ void HandleGlobalShortcuts(EditorState& state) {
     else RedoMapEdit(state);
 }
 
+// ============================================================================
+// Kartenprüfung (Werkzeuge > Kartenprüfung), wie Unreals "Map Check": sammelt, was an der offenen
+// Karte im Spiel nicht funktionieren würde. Datenquellen: SHBD (state.walkGrid), World/NPC.txt
+// (ShineNPC + LinkTable), MobRegen/<Karte>.txt, MapInfo.shn, SHMD-Objekte samt NIF-Ladefehlern
+// des Objekt-Renderers, Terrain-Layer der INI und QuestData.shn. Der Prüfkern liegt in
+// core/MapCheck (Test: test_map_check).
+// ============================================================================
+std::string MapCheckFolderForMapName(EditorState& state, const std::string& mapName) {
+    EnsureMapInfoLoaded(state);
+    if (!state.mapInfoLoaded) return mapName;
+    const auto& f = state.mapInfoShn;
+    const int cName = FindShnColumnByName(f, "MapName");
+    const int cFolder = FindShnColumnByName(f, "MapFolderName");
+    if (cName < 0 || cFolder < 0) return mapName;
+    for (const auto& row : f.rows) {
+        if (static_cast<std::size_t>(std::max(cName, cFolder)) >= row.values.size()) continue;
+        if (LowerAscii(core::legacy::ShnValueToString(row.values[static_cast<std::size_t>(cName)])) == LowerAscii(mapName)) {
+            const std::string folder = TrimAscii(core::legacy::ShnValueToString(row.values[static_cast<std::size_t>(cFolder)]));
+            return folder.empty() ? mapName : folder;
+        }
+    }
+    return mapName;
+}
+
+// SHBD einer anderen Karte (Gate-Ziel); nullptr = Karte bzw. SHBD nicht gefunden.
+const core::WalkGrid* MapCheckGridForMap(EditorState& state, const std::string& mapName) {
+    const std::string folder = MapCheckFolderForMapName(state, mapName);
+    if (LowerAscii(folder) == LowerAscii(state.legacySaveStem) || LowerAscii(mapName) == LowerAscii(state.legacySaveStem))
+        return state.walkGrid.Width() > 0 ? &state.walkGrid : nullptr;
+    const std::string key = LowerAscii(folder);
+    if (const auto it = state.mapCheckGridCache.find(key); it != state.mapCheckGridCache.end()) return it->second.get();
+    std::shared_ptr<core::WalkGrid> grid;
+    int idx = FindDiscoveredMapByName(state, folder);
+    if (idx < 0) idx = FindDiscoveredMapByName(state, mapName);
+    if (idx >= 0 && !state.discoveredMaps[static_cast<std::size_t>(idx)].standaloneNif) {
+        const std::filesystem::path ini(state.discoveredMaps[static_cast<std::size_t>(idx)].iniPath);
+        if (auto shbd = core::legacy::FindSiblingFileByStem(ini.parent_path(), ini.stem().string(), ".shbd")) {
+            const auto path = PreferProjectOverride(state.project, core::ProjectOutputSide::Client, *shbd);
+            if (auto loaded = core::ImportLegacyShbdAutoSize(path))
+                grid = std::make_shared<core::WalkGrid>(std::move(*loaded));
+        }
+    }
+    state.mapCheckGridCache[key] = grid;
+    return grid.get();
+}
+
+void RunMapCheck(EditorState& state) {
+    using core::MapCheckCode;
+    using core::MapCheckIssue;
+    using core::MapCheckPoint;
+    using core::MapCheckSeverity;
+    std::vector<MapCheckIssue> issues;
+    const std::string stem = state.legacySaveStem;
+    const bool haveGrid = state.walkGrid.Width() > 0 && state.walkGrid.Height() > 0 &&
+                          core::level::WalkableFraction(state.walkGrid) > 0.0;
+    if (!haveGrid) {
+        MapCheckIssue i;
+        i.severity = MapCheckSeverity::Warning;
+        i.code = MapCheckCode::NoWalkGrid;
+        i.subject = stem;
+        issues.push_back(i);
+    }
+
+    // NPCs und Gates der Karte (World/NPC.txt).
+    EnsureNpcTextLoaded(state);
+    EnsureQuestNpcCatalog(state);
+    std::unordered_set<std::string> knownMobs;
+    for (const auto& e : state.questNpcCatalog) knownMobs.insert(LowerAscii(e.inx));
+    if (auto* npcs = state.npcTextFile.FindTable("ShineNPC")) {
+        std::unordered_set<std::string> linkArguments;
+        if (auto* links = state.npcTextFile.FindTable("LinkTable")) {
+            const LinkTableColumns lc = FindLinkTableColumns(*links);
+            for (const auto& link : links->records)
+                if (!LinkValue(link, lc.argument).empty()) linkArguments.insert(LinkValue(link, lc.argument));
+        }
+        std::vector<MapCheckPoint> npcPoints, gatePoints;
+        for (const std::size_t idx : NpcRecordsForCurrentMap(state)) {
+            const auto& rec = npcs->records[idx];
+            if (rec.values.size() < 5) continue;
+            const float x = static_cast<float>(std::atof(rec.values[2].c_str()));
+            const float z = static_cast<float>(std::atof(rec.values[3].c_str()));
+            const std::string role = rec.values.size() > 6 ? rec.values[6] : std::string();
+            const std::string label = rec.values[0] + (role.empty() ? std::string() : " (" + role + ")");
+            if (x == 0.0f && z == 0.0f) {
+                MapCheckIssue i;
+                i.severity = MapCheckSeverity::Info;
+                i.code = MapCheckCode::NpcWithoutPosition;
+                i.subject = label;
+                i.ref = static_cast<int>(idx);
+                issues.push_back(i);
+                continue;
+            }
+            const bool gate = role == "Gate" || role == "IDGate";
+            (gate ? gatePoints : npcPoints).push_back({label, x, z, static_cast<int>(idx)});
+            if (role == "Gate" && rec.values.size() > 7 && !rec.values[7].empty() && !linkArguments.contains(rec.values[7])) {
+                MapCheckIssue i;
+                i.severity = MapCheckSeverity::Warning; // kommt in NA2016 bei 7 Gates vor
+                i.code = MapCheckCode::GateLinkMissing;
+                i.subject = label;
+                i.detail = rec.values[7];
+                i.hasPosition = true;
+                i.x = x;
+                i.z = z;
+                i.ref = static_cast<int>(idx);
+                issues.push_back(i);
+            }
+            if (!knownMobs.empty() && !knownMobs.contains(LowerAscii(rec.values[0]))) {
+                MapCheckIssue i;
+                i.severity = MapCheckSeverity::Error;
+                i.code = MapCheckCode::SpawnMobUnknown;
+                i.subject = label;
+                i.detail = rec.values[0];
+                i.hasPosition = true;
+                i.x = x;
+                i.z = z;
+                i.ref = static_cast<int>(idx);
+                issues.push_back(i);
+            }
+        }
+        if (haveGrid) {
+            core::CheckPointsWalkable(state.walkGrid, npcPoints, MapCheckCode::NpcOnBlockedCell, {}, issues);
+            core::CheckPointsWalkable(state.walkGrid, gatePoints, MapCheckCode::GateOnBlockedCell, {}, issues);
+        }
+    }
+
+    // Ziele der ausgehenden Gates: auf der Zielkarte begehbar?
+    for (const auto& marker : CollectPortalMarkers(state)) {
+        if (marker.kind != kPortalKindGateLink) continue;
+        const std::string target = PortalTargetMapName(marker);
+        const core::WalkGrid* grid = MapCheckGridForMap(state, target);
+        MapCheckIssue i;
+        i.subject = marker.label;
+        i.detail = target + " " + std::to_string(static_cast<int>(marker.targetX)) + "/" +
+                   std::to_string(static_cast<int>(marker.targetY));
+        i.hasPosition = true;
+        i.x = marker.x;
+        i.z = marker.y;
+        i.ref = static_cast<int>(marker.idx);
+        if (!grid) {
+            i.severity = MapCheckSeverity::Info;
+            i.code = MapCheckCode::GateTargetMapUnknown;
+            issues.push_back(i);
+            continue;
+        }
+        if (marker.targetX >= static_cast<float>(grid->Cols()) * core::WalkGrid::kCellSize ||
+            marker.targetY >= static_cast<float>(grid->Rows()) * core::WalkGrid::kCellSize ||
+            marker.targetX < 0.0f || marker.targetY < 0.0f) {
+            i.severity = MapCheckSeverity::Error;
+            i.code = MapCheckCode::GateTargetOutside;
+            issues.push_back(i);
+            continue;
+        }
+        std::vector<MapCheckIssue> targetIssues;
+        const MapCheckPoint p{marker.label, marker.targetX, marker.targetY, static_cast<int>(marker.idx)};
+        // Ankunftspunkte müssen begehbar sein: strengere Staffel als bei NPCs.
+        core::CheckPointsWalkable(*grid, std::span<const MapCheckPoint>(&p, 1), MapCheckCode::GateTargetBlocked,
+                                  {1.0f * core::WalkGrid::kCellSize, 4.0f * core::WalkGrid::kCellSize}, targetIssues);
+        for (auto& t : targetIssues) {
+            i.severity = t.severity;
+            i.code = t.code;
+            i.value = t.value;
+            issues.push_back(i);
+        }
+    }
+
+    // Ankunftspunkte auf dieser Karte: LinkTable-Einträge (Gates anderer Karten) mit dieser Zielkarte.
+    const std::string mapName = [&] {
+        // MapInfo-Name dieser Karte (Ordner "Rou" -> MapName "Rou"; MapName kann vom Ordner abweichen).
+        return std::string(stem);
+    }();
+    if (haveGrid) {
+        if (auto* links = state.npcTextFile.FindTable("LinkTable")) {
+            const LinkTableColumns lc = FindLinkTableColumns(*links);
+            std::vector<MapCheckPoint> arrivals;
+            for (std::size_t l = 0; l < links->records.size(); ++l) {
+                const auto& link = links->records[l];
+                const std::string client = TrimAscii(LinkValue(link, lc.mapClient));
+                const std::string target = client.empty() ? TrimAscii(LinkValue(link, lc.mapServer)) : client;
+                if (target.empty() || LowerAscii(MapCheckFolderForMapName(state, target)) != LowerAscii(mapName)) continue;
+                arrivals.push_back({LinkValue(link, lc.argument), static_cast<float>(std::atof(LinkValue(link, lc.x).c_str())),
+                                    static_cast<float>(std::atof(LinkValue(link, lc.y).c_str())), static_cast<int>(l)});
+            }
+            core::CheckPointsWalkable(state.walkGrid, arrivals, MapCheckCode::GateArrivalBlocked,
+                                      {1.0f * core::WalkGrid::kCellSize, 4.0f * core::WalkGrid::kCellSize}, issues);
+        }
+        // TownPortal- und Rückruf-Ziele auf dieser Karte.
+        EnsureTownPortalLoaded(state);
+        EnsureRecallCoordLoaded(state);
+        std::vector<MapCheckPoint> teleports;
+        for (const auto& marker : CollectPortalMarkers(state))
+            if (marker.kind == kPortalKindTown || marker.kind == kPortalKindRecall)
+                teleports.push_back({marker.label, marker.x, marker.y, static_cast<int>(marker.idx)});
+        core::CheckPointsWalkable(state.walkGrid, teleports, MapCheckCode::TeleportTargetBlocked,
+                                  {1.0f * core::WalkGrid::kCellSize, 4.0f * core::WalkGrid::kCellSize}, issues);
+    }
+
+    // Spawn-Zonen (MobRegen/<Karte>.txt).
+    EnsureMobRegenLoaded(state);
+    if (state.mobRegenTextLoaded && state.mobRegenLoadedForMap == stem) {
+        std::vector<core::MapCheckZone> zones;
+        std::unordered_map<std::string, int> zoneByGroup;
+        if (auto* zoneTable = state.mobRegenTextFile.FindTable("MobRegenGroup")) {
+            for (std::size_t z = 0; z < zoneTable->records.size(); ++z) {
+                const auto& rec = zoneTable->records[z];
+                if (rec.values.size() < 7) continue;
+                const float w = static_cast<float>(std::atoi(rec.values[4].c_str()));
+                const float h = static_cast<float>(std::atoi(rec.values[5].c_str()));
+                const float range = static_cast<float>(std::atoi(rec.values[6].c_str()));
+                // Gleiche Form wie die 2D-Anzeige: Breite/Höhe, sonst Range als Radius.
+                const float radius = (w > 0.0f || h > 0.0f) ? std::max(w, h) * 0.5f : std::abs(range);
+                zones.push_back({rec.values[0], static_cast<float>(std::atoi(rec.values[2].c_str())),
+                                 static_cast<float>(std::atoi(rec.values[3].c_str())), radius, static_cast<int>(z)});
+                zoneByGroup[rec.values[0]] = static_cast<int>(zones.size() - 1);
+            }
+        }
+        // Nur Zonen prüfen, in denen ein aktiver MobRegen-Eintrag Monster erzeugt; auskommentierte
+        // Event-Zonen (z.B. Rou EventSnow10) sind im Original oft unbenutzt.
+        std::unordered_set<std::string> usedGroups;
+        if (auto* regen = state.mobRegenTextFile.FindTable("MobRegen"))
+            for (const auto& rec : regen->records)
+                if (!rec.values.empty()) usedGroups.insert(rec.values[0]);
+        std::vector<core::MapCheckZone> usedZones;
+        for (const auto& zone : zones) {
+            if (usedGroups.contains(zone.label)) { usedZones.push_back(zone); continue; }
+            MapCheckIssue i;
+            i.severity = MapCheckSeverity::Info;
+            i.code = MapCheckCode::SpawnZoneUnused;
+            i.subject = zone.label;
+            i.hasPosition = true;
+            i.x = zone.x;
+            i.z = zone.z;
+            i.ref = zone.ref;
+            issues.push_back(i);
+        }
+        if (haveGrid) core::CheckSpawnZones(state.walkGrid, usedZones, {}, issues);
+        if (auto* regen = state.mobRegenTextFile.FindTable("MobRegen"); regen && !knownMobs.empty()) {
+            for (const auto& rec : regen->records) {
+                if (rec.values.size() < 2 || rec.values[1].empty() || knownMobs.contains(LowerAscii(rec.values[1]))) continue;
+                MapCheckIssue i;
+                i.severity = MapCheckSeverity::Error;
+                i.code = MapCheckCode::SpawnMobUnknown;
+                i.subject = rec.values[0];
+                i.detail = rec.values[1];
+                if (const auto it = zoneByGroup.find(rec.values[0]); it != zoneByGroup.end()) {
+                    const auto& zone = zones[static_cast<std::size_t>(it->second)];
+                    i.hasPosition = true;
+                    i.x = zone.x;
+                    i.z = zone.z;
+                    i.ref = zone.ref;
+                }
+                issues.push_back(i);
+            }
+        }
+    }
+
+    // Wiederbelebungspunkt (MapInfo.shn RegenX/RegenY).
+    EnsureMapInfoLoaded(state);
+    if (float rx = 0, ry = 0; haveGrid && FindMapRegen(state, rx, ry)) {
+        const MapCheckPoint p{stem, rx, ry, -1};
+        core::CheckPointsWalkable(state.walkGrid, std::span<const MapCheckPoint>(&p, 1), MapCheckCode::RespawnPointBlocked,
+                                  {1.0f * core::WalkGrid::kCellSize, 4.0f * core::WalkGrid::kCellSize}, issues);
+    }
+
+    // Objekte außerhalb der Karte und NIF-/Texturfehler des Objekt-Renderers.
+    const float sizeX = static_cast<float>(std::max<std::uint32_t>(state.heightmap.Width(), 1) - 1) * state.heightmap.BlockWidth();
+    const float sizeZ = static_cast<float>(std::max<std::uint32_t>(state.heightmap.Height(), 1) - 1) * state.heightmap.BlockHeight();
+    std::unordered_map<std::string, std::pair<int, int>> firstObjectOfModel; // Modell -> (erstes Objekt, Anzahl)
+    {
+        std::vector<MapCheckPoint> objects;
+        for (std::size_t o = 0; o < state.placementSet.Count(); ++o) {
+            const auto& obj = state.placementSet.At(o);
+            objects.push_back({obj.modelPath, obj.posX, obj.posZ, static_cast<int>(o)});
+            auto& entry = firstObjectOfModel.try_emplace(obj.modelPath, static_cast<int>(o), 0).first->second;
+            ++entry.second;
+        }
+        if (sizeX > 0.0f && sizeZ > 0.0f)
+            core::CheckPointsInsideMap(objects, sizeX, sizeZ, 2.0f * state.heightmap.BlockWidth(), MapCheckCode::ObjectOutsideMap,
+                                       MapCheckSeverity::Warning, issues);
+    }
+    const auto& diag = state.nifMeshRenderer.Diagnostics();
+    const auto modelIssue = [&](MapCheckCode code, MapCheckSeverity severity, const std::string& model, std::string detail) {
+        MapCheckIssue i;
+        i.severity = severity;
+        i.code = code;
+        i.subject = model;
+        i.detail = std::move(detail);
+        if (const auto it = firstObjectOfModel.find(model); it != firstObjectOfModel.end()) {
+            const auto& obj = state.placementSet.At(static_cast<std::size_t>(it->second.first));
+            i.hasPosition = true;
+            i.x = obj.posX;
+            i.z = obj.posZ;
+            i.ref = it->second.first;
+            i.value = it->second.second;
+        }
+        issues.push_back(std::move(i));
+    };
+    for (const auto& model : diag.missingModels) modelIssue(MapCheckCode::ModelMissing, MapCheckSeverity::Error, model, {});
+    for (const auto& [model, error] : diag.failedModels) modelIssue(MapCheckCode::ModelLoadFailed, MapCheckSeverity::Error, model, error);
+    for (const auto& [model, textures] : diag.missingTextures) {
+        std::string list;
+        for (const auto& t : textures) list += (list.empty() ? "" : ", ") + t;
+        modelIssue(MapCheckCode::TextureMissing, MapCheckSeverity::Warning, model, list);
+    }
+
+    // Terrain-Texturen der INI.
+    if (state.legacyIniPath[0] != '\0') {
+        const std::filesystem::path iniDir = std::filesystem::path(state.legacyIniPath).parent_path();
+        for (std::size_t l = 0; l < state.textureStack.LayerCount(); ++l) {
+            const auto& layer = state.textureStack.Layer(l);
+            if (layer.diffuseFileName.empty() || core::legacy::ResolveLegacyAssetPath(iniDir, layer.diffuseFileName)) continue;
+            MapCheckIssue i;
+            i.severity = MapCheckSeverity::Error;
+            i.code = MapCheckCode::TerrainTextureMissing;
+            i.subject = layer.name;
+            i.detail = layer.diffuseFileName;
+            i.ref = static_cast<int>(l);
+            issues.push_back(i);
+        }
+    }
+
+    // Spieldaten: aktivierte Quests mit Start-NPC, der nicht existiert oder auf keiner Karte steht.
+    if (state.mapCheckIncludeQuests) {
+        EnsureQuestDataLoaded(state);
+        for (std::size_t q = 0; q < state.questDataFile.records.size(); ++q) {
+            const auto& quest = state.questDataFile.records[q];
+            if (quest.enableQuest == 0 || quest.needNpc == 0 || quest.startingNpc == 0) continue;
+            const auto* npc = FindQuestNpc(state, quest.startingNpc);
+            if (npc && !npc->placements.empty()) continue;
+            MapCheckIssue i;
+            i.severity = npc ? MapCheckSeverity::Warning : MapCheckSeverity::Error;
+            i.code = npc ? MapCheckCode::QuestStartNpcNotPlaced : MapCheckCode::QuestStartNpcUnknown;
+            const std::string title = QuestTextOf(state, quest.title);
+            i.subject = "#" + std::to_string(quest.id) + (title.empty() ? std::string() : " " + title);
+            i.detail = npc ? npc->name + " (" + npc->inx + ")" : std::to_string(quest.startingNpc);
+            i.ref = static_cast<int>(q);
+            issues.push_back(i);
+        }
+    }
+
+    core::SortMapCheckIssues(issues);
+    std::size_t counts[3] = {0, 0, 0};
+    for (const auto& i : issues) ++counts[static_cast<int>(i.severity)];
+    state.mapCheckIssues = std::move(issues);
+    state.mapCheckForMap = stem;
+    char buf[160];
+    std::snprintf(buf, sizeof(buf), L("%zu Fehler, %zu Warnungen, %zu Hinweise", "%zu errors, %zu warnings, %zu notes"),
+                  counts[0], counts[1], counts[2]);
+    state.mapCheckSummary = buf;
+}
+
+std::string MapCheckMessage(const core::MapCheckIssue& i) {
+    using core::MapCheckCode;
+    char buf[512];
+    const double cells = i.value / core::WalkGrid::kCellSize;
+    switch (i.code) {
+        case MapCheckCode::NoWalkGrid:
+            return L("Kein Block&Walk-Gitter (SHBD) geladen - Positionsprüfungen entfallen.",
+                     "No Block&Walk grid (SHBD) loaded - position checks skipped.");
+        case MapCheckCode::NpcOnBlockedCell:
+        case MapCheckCode::GateOnBlockedCell:
+        case MapCheckCode::RespawnPointBlocked:
+        case MapCheckCode::GateTargetBlocked:
+        case MapCheckCode::GateArrivalBlocked:
+        case MapCheckCode::TeleportTargetBlocked: {
+            const char* what = i.code == MapCheckCode::NpcOnBlockedCell    ? L("NPC steht auf blockierter Zelle", "NPC stands on a blocked cell")
+                               : i.code == MapCheckCode::GateOnBlockedCell ? L("Gate steht auf blockierter Zelle", "Gate stands on a blocked cell")
+                               : i.code == MapCheckCode::RespawnPointBlocked
+                                   ? L("Wiederbelebungspunkt (MapInfo RegenX/RegenY) auf blockierter Zelle",
+                                       "Respawn point (MapInfo RegenX/RegenY) on a blocked cell")
+                               : i.code == MapCheckCode::GateArrivalBlocked
+                                   ? L("Gate einer anderen Karte kommt hier auf blockierter Zelle an", "A gate from another map arrives here on a blocked cell")
+                               : i.code == MapCheckCode::TeleportTargetBlocked
+                                   ? L("Teleport-/Rückruf-Ziel auf blockierter Zelle", "Teleport/recall target on a blocked cell")
+                                   : L("Gate-Ziel liegt auf blockierter Zelle", "Gate target is on a blocked cell");
+            if (i.value < 0.0)
+                std::snprintf(buf, sizeof(buf), L("%s - keine freie Zelle in der Nähe", "%s - no free cell nearby"), what);
+            else
+                std::snprintf(buf, sizeof(buf), L("%s - nächste freie Zelle %.0f Einheiten (%.0f Zellen)",
+                                                  "%s - nearest free cell %.0f units (%.0f cells)"), what, i.value, cells);
+            std::string out = buf;
+            if (!i.detail.empty()) out += " · " + i.detail;
+            return out;
+        }
+        case MapCheckCode::NpcWithoutPosition:
+            return L("NPC ohne Koordinate (0/0) - im Spiel nicht aufgestellt", "NPC without coordinates (0/0) - not placed in the game");
+        case MapCheckCode::GateTargetOutside:
+            return std::string(L("Gate-Ziel liegt außerhalb der Zielkarte: ", "Gate target is outside the target map: ")) + i.detail;
+        case MapCheckCode::GateTargetMapUnknown:
+            return std::string(L("Zielkarte nicht im Client-Ordner gefunden, Ziel ungeprüft: ",
+                                 "Target map not found in the client folder, target unchecked: ")) + i.detail;
+        case MapCheckCode::GateLinkMissing:
+            return std::string(L("Gate verweist auf fehlenden LinkTable-Eintrag: ", "Gate refers to a missing LinkTable entry: ")) + i.detail;
+        case MapCheckCode::SpawnZoneCenterBlocked:
+            std::snprintf(buf, sizeof(buf), L("Mittelpunkt der Spawn-Zone blockiert (%.0f %% der Zone blockiert)",
+                                              "Spawn zone centre is blocked (%.0f %% of the zone blocked)"), i.value * 100.0);
+            return buf;
+        case MapCheckCode::SpawnZoneMostlyBlocked:
+            std::snprintf(buf, sizeof(buf), L("Spawn-Zone liegt in Wänden: %.0f %% der Fläche blockiert",
+                                              "Spawn zone is inside walls: %.0f %% of the area blocked"), i.value * 100.0);
+            return buf;
+        case MapCheckCode::SpawnZoneOutside:
+            return L("Spawn-Zone liegt außerhalb der Karte", "Spawn zone is outside the map");
+        case MapCheckCode::SpawnZoneUnused:
+            return L("Spawn-Zone ohne aktiven MobRegen-Eintrag (erzeugt keine Monster)", "Spawn zone without an active MobRegen entry (spawns no monsters)");
+        case MapCheckCode::SpawnMobUnknown:
+            return std::string(L("Mob nicht in MobInfo.shn: ", "Mob not in MobInfo.shn: ")) + i.detail;
+        case MapCheckCode::ObjectOutsideMap:
+            std::snprintf(buf, sizeof(buf), L("Objekt außerhalb der Karte (%.0f / %.0f)", "Object outside the map (%.0f / %.0f)"), i.x, i.z);
+            return buf;
+        case MapCheckCode::ModelMissing:
+            std::snprintf(buf, sizeof(buf), L("NIF nicht gefunden (%.0f Objekte)", "NIF not found (%.0f objects)"), i.value);
+            return buf;
+        case MapCheckCode::ModelLoadFailed:
+            return std::string(L("NIF nicht lesbar: ", "NIF not readable: ")) + i.detail;
+        case MapCheckCode::TextureMissing:
+            return std::string(L("Textur fehlt: ", "Texture missing: ")) + i.detail;
+        case MapCheckCode::TerrainTextureMissing:
+            return std::string(L("Terrain-Textur nicht gefunden: ", "Terrain texture not found: ")) + i.detail;
+        case MapCheckCode::QuestStartNpcUnknown:
+            return std::string(L("Start-NPC nicht in MobInfo.shn: ID ", "Starting NPC not in MobInfo.shn: ID ")) + i.detail;
+        case MapCheckCode::QuestStartNpcNotPlaced:
+            return std::string(L("Start-NPC steht auf keiner Karte - Quest kann nicht angenommen werden: ",
+                                 "Starting NPC is not placed on any map - the quest cannot be accepted: ")) + i.detail;
+    }
+    return {};
+}
+
+const char* MapCheckCategoryLabel(core::MapCheckCode code) {
+    using core::MapCheckCode;
+    switch (code) {
+        case MapCheckCode::NoWalkGrid: return "SHBD";
+        case MapCheckCode::NpcOnBlockedCell:
+        case MapCheckCode::NpcWithoutPosition: return "NPC";
+        case MapCheckCode::GateOnBlockedCell:
+        case MapCheckCode::GateTargetBlocked:
+        case MapCheckCode::GateTargetOutside:
+        case MapCheckCode::GateTargetMapUnknown:
+        case MapCheckCode::GateLinkMissing:
+        case MapCheckCode::GateArrivalBlocked: return "Gate";
+        case MapCheckCode::TeleportTargetBlocked: return "Teleport";
+        case MapCheckCode::SpawnZoneUnused:
+        case MapCheckCode::SpawnZoneCenterBlocked:
+        case MapCheckCode::SpawnZoneMostlyBlocked:
+        case MapCheckCode::SpawnZoneOutside:
+        case MapCheckCode::SpawnMobUnknown: return "Spawn";
+        case MapCheckCode::RespawnPointBlocked: return "MapInfo";
+        case MapCheckCode::ObjectOutsideMap:
+        case MapCheckCode::ModelMissing:
+        case MapCheckCode::ModelLoadFailed:
+        case MapCheckCode::TextureMissing: return L("Objekt", "Object");
+        case MapCheckCode::TerrainTextureMissing: return "Terrain";
+        case MapCheckCode::QuestStartNpcUnknown:
+        case MapCheckCode::QuestStartNpcNotPlaced: return "Quest";
+    }
+    return "";
+}
+
+void JumpToMapCheckIssue(EditorState& state, const core::MapCheckIssue& i) {
+    using core::MapCheckCode;
+    if (i.code == MapCheckCode::QuestStartNpcUnknown || i.code == MapCheckCode::QuestStartNpcNotPlaced) {
+        state.screen = AppScreen::ShnEditor;
+        state.shnSubTab = 4;
+        state.selectedQuestIdx = i.ref;
+        return;
+    }
+    if (i.code == MapCheckCode::TerrainTextureMissing) {
+        state.selectedLayer = i.ref;
+        return;
+    }
+    if (!i.hasPosition) return;
+    state.screen = AppScreen::MapEditorWorkspace;
+    const bool objectIssue = i.code == MapCheckCode::ObjectOutsideMap || i.code == MapCheckCode::ModelMissing ||
+                             i.code == MapCheckCode::ModelLoadFailed || i.code == MapCheckCode::TextureMissing;
+    if (objectIssue && i.ref >= 0 && static_cast<std::size_t>(i.ref) < state.placementSet.Count()) {
+        state.selectedObjects = {i.ref};
+        state.camera.SetTarget(i.x, state.placementSet.At(static_cast<std::size_t>(i.ref)).posY, i.z);
+    } else {
+        if (i.code == MapCheckCode::SpawnZoneCenterBlocked || i.code == MapCheckCode::SpawnZoneMostlyBlocked ||
+            i.code == MapCheckCode::SpawnZoneOutside || i.code == MapCheckCode::SpawnMobUnknown ||
+            i.code == MapCheckCode::SpawnZoneUnused)
+            state.selectedMobZoneIdx = i.ref;
+        state.camera.SetTarget(i.x, state.heightmap.SampleWorld(i.x, i.z) + 25.0f, i.z);
+    }
+    state.camera.Zoom(420.0f - state.camera.Distance());
+}
+
+void DrawMapCheckWindow(EditorState& state) {
+    if (state.mapCheckRunRequest) {
+        state.mapCheckRunRequest = false;
+        RunMapCheck(state);
+    }
+    if (!state.mapCheckOpen) return;
+    ImGui::SetNextWindowSize(ImVec2(980.0f, 520.0f), ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin(L("Kartenprüfung##mapCheck", "Map check##mapCheck"), &state.mapCheckOpen)) {
+        ImGui::End();
+        return;
+    }
+    if (UI::Button(L("Prüfen##mapCheckRun", "Check##mapCheckRun"))) RunMapCheck(state);
+    ImGui::SameLine();
+    UI::Checkbox(L("Fehler", "Errors"), &state.mapCheckShowErrors);
+    ImGui::SameLine();
+    UI::Checkbox(L("Warnungen", "Warnings"), &state.mapCheckShowWarnings);
+    ImGui::SameLine();
+    UI::Checkbox(L("Hinweise", "Notes"), &state.mapCheckShowInfo);
+    ImGui::SameLine();
+    UI::Checkbox(L("Quests prüfen", "Check quests"), &state.mapCheckIncludeQuests);
+    if (!state.mapCheckForMap.empty()) {
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s: %s", state.mapCheckForMap.c_str(), state.mapCheckSummary.c_str());
+        if (state.mapCheckForMap != state.legacySaveStem) {
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.3f, 1.0f), "%s", L("(andere Karte - neu prüfen)", "(other map - check again)"));
+        }
+    } else {
+        ImGui::TextDisabled("%s", L("Noch nicht geprüft.", "Not checked yet."));
+    }
+    ImGui::TextDisabled("%s", L("Doppelklick springt zur Stelle (Quests öffnen den Quest-Editor). Hinweise sind Fälle, die auch in den Originalkarten vorkommen.",
+                                "Double-click jumps to the spot (quests open the quest editor). Notes are cases that also occur in the original maps."));
+    std::vector<const core::MapCheckIssue*> rows;
+    for (const auto& i : state.mapCheckIssues) {
+        if (i.severity == core::MapCheckSeverity::Error && !state.mapCheckShowErrors) continue;
+        if (i.severity == core::MapCheckSeverity::Warning && !state.mapCheckShowWarnings) continue;
+        if (i.severity == core::MapCheckSeverity::Info && !state.mapCheckShowInfo) continue;
+        rows.push_back(&i);
+    }
+    if (ImGui::BeginTable("##mapCheckRows", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_BordersInnerV |
+                                                  ImGuiTableFlags_Resizable)) {
+        ImGui::TableSetupScrollFreeze(0, 1);
+        ImGui::TableSetupColumn(L("Schwere", "Severity"), ImGuiTableColumnFlags_WidthFixed, 80.0f);
+        ImGui::TableSetupColumn(L("Bereich", "Area"), ImGuiTableColumnFlags_WidthFixed, 70.0f);
+        ImGui::TableSetupColumn(L("Betrifft", "Subject"), ImGuiTableColumnFlags_WidthStretch, 0.8f);
+        ImGui::TableSetupColumn(L("Meldung", "Message"), ImGuiTableColumnFlags_WidthStretch, 1.6f);
+        ImGui::TableHeadersRow();
+        ImGuiListClipper clipper;
+        clipper.Begin(static_cast<int>(rows.size()));
+        while (clipper.Step()) {
+            for (int r = clipper.DisplayStart; r < clipper.DisplayEnd; ++r) {
+                const auto& i = *rows[static_cast<std::size_t>(r)];
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                const ImVec4 col = i.severity == core::MapCheckSeverity::Error     ? ImVec4(1.0f, 0.42f, 0.38f, 1.0f)
+                                   : i.severity == core::MapCheckSeverity::Warning ? ImVec4(1.0f, 0.78f, 0.32f, 1.0f)
+                                                                                   : ImVec4(0.55f, 0.75f, 0.95f, 1.0f);
+                ImGui::PushStyleColor(ImGuiCol_Text, col);
+                const char* sev = i.severity == core::MapCheckSeverity::Error     ? L("Fehler", "Error")
+                                  : i.severity == core::MapCheckSeverity::Warning ? L("Warnung", "Warning")
+                                                                                  : L("Hinweis", "Note");
+                if (ImGui::Selectable((std::string(sev) + "##mc" + std::to_string(r)).c_str(), false,
+                                      ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowDoubleClick) &&
+                    ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+                    JumpToMapCheckIssue(state, i);
+                ImGui::PopStyleColor();
+                ImGui::TableSetColumnIndex(1);
+                ImGui::TextUnformatted(MapCheckCategoryLabel(i.code));
+                ImGui::TableSetColumnIndex(2);
+                ImGui::TextUnformatted(i.subject.c_str());
+                ImGui::TableSetColumnIndex(3);
+                const std::string msg = MapCheckMessage(i);
+                ImGui::TextUnformatted(msg.c_str());
+                if (ImGui::IsItemHovered() && msg.size() > 60) ImGui::SetTooltip("%s", msg.c_str());
+            }
+        }
+        ImGui::EndTable();
+    }
+    ImGui::End();
+}
+
 void DrawSettingsWindow(EditorState& state) {
     if (!state.settingsOpen) return;
 
@@ -14076,6 +14925,23 @@ void DrawSettingsWindow(EditorState& state) {
         : L("Klassisch: WASD bewegt die Kamera, sobald der 3D-View gehovert ist; LMB-Ziehen kreist um das Ziel.",
             "Classic: WASD moves the camera whenever the 3D view is hovered; LMB drag orbits the target."));
     ImGui::TextDisabled("%s", (NextGenUserSettingsDir() / "viewport.txt").string().c_str());
+
+    ImGui::Spacing();
+    ImGui::TextColored(ImVec4(0.30f,0.78f,1.0f,1.0f), "%s", L("AUTOMATISCHES SPEICHERN", "AUTOSAVE"));
+    ImGui::Separator();
+    bool autosaveChanged = UI::Checkbox(L("Offene Karte automatisch sichern", "Autosave the open map"), &state.autosaveEnabled);
+    ImGui::SetNextItemWidth(220.0f);
+    autosaveChanged |= ImGui::SliderInt(L("Intervall (Minuten)##autosave", "Interval (minutes)##autosave"), &state.autosaveMinutes, 1, 60);
+    if (autosaveChanged) SaveWorkspaceSettings(state);
+    ImGui::TextWrapped("%s", L("Gesichert wird nur bei Änderungen, nach <Projekt>/Autosave (nicht in die Projektausgabe). "
+                               "Nach einem Absturz bietet der Editor beim nächsten Öffnen der Karte die Wiederherstellung an; "
+                               "Speichern ins Projekt löscht die Sicherung.",
+                               "Saved only when something changed, to <Project>/Autosave (not into the project output). "
+                               "After a crash the editor offers to restore it the next time the map is opened; "
+                               "saving to the project deletes the autosave."));
+    if (!state.autosaveStatus.empty()) ImGui::TextDisabled("%s", state.autosaveStatus.c_str());
+    if (UI::Button(L("Jetzt sichern##autosaveNow", "Autosave now##autosaveNow")) && !StartMapAutosave(state))
+        state.autosaveStatus = L("Keine Karte mit Projektordner offen.", "No map with a project folder open.");
 
     ImGui::End();
 }
@@ -14995,7 +15861,7 @@ void DrawToolsContent(EditorState& state) {
                         state.mobRegenTextFile,
                         ProjectServerShinePath(
                             state.project,
-                            std::filesystem::path("MobRegen") / (std::string(state.legacySaveStem) + ".txt")));
+                            std::filesystem::path("MobRegen") / (CurrentMapServerName(state) + ".txt")));
                     state.statusMessage = saved
                         ? std::string(L("MobRegen als Projekt-Override gespeichert.","MobRegen saved as project override."))
                         : L("Fehler: ","Error: ") + saved.error();
@@ -21799,6 +22665,11 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         std::string path; std::getline(in >> std::ws, path);
         if (OpenMapPathIntoState(state, std::filesystem::path(path), true)) state.screen = AppScreen::MapEditorWorkspace;
     }
+    else if (cmd == "stroke") {
+        // stroke <x> <z> [n]: wendet den aktiven Pinsel n-mal an einer Weltposition an (wie ein Klick).
+        float x = 0, z = 0; int n = 1; in >> x >> z >> n;
+        for (int i = 0; i < std::max(1, n); ++i) ApplyBrushAtWorld(state, x, z);
+    }
     else if (cmd == "mode") {
         std::string m; in >> m;
         if (m == "terrain") state.editMode = EditMode::Heightmap;
@@ -21838,6 +22709,30 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
             std::string filter; std::getline(in >> std::ws, filter);
             std::snprintf(state.questNpcFilter, sizeof(state.questNpcFilter), "%s", filter.c_str());
         }
+    }
+    else if (cmd == "autosave") {
+        // autosave now | wait | restore | discard | minutes <n>: automatisches Speichern testen.
+        std::string mode; in >> mode;
+        if (mode == "now") StartMapAutosave(state);
+        else if (mode == "wait") FinishMapAutosave(state, true);
+        else if (mode == "restore") RestoreMapAutosave(state);
+        else if (mode == "discard") { core::RemoveAutosave(state.project.projectFolder, state.legacySaveStem); state.autosaveRecoveryPrompt = false; }
+        else if (mode == "minutes") { int m = 5; in >> m; state.autosaveMinutes = std::clamp(m, 1, 60); }
+        std::printf("[autosave] %s prompt=%d dirty=%d status=%s\n", mode.c_str(), state.autosaveRecoveryPrompt ? 1 : 0,
+                    state.mapDirty ? 1 : 0, state.autosaveStatus.c_str());
+        std::fflush(stdout);
+    }
+    else if (cmd == "mapcheck") {
+        // mapcheck [print]: Kartenprüfung ausführen und Fenster öffnen; "print" schreibt alle Meldungen.
+        std::string mode; in >> mode;
+        RunMapCheck(state);
+        state.mapCheckOpen = true;
+        std::printf("[mapcheck] %s: %s\n", state.mapCheckForMap.c_str(), state.mapCheckSummary.c_str());
+        if (mode == "print")
+            for (const auto& i : state.mapCheckIssues)
+                std::printf("[mapcheck] %d %s | %s | %s\n", static_cast<int>(i.severity), MapCheckCategoryLabel(i.code),
+                            i.subject.c_str(), MapCheckMessage(i).c_str());
+        std::fflush(stdout);
     }
     else if (cmd == "projectfolder") {
         // projectfolder <Ordner>: beschreibbarer Projektordner (Ausgabe für alle Speicherpfade).
@@ -21888,7 +22783,7 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
                 EnsureMobRegenLoaded(state);
                 if (state.mobRegenTextLoaded) {
                     auto saved = SaveProjectShineOverride(state.mobRegenTextFile,
-                        ProjectServerShinePath(state.project, std::filesystem::path("MobRegen") / (std::string(state.legacySaveStem) + ".txt")));
+                        ProjectServerShinePath(state.project, std::filesystem::path("MobRegen") / (CurrentMapServerName(state) + ".txt")));
                     report += saved ? " · MobRegen ok" : " · MobRegen FEHLER " + saved.error();
                 }
                 report += SaveLegacyMapProject(state) ? " · Karte ok" : " · Karte FEHLER " + state.statusMessage;
@@ -22255,6 +23150,9 @@ int main() {
         HandleGlobalShortcuts(state);
         DrawCommandPalette(state);
         DrawSettingsWindow(state);
+        DrawMapCheckWindow(state);
+        TickAutosave(state);
+        DrawAutosaveRecoveryPopup(state);
         DrawManualWindow(state);
         SyncStatusToast(state);
         DrawToasts(state);

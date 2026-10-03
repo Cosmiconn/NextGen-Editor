@@ -27,6 +27,8 @@
 #include <filesystem>
 #include <string>
 #include <optional>
+#include <map>
+#include <set>
 #include <unordered_map>
 #include <vector>
 
@@ -65,6 +67,14 @@ public:
         const core::ObjectPlacementSet& set, std::size_t objectIndex) const;
     [[nodiscard]] std::size_t RealMeshCount() const;
 
+    // Was beim letzten LoadModelsForSet nicht geladen werden konnte (Kartenprüfung).
+    struct LoadDiagnostics {
+        std::set<std::string> missingModels;                           // modelPath, Datei nicht gefunden
+        std::map<std::string, std::string> failedModels;               // modelPath -> Fehlertext
+        std::map<std::string, std::set<std::string>> missingTextures;  // modelPath -> Texturnamen
+    };
+    [[nodiscard]] const LoadDiagnostics& Diagnostics() const noexcept { return diagnostics_; }
+
     // Exaktes Editor-Picking gegen die geladenen NIF-Dreiecke. Liefert die Entfernung
     // entlang des normalisierten Weltstrahls oder nullopt, wenn dieses Objekt nicht
     // getroffen wurde. Billboard- und LOD-Transforms entsprechen dem Renderpfad.
@@ -100,6 +110,8 @@ public:
     }
 
 private:
+    LoadDiagnostics diagnostics_;
+
     struct TextureBinding {
         std::uint32_t texture = 0;
         std::uint32_t uvSet = 0;

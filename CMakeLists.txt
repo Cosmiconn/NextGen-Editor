@@ -73,6 +73,8 @@ add_library(mapeditor_core
     src/core/Manual.cpp
     src/core/ManualData.cpp
     src/core/LevelEditorTools.cpp
+    src/core/MapCheck.cpp
+    src/core/Autosave.cpp
     src/core/legacy/MapRenderSettings.cpp
     src/core/legacy/LegacyMapProject.cpp
 )
@@ -333,6 +335,15 @@ add_executable(test_level_editor_tools tests/test_level_editor_tools.cpp)
 target_link_libraries(test_level_editor_tools PRIVATE mapeditor_core)
 add_test(NAME level_editor_tools COMMAND test_level_editor_tools
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/Rou.shbd)
+
+add_executable(test_map_check tests/test_map_check.cpp)
+target_link_libraries(test_map_check PRIVATE mapeditor_core)
+add_test(NAME map_check COMMAND test_map_check
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/Rou.shbd)
+
+add_executable(test_autosave tests/test_autosave.cpp)
+target_link_libraries(test_autosave PRIVATE mapeditor_core)
+add_test(NAME autosave COMMAND test_autosave)
 
 add_executable(test_map_render_settings tests/test_map_render_settings.cpp)
 target_link_libraries(test_map_render_settings PRIVATE mapeditor_core)

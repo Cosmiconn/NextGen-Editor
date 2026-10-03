@@ -1,3 +1,16 @@
+## Map check, autosave and gate links
+- New: Tools > Map check, like Unreal's "Map Check". Lists what would not work in the game, double-click jumps to the spot:
+  - NPCs and gates on blocked cells. Severity follows the distance to the nearest free cell (note up to 4 cells, warning up to 16, error beyond). Calibrated on the real maps: of 215 placed NPCs on Rou, Eld, Adl, Urg, Bera and EchoCave only 6 stand on a blocked cell, 5 of them 1-3 cells from a free one (behind counters).
+  - Gates without a LinkTable entry, gate targets on the target map (if its SHBD is available), arrival points of gates from other maps, TownPortal/recall targets and the MapInfo respawn point on blocked cells.
+  - Spawn zones inside walls (>= 90 % blocked), outside the map or without an active MobRegen entry; monsters missing from MobInfo.shn.
+  - Objects outside the map, missing or unreadable NIFs, missing object textures (recorded by the object renderer while loading) and missing terrain textures.
+  - Enabled quests whose starting NPC does not exist or is not placed anywhere.
+- Found in NA2016: the LinkTable entry `Eld` sends players to Elderine at Y 1344, a blocked spot (`Fbattle022` uses 17214/13445, so 13445 was probably meant); seven gates have no LinkTable entry (`Rou`, `Eld03`, `GateRouCos022`, ...).
+- New: autosave. With changes, the open map is saved every 5 minutes (configurable 1-60, on/off) in the background to `<Project>/Autosave/Client/resmap/field/<map>`, never into the project output. Opening the map again offers Restore / Discard / Later; Restore takes heights, layer masks, Block&Walk, objects and the matching IDM. Saving to the project deletes the autosave. Checked on Rou: a raised spot (480.8 -> 730.8) comes back after reopening.
+- Fixed: gate links from `World/NPC.txt` were never resolved. In NA2016 every LinkTable row starts with seven empty columns; the editor read fixed positions 0..6 and found nothing. Columns are now looked up by name (`argument`, `MapServer`, ...), so the portal view shows outgoing gates again.
+- Fixed: map name casing. Bera's folder and INI are `bera`, the server name is `Bera`; NPCs, MobRegen, TownPortal, recall points and the respawn point were not found. The server name now comes from MapInfo.shn (`MapFolderName` -> `MapName`) and comparisons ignore case; new NPCs and MobRegen files use the server name.
+- Core: `core/MapCheck` (`test_map_check`, includes the real Rou.shbd), `core/Autosave` (`test_autosave`). Automation: `mapcheck [print]`, `autosave now|wait|restore|discard|minutes <n>`, `stroke <x> <z> [n]`.
+
 ## Quest editor — choosing the start NPC
 - The start NPC can now be chosen from a list: "Choose..." next to the mob ID opens all NPCs from MobInfo.shn with their placement from `World/NPC.txt` (map, position, role), searchable by name, InxName or ID. Choosing one sets the ID and turns on "Starting NPC required". Below it the editor shows where the NPC stands, or in red that it stands on no map (the quest cannot be accepted in the game then).
 - The same list is available for the five monster/NPC objectives ("visit NPC" opens filtered to placed NPCs, "defeat monster" without the filter).

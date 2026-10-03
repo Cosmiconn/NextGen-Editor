@@ -368,6 +368,34 @@ Ein TownPortal-Ziel liegt höchstens 205 Einheiten vom zugehörigen Gate_Town-NP
 - 'Save TownPortal.shn' and 'Save RecallCoord.txt'.
 A TownPortal target is at most 205 units away from the associated Gate_Town NPC.)MAN",
      "portal townportal recall schriftrolle teleport"},
+    {"map.mapcheck", "map",
+     "Kartenprüfung", "Map check",
+     R"MAN(Werkzeuge > Kartenprüfung prüft die offene Karte wie Unreals "Map Check" und listet alles, was im Spiel nicht funktionieren würde. Doppelklick springt zur Stelle (Objekte werden ausgewählt, Quests öffnen den Quest-Editor). 'Prüfen' wiederholt die Prüfung nach Änderungen.
+Geprüft wird:
+- NPCs und Gates auf blockierten Zellen (SHBD). Die Schwere richtet sich nach dem Abstand zur nächsten freien Zelle: bis 4 Zellen Hinweis (kommt im Original vor, z.B. Händler hinter einer Theke), bis 16 Zellen Warnung, darüber Fehler.
+- Gates ohne LinkTable-Eintrag, Gate-Ziele auf der Zielkarte (falls deren SHBD im Client-Ordner liegt) und Ankunftspunkte anderer Gates auf dieser Karte.
+- TownPortal- und Rückruf-Ziele sowie der Wiederbelebungspunkt (MapInfo RegenX/RegenY) auf blockierten Zellen.
+- Spawn-Zonen in Wänden (ab 90 % blockiert), außerhalb der Karte, ohne aktiven MobRegen-Eintrag; Monster, die nicht in MobInfo.shn stehen.
+- Objekte außerhalb der Karte, NIFs, die fehlen oder nicht lesbar sind, fehlende Objekt- und Terrain-Texturen.
+- Aktivierte Quests, deren Start-NPC nicht existiert oder auf keiner Karte steht ('Quests prüfen').
+Hinweise sind ausgeblendet, bis 'Hinweise' angehakt wird. In NA2016 findet die Prüfung z.B. den LinkTable-Eintrag 'Eld' mit Ziel-Y 1344 (blockiert; gemeint ist vermutlich 13445) und sieben Gates ohne LinkTable-Eintrag.)MAN",
+     R"MAN(Tools > Map check checks the open map like Unreal's "Map Check" and lists everything that would not work in the game. Double-click jumps to the spot (objects are selected, quests open the quest editor). 'Check' runs it again after changes.
+Checked are:
+- NPCs and gates on blocked cells (SHBD). Severity follows the distance to the nearest free cell: up to 4 cells note (happens in the original, e.g. a merchant behind a counter), up to 16 cells warning, beyond that error.
+- Gates without a LinkTable entry, gate targets on the target map (if its SHBD is in the client folder) and arrival points of other gates on this map.
+- TownPortal and recall targets and the respawn point (MapInfo RegenX/RegenY) on blocked cells.
+- Spawn zones inside walls (90 % blocked or more), outside the map, without an active MobRegen entry; monsters that are not in MobInfo.shn.
+- Objects outside the map, NIFs that are missing or unreadable, missing object and terrain textures.
+- Enabled quests whose starting NPC does not exist or is not placed on any map ('Check quests').
+Notes stay hidden until 'Notes' is ticked. In NA2016 the check finds e.g. the LinkTable entry 'Eld' with target Y 1344 (blocked; 13445 was probably meant) and seven gates without a LinkTable entry.)MAN",
+     "kartenprüfung map check fehler error prüfen gate npc spawn quest nif textur"},
+    {"map.autosave", "map",
+     "Automatisches Speichern", "Autosave",
+     R"MAN(Bei Änderungen sichert der Editor die offene Karte alle 5 Minuten (Werkzeuge > Einstellungen: an/aus, 1-60 Minuten, 'Jetzt sichern'). Die Sicherung liegt in <Projekt>/Autosave/Client/resmap/field/<Karte> - nicht in der Projektausgabe, sie wird also nie ausgeliefert. Geschrieben wird im Hintergrund, nicht während eines Pinselstrichs.
+Beim nächsten Öffnen der Karte (z.B. nach einem Absturz) fragt der Editor: 'Wiederherstellen' übernimmt Höhen, Layer-Masken, Block&Walk, Objekte und die passende IDM-Zuordnung aus der Sicherung; die Karte ist danach geändert und wird mit Speichern ins Projekt übernommen. 'Verwerfen' löscht die Sicherung, 'Später' fragt beim nächsten Öffnen erneut. Speichern ins Projekt löscht die Sicherung.)MAN",
+     R"MAN(When something changed, the editor saves the open map every 5 minutes (Tools > Settings: on/off, 1-60 minutes, 'Autosave now'). The autosave lives in <Project>/Autosave/Client/resmap/field/<map> - not in the project output, so it is never shipped. It is written in the background, never during a brush stroke.
+The next time the map is opened (e.g. after a crash) the editor asks: 'Restore' takes heights, layer masks, Block&Walk, objects and the matching IDM mapping from the autosave; the map is then modified and goes to the project with Save. 'Discard' deletes the autosave, 'Later' asks again next time. Saving to the project deletes the autosave.)MAN",
+     "autosave automatisch speichern sicherung absturz crash wiederherstellen restore"},
     {"shn.overview", "shn",
      "SHN-Editor: Grundlagen", "SHN editor: basics",
      R"MAN(SHN sind die Tabellen-Dateien des Spiels (Zeilen und typisierte Spalten). CLIENT-Dateien liegen in ressystem, SERVER-Dateien in 9Data/Shine.

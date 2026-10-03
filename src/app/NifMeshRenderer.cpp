@@ -1031,6 +1031,7 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
         ReleaseModel(model);
     }
     modelCache_.clear();
+    diagnostics_ = {};
     // Textur-Cache bewusst NICHT geleert - Texturen sind unabhängig vom Modell-Cache gültig
     // und werden oft von Modellen auf verschiedenen Karten wiederverwendet (z.B. "grass.dds").
     perObjectModel_.assign(set.Count(), nullptr);
@@ -1058,6 +1059,7 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
             if (!resolved) {
                 if (inserted) std::fprintf(stderr, "[NifMeshRenderer] NIF nicht gefunden: model=%s mapDir=%s\n",
                              obj.modelPath.c_str(), mapDir.string().c_str());
+                diagnostics_.missingModels.insert(obj.modelPath);
                 continue;
             }
         }
@@ -1468,6 +1470,7 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                             if (dst.texture == 0) {
                                 std::fprintf(stderr, "[NifMeshRenderer] Objekt-Textur-Slot %zu nicht gefunden/dekodierbar: %s\n",
                                              slotIndex, src.texture.c_str());
+                                diagnostics_.missingTextures[obj.modelPath].insert(src.texture);
                             }
                         }
                     }
@@ -1512,6 +1515,7 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                                 std::fprintf(stderr,
                                     "[NifMeshRenderer] TextureEffect-Textur nicht gefunden/dekodierbar: %s (%s)\n",
                                     effect.texture.c_str(), obj.modelPath.c_str());
+                                diagnostics_.missingTextures[obj.modelPath].insert(effect.texture);
                             }
                         }
                         if (textureId == 0) continue;
@@ -1762,6 +1766,7 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
             if (!nifResult) {
                 std::fprintf(stderr, "[NifMeshRenderer] NIF-Laden fehlgeschlagen: %s: %s\n",
                              obj.modelPath.c_str(), nifResult.error().c_str());
+                diagnostics_.failedModels[obj.modelPath] = nifResult.error();
             }
             it = modelCache_.emplace(key, std::move(model)).first;
         }
