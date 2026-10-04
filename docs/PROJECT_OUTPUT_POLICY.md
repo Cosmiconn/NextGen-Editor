@@ -85,6 +85,15 @@ Projekt-Override.
 Für `resmenu` werden relative Assetpfade zusätzlich vor dem Join geprüft; absolute
 Pfade und `..`-Komponenten können den Projekt-`resmenu`-Baum nicht verlassen.
 
+Der KFM-Workspace folgt derselben Copy-on-write-Regel auch für **relative
+Abhängigkeiten**: Wird die KFM selbst aus einer Projektkopie geladen, werden ihre
+referenzierten NIF-/KF-Dateien zuerst relativ zu dieser Arbeitskopie aufgelöst. Fehlt
+dort eine einzelne Abhängigkeit, fällt die Auflösung gezielt auf den entsprechenden
+relativen Pfad neben der read-only Quell-KFM zurück. Es gibt dabei keine rekursive
+Basename-Suche und absolute eingebettete Pfade werden weiterhin nicht verfolgt. So
+kann ein Projekt einzelne KFM/NIF/KF-Dateien überschreiben, ohne den vollständigen
+Assetverbund kopieren zu müssen.
+
 Die Ausgabe bleibt auch dann **kanonisch**, wenn als read-only Quelle ein tieferer
 Unterordner gewählt wurde:
 
