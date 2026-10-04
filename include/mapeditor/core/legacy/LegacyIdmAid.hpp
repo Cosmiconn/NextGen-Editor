@@ -16,6 +16,32 @@ namespace theseed::mapeditor::core::legacy {
 std::expected<ObjectSpatialIndex, std::string> ParseLegacyIdm(const std::filesystem::path& file);
 std::expected<void, std::string> SerializeLegacyIdm(const ObjectSpatialIndex& index, const std::filesystem::path& file);
 
+// IDM-Pflege beim Export. Belegt an Rou (NA2016): die IDM-Indizes 0..1077 sind exakt die ersten
+// 1078 Objekte der SHMD in Dateireihenfolge (die Grenze liegt 221 Objekte tief im letzten alten
+// Block jun_grass01; alles danach - 420 weitere Gräser, Lightbugs, Steinhaufen, AuctionHouse01 -
+// wurde später angehängt und ist im ausgelieferten Client NICHT im IDM enthalten). Die Bedeutung
+// der Gruppen selbst (vermutlich Sichtbarkeitsmengen) ist nicht belegt; deshalb wird NICHT neu
+// berechnet, sondern nur jede erhaltene Objekt-Zuordnung auf die neue Schreibposition abgebildet.
+//
+// Uruga (NA2016) widerlegt eine allgemeine Gültigkeit: Urg.idm verweist auf 4828 Objekte
+// (0..4827), Urg.shmd enthält nur 2243 - der IDM wurde nach Änderungen an der SHMD offenbar nicht
+// neu erzeugt. Indizes >= sourceObjectCount (Objektanzahl der geladenen SHMD) lassen sich keinem
+// Objekt zuordnen und werden deshalb unverändert durchgereicht statt verworfen.
+//
+// writtenSourceIndex[k] = sourceIndex des Objekts an Schreibposition k (-1 = neu).
+struct SpatialIndexRemapReport {
+    std::size_t removedObjects = 0;    // Objekte des Originals, die nicht mehr existieren
+    std::size_t droppedReferences = 0; // dadurch entfernte Gruppeneinträge
+    std::size_t movedObjects = 0;      // erhaltene Objekte mit neuer Schreibposition
+    std::size_t uncoveredObjects = 0;  // neue Objekte ohne IDM-Zuordnung (wie im Original-Client)
+    std::size_t unattributedIndices = 0; // Indizes ohne SHMD-Objekt (>= sourceObjectCount), unverändert
+    bool identity = true;              // unverändert -> Ergebnis byte-gleich zum Original
+};
+[[nodiscard]] ObjectSpatialIndex RemapSpatialIndex(const ObjectSpatialIndex& original,
+                                                   const std::vector<std::int32_t>& writtenSourceIndex,
+                                                   SpatialIndexRemapReport* report = nullptr,
+                                                   std::int32_t sourceObjectCount = -1);
+
 // -----------------------------------------------------------------------------------------
 // .aid: uint32 areaCount, followed by all area records.
 // Each record: char name[32], uint32 shape, float values[shape == 0 ? 3 : 5].

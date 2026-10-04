@@ -13,17 +13,44 @@ Der Emulator ist ein separates Projekt und wurde in diesem Editor-Release nicht 
 GUI-freier Kern und Prüfwerkzeuge, ohne externe Bibliotheken:
 
 ```powershell
-cmake -S . -B build -DNEXTGEN_EDITOR_BUILD_GUI=OFF
+cmake -S . -B build -DNEXTGEN_EDITOR_CORE_ONLY=ON
 cmake --build build --config Release
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-Vollständige Windows-App mit vcpkg:
+Vollständige Windows-App mit vcpkg. Unter Windows ist die GUI standardmäßig aktiviert; wenn
+`VCPKG_ROOT` oder `VCPKG_INSTALLATION_ROOT` gesetzt ist, wird der Toolchain-Pfad automatisch
+erkannt:
 
 ```powershell
-cmake -S . -B build -DNEXTGEN_EDITOR_BUILD_GUI=ON "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+cmake -S . -B build
 cmake --build build --config Release
-.\build\Release\map_editor.exe
+.\build\Release\Editor.exe
+```
+
+Ohne gesetzte vcpkg-Umgebungsvariable kann der Toolchain-Pfad weiterhin explizit angegeben werden:
+
+```powershell
+cmake -S . -B build "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
+cmake --build build --config Release
+```
+
+Ältere Revisionen konnten in einem vorhandenen `build`-Ordner
+`NEXTGEN_EDITOR_BUILD_GUI=OFF` hinterlassen. Unter Windows wird dieser alte Cachewert jetzt
+automatisch korrigiert: ein normaler Configure/Build erzeugt wieder `Editor.exe`.
+
+```powershell
+cmake -S . -B build
+cmake --build build --config Release --target map_editor
+.\\build\\Release\\Editor.exe
+```
+
+Nur wenn bewusst **ohne** Desktop-Editor gebaut werden soll, wird der neue explizite
+Core-only-Schalter verwendet:
+
+```powershell
+cmake -S . -B build-core -DNEXTGEN_EDITOR_CORE_ONLY=ON
+cmake --build build-core --config Release
 ```
 
 C++23 einschließlich `std::expected` ist erforderlich. Lokal geprüft mit MSVC 19.51.
@@ -52,6 +79,15 @@ einen getrennten Recovery-Versuch. TSV-Ergebnisse werden nach jeder Datei geschr
 `UNRESEARCHED` im Inventar bedeutet: kein Codec im Auditor; dies ist keine Aussage über
 Windows-WIC oder sonstige separate Anzeigefunktionen des Editors.
 
+Echte NA2016-Daten in den Tests (optional, nicht im Repository): Ein Ordner mit `Client/`
+(mindestens `ressystem/`) und dem Server-`Shine/` aktiviert zusätzliche Prüfungen in
+`quest_layout` (Quest-Texte, Start-NPCs, Kill-Anzahlen) und `item_drop_groups` (Drop-Kette):
+
+```powershell
+cmake -S . -B build -DNEXTGEN_NA2016_DATA=D:\Fiesta\NA2016
+ctest --test-dir build -C Release
+```
+
 ## Umfang
 
 Karten: INI, HTD/HTDG, Blend-BMP, SHBD, SHMD, IDM und AID. Zusätzlich SHN,
@@ -71,3 +107,22 @@ Die ZIP im Verzeichnis `releases` enthält Quellen, Fixtures, Berichte und den W
 `bin/`. Historische Berichte sind ausdrücklich versionsgebunden; neue Ergebnisse stehen in
 `docs/v14-results`. Das Handbuch wird direkt in C++ gepflegt, siehe
 [MANUAL_MAINTENANCE.md](docs/MANUAL_MAINTENANCE.md).
+
+## Level-Editor-Automatisierung (Screenshots / visuelle Regression)
+
+Ohne gesetzte Umgebungsvariable ist der Hook inaktiv. Beispiel unter Linux mit Xvfb:
+
+```bash
+NEXTGEN_EDITOR_SCRIPT="open $PWD/tests/fixtures/Rou.ini; wait 30; mode objects; select 40; focus; \
+  grid on; wait 10; screenshot grid.ppm; collision on; playtest; wait 30; screenshot playtest.ppm; quit" \
+  xvfb-run -a -s "-screen 0 1600x900x24" ./build/Editor
+```
+
+Befehle: `open <pfad>`, `wait <frames>`, `mode terrain|texture|walk|objects|npcs|portals`,
+`select <id>`, `selectall`, `focus`, `hide`, `isolate`, `showall`, `marquee x0 y0 x1 y1 [inside|crossing]`,
+`playtest`, `preset 0..5`, `camera tx ty tz yaw pitch dist`, `grid|stats|collision|gameview|surfacesnap on|off`,
+`status <text>`, `screenshot <datei.ppm>`, `quit`. Spieldaten: `shn <Unterreiter> <Server-Shine-Ordner>`
+(4 = Quest-Editor), `project <Client>|<Server>`, `projectfolder <Ordner>`,
+`shnset <Client|Server> <Datei.shn> <Zeile> <Spalte> <Wert>`, `saveall [all]` (alle geänderten bzw. alle
+geladenen Module über die normalen Speicherfunktionen speichern), `quest <id> [drops|rewards]` (Quest auswählen und optional zum Abschnitt scrollen), z. B.
+`shn 4 $PWD/tests/fixtures/data; wait 10; quest 251 rewards; wait 10; screenshot quest.ppm; quit`.

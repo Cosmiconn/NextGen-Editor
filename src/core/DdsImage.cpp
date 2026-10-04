@@ -4,6 +4,8 @@
 #include <fstream>
 #include <bit>
 #include <limits>
+#include <algorithm>
+#include <optional>
 
 namespace theseed::mapeditor::core {
 
@@ -247,6 +249,127 @@ void FlipVertical(DdsImage& image) {
     }
 }
 
+std::expected<DdsCubeImage, std::string> LoadDdsCubeImage(const std::filesystem::path& file) {
+    std::ifstream in(file, std::ios::binary);
+    if (!in) return std::unexpected("Konnte DDS-Cube-Map nicht oeffnen: " + file.string());
+
+    std::array<std::uint8_t, 128> header{};
+    in.read(reinterpret_cast<char*>(header.data()), static_cast<std::streamsize>(header.size()));
+    if (!in || std::memcmp(header.data(), "DDS ", 4) != 0)
+        return std::unexpected("Keine gueltige DDS-Cube-Map (Signatur fehlt): " + file.string());
+
+    const auto u32 = [&](std::size_t offset) {
+        std::uint32_t v = 0;
+        std::memcpy(&v, header.data() + offset, 4);
+        return v;
+    };
+    const std::uint32_t height = u32(12);
+    const std::uint32_t width = u32(16);
+    if (u32(4) != 124 || u32(76) != 32 || width == 0 || height == 0 ||
+        static_cast<std::uint64_t>(width) * height > 64u * 1024u * 1024u)
+        return std::unexpected("Ungueltiger DDS-Cube-Header oder Bildgroesse: " + file.string());
+
+    constexpr std::uint32_t kCubeMap = 0x00000200u;
+    constexpr std::uint32_t kAllCubeFaces = 0x0000FC00u;
+    const std::uint32_t caps2 = u32(112);
+    if ((caps2 & kCubeMap) == 0 || (caps2 & kAllCubeFaces) != kAllCubeFaces)
+        return std::unexpected("DDS ist keine vollstaendige 6-Flaechen-Cube-Map: " + file.string());
+
+    const std::uint32_t mipCount = std::max(1u, u32(28));
+    const std::uint32_t pfFlags = u32(80);
+    const bool packedRgb = (pfFlags & 0x40u) != 0 && (pfFlags & 0x4u) == 0;
+    const std::uint32_t bits = u32(88);
+    char fourCC[4]{};
+    std::memcpy(fourCC, header.data() + 84, 4);
+    const BcFormat bcFormat = DetectFormat(fourCC);
+
+    std::size_t blockSize = 0;
+    std::size_t pixelBytes = 0;
+    if (packedRgb) {
+        if (!bits || bits > 32 || bits % 8u)
+            return std::unexpected("Nicht unterstuetzte DDS-Cube-RGB-Bittiefe");
+        pixelBytes = bits / 8u;
+    } else {
+        if (bcFormat == BcFormat::Unsupported) {
+            return std::unexpected("Nicht unterstuetztes DDS-Cube-Format (FourCC '" +
+                std::string(fourCC, 4) + "')");
+        }
+        blockSize = bcFormat == BcFormat::BC1 ? 8u : 16u;
+    }
+
+    const auto mipBytes = [&](std::uint32_t w, std::uint32_t h) -> std::optional<std::size_t> {
+        if (packedRgb) {
+            const std::uint64_t rowBytes64 = static_cast<std::uint64_t>(w) * pixelBytes;
+            if (rowBytes64 > std::numeric_limits<std::size_t>::max() - 3u) return std::nullopt;
+            const std::size_t pitch = (static_cast<std::size_t>(rowBytes64) + 3u) & ~std::size_t(3u);
+            if (h != 0 && pitch > std::numeric_limits<std::size_t>::max() / h) return std::nullopt;
+            return pitch * h;
+        }
+        const std::size_t bw = (static_cast<std::size_t>(w) + 3u) / 4u;
+        const std::size_t bh = (static_cast<std::size_t>(h) + 3u) / 4u;
+        if (bw != 0 && bh > std::numeric_limits<std::size_t>::max() / bw) return std::nullopt;
+        const std::size_t blocks = bw * bh;
+        if (blockSize != 0 && blocks > std::numeric_limits<std::size_t>::max() / blockSize) return std::nullopt;
+        return blocks * blockSize;
+    };
+
+    std::size_t faceBytes = 0;
+    std::uint32_t mw = width, mh = height;
+    for (std::uint32_t mip = 0; mip < mipCount; ++mip) {
+        const auto bytes = mipBytes(mw, mh);
+        if (!bytes || faceBytes > std::numeric_limits<std::size_t>::max() - *bytes)
+            return std::unexpected("DDS-Cube-Mipgroesse laeuft ueber");
+        faceBytes += *bytes;
+        mw = std::max(1u, mw / 2u);
+        mh = std::max(1u, mh / 2u);
+    }
+    const auto topBytes = mipBytes(width, height);
+    if (!topBytes || faceBytes == 0)
+        return std::unexpected("Ungueltige DDS-Cube-Mipgroesse");
+
+    in.seekg(0, std::ios::end);
+    const std::streamoff fileSize = in.tellg();
+    const std::uint64_t required =
+        128ull + static_cast<std::uint64_t>(faceBytes) * 6ull;
+    if (fileSize < 0 || static_cast<std::uint64_t>(fileSize) < required)
+        return std::unexpected("DDS-Cube-Datei ist abgeschnitten: " + file.string());
+
+    DdsCubeImage cube;
+    cube.width = width;
+    cube.height = height;
+    const std::array<std::uint32_t, 4> masks{
+        u32(92), u32(96), u32(100), (pfFlags & 1u) ? u32(104) : 0u};
+
+    for (std::size_t face = 0; face < cube.faces.size(); ++face) {
+        const std::uint64_t absolute =
+            128ull + static_cast<std::uint64_t>(faceBytes) * face;
+        in.seekg(static_cast<std::streamoff>(absolute), std::ios::beg);
+        std::vector<std::uint8_t> raw(*topBytes);
+        in.read(reinterpret_cast<char*>(raw.data()), static_cast<std::streamsize>(raw.size()));
+        if (!in) return std::unexpected("DDS-Cube-Flaeche ist abgeschnitten");
+
+        std::expected<DdsImage, std::string> image =
+            std::unexpected("Nicht unterstuetzte DDS-Cube-Flaeche");
+        if (packedRgb) {
+            const std::size_t rowPitch =
+                ((static_cast<std::size_t>(width) * pixelBytes) + 3u) & ~std::size_t(3u);
+            image = DecodePackedImage(width, height, bits, masks, raw, rowPitch);
+        } else {
+            const std::uint32_t pf =
+                bcFormat == BcFormat::BC1 ? 4u : (bcFormat == BcFormat::BC2 ? 5u : 6u);
+            image = DecodeBcImage(width, height, pf, raw);
+        }
+        if (!image) return std::unexpected("DDS-Cube-Flaeche " + std::to_string(face) +
+                                           " konnte nicht dekodiert werden: " + image.error());
+        // Unlike ordinary GL_TEXTURE_2D, OpenGL cube-map face selection follows the
+        // RenderMan top-left convention. Legacy DDS faces are top-down as well, so do
+        // NOT apply the normal 2D DDS vertical flip here. Coordinate-system conversion
+        // (Gamebryo/Direct3D -> editor/OpenGL) belongs to the sampling direction.
+        cube.faces[face] = std::move(*image);
+    }
+    return cube;
+}
+
 std::expected<DdsImage, std::string> LoadDdsImage(const std::filesystem::path& file) {
     std::ifstream in(file, std::ios::binary);
     if (!in) {
@@ -320,6 +443,125 @@ std::expected<DdsImage, std::string> LoadDdsImage(const std::filesystem::path& f
     // das nur im Terrain-Shader zu korrigieren, ließ die Diffuse-Textur relativ zu Blend/Block/Walk
     // weiterhin gespiegelt erscheinen. Die Korrektur gehört an die gemeinsame DDS-Decoding-Grenze.
     FlipVertical(*image);
+    return image;
+}
+
+
+std::expected<DdsImage, std::string> LoadBmpImage(const std::filesystem::path& file) {
+    std::ifstream in(file, std::ios::binary);
+    if (!in) return std::unexpected("Konnte BMP nicht oeffnen: " + file.string());
+
+    std::array<std::uint8_t, 54> header{};
+    in.read(reinterpret_cast<char*>(header.data()), static_cast<std::streamsize>(header.size()));
+    if (!in || header[0] != 'B' || header[1] != 'M')
+        return std::unexpected("Keine gueltige BMP-Datei: " + file.string());
+
+    auto u16 = [&](std::size_t at) {
+        return static_cast<std::uint16_t>(header[at] | (std::uint16_t(header[at + 1]) << 8));
+    };
+    auto u32 = [&](std::size_t at) {
+        return std::uint32_t(header[at]) |
+               (std::uint32_t(header[at + 1]) << 8) |
+               (std::uint32_t(header[at + 2]) << 16) |
+               (std::uint32_t(header[at + 3]) << 24);
+    };
+    const std::uint32_t pixelOffset = u32(10);
+    const std::uint32_t dibSize = u32(14);
+    if (dibSize < 40u)
+        return std::unexpected("Nicht unterstuetzter BMP-DIB-Header: " + file.string());
+
+    const std::int32_t signedWidth = static_cast<std::int32_t>(u32(18));
+    const std::int32_t signedHeight = static_cast<std::int32_t>(u32(22));
+    const std::uint16_t planes = u16(26);
+    const std::uint16_t bits = u16(28);
+    const std::uint32_t compression = u32(30);
+    const std::uint32_t colorsUsed = u32(46);
+    if (planes != 1u || signedWidth <= 0 || signedHeight == 0 || compression != 0u)
+        return std::unexpected("Nicht unterstuetzte BMP-Geometrie/Kompression: " + file.string());
+    if (bits != 8u && bits != 24u && bits != 32u)
+        return std::unexpected("Nicht unterstuetzte BMP-Bittiefe " + std::to_string(bits) +
+                               ": " + file.string());
+
+    const std::uint32_t width = static_cast<std::uint32_t>(signedWidth);
+    const std::uint64_t absHeight64 = signedHeight < 0
+        ? static_cast<std::uint64_t>(-static_cast<std::int64_t>(signedHeight))
+        : static_cast<std::uint64_t>(signedHeight);
+    if (absHeight64 == 0 || absHeight64 > std::numeric_limits<std::uint32_t>::max() ||
+        static_cast<std::uint64_t>(width) * absHeight64 > 64u * 1024u * 1024u)
+        return std::unexpected("Ungueltige BMP-Dimensionen: " + file.string());
+    const std::uint32_t height = static_cast<std::uint32_t>(absHeight64);
+    const bool topDown = signedHeight < 0;
+
+    std::vector<std::array<std::uint8_t, 4>> palette;
+    if (bits == 8u) {
+        const std::uint32_t paletteCount = colorsUsed != 0u ? colorsUsed : 256u;
+        if (paletteCount > 256u)
+            return std::unexpected("Ungueltige BMP-Palettengroesse: " + file.string());
+        const std::uint64_t paletteStart = 14ull + dibSize;
+        const std::uint64_t paletteBytes = static_cast<std::uint64_t>(paletteCount) * 4ull;
+        if (paletteStart + paletteBytes > pixelOffset)
+            return std::unexpected("BMP-Palette ueberlappt Pixeldaten: " + file.string());
+        palette.resize(paletteCount);
+        in.seekg(static_cast<std::streamoff>(paletteStart), std::ios::beg);
+        for (std::uint32_t i = 0; i < paletteCount; ++i) {
+            std::uint8_t bgra[4]{};
+            in.read(reinterpret_cast<char*>(bgra), 4);
+            if (!in) return std::unexpected("Abgeschnittene BMP-Palette: " + file.string());
+            palette[i] = {bgra[2], bgra[1], bgra[0], 255};
+        }
+    }
+
+    const std::uint64_t rowBits = static_cast<std::uint64_t>(width) * bits;
+    const std::uint64_t rowPitch64 = ((rowBits + 31u) / 32u) * 4u;
+    const std::uint64_t pixelBytes64 = rowPitch64 * height;
+    if (rowPitch64 > std::numeric_limits<std::size_t>::max() ||
+        pixelBytes64 > std::numeric_limits<std::size_t>::max())
+        return std::unexpected("BMP-Pixeldaten sind zu gross: " + file.string());
+
+    in.seekg(0, std::ios::end);
+    const auto fileSize = in.tellg();
+    if (fileSize < 0 ||
+        static_cast<std::uint64_t>(fileSize) < static_cast<std::uint64_t>(pixelOffset) + pixelBytes64)
+        return std::unexpected("BMP-Pixeldaten sind abgeschnitten: " + file.string());
+    in.seekg(static_cast<std::streamoff>(pixelOffset), std::ios::beg);
+
+    const std::size_t rowPitch = static_cast<std::size_t>(rowPitch64);
+    std::vector<std::uint8_t> row(rowPitch);
+    DdsImage image;
+    image.width = width;
+    image.height = height;
+    image.rgba.resize(static_cast<std::size_t>(width) * height * 4u);
+
+    for (std::uint32_t sourceRow = 0; sourceRow < height; ++sourceRow) {
+        in.read(reinterpret_cast<char*>(row.data()), static_cast<std::streamsize>(row.size()));
+        if (!in) return std::unexpected("BMP-Zeilenlesefehler: " + file.string());
+
+        // DdsImage stores OpenGL V=0 first (bottom row). Positive BMP height is already
+        // bottom-up; negative height is top-down and must therefore be inverted.
+        const std::uint32_t dstY = topDown ? (height - 1u - sourceRow) : sourceRow;
+        auto* dst = image.rgba.data() + static_cast<std::size_t>(dstY) * width * 4u;
+        for (std::uint32_t x = 0; x < width; ++x) {
+            if (bits == 8u) {
+                const auto index = row[x];
+                if (index >= palette.size())
+                    return std::unexpected("BMP-Palettenindex ausserhalb der Palette: " + file.string());
+                const auto& color = palette[index];
+                dst[x * 4u + 0u] = color[0];
+                dst[x * 4u + 1u] = color[1];
+                dst[x * 4u + 2u] = color[2];
+                dst[x * 4u + 3u] = 255;
+            } else {
+                const std::size_t stride = bits / 8u;
+                const auto* src = row.data() + static_cast<std::size_t>(x) * stride;
+                dst[x * 4u + 0u] = src[2];
+                dst[x * 4u + 1u] = src[1];
+                dst[x * 4u + 2u] = src[0];
+                // BI_RGB's fourth byte is reserved/undefined rather than a reliable alpha
+                // channel. Match normal Windows bitmap semantics and keep it opaque.
+                dst[x * 4u + 3u] = 255;
+            }
+        }
+    }
     return image;
 }
 

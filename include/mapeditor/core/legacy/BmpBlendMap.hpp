@@ -19,10 +19,20 @@
 #include <expected>
 #include <filesystem>
 #include <string>
+#include <vector>
+#include <cstdint>
 
 namespace theseed::mapeditor::core::legacy {
 
 std::expected<BlendMap, std::string> ReadBlendMapBmp(const std::filesystem::path& file);
 std::expected<void, std::string> WriteBlendMapBmp(const BlendMap& blend, const std::filesystem::path& file);
+
+// Schreibt geänderte Gewichte in die ORIGINAL-Dateibytes einer 24-bit-BI_RGB-Blend-BMP gleicher
+// Grösse: Header, Füllbytes und jedes Pixel, dessen 8-bit-Wert (B-Kanal, wie ReadBlendMapBmp)
+// gleich bleibt, bleiben bytegleich; nur geänderte Pixel werden auf B=G=R=neu gesetzt.
+// Hintergrund: In den echten Roumen-Masken ist B==G==R nicht überall erfüllt (block 539,
+// rock 1774, grass 13496 Pixel), ein Neuschreiben verlöre diese Kanäle.
+std::expected<std::vector<std::uint8_t>, std::string> PatchBlendMapBmp(
+    const std::vector<std::uint8_t>& originalFile, const BlendMap& blend);
 
 } // namespace theseed::mapeditor::core::legacy

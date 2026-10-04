@@ -7,6 +7,7 @@
 #include "mapeditor/core/BlendMap.hpp"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -25,6 +26,20 @@ struct TextureLayer {
     float regionWidth = 0.0f;
     float regionHeight = 0.0f;
     BlendMap blend;
+    // Originale Blend-Map in ihrer eigenen Auflösung, falls sie beim Import auf die gemeinsame
+    // Stack-Auflösung resampelt werden musste (z.B. Adl: 476x476 neben 512x512). Der Export schreibt
+    // einen unveränderten Layer dann bytegleich in Originalauflösung bzw. resampelt einen bearbeiteten
+    // Layer zurück auf diese Auflösung, statt die Datei stillschweigend umzuskalieren.
+    std::optional<BlendMap> sourceBlend;
+    // Original-Dateibytes der Blend-BMP (beim Import gelesen). Der Export schreibt einen
+    // unveränderten Layer damit bytegleich und patcht einen bearbeiteten nur an geänderten Pixeln.
+    std::vector<std::uint8_t> sourceBmpBytes;
+    // Die Blend-BMP war beim Import nicht auffindbar/lesbar. sourceBlend hält dann den
+    // Anfangszustand; solange der Layer nicht bemalt wird, legt der Export keine Datei an.
+    bool blendMissingAtImport = false;
+    // Pfad der geladenen Blend-BMP auf der Platte; der Export übernimmt daraus Ordner- und
+    // Dateinamen-Schreibweise (".\resmap\field\bera\Moss.BMP" liegt als Bera/Moss.BMP vor).
+    std::string sourceBlendPath;
 };
 
 class TextureLayerStack {
@@ -42,6 +57,10 @@ public:
     // (Basis-Layer, sonst wäre die Normalisierung beim ersten Malen uneindeutig).
     std::size_t AddLayer(std::string name, std::string diffuseFileName, float uvScaleDiffuse = 1.0f);
     void RemoveLayer(std::size_t index);
+    // History-friendly structural primitives: move a layer out without copying its BlendMap
+    // and reinsert the exact layer at its original index.
+    [[nodiscard]] std::optional<TextureLayer> TakeLayer(std::size_t index);
+    void InsertLayer(std::size_t index, TextureLayer layer);
     void MoveLayer(std::size_t fromIndex, std::size_t toIndex);
 
     [[nodiscard]] std::size_t LayerCount() const noexcept { return layers_.size(); }

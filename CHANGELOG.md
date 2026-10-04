@@ -1,3 +1,228 @@
+## Map check, autosave and gate links
+- New: Tools > Map check, like Unreal's "Map Check". Lists what would not work in the game, double-click jumps to the spot:
+  - NPCs and gates on blocked cells. Severity follows the distance to the nearest free cell (note up to 4 cells, warning up to 16, error beyond). Calibrated on the real maps: of 215 placed NPCs on Rou, Eld, Adl, Urg, Bera and EchoCave only 6 stand on a blocked cell, 5 of them 1-3 cells from a free one (behind counters).
+  - Gates without a LinkTable entry, gate targets on the target map (if its SHBD is available), arrival points of gates from other maps, TownPortal/recall targets and the MapInfo respawn point on blocked cells.
+  - Spawn zones inside walls (>= 90 % blocked), outside the map or without an active MobRegen entry; monsters missing from MobInfo.shn.
+  - Objects outside the map, missing or unreadable NIFs, missing object textures (recorded by the object renderer while loading) and missing terrain textures.
+  - Enabled quests whose starting NPC does not exist or is not placed anywhere.
+- Found in NA2016: the LinkTable entry `Eld` sends players to Elderine at Y 1344, a blocked spot (`Fbattle022` uses 17214/13445, so 13445 was probably meant); seven gates have no LinkTable entry (`Rou`, `Eld03`, `GateRouCos022`, ...).
+- New: autosave. With changes, the open map is saved every 5 minutes (configurable 1-60, on/off) in the background to `<Project>/Autosave/Client/resmap/field/<map>`, never into the project output. Opening the map again offers Restore / Discard / Later; Restore takes heights, layer masks, Block&Walk, objects and the matching IDM. Saving to the project deletes the autosave. Checked on Rou: a raised spot (480.8 -> 730.8) comes back after reopening.
+- Fixed: gate links from `World/NPC.txt` were never resolved. In NA2016 every LinkTable row starts with seven empty columns; the editor read fixed positions 0..6 and found nothing. Columns are now looked up by name (`argument`, `MapServer`, ...), so the portal view shows outgoing gates again.
+- Fixed: map name casing. Bera's folder and INI are `bera`, the server name is `Bera`; NPCs, MobRegen, TownPortal, recall points and the respawn point were not found. The server name now comes from MapInfo.shn (`MapFolderName` -> `MapName`) and comparisons ignore case; new NPCs and MobRegen files use the server name.
+- Core: `core/MapCheck` (`test_map_check`, includes the real Rou.shbd), `core/Autosave` (`test_autosave`). Automation: `mapcheck [print]`, `autosave now|wait|restore|discard|minutes <n>`, `stroke <x> <z> [n]`.
+
+## Quest editor — choosing the start NPC
+- The start NPC can now be chosen from a list: "Choose..." next to the mob ID opens all NPCs from MobInfo.shn with their placement from `World/NPC.txt` (map, position, role), searchable by name, InxName or ID. Choosing one sets the ID and turns on "Starting NPC required". Below it the editor shows where the NPC stands, or in red that it stands on no map (the quest cannot be accepted in the game then).
+- The same list is available for the five monster/NPC objectives ("visit NPC" opens filtered to placed NPCs, "defeat monster" without the filter).
+- Fixed: the "Problems" filter flagged every "visit NPC" objective because its count is 0. In NA2016 2289 of 2291 such objectives have count 0, so 0 is correct there.
+- Checked on the real data: quest 251 changed from 88 (Weapon Title Merchant Zach) to 92 (Town Chief Roumenus); saving into the project folder changes exactly that one byte in the client and server QuestData.shn, the source stays unchanged.
+- Automation: `quest <id> npcpick [filter]` opens the list, `quest <id> objectives` scrolls to the objectives; `saveall` now also saves a changed QuestData.
+
+## Texturing — layers no longer influence each other
+- Painting one layer changed the masks of the other layers. The editor treated the masks as weights that must add up to 1 and moved the difference onto all other layers; those changes were then saved into BMPs that were never painted. The real maps show that Fiesta layers are independent opacity masks laid over each other in order. In Uruga the masks add up to more than 1.2 at 37 % of the sampled points; in Bera and Teva several layers are fully opaque at the same spot.
+- Painting now changes only the selected layer. Checked on Uruga in the 3D viewport: painting layer 3 changes only `Urg_way_alp.bmp`, the other 7 masks stay byte-identical, the missing base mask is not created.
+- Terrain shader: layers are laid over each other in list order (`Over()`, later over earlier) instead of being summed. Groups of more than 8 layers are composited with blend (ONE, SRC_ALPHA) and the group's transmittance; fog now applies exactly once (it used to be added once per group).
+- The note "weight sum should be ~1.0" is replaced by an explanation of the independent masks; manual updated. `test_texture_layers` checks that other layers stay unchanged.
+- The red spot under the cursor in the 3D viewport is the SHBD collision display (blocked cells near the cursor), not a terrain error.
+
+## Map export — original file names and masks for Eld, Teva, Adl, EchoCave and Bera
+- Five more real maps saved unchanged through the editor: all written files byte-identical (Eld and EchoCave without terrain, Teva with 513x513 and 12 masks, Adl 951x476 with a mask used twice, Bera). Unreferenced leftovers in a map folder are not copied.
+- Fixed casing: the export wrote map files as `<map>.<ext>` and masks in the INI's spelling (`resmap/field/bera/moss.bmp` next to `Bera/Moss.BMP`, `Eld.shbd` instead of `eld.shbd`). On Windows these are the same files, on case-sensitive file systems they are not. The original names are now kept: the project remembers the loaded module names (`sourceFileNames`, also e.g. `darkVally.HTD`), and masks take folder and file name spelling from the loaded file. Under a different map name ("save as") `<map>.<ext>` is still used.
+
+## Asset browser — rendered object previews
+- NIF thumbnails in the asset browser and the object properties showed only the model's first diffuse texture. They are now rendered models: a separate `NifMeshRenderer` draws the object into an offscreen framebuffer, the camera framed at an angle from above on the model's world bounds (`NifMeshRenderer::ObjectWorldBounds`, nearest LOD). If a model cannot be loaded, the old texture thumbnail is used. Example: `screenshots/object_previews.png` (lighthouse, tree, market stall, ship, fountain, Uruga airship).
+- Automation `nifpreview <out.ppm> <nif>...` writes previews as an image.
+
+## Block&Walk — object footprints checked against the original SHBD
+- Measured on Roumen: inside the footprints the editor derives, 92-99 % of the cells are blocked in the original SHBD for buildings and props (house02 97.5 %, shops 93-99 %, GuildHall 95.5 %, boxes 99.9 %). Decoration and floating objects are walkable in the game: weed 23 %, wool 2 %, the ship on the sea 16 %, Uruga's airship 9 %. "Block visible footprints" used to block them anyway.
+- New option, on by default: "Only block models that block in the original". Models whose footprints are mostly walkable in the SHBD loaded with the map are excluded; models without a comparison (newly placed) are still blocked. Cells blocked by the editor that are also blocked in the original: Roumen 74.8 % -> 86.1 %, Uruga 61.6 % -> 84.4 %. The tooltip lists the excluded models with their percentage.
+- Automation `footprintstats` prints these numbers per model.
+
+## Level Editor — new terrain brushes
+- New brushes besides raise, lower, smooth and flatten:
+  - Noise: coherent value noise with wavelength and seed.
+  - Terrace: pulls heights to the nearest step.
+  - Erode: thermal erosion; material slides down from spots steeper than the allowed slope, volume is preserved.
+  - Sharpen: the opposite of smooth, like Unreal's "Detail".
+  - Ramp: two clicks give an even incline; width = radius, soft edge = half radius.
+- Flatten takes the target height at the start of the stroke (like Unreal, can be switched off) and can raise only, lower only or both.
+- Falloff shapes for all brushes: smooth, linear, spherical, tip, constant.
+- Core: `BrushMode::Noise/Terrace/Erode/Sharpen/Ramp`, `BrushFalloff`, `FlattenSide`, `ApplyRamp`. `test_heightmap_core` checks every effect and an exact undo.
+- Checked in the 3D viewport on Roumen: a ramp through the mountain gives 595.5 at the midpoint between 515 and 676, with linear quarter points (555 / 636).
+
+## Level Editor — terrain, texture and Block&Walk brushes in the 3D viewport
+- Sculpting, texture painting and Block&Walk painting worked only in the 2D view. The brush step is now one shared function (`ApplyBrushAtWorld`) used by the 2D view and the 3D viewport. In the 3D viewport LMB paints on the terrain under the cursor (like Unreal's landscape mode), Alt+LMB still orbits, RMB+WASD still flies, and orthographic views no longer pan with LMB in these modes.
+- Verified with real mouse input on Roumen: raise brush 480.8 -> 891.6 under the cursor, layer weight 0 -> 1, walk cell walkable -> blocked.
+- Automation: `mouse <x> <y>`, `lmb down|up`, `probe <x> <z>|cursor`, `brush <mode> <radius> <strength>`, `layer <index>`.
+- Checked with the real NA2016 data: quest start NPCs are correct (the start NPC's name appears in the title or description of 1800 of 2134 quests; the rest use titles, typos or delivery chains, where the start NPC is the previous recipient and the "visit NPC" objective matches the recipient in 23 of 28 delivery texts). The NPC shop editor shows the real NPCItemList files correctly (4997 item entries, 3 already broken in the original data); automation `shop <npc>`.
+
+## Map export — checked against the real Uruga map (Urg)
+- Uruga, saved unchanged through the editor into the project: all 16 written files are byte-identical at `Client/resmap/field/Urg/` (ini, HTD, HTDG, SHMD, SHBD, IDM, AID, conf, 8 blend masks); the source stays unchanged. The missing `L1_A.bmp` (not in the upload) is not created.
+- Fixed IDM data loss: saving Uruga unchanged shrank `Urg.idm` from 86781 to 42913 bytes. The IDM model derived from Roumen (index = SHMD object in file order) does not hold for Uruga: `Urg.idm` references 4828 objects, `Urg.shmd` contains only 2243 (the IDM was apparently not regenerated after the SHMD changed). The remap dropped every index above 2242. Indices without a SHMD object are now kept unchanged; indices with one are remapped as before. Both maps have group count = header value + 100.
+- Checked editing on Uruga: painting a 256×256 mask changes exactly the painted pixels (300 bytes). The 257×257 mask `Urg_ground_alp.bmp` uses the resample path and changes only 81 pixels in the painted area at its original size. Deleting an object removes one IDM reference, shifts 2237 and keeps the 2585 unattributed ones; everything reopens with the edits.
+- `test_idm_remap` covers the Uruga case.
+
+## Saving — end-to-end check against the real NA2016 data, four save bugs fixed
+- End-to-end check: with the real client `ressystem`, the server `Shine` folder and Roumen in the real client layout, every module was saved through the editor's normal save functions into an empty project folder. Saved: 348 SHN, QuestData, ItemDropTable, TownPortal, RecallCoord, NPC.txt, MobRegen and the map. Result: 365 project files, all byte-identical to their sources and all at the canonical paths (`Client/ressystem`, `Client/resmap/...`, `Server/9Data/Shine/...`); every source file's checksum is unchanged. An edited SHN cell changes exactly its bytes and is loaded from the project after a restart.
+- Fixed: saving QuestData into a fresh project failed ("Backup-Status konnte nicht gelesen werden"). `is_regular_file(p, ec)` reports ENOENT in `ec` under libstdc++ (Linux, MinGW) for a missing file; the save treated that as an error. MSVC does not set `ec` there.
+- Fixed map export: `#HeightFileName` was rewritten to `.\Rou.HTD`. The client resolves it relative to the client folder, so the original `.\resmap\field\Rou\Rou.HTD` is now kept.
+- Fixed map export: blend BMPs were written to `resmap/field/Rou/field/Rou/...` and `resmap/field/Rou/fieldtexture/...` instead of `resmap/field/Rou/...` and `resmap/fieldtexture/...`. The game would have kept loading the old masks. The import now also resolves `resmap\` paths from the client root first.
+- Fixed map export: blend BMPs were rewritten even when unchanged, losing the header values, the 2 padding bytes and the non-gray pixels of the real masks (block 539, rock 1774, grass 13496 pixels with B, G and R different). Unchanged masks are now written with their original bytes; painted masks are patched only at the changed pixels. A mask that was missing on load and never painted is not created, so an empty file cannot hide the real one (shared masks under `resmap/fieldtexture` would affect every map).
+- Fixed: patching the map ini moved blank lines from the end into the header.
+- SHN: a table that exists in client and server (NA2016: 74 files, 73 byte-identical) is saved to both sides when the other side's current state equals this file's previous state and has no own unsaved edits; otherwise the status line says why it was not saved.
+- Multi SHN: the diff column compared only the first 5000 cells and showed a green "0" for unchecked tables. It now compares up to 2 million cells, caches the result until the next edit and never shows "0" for a truncated comparison.
+- New test `test_map_export_layout` (Roumen in the client layout: byte-exact unchanged save, paths, painting changes only the painted pixels, ini line order). Automation: `projectfolder`, `shnset`, `saveall [all]`.
+
+## Drop table editor — drop groups resolved (checked against the real NA2016 server data)
+- `DrItemN` in `World/ItemDropTable.txt` names a drop group in `World/ItemDropGroup.txt`, not an item. The group's `ItemID` then selects items via `ItemInfoServer.shn` `DropGroupA/B`, or names a single item directly. The editor used to check the slot names against ItemInfo and reported 1456 of 1485 mobs as broken. Measured on the real files: 29009 of 29402 filled slots name an existing group; 724 of 970 group rows resolve via DropGroupA/B and 103 via an InxName.
+- New core module `ItemDropGroups` (`DropGroupCatalog`). Problems now mean a group missing from ItemDropGroup.txt (393 slots, 20 names such as Potion06 or T6Product): 185 mobs instead of 1456. Groups without any resolvable item, mostly inactive event groups (EventItem01-08, Choco01; 4850 slots), are shown as a note. `ExcItem` value `0` counts as empty.
+- The slot table shows the group's item count and quantity range; the tooltip lists the items with their names.
+- `test_item_drop_groups`: synthetic chain always; with `-DNEXTGEN_NA2016_DATA=<folder with Client/ and Shine/>` also the measured numbers of the real files (the data is not committed).
+- Quest rewards: type 4 is labelled "Fame?". It appears only in Guard Captain Shutian's daily boss quests, a kingdom quest and one event chain (checked with the real QuestDialog texts). With the real texts, quest 251 also shows that the corrected layout matches: title "Interpretation of the Ancient Book 4", start NPC 88 = RouWeaponTitleMctZach, drops Q_TornOldBook01-05 from Bat/IceViVi/FlyingStaff/Zombie, one choice helmet per class.
+- Automation: `project <client>|<server>` sets the project source folders; `mode mobs` opens the spawn-zone tool.
+- SHN file list: the dependency marker was a UTF-8 warning sign (escaped in the source, so the earlier sweep missed it) and showed as "?"; it is now "!".
+- Checked with the real NA2016 data and found consistent: portal editor (TownPortal, RecallCoord), skill editor (2791 skills, no client/server sync problems), XP and price editors (MobInfoServer, ItemInfo), custom NPC templates, AI script library, and on Roumen the NPCs from World/NPC.txt and the 22 MobRegen zones (the 11 EventSnow zones are empty because their spawns are commented out in the file).
+- `test_quest_layout` also checks the real texts when `NEXTGEN_NA2016_DATA` is set: all 2304 title IDs exist in QuestDialog.shn, quest 251's title and start NPC match, and in 98 of 136 quests whose description says "defeat N ..." a kill objective has exactly that count.
+
+## UI — characters the editor font cannot draw
+- The editor uses ImGui's built-in font (Latin-1 only), so about 70 UI strings showed "?" for –, —, …, →, ←, ↓, ↗, •, ●, ✓, ✕ and ⚠ (on Windows too). They now use drawable equivalents (-, ..., ->, <, >, v, », ·, *, OK, ×, !). Verified in the quest flow view, which showed "?" for its navigation arrows, level range dash and script check marks.
+- Automation: `quest <id> flow` opens the quest flow view.
+
+## Quest editor — corrected QuestData layout, rewards decoded
+- Fixed the QuestData.shn byte layout. The reference parser read title and description as uint16 and missed two padding fields, so every field from the title on sat 8 bytes off (levels, start NPC, required item, predecessor, class, objectives, drops). The roundtrip was still byte-exact because an end "padding"/"extra8" block absorbed the difference, so the error went unnoticed. Proof on all 2304 NA2016 quests: description = title + 1 in 2295 quests, all 1390 predecessors exist, all 2099 level ranges have min <= max, 941 of 960 drop items are also item objectives of the same quest (0 with the old layout), and all padding and free slots are zero. Quest 251 now reads title 10300 / description 10301, and its start script begins with `SAY 10302`.
+- Drops are 10 slots × 32 bytes (one more field than before); the editor allows at most 10 and new drops start with the most common values. The quest flow now shows real predecessor chains (with the old layout `needPred` was never set).
+- Rewards: 12 entries × 12 bytes (`use`, `type`, `value`; items store ID and count). The quest editor shows them as an editable table with item names and buttons to add EXP, money or item entries. Only the structure is proven; EXP/money and fixed/choice are inferred from value ranges and marked with *.
+- Monster objectives show their kind (`hasToBeKilled`: visit NPC with count 0, or defeat monster).
+- `test_quest_layout` checks all of the above against the real file, plus editing rewards and drops, saving and reloading, and a byte-identical file after restoring the original. Passes on Linux and in the MinGW build under Wine.
+- Automation: `shn <subtab> <server shine folder>` and `quest <id> [drops|rewards]` open the quest editor for screenshots (`screenshots/quest_editor_rewards.png`).
+
+## Level Editor — responsive viewport toolbar
+- Narrow viewports wrap the coordinate-space/pivot/snap controls into a second toolbar row; very narrow 2×2 cells put the transform buttons on the second row and leave snap values to the Properties panel. The stats overlay moves below the toolbar rows. Verified in the single and 2×2 layouts, and with the Windows build under Wine.
+
+## Windows build check (MinGW cross-compile + Wine)
+- Fixed a Windows-only compile error: `SceneLighting.hpp` used a local named `far`, which `<windows.h>` defines as a macro (renamed to `viewDistance`).
+- Cross-built the complete project for Windows with MinGW-w64 GCC 13 (Editor.exe with the `_WIN32` dialog/WIC/icon paths, all tools and tests) and ran the 30 test binaries under Wine: 29/30 pass. `kfm_file` fails only at `SaveKfmFile`'s exclusive create (`std::ios::noreplace`), which MinGW maps to an fopen mode the msvcrt runtime under Wine lacks; MSVC's UCRT supports it. An MSVC build on the Windows machine remains the authoritative check.
+
+## Level Editor — multiple viewports with per-viewport display options
+- View menu → Viewport layout: single, 2 side by side, or 2×2 like Unreal (perspective, top, south, east – the axis views orthographic around the current target). Each viewport keeps its own camera, view preset, view mode, wireframe, show flags (terrain, meshes, placeholders, NPCs, grid, stats, SHBD collision, game view) and marquee state.
+- The active viewport (yellow frame) holds its values live in the editor state, so picking, gizmo, shortcuts and the playtest work unchanged; a click activates a viewport before the click is processed. The playtest pawn appears in every viewport, its HUD only in the active one.
+- `HeightmapRenderer` renders each viewport into its own target (FBO, MSAA, glow) via `SelectRenderTarget`, sharing terrain mesh and textures. Narrow viewports collapse the snap/pivot controls.
+- Orthographic near plane now sits one target distance behind the eye and the SHMD sky is hidden in axis views, so the sky dome no longer covers elevation views.
+- Layout persisted in `viewport.txt`; automation commands `layout` and `activeviewport`. Verified with a 2×2 screenshot of Roumen during a playtest.
+
+## Renderer — LOD level view
+- View mode "LOD levels (NiLODNode)": gray = no LOD node, green = nearest band (near 0), yellow = middle band (near < 2000), red = far band, i.e. which authored LOD range is currently displayed. Verified on Roumen (distant trees show their far band).
+
+## Level Editor — actor snap and free pivot
+- Toolbar "Actor": while moving with the gizmo, the pivot snaps exactly onto another visible object's pivot within the grid-snap radius.
+- Alt + middle click places the gizmo pivot on the ground hit (HTD or target plane) for rotate/scale; it follows gizmo moves, is valid until the selection changes, and Alt + middle double-click resets it.
+
+## Level Editor — pivot mode
+- Viewport toolbar "Pivot: center/active": multi-selections rotate and scale around the selection center (default) or around the active (last selected) object with its orientation, like Unreal. Persisted in `viewport.txt`.
+
+## Renderer — vertex color, UV0 and alpha debug views
+- View modes now also include vertex colors, UV0 (red = U, green = V) and effective alpha for NIF meshes; terrain shows its vertex colors, tile UVs and is opaque in the alpha view. Verified on Roumen (semi-transparent water stands out in the alpha view).
+
+## KFM — animation list editing
+- KFM panel: duplicate an animation (next free event ID, KF file/index/transitions copied, 1.2.4b legacy name gets " Kopie", 2.0.0.0b keeps no name), delete with an explicit safety checkbox and a report of transitions/intermediates that now point to a missing event ID, editable NIF file and root node.
+- Core: `KfmNextFreeEventCode`, `KfmDuplicateAnimation`, `KfmRemoveAnimation`; `test_kfm_file` covers both KFM versions (encode/decode after duplicate, dangling-reference count after delete).
+- Corrected the format status: field editing for existing animations already existed.
+
+## Level Editor — vertex snapping
+- Holding V while dragging the move gizmo snaps the selection pivot to the nearest corner of the NIF triangle under the cursor (selected objects excluded; placements and SHMD category meshes) or to the nearest HTD vertex, whichever the ray hits first; a yellow marker shows the target. New `NifMeshRenderer::RaycastObjectDetailed` returns hit point and nearest triangle corner.
+- Verified on Roumen via the automation probe `snapprobe`: targets land on the pavement GroundObject (Y 483.609) instead of the hidden HTD below.
+
+## Export fidelity — blend maps keep their original resolution; 2D inside selection
+- Blend BMPs whose resolution differs from the shared layer resolution (e.g. Adl 476×476 beside 512×512) keep their original data (`TextureLayer::sourceBlend`). Export writes untouched layers byte-identically at the original size and resamples edited layers back to it instead of silently rescaling the file (`test_texture_layers`).
+- 2D box/lasso honour the marquee mode: "fully inside" requires the whole visible ground-contact contour inside the rectangle/lasso (crossing remains the default).
+
+## Export safety — IDM indices follow the SHMD write order
+- Established the IDM index semantics on NA2016 Roumen: indices are SHMD objects in file order. `headerValue` 1078 = max index + 1, and the boundary falls 221 objects into the last old block (`jun_grass01`); the 502 objects behind it were appended later and are not in the shipped `Rou.idm`, so the client tolerates uncovered objects.
+- `PlacedObject::sourceIndex` (editor-only, never written) records the loaded SHMD position; copies/duplicates/pastes reset it. `ShmdWrittenOrder` exposes the writer's model-block order; `RemapSpatialIndex` maps every surviving assignment to the new write position, drops deleted objects, keeps groups sorted and the `max+1` header invariant, and is the identity (byte-identical) for unchanged maps.
+- Map save and the advanced IDM export use the remap; the save status reports remapped/removed/uncovered counts. Group contents (likely visibility sets) are not recomputed.
+- `test_idm_remap` against the real `Rou.idm`/`Rou.shmd`: index-semantics evidence, byte-identical identity, delete and mid-block duplicate keep every mapping on the same object (model + position).
+
+## Renderer — SHMD scene lighting, fog and background
+- Terrain and NIF shaders use the map's SHMD environment (`GlobalLight`, `DirectionLightAmbient`, `DirectionLightDiffuse`) with fixed-function-style saturation; viewport background uses `BackGroundColor`; distance fog uses `Fog` (depth + color) and `Frustum` (Rou: sky-blue fog 0.071/0.541/0.929 over 2150–5000 units).
+- Fog is always on in the playtest, optional in the editor, off in orthographic views. Show → Rendering adds Map lighting, Background color and Fog toggles with the SHMD values as tooltips; persisted in `viewport.txt`; automation commands `maplighting`, `mapbackground`, `fog`.
+- New shared `src/app/SceneLighting.hpp` and `test_scene_lighting` against the real `Rou.shmd`. Maps without SHMD environment keep the previous editor lighting.
+
+## Renderer — Fiesta map lighting data, glow, MSAA, view modes, orthographic views
+- Read map-local client render data (new core `core/legacy/MapRenderSettings` + `test_map_render_settings` against the real `Rou.conf` and `Rouvertexcolor2.bmp`): terrain vertex-color bitmap from `#VerTexColorTexture` (257×257 = HTD vertex grid, same row convention as blend BMPs) and `<Map>.conf` (`[WorldSetting] Ground_DL_Enable`, `[GlowScreenEffect]`), unknown entries kept raw.
+- Terrain renders the baked vertex colors as a vertex attribute (no 17th sampler beyond the GL 3.3 minimum of 16). Evidence on Roumen: the dark last bitmap row splits at exactly the 21 sea vertices of the last HTD row; other dark areas lie under the pavement GroundObject.
+- `Ground_DL_Enable` switches the directional terrain light; `[GlowScreenEffect]` drives a downscale + NumBlurring × separable Gaussian glow pass. Light formula and glow composition are documented editor approximations (`docs/RENDERER.md`).
+- 4× MSAA scene target with resolve (clamped to `GL_MAX_SAMPLES`, automatic fallback), selectable Off/2×/4×/8×.
+- View modes for terrain and NIF shaders: lit, unlit (texture/material only), lighting/vertex color only, normals.
+- True orthographic projection: `OrbitCamera::ProjectionMatrix` is now the single projection for terrain, NIF and marker renderers, picking, terrain hits, gizmo (`ImGuizmo::SetOrthographic`) and overlays. Axis presets (top/south/north/west/east) are orthographic; dragging pans, wheel zooms, rotating returns to perspective. `test_camera_handedness` covers ortho framing, orientation, parallel projection and depth range.
+- Show menu → Rendering groups view mode, vertex colors, glow (with the `.conf` values as tooltip) and MSAA; settings persist in `viewport.txt`; automation commands `viewmode`, `glow`, `vertexcolors`, `msaa`.
+- Verified on Linux (GCC 13, Xvfb + Mesa): 28/28 CTest, scripted comparison screenshots of Roumen (vertex colors off/on, glow, lighting-only, ortho top/south).
+
+## Level Editor — Unreal-style viewport workflows on Fiesta NA2016 data
+- New GUI-free core module `core/LevelEditorTools` (+ `test_level_editor_tools`): snap presets in Fiesta world units (6.25 = SHBD walk cell, 50 = HTD block), camera speed levels 1..8, camera bookmarks with per-map text persistence, output log ring buffer with severity classification, marquee hit testing (inside/crossing) and selection combine, align/distribute, and a playtest step on the SHBD block & walk grid (circle-vs-cell collision with wall sliding, nearest-walkable search).
+- Real-data regression: on the NA2016 `Rou.shbd` fixture a 20,000-step random playtest walks 37,220 units with 2,123 blocked steps and never enters a blocked cell.
+- Unreal-style viewport toolbar in the 3D view: view menu (perspective, top/north-up and four compass axis views using the perspective camera, camera bookmarks, navigation scheme, marquee mode), show-flags menu (terrain, NIF meshes, placeholders, SHMD Sky/Water/GroundObject, NPCs, routes, wireframe, grid, axis indicator, stats, SHBD collision), transform modes, world/local, surface snap, grid/angle/scale snap dropdowns, camera speed, game view and playtest. Font-safe drawn glyphs replace `▾/▶/■`, which the editor font cannot render.
+- Unreal navigation (default, switchable in Settings/View): RMB + WASD/Q/E fly, wheel during RMB changes speed, LMB drag forward/back + yaw, Alt+LMB orbit, Alt+RMB dolly, MMB pan, arrows without a button. W/E/R and Space select/cycle the gizmo; plain digit gizmo bindings yield to camera bookmarks (Ctrl+0..9 set, 0..9 jump). The classic scheme is unchanged.
+- Object workflows: Alt+drag on the move gizmo duplicates in place (one undo step with the move), surface snap during drag, Ctrl+Alt+LMB marquee selection on projected NIF bounds (Shift adds), H / Shift+H / Ctrl+H hide selected / isolate / show all (editor-only visibility), Esc clears selection, Objects menu Align (min/center/max/active per axis), Distribute and Match rotation/scale.
+- Fiesta ground semantics: surface snap and playtest height use the highest of HTD terrain and SHMD `GroundObject` meshes (triangle raycast from above). In Roumen the walkable pavement `Rou_ground2_CD.nif` lies well above the HTD, so terrain-only snapping would bury objects.
+- Playtest (Alt+P, Esc ends): spawns at MapInfo.shn RegenX/RegenY of the open map (camera target as fallback), moves to the nearest walkable SHBD cell, third-person camera, C toggles collision, HUD, optional red SHBD cell overlay. Run speed (120 u/s) and radius (1.5 cells) are editor values, not client-verified constants; without a walkable SHBD the playtest runs without collision and warns.
+- Viewport overlays: stats (FPS, object/mesh/NPC/hidden counts, camera, cursor world position with height and SHBD cell walkable/blocked), adaptive world grid, axis indicator, SHBD collision cells around the cursor or pawn. Game view (G) hides all editor helpers including placeholder pyramids.
+- Output log panel ("Ausgabe", docked next to the 2D view, also for existing layouts): every status message with time, category and severity; filters, search, copy and clear.
+- Viewport settings persist in `<settings>/viewport.txt`, bookmarks in `<settings>/bookmarks/<map>.txt`.
+- Developer automation hook `NEXTGEN_EDITOR_SCRIPT` (inactive unless set): open a map, switch modes, select/marquee/isolate, playtest, set camera/flags and write PPM screenshots for visual regression under Xvfb.
+- Linux/GCC build fix: `tools/nif_material_inventory.cpp` now includes `<algorithm>` for `std::find_if`.
+- Verified on Linux (GCC 13, Xvfb + Mesa): full GUI build, 27/27 CTest, scripted screenshots of the real Rou map (1,593 objects, 551 NIF meshes) for toolbar, grid, top view, marquee (14 crossing / 2 inside hits for the same rectangle), isolate (1,591 hidden) and playtest on the Roumen pavement with SHBD cells matching a market stall footprint. A Windows/MSVC build is still outstanding.
+
+## NIF rendering follow-up — shader texture descriptor audit
+- Preserve every NiTexturingProperty `ShaderTexDesc` on the public mesh part even when its shader semantics are not implemented: map ID, UV/sampler/texture-transform state, SourceTexture reference and resolved external/embedded source all remain available for diagnostics.
+- Keep renderer semantics strict: only the already verified `VCAlphaTextureBlender` maps 0/1/2 onto Texture1/Texture2/Detail. Unknown shader map IDs are not copied into plausible classic slots.
+- Extend `nif_material_inventory` with per-shader/map-ID descriptor counts, fixture paths, UV sets and transform methods. Fixture CI now fails on any NIF load regression or any embedded texture that was previously decodable but becomes undecoded.
+- Current fixture result remains 101/101 NIFs loaded, 413 embedded textures decoded and 0 undecoded. `FxSkinningBaseMap` and `NsPgToonNoAni` occur in five fixture files but expose no ShaderTexDesc entries in this corpus, so shader names alone do not justify new texture semantics.
+- Cross-tab the named shaders against classic material state: `FxSkinningBaseMap` is 3/3 parts with only embedded Base slot 0 + `APPLY_MODULATE`; `NsPgToonNoAni` is 44/44 parts with only Base slot 0 + `APPLY_MODULATE` (26 embedded, 18 external). No extra texture layer is evidenced by these fixtures; any remaining visual difference is shader/lighting behavior and stays diagnostic until a matching reference shader is verified.
+- The only non-default texture apply mode in the fixture corpus is three parts in `MapLinkGate2.nif` with mode 4 (`APPLY_HILIGHT2`). The material audit and NIF Inspector now expose that the current renderer intentionally uses its modulate fallback until Fiesta-specific visual behavior is verified.
+- Expand the read-only NIF Inspector to distinguish missing external textures, undecoded embedded PixelData, unresolved ShaderTexDesc sources, shader maps whose render semantics are still unverified, and non-materialized ApplyMode values.
+
+## NIF rendering follow-up — inherited NiProperty resolution
+- Preserve each parsed NiAVObject/NiNode property list in the internal scene graph instead of keeping only the geometry node's direct property refs.
+- Build the effective geometry property chain child-first: properties authored directly on NiTriShape/NiTriStrips win, then nearest parent NiNode properties, then higher ancestors.
+- Resolve material state authoritatively after geometry rebuilds through that effective chain; existing Texturing, Alpha, ZBuffer, Stencil/FaceDrawMode and Specular resolvers now receive inherited refs as well.
+- Expose the number of inherited property bindings in NifModel and the read-only NIF Inspector so problematic assets can be diagnosed without guessing.
+- NiTextureEffect remains diagnostic-only and is not claimed as implemented by this change.
+
+## NIF rendering follow-up — NiVertexColorProperty
+- Parse the existing 10-byte Fiesta property payload as flags(u16), vertex mode(u32), and lighting mode(u32) instead of discarding it.
+- Resolve NiVertexColorProperty through the same child-first inherited NiProperty chain used by material/texturing/depth state.
+- Render the documented classic modes: SRC_IGNORE, SRC_EMISSIVE, and SRC_AMB_DIF; the latter respects the emissive-only light mode and otherwise feeds ambient+diffuse.
+- Preserve the existing VCAlphaTextureBlender path unchanged because that shader has its own verified RGB/alpha contract.
+- Without an explicit NiVertexColorProperty, mesh vertex colors retain the classic ambient+diffuse default; meshes without vertex colors remain unchanged.
+- Report NiVertexColorProperty as rendered in the NIF Inspector and show the effective per-mesh vertex-color mode.
+
+## NIF rendering follow-up — embedded texture source fidelity
+- Treat `NiSourceTexture::Use External = 0` as a first-class material/flipbook source even when its file-name field is empty; preserve the PixelData block reference into runtime material slots.
+- Sanitize every authored UV set, not only the legacy base-UV alias. Invalid secondary sets are cleared so the existing deterministic UV0 fallback can render valid embedded Detail/Glow/Bump/Decal layers instead of sampling with corrupt coordinates.
+- Never reinterpret a failed embedded source as an external texture lookup. Renderer diagnostics now report the exact undecoded PixelData block instead.
+- Extend the NIF Inspector with separate external / embedded / embedded-failure counts, PixelData block IDs, missing-only filtering for embedded failures, and decoded/undecoded PixelData totals.
+- Expand `test_nif_model` coverage to all UV sets and all embedded material slots.
+- Fixture structure audit: 83 supplied NIFs, 81 containing NiPixelData; for those 81, NiPixelData and NiSourceTexture block counts match one-for-one.
+- Binary source audit: all 296 directly readable texture filename fields in the supplied fixture NIFs have `Use External = 0`; even names ending in `.dds` are metadata for embedded sources, not permission to fall back to disk.
+- Embedded payload audit: 293 directly readable PixelData payloads use supported formats (203 DXT1, 80 DXT3, 5 DXT5, 4 RGBA32, 1 RGB24). The older 10.2.0.0 fixtures use DXT1/DXT3 and are covered separately by CI.
+
+## UI Upgrade QA – Icon consistency, section chrome and viewport input capture
+- Keep semantic icon meanings strict: recent map history now uses `file.open`; the dedicated `system.recent_projects` asset remains reserved for actual project history.
+- Complete DE/EN coverage for the main entry flow: Project Hub cards/recent projects, project configuration help and Map Launcher creation/browse/rescan/error text now follow the global language switch.
+- Localize the Topbar unsaved-changes tooltip, including map/SHN/quest/portal/AI/drop-table dirty details.
+- Finish the semantic section-header pass: Quest Flow now uses the Quest package icon/header and the creature wizard preview switches between the approved Custom NPC / Custom Mob icons. Entity labels and specialist inline pickers remain intentionally compact.
+- Distinguish invalid semantic icon IDs from intentionally missing runtime rasters: `UiIconAssets` now exposes `IsKnownSemantic(...)` and logs each unknown ID once instead of silently treating a typo like a normal package-gap fallback.
+- Add `tools/ui/check_icon_consistency.py` and run it in Linux CI before the core build. It verifies the frozen 68 semantic IDs against `UiIconAssets.cpp`, approved size levels and every checked-in runtime PNG while explicitly allowing the intentional partial runtime subset.
+- Current audit result: 55 committed runtime PNGs cover 51/68 semantic IDs; the remaining IDs stay on functional DrawList fallbacks until the approved final icon package can be materialized/imported.
+- Align Map Launcher, Quest/Skill subpanels and Active Tool with the shared panel-header chrome; keep compact AI/NIF inline actions but attach their approved semantic package icons.
+- Extend the shared `panel.search` chrome across SHN, Quest, Skill, Drop Table, pickers, Manual and Command Palette while preserving popup/palette keyboard autofocus on the real input field; per-column SHN table filters intentionally stay icon-free.
+- Normalize editor context menus: SHN/Object/Layer route through the common menu wrapper, SHN actions are DE/EN-localized, and NPC/Mob/Portal focus actions display the current configurable Focus shortcut like the object outliner already does.
+- Prevent clicks and drags on the 3D transform toolbar and zoom overlay from leaking into object picking, orbit/pan or keyboard camera handling underneath the viewport image.
+- Unify SHN, NPC, Mob, Portal, Object and Layer context-menu headers with semantic package icons/fallbacks and separate destructive actions from ordinary edits.
+- Add Layer Rename to the context menu, select the right-clicked layer, and replace the unreliable window-appearance focus check with an explicit one-shot rename-input focus request.
+- Align toast behavior with the component spec: bottom-right placement, newest toast anchored at the bottom, upward stacking, maximum three visible messages, and localized error heading.
+- Move the raw Single/Multi SHN left workspace to the shared panel-header component with `module.shn.single` / `module.shn.multi` semantic icons.
+
 ## v0.44.35 / v14 — KFM-Codec und Animationskatalog
 - C++23-Reader/Writer für Fiesta-KFM 1.2.4b und 2.0.0.0b, einschließlich Textschlüsselpaaren und Zwischenanimationen; durch Dateigröße und Speicherbudget begrenzt.
 - 1.380/1.380 echte Dateien bytegleich rekonstruiert; Verweisbefunde getrennt von Codecfehlern.

@@ -156,6 +156,26 @@ Mat4 OrbitCamera::PerspectiveMatrix(float fovYRad, float aspect, float nearZ, fl
     return proj;
 }
 
+Mat4 OrbitCamera::OrthographicMatrix(float halfWidth, float halfHeight, float nearZ, float farZ) {
+    Mat4 proj = Mat4::Identity();
+    proj.m[0] = 1.0f / std::max(halfWidth, 1.0e-4f);
+    proj.m[5] = 1.0f / std::max(halfHeight, 1.0e-4f);
+    proj.m[10] = -2.0f / (farZ - nearZ);
+    proj.m[14] = -(farZ + nearZ) / (farZ - nearZ);
+    return proj;
+}
+
+Mat4 OrbitCamera::ProjectionMatrix(float aspect) const {
+    const float safeAspect = aspect > 1.0e-6f ? aspect : 1.0f;
+    if (!orthographic_) return PerspectiveMatrix(kFovY, safeAspect, NearPlane(), FarPlane());
+    // Orthografisch: gleicher Ausschnitt wie die Perspektive auf Höhe des Ziels. Die Nahebene liegt
+    // eine Zielentfernung HINTER dem Auge: so bleibt Geometrie oberhalb des Auges (Berge in der
+    // Draufsicht) sichtbar, ohne dass weit entfernte Hüllen hinter der Kamera (Himmelskuppel) das
+    // Bild verdecken.
+    const float halfHeight = distance_ * std::tan(kFovY * 0.5f);
+    return OrthographicMatrix(halfHeight * safeAspect, halfHeight, -std::max(distance_, 500.0f), FarPlane());
+}
+
 Mat4 OrthoTopDownViewProj(float centerX, float centerZ, float halfWidth, float halfHeight, float heightPadding) {
     // Blickrichtung senkrecht von oben nach unten (f = (0,-1,0)). Referenz-"Auf" bewusst
     // (0,0,-1) gewählt, damit "oben im Bild" der Weltrichtung -Z entspricht - konsistent mit

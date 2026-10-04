@@ -45,6 +45,26 @@ int main() {
         assert(std::bit_cast<std::uint32_t>(reloaded->unknownFloat2)==0x7fc12345);
         f->animations[0].transitions[0].duration=0.5f;assert(!EncodeKfm(*f));
     }
+    // Animationsliste bearbeiten: duplizieren / entfernen bleibt kodierbar und meldet tote Verweise.
+    for(const auto text:{modern,legacy}) {
+        auto f=DecodeKfm(hex(text));assert(f);
+        const auto before=f->animations.size();
+        assert(KfmNextFreeEventCode(*f)==78); // Event-IDs 42 und 77 vorhanden
+        const auto copyIndex=KfmDuplicateAnimation(*f,0);
+        assert(copyIndex==1 && f->animations.size()==before+1 && f->animations[1].eventCode==78);
+        assert(f->animations[1].kfFileName==f->animations[0].kfFileName);
+        assert(f->animations[1].transitions.size()==f->animations[0].transitions.size());
+        if(f->version==KfmVersion::V1_2_4b) assert(f->animations[1].name=="Idle Kopie");
+        else assert(f->animations[1].name.empty());
+        auto enc=EncodeKfm(*f);assert(enc);
+        auto re=DecodeKfm(*enc);assert(re && re->animations.size()==before+1 && re->animations[1].eventCode==78);
+        // Animation 77 ("run") entfernen: Übergänge der übrigen Animationen auf 77 werden gezählt.
+        std::size_t runIndex=0;for(std::size_t i=0;i<re->animations.size();++i)if(re->animations[i].eventCode==77)runIndex=i;
+        const auto rep=KfmRemoveAnimation(*re,runIndex);
+        assert(rep.removed && rep.danglingTransitions>=2 && re->animations.size()==before);
+        assert(EncodeKfm(*re));
+        assert(!KfmRemoveAnimation(*re,999).removed);
+    }
     const auto bytes=hex(modern);
     // Every count/string-length location in this independent golden fixture.
     for(const auto offset:{37u,50u,74u,82u,97u,121u,125u,132u,141u,157u,171u}) {

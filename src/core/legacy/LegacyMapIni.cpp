@@ -43,7 +43,9 @@ std::string CanonicalText(const LegacyMapIni& ini);
 
 } // namespace
 
-std::expected<LegacyMapIni, std::string> ParseLegacyMapIni(const std::filesystem::path& file) {
+std::expected<LegacyMapIni, std::string> ParseLegacyMapIni(
+    const std::filesystem::path& file,
+    bool requireHeightmapDimensions) {
     std::ifstream source(file, std::ios::binary);
     std::string original((std::istreambuf_iterator<char>(source)), {});
     std::istringstream in(original);
@@ -120,7 +122,8 @@ std::expected<LegacyMapIni, std::string> ParseLegacyMapIni(const std::filesystem
         }
     }
 
-    if (result.heightmapWidth == 0 || result.heightmapHeight == 0) {
+    if (requireHeightmapDimensions &&
+        (result.heightmapWidth == 0 || result.heightmapHeight == 0)) {
         return std::unexpected("HEIGHTMAP_WIDTH/HEIGHT fehlt oder ist 0 in: " + file.string());
     }
 
@@ -134,6 +137,7 @@ std::expected<LegacyMapIni, std::string> ParseLegacyMapIni(const std::filesystem
     if (!(result.oneBlockWidth > 0.0f) || !std::isfinite(result.oneBlockWidth)) result.oneBlockWidth = 50.0f;
     if (!(result.oneBlockHeight > 0.0f) || !std::isfinite(result.oneBlockHeight)) result.oneBlockHeight = 50.0f;
 
+    result.hasOriginalText = true;
     result.originalText = std::move(original);
     result.originalCanonical = CanonicalText(result);
     return result;
@@ -189,7 +193,9 @@ TextBlocks SplitBlocks(const std::string& text) {
         if (token == "#END_FILE") tail = true;
         if (tail) { result.tail += bytes; continue; }
         if (token == "#Layer") { layer = true; result.layers.emplace_back(); }
-        (layer ? result.layers.back() : result.global) += bytes;
+        // Zeilen zwischen/nach den Layern (z. B. Leerzeilen vor #END_FILE) gehören zum vorigen
+        // Layer, damit sie beim Patchen an ihrer Stelle bleiben und nicht in den Kopf wandern.
+        (layer || !result.layers.empty() ? result.layers.back() : result.global) += bytes;
         if (token == "}") layer = false;
     }
     return result;
@@ -248,7 +254,7 @@ std::string PatchBlock(const std::string& source, const std::string& baseline, c
 std::expected<void, std::string> SerializeLegacyMapIni(const LegacyMapIni& ini, const std::filesystem::path& file) {
     const auto canonical = CanonicalText(ini);
     std::string text = canonical;
-    if (!ini.originalText.empty()) {
+    if (ini.hasOriginalText) {
         if (canonical == ini.originalCanonical) text = ini.originalText;
         else {
             const auto source = SplitBlocks(ini.originalText);

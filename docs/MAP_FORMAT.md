@@ -2,6 +2,34 @@
 
 # Kartenformate
 
+> **Aktueller NIF-Texturstand (26.09.2026):** Die älteren historischen Abschnitte weiter
+> unten dokumentieren bewusst den damaligen Reverse-Engineering-Verlauf und sind nicht alle
+> als aktueller Implementierungsstand zu lesen. Heute sind `NiTexturingProperty`,
+> `NiSourceTexture` und `NiPixelData` im Parser aktiv. Besonders wichtig: Fiesta-NIFs
+> dürfen Texturen vollständig **eingebettet** halten (`Use External = 0`). Dabei ist
+> selbst ein vorhandener `.dds`-/`.tga`-Name **kein Beweis für externes Laden**: Im
+> bereitgestellten Fixture-Korpus tragen alle 296 direkt auslesbaren Textur-Dateinamensfelder
+> `Use External = 0`. Der Name ist in diesen Fällen Metadatum; Renderquelle bleibt
+> `NiPixelData`. Ein leerer Dateiname ist ebenfalls zulässig und darf nicht als fehlender
+> externer Pfad interpretiert werden. Der Parser erhält eingebettete Quellen bis in den
+> konkreten Materialslot und dekodiert
+> verifizierte BC1/DXT1-, BC2/DXT3-, BC3/DXT5-, Roh-RGB(A)- und palettierte
+> `NiPixelData`-Varianten. Der NIF-Inspector unterscheidet deshalb externe Referenzen,
+> erfolgreich dekodierte Embedded-Slots und nicht dekodierbare Embedded-PixelData explizit.
+>
+> Die frühere Aussage „praktisch alle NIF-UVs sind unbrauchbar“ wurde später widerlegt:
+> Ursache war ein falsch positioniertes 2-Byte-Feld im Geometrie-Layout. Nach der Korrektur
+> liefern die verifizierten Referenzdateien plausible authored UVs. Als Recovery-Schutz wird
+> weiterhin jedes UV-Set auf Endlichkeit/Plausibilität geprüft. Seit dem Multi-Texture-Pfad
+> gilt das **für alle UV-Sets**, nicht nur für den alten Base-UV-Alias; ein verworfenes
+> sekundäres Set kann dadurch deterministisch auf UV0 zurückfallen.
+>
+> Struktur-Audit des bereitgestellten `fixtures.zip`: 83 NIF-Dateien, davon 81 mit
+> `NiPixelData`; in diesen 81 Dateien entspricht die Anzahl der `NiPixelData`-Blöcke jeweils
+> der Anzahl der `NiSourceTexture`-Blöcke. Das unterstreicht, dass PixelData im Fiesta-Korpus
+> kein seltener Sonderfall ist.
+
+
 ## 0. Übersicht — alle Dateiformate auf einen Blick
 
 | Datei | Zweck | Status | Details |
@@ -116,6 +144,15 @@ Objekt-Indizes aus `.shmd` verknüpft (Werte bis ~1067, plausibel als Index in d
 Objektliste) — die genaue 2D-Zellzuordnung der 1178 Gruppen (z. B. auf ein Rasterschema) ist
 **nicht verifiziert**, der Editor behandelt sie daher als flache, geordnete Liste statt ein
 2D-Grid-Objekt zu erzwingen.
+
+**Nachtrag 03.10.2026 – Indexsemantik belegt:** Die Indizes verweisen auf die SHMD-Objekte in
+Dateireihenfolge. `headerValue` 1078 = höchster Index + 1; die 1580-Objekt-SHMD enthält dahinter
+genau die später angehängten Objekte: die Grenze liegt 221 Objekte tief im Block
+`jun_grass01` (Indizes 857..1497), danach folgen 420 weitere Gräser, `lightbug`, drei Steinhaufen-
+Modelle, `stonepile3_7` und `AuctionHouse01`. Der ausgelieferte Client toleriert also Objekte ohne
+IDM-Eintrag. Unter der Annahme „Index = Objektposition“ sind die Gruppen räumlich nicht kohärent
+(mittlere Ausdehnung 3710 Einheiten) – vermutlich Sichtbarkeitsmengen; deshalb keine Neuberechnung.
+Der Export bildet erhaltene Zuordnungen auf die neue Schreibreihenfolge ab (`RemapSpatialIndex`).
 
 ### `Rou.shmd` — Vollständig verifiziert (Byte-für-Byte-Roundtrip)
 Menschenlesbares, Token-basiertes Format (nicht zeilenkritisch, robust gegenüber CRLF/LF):

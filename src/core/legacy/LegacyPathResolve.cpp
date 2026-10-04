@@ -53,6 +53,16 @@ std::filesystem::path StripResmapPrefix(const std::filesystem::path& p) {
     return p;
 }
 
+std::optional<std::filesystem::path> FindResmapAncestor(const std::filesystem::path& dir) {
+    std::optional<std::filesystem::path> found;
+    std::filesystem::path current;
+    for (const auto& part : dir) {
+        current /= part;
+        if (EqualsCaseInsensitive(part.string(), "resmap")) found = current;
+    }
+    return found;
+}
+
 std::optional<std::filesystem::path> ResolveCaseInsensitivePath(
     const std::filesystem::path& root, const std::filesystem::path& relative) {
     std::filesystem::path current = root;
@@ -129,7 +139,16 @@ std::optional<std::filesystem::path> FindFileRecursiveBounded(
 
 std::optional<std::filesystem::path> ResolveLegacyAssetPath(
     const std::filesystem::path& mapDir, const std::string& legacyPath) {
-    const std::filesystem::path stripped = StripResmapPrefix(LegacyPathToNative(legacyPath));
+    const std::filesystem::path native = LegacyPathToNative(legacyPath);
+    const std::filesystem::path stripped = StripResmapPrefix(native);
+
+    // Pfade mit "resmap\"-Präfix sind relativ zum Client-Ordner: liegt die Karte unter einem
+    // resmap-Ordner, zuerst dort auflösen (so wie der Client), erst danach die Fallbacks.
+    if (stripped != native) {
+        if (const auto resmap = FindResmapAncestor(mapDir)) {
+            if (auto r = ResolveCaseInsensitivePath(*resmap, stripped)) return r;
+        }
+    }
 
     if (auto r = ResolveCaseInsensitivePath(mapDir, stripped)) {
         return r;

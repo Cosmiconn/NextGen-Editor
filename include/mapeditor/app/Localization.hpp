@@ -40,6 +40,9 @@ inline const std::unordered_map<std::string, std::pair<const char*, const char*>
     static const std::unordered_map<std::string, std::pair<const char*, const char*>> table = {
         // Obere Navigationsleiste (Projekt-Hub)
         {"nav.project", {"Projekt", "Project"}},
+        {"nav.map", {"Karte", "Map"}},
+        {"nav.data", {"Spieldaten", "Game Data"}},
+        {"nav.animations", {"Animationen", "Animations"}},
         {"nav.new", {"Neu", "New"}},
         {"nav.open", {"Öffnen", "Open"}},
         {"nav.edit", {"Bearbeiten", "Edit"}},
@@ -50,7 +53,12 @@ inline const std::unordered_map<std::string, std::pair<const char*, const char*>
         {"nav.back", {"Zurück", "Back"}},
         {"nav.language", {"Sprache", "Language"}},
 
-        {"card.kfm.title", {"KFM-Animationen", "KFM animations"}},
+        {"card.kfm.title", {"Animationen / KFM", "Animations / KFM"}},
+        {"card.extensions.title", {"Erweiterungen", "Extensions"}},
+        {"card.extensions.f1", {"Interface Editor", "Interface Editor"}},
+        {"card.extensions.f2", {"Drop Table Editor", "Drop Table Editor"}},
+        {"card.extensions.f3", {"AI Workspace", "AI Workspace"}},
+        {"card.extensions.f4", {"NIF / Material Editing", "NIF / Material Editing"}},
 
         // Editor-Karten im Projekt-Hub
         {"card.mapeditor.title", {"MapEditor", "MapEditor"}},

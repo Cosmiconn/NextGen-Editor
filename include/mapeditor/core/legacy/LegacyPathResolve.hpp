@@ -25,6 +25,11 @@ bool EqualsCaseInsensitive(const std::string& a, const std::string& b);
 // aufgelöst wird.
 std::filesystem::path StripResmapPrefix(const std::filesystem::path& p);
 
+// Nächster Vorfahr (oder dir selbst), dessen Name "resmap" ist (Groß-/Kleinschreibung egal).
+// Ini-Pfade wie ".\resmap\field\Rou\block.Bmp" sind relativ zum Client-Ordner, also relativ
+// zum Elternordner dieses resmap-Ordners.
+std::optional<std::filesystem::path> FindResmapAncestor(const std::filesystem::path& dir);
+
 // Löst einen relativen Pfad Komponente für Komponente auf, mit case-insensitivem Fallback pro
 // Ebene.
 std::optional<std::filesystem::path> ResolveCaseInsensitivePath(

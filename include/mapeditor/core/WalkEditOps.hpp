@@ -55,6 +55,7 @@ public:
     bool Undo(WalkGrid& grid);
     bool Redo(WalkGrid& grid);
     void Clear();
+    void ClearRedo() noexcept { redo_.clear(); }
 
     [[nodiscard]] bool CanUndo() const noexcept { return !undo_.empty(); }
     [[nodiscard]] bool CanRedo() const noexcept { return !redo_.empty(); }

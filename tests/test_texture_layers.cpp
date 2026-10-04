@@ -1,7 +1,7 @@
 // test_texture_layers.cpp
 // GUI-freier Test, baubar direkt mit g++ (siehe README.md). Prüft:
 //   1) TextureLayerStack Grundfunktionen
-//   2) PaintLayerWeight inkl. Normalisierungs-Invariante + Undo/Redo
+//   2) PaintLayerWeight: nur der gewählte Layer ändert sich (unabhängige Masken) + Undo/Redo
 //   3)  Fiesta-BMP Save/Load-Roundtrip
 //   4) LegacyMapIni-Parser gegen den echten Inhalt der hochgeladenen Rou.ini
 //      (tests/fixtures/Rou.ini - inhaltlich identisch, Kommentartexte vereinfacht, da das
@@ -48,7 +48,35 @@ void TestLayerStackBasics() {
     Check(std::abs(stack.WeightSumAt(0, 0) - 1.0f) < 1e-6f, "Gewichtssumme direkt nach Anlage = 1.0");
 }
 
-void TestPaintNormalization() {
+void TestLayerTakeInsert() {
+    TextureLayerStack stack(4, 4);
+    stack.AddLayer("Base", "base.dds", 1.0f);
+    const auto rock = stack.AddLayer("Rock", "rock.dds", 3.0f);
+    stack.Layer(rock).regionStartX = 7.0f;
+    stack.Layer(rock).blend.Set(2, 1, 0.75f);
+
+    auto taken = stack.TakeLayer(rock);
+    Check(taken.has_value(), "TakeLayer liefert den entfernten Layer");
+    Check(stack.LayerCount() == 1, "TakeLayer entfernt exakt einen Layer");
+    if (taken) {
+        Check(taken->name == "Rock" && taken->diffuseFileName == "rock.dds" &&
+              std::abs(taken->blend.At(2, 1) - 0.75f) < 1e-6f,
+              "TakeLayer erhält Metadaten und BlendMap byte-logisch");
+        stack.InsertLayer(1, std::move(*taken));
+    }
+    Check(stack.LayerCount() == 2 && stack.Layer(1).name == "Rock",
+          "InsertLayer stellt Reihenfolge und Layer wieder her");
+    Check(std::abs(stack.Layer(1).blend.At(2, 1) - 0.75f) < 1e-6f,
+          "InsertLayer stellt die exakten Blend-Gewichte wieder her");
+
+    stack.MoveLayer(1, 0);
+    Check(stack.Layer(0).name == "Rock" && stack.Layer(1).name == "Base",
+          "MoveLayer verschiebt Layer deterministisch");
+    stack.MoveLayer(0, 1);
+    Check(stack.Layer(1).name == "Rock", "Inverse MoveLayer-Bewegung stellt Reihenfolge wieder her");
+}
+
+void TestPaintIndependentLayers() {
     TextureLayerStack stack(9, 9);
     stack.AddLayer("Base", "base.dds");
     const auto rock = stack.AddLayer("Rock", "rock.dds");
@@ -65,10 +93,20 @@ void TestPaintNormalization() {
 
     const float rockWeight = stack.Layer(rock).blend.At(4, 4);
     Check(rockWeight > 0.9f, "Rock-Layer nach mehrfachem Malen stark erh\u00f6ht");
-    Check(std::abs(stack.WeightSumAt(4, 4) - 1.0f) < 1e-4f, "Gewichtssumme bleibt nach Malen ~1.0 (Normalisierung)");
+    bool baseUntouched = true;
+    for (std::uint32_t z = 0; z < 9; ++z) for (std::uint32_t x = 0; x < 9; ++x) baseUntouched = baseUntouched && stack.Layer(0).blend.At(x, z) == 1.0f;
+    Check(baseUntouched, "Malen auf Rock verändert den Base-Layer nicht (unabhängige Masken)");
+
+    // Dritter Layer mit eigener Maske bleibt beim Malen anderer Layer exakt erhalten.
+    const auto moss = stack.AddLayer("Moss", "moss.dds");
+    stack.Layer(moss).blend.Set(4, 4, 0.3f);
+    auto other = PaintLayerWeight(stack, rock, PaintMode::Decrease, settings, 200.0f, 200.0f, 50.0f, 50.0f);
+    Check(stack.Layer(moss).blend.At(4, 4) == 0.3f && stack.Layer(0).blend.At(4, 4) == 1.0f,
+          "Absenken von Rock lässt Moss und Base unverändert");
+    undo.Push(std::move(other));
 
     Check(undo.Undo(stack), "Undo (Textur) erfolgreich");
-    Check(std::abs(stack.WeightSumAt(4, 4) - 1.0f) < 1e-4f, "Gewichtssumme bleibt auch nach Undo ~1.0");
+    Check(std::abs(stack.Layer(rock).blend.At(4, 4) - rockWeight) < 1e-6f, "Undo stellt den Rock-Wert wieder her");
 }
 
 void TestFiestaTextureRoundtrip() {
@@ -94,6 +132,50 @@ void TestFiestaTextureRoundtrip() {
     if(loaded) Check(std::abs(loaded->Layer(1).blend.At(2,1)-0.5f)<0.01f,"BMP Blend-Gewicht erhalten");
     for(const auto* file : {"map.ini","layer0.bmp","layer1.bmp"}) std::filesystem::remove(dir/file);
     std::filesystem::remove(dir);
+}
+
+// Blend-BMPs unterschiedlicher Auflösung (wie Adl: 476x476 neben 512x512): unveränderte Layer müssen
+// bytegleich in Originalauflösung exportiert werden, bearbeitete zurück auf ihre Originalauflösung.
+void TestMixedBlendResolutionExport() {
+    const auto dir = std::filesystem::temp_directory_path() / "nextgen_mixed_blend";
+    const auto out = std::filesystem::temp_directory_path() / "nextgen_mixed_blend_out";
+    const auto out2 = std::filesystem::temp_directory_path() / "nextgen_mixed_blend_out2";
+    std::filesystem::remove_all(dir); std::filesystem::remove_all(out); std::filesystem::remove_all(out2);
+    std::filesystem::create_directories(dir);
+    BlendMap big(64, 64), small(48, 48);
+    for (std::uint32_t z = 0; z < 64; ++z) for (std::uint32_t x = 0; x < 64; ++x) big.Set(x, z, 1.0f);
+    for (std::uint32_t z = 0; z < 48; ++z) for (std::uint32_t x = 0; x < 48; ++x)
+        small.Set(x, z, static_cast<float>((x * 5 + z * 3) % 256) / 255.0f);
+    Check(legacy::WriteBlendMapBmp(big, dir / "big.bmp").has_value() &&
+          legacy::WriteBlendMapBmp(small, dir / "small.bmp").has_value(), "Blend-BMPs 64x64 + 48x48 angelegt");
+    legacy::LegacyMapIni ini;
+    ini.heightmapWidth = 65; ini.heightmapHeight = 65;
+    for (const char* name : {"big", "small"}) {
+        legacy::LegacyLayerDef layer;
+        layer.name = name;
+        layer.blendFileName = std::string(name) + ".bmp";
+        ini.layers.push_back(layer);
+    }
+    Check(legacy::SerializeLegacyMapIni(ini, dir / "map.ini").has_value(), "Karten-INI angelegt");
+    auto stack = legacy::ImportLegacyTextureSet(dir / "map.ini");
+    Check(stack && stack->Width() == 64 && stack->Layer(1).sourceBlend.has_value(),
+          "48x48-Layer auf 64x64 resampelt, Original bleibt erhalten");
+    if (!stack) return;
+    auto readAll = [](const std::filesystem::path& p) {
+        std::ifstream in(p, std::ios::binary);
+        return std::vector<char>((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    };
+    Check(legacy::ExportLegacyTextureSet(*stack, ini, out, "map.ini").has_value(), "unveränderter Export");
+    Check(readAll(out / "small.bmp") == readAll(dir / "small.bmp"), "unveränderter 48x48-Layer bytegleich in Originalauflösung");
+    Check(readAll(out / "big.bmp") == readAll(dir / "big.bmp"), "64x64-Layer bytegleich");
+
+    stack->Layer(1).blend.Set(10, 10, 1.0f);
+    stack->Layer(1).blend.Set(11, 10, 1.0f);
+    Check(legacy::ExportLegacyTextureSet(*stack, ini, out2, "map.ini").has_value(), "Export nach Bearbeitung");
+    const auto edited = legacy::ReadBlendMapBmp(out2 / "small.bmp");
+    Check(edited && edited->Width() == 48 && edited->Height() == 48, "bearbeiteter Layer bleibt 48x48");
+    Check(edited && edited->At(8, 7) > 0.5f, "Bearbeitung ist in der Originalauflösung sichtbar");
+    std::filesystem::remove_all(dir); std::filesystem::remove_all(out); std::filesystem::remove_all(out2);
 }
 
 void TestLegacyIniParser(const std::filesystem::path& iniPath) {
@@ -171,9 +253,11 @@ void TestBmpRawRowOrder() {
 int main() {
     std::printf("== TextureLayerStack / TexturePaintOps /  Fiesta-BMP Tests ==\n");
     TestLayerStackBasics();
-    TestPaintNormalization();
+    TestLayerTakeInsert();
+    TestPaintIndependentLayers();
     TestFiestaTextureRoundtrip();
     TestBmpRawRowOrder();
+    TestMixedBlendResolutionExport();
 
     std::printf("\n== Legacy-ini-Parser gegen echten Rou.ini-Inhalt ==\n");
     TestLegacyIniParser("tests/fixtures/Rou.ini");

@@ -42,9 +42,26 @@ public:
     // Ziel in WELT-Koordinaten. Die Kamera rechnet intern im gespiegelten "Anzeigeraum"
     // (Z -> -Z, siehe ViewMatrix), deshalb wird Z hier umgerechnet - Aufrufer bemerken davon nichts.
     void SetTarget(float x, float y, float z) { targetX_ = x; targetY_ = y; targetZ_ = -z; }
+    // Direkte Ausrichtung (Kamera-Lesezeichen, Ansichts-Presets Oben/Vorne/Seite, Spieltest).
+    // Erst SetDistance, dann SetOrientation aufrufen - die Pitch-Grenze haengt von der Entfernung ab.
+    void SetDistance(float distance) { distance_ = std::clamp(distance, kMinDistance, kMaxDistance); }
+    void SetOrientation(float yawRad, float pitchRad) {
+        yaw_ = yawRad;
+        pitch_ = std::clamp(pitchRad, -1.5f, kMaxPitch);
+    }
 
     [[nodiscard]] Mat4 ViewMatrix() const;
     [[nodiscard]] static Mat4 PerspectiveMatrix(float fovYRad, float aspect, float nearZ, float farZ);
+    // Orthografische Projektion; halbe Höhe/Breite des sichtbaren Ausschnitts in Welteinheiten.
+    [[nodiscard]] static Mat4 OrthographicMatrix(float halfWidth, float halfHeight, float nearZ, float farZ);
+
+    // Projektion der Editor-Kamera: Perspektive (Sichtfeld kFovY) oder orthografisch mit demselben
+    // Bildausschnitt auf Höhe des Ziels (halbe Höhe = Entfernung * tan(kFovY/2)). ALLE Renderer,
+    // Picking, Gizmo und Overlays nutzen diese eine Funktion, damit sie nie auseinanderlaufen.
+    static constexpr float kFovY = 0.9f;
+    void SetOrthographic(bool orthographic) { orthographic_ = orthographic; }
+    [[nodiscard]] bool IsOrthographic() const noexcept { return orthographic_; }
+    [[nodiscard]] Mat4 ProjectionMatrix(float aspect) const;
 
     [[nodiscard]] float Yaw() const noexcept { return yaw_; }
     [[nodiscard]] float Pitch() const noexcept { return pitch_; }
@@ -68,6 +85,7 @@ private:
     float targetX_ = 0.0f;
     float targetY_ = 0.0f;
     float targetZ_ = 0.0f;
+    bool orthographic_ = false;
 
     // Aus grosser Entfernung bleibt die Kamera ueber dem Boden (Pitch >= 0.05); nah am Ziel darf sie
     // nach oben schauen (negativer Pitch = Kamera unterhalb des Ziels).
