@@ -75,6 +75,7 @@
 #include "mapeditor/core/MapCheck.hpp"
 #include "mapeditor/core/Autosave.hpp"
 #include "mapeditor/core/WalkGenerate.hpp"
+#include "mapeditor/core/legacy/NewMapFromTemplate.hpp"
 #include "mapeditor/core/legacy/MapRenderSettings.hpp"
 #include "mapeditor/app/Localization.hpp"
 
@@ -1256,6 +1257,17 @@ struct EditorState {
     int newMapWidth = 257;
     int newMapHeight = 257;
     char newMapTextureLayer[128] = "Base";
+    // Assistent "Neue Karte" (Vorlage, Größe, Spieldaten-Einträge, optionales Gate).
+    char newMapDisplayName[64] = "";
+    int newMapTemplate = -1;    // Index in discoveredMaps
+    int newMapSize = 1;         // 0 = 129, 1 = 257, 2 = 513 Punkte
+    float newMapBaseHeight = 0.0f;
+    bool newMapWriteMapInfo = true;
+    bool newMapWriteField = true;
+    bool newMapGate = false;
+    char newMapGateFrom[32] = "";
+    int newMapGateX = 0, newMapGateY = 0;
+    std::vector<std::string> newMapReport;
 
     // Steuert, welches der beiden Panels im Map-Editor-Start sichtbar ist (siehe die
     // "New Map"/"Map Öffnen"-Knöpfe in DrawMapEditorLauncher).
@@ -2025,6 +2037,8 @@ core::legacy::LegacyMapProject BuildProjectFromState(const EditorState& state,
 }
 
 void FinishMapAutosave(EditorState& state, bool wait);
+std::string CurrentMapServerName(EditorState& state);
+std::string PortalServerRoot(const EditorState& state);
 
 bool SaveLegacyMapProject(EditorState& state) {
     if (state.project.projectFolder[0] == '\0') {
@@ -2102,12 +2116,49 @@ bool SaveLegacyMapProject(EditorState& state) {
 
     state.legacyIniMeta = project.ini;
     state.mapDirty = false;
+    // Der Server hat eine eigene Kopie der Begehbarkeit: 9Data/Shine/BlockInfo/<Servername>.shbd
+    // (in NA2016 bei 6 von 7 geprüften Karten bytegleich mit der Client-Datei). Ohne sie wirkt eine
+    // geänderte Begehbarkeit im Spiel nur im Client. Geschrieben wird, wenn das Gitter geändert wurde
+    // oder die Karte neu ist; eine unveränderte Server-Datei (z.B. Rou, die abweicht) bleibt unberührt.
+    std::string serverWalkNote;
+    if (state.walkGrid.Width() > 0 && state.walkGrid.Height() > 0) {
+        const bool newMap = state.walkGridAtLoad.Width() == 0;
+        const bool walkChanged = newMap || state.walkGridAtLoad.Width() != state.walkGrid.Width() ||
+                                 state.walkGridAtLoad.Height() != state.walkGrid.Height() ||
+                                 core::DiffWalkGrids(state.walkGridAtLoad, state.walkGrid).Agreement() < 1.0;
+        if (walkChanged) {
+            const std::string serverName = CurrentMapServerName(state);
+            std::filesystem::path serverShbd;
+            std::string error;
+            if (!PrepareProjectOutput(ProjectServerShinePath(state.project, std::filesystem::path("BlockInfo") / (serverName + ".shbd")),
+                                      serverShbd, &error)) {
+                serverWalkNote = L("\nServer-BlockInfo nicht geschrieben: ", "\nServer BlockInfo not written: ") + error;
+            } else if (auto written = core::ExportLegacyShbd(state.walkGrid, serverShbd, state.shbdHeader); !written) {
+                serverWalkNote = L("\nServer-BlockInfo nicht geschrieben: ", "\nServer BlockInfo not written: ") + written.error();
+            } else {
+                serverWalkNote = L("\nBegehbarkeit auch für den Server: ", "\nWalkability also for the server: ") + serverShbd.string();
+                // Neue Karten brauchen auch die .aid auf dem Server; vorhandene bleiben unberührt.
+                const auto clientAid = core::legacy::FindSiblingFileByStem(outputDir, state.legacySaveStem, ".aid");
+                std::filesystem::path serverAid;
+                if (clientAid && PrepareProjectOutput(ProjectServerShinePath(state.project, std::filesystem::path("BlockInfo") / (serverName + ".aid")),
+                                                      serverAid, nullptr)) {
+                    std::error_code ec;
+                    const std::string serverRoot = PortalServerRoot(state);
+                    const bool sourceHasAid = !serverRoot.empty() &&
+                        core::legacy::ResolveCaseInsensitivePath(std::filesystem::path(serverRoot) / "BlockInfo", serverName + ".aid").has_value();
+                    if (!sourceHasAid && !std::filesystem::exists(serverAid, ec))
+                        std::filesystem::copy_file(*clientAid, serverAid, std::filesystem::copy_options::skip_existing, ec);
+                }
+            }
+        }
+    }
     FinishMapAutosave(state, true);
     core::RemoveAutosave(state.project.projectFolder, state.legacySaveStem); // Projekt ist jetzt aktuell
     state.autosaveSavedRevision = state.mapEditRevision;
     const auto ini = outputDir / (std::string(state.legacySaveStem) + ".ini");
     TouchRecentMap(state, ini.string());
     state.statusMessage = std::string(T("workspace.savedas")) + outputDir.string();
+    state.statusMessage += serverWalkNote;
     if (state.hasLegacySpatialIndex && !idmReport.identity) {
         state.statusMessage += std::string(L("\nIDM angepasst: ", "\nIDM updated: ")) +
             std::to_string(idmReport.movedObjects) + L(" Objekte neu zugeordnet, ", " objects remapped, ") +
@@ -8188,6 +8239,7 @@ std::optional<std::filesystem::path> FindResmapRootForAssets(const std::string& 
 void StartNifThumbnailPrecache(EditorState& state, const std::filesystem::path& resmapRoot);
 void AdvanceNifPrecache(EditorState& state, int filesPerFrame);
 
+bool CreateNewMapFromWizard(EditorState& state);
 void DrawMapEditorLauncher(EditorState& state) {
     DrawTopNav(state, L("Karte","Map"));
 
@@ -8258,58 +8310,65 @@ void DrawMapEditorLauncher(EditorState& state) {
         DrawPanelHeader("newMapHeader", L("NEUE KARTE","NEW MAP"), DrawIconTerrain, "file.new",
                         L("Grunddaten festlegen","Configure base data"));
 
-        ImGui::TextDisabled("%s",L("KARTENNAME","MAP NAME"));
+        ImGui::TextDisabled("%s",L("KARTENNAME (Ordner, Dateien, Server)","MAP NAME (folder, files, server)"));
         ImGui::SetNextItemWidth(-1.0f);
         UI::InputText("##newmapname", state.newMapName, sizeof(state.newMapName));
+        ImGui::TextDisabled("%s",L("ANZEIGENAME","DISPLAY NAME"));
+        ImGui::SetNextItemWidth(-1.0f);
+        UI::InputText("##newmapdisplay", state.newMapDisplayName, sizeof(state.newMapDisplayName));
 
         ImGui::Dummy(ImVec2(0,4));
-        ImGui::TextDisabled("%s",L("HÖHENRASTER","HEIGHT GRID"));
-        ImGui::SetNextItemWidth((ImGui::GetContentRegionAvail().x - 8.0f) * 0.5f);
-        UI::InputInt("Breite##newmapx", &state.newMapWidth);
-        ImGui::SameLine();
+        ImGui::TextDisabled("%s",L("VORLAGE (Texturen, Licht, Himmel)","TEMPLATE (textures, light, sky)"));
+        if (state.newMapTemplate < 0 || static_cast<std::size_t>(state.newMapTemplate) >= state.discoveredMaps.size()) {
+            state.newMapTemplate = -1;
+            for (std::size_t i = 0; i < state.discoveredMaps.size(); ++i)
+                if (!state.discoveredMaps[i].standaloneNif && (state.newMapTemplate < 0 || state.discoveredMaps[i].name == "Rou"))
+                    state.newMapTemplate = static_cast<int>(i);
+        }
         ImGui::SetNextItemWidth(-1.0f);
-        UI::InputInt("Höhe##newmapy", &state.newMapHeight);
-        state.newMapWidth = std::clamp(state.newMapWidth, 2, 4096);
-        state.newMapHeight = std::clamp(state.newMapHeight, 2, 4096);
+        if (ImGui::BeginCombo("##newmaptemplate", state.newMapTemplate >= 0 ? state.discoveredMaps[static_cast<std::size_t>(state.newMapTemplate)].name.c_str()
+                                                                         : L("(keine Karte gefunden)","(no map found)"))) {
+            for (std::size_t i = 0; i < state.discoveredMaps.size(); ++i) {
+                if (state.discoveredMaps[i].standaloneNif) continue;
+                if (ImGui::Selectable(state.discoveredMaps[i].name.c_str(), state.newMapTemplate == static_cast<int>(i)))
+                    state.newMapTemplate = static_cast<int>(i);
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::TextDisabled("%s",L("GRÖSSE","SIZE"));
+        ImGui::RadioButton("129 x 129##nms", &state.newMapSize, 0); ImGui::SameLine();
+        ImGui::RadioButton("257 x 257##nms", &state.newMapSize, 1); ImGui::SameLine();
+        ImGui::RadioButton("513 x 513##nms", &state.newMapSize, 2);
+        ImGui::TextDisabled(L("Höhenpunkte; 257 = 12800 x 12800 Einheiten wie Roumen.","Height points; 257 = 12800 x 12800 units like Roumen."));
+        ImGui::SetNextItemWidth(160.0f);
+        ImGui::InputFloat(L("Grundhöhe##newmapbase","Base height##newmapbase"), &state.newMapBaseHeight, 0.0f, 0.0f, "%.0f");
 
         ImGui::Dummy(ImVec2(0,4));
-        ImGui::TextDisabled("%s",L("BASIS-LAYER","BASE LAYER"));
-        ImGui::SetNextItemWidth(-1.0f);
-        UI::InputText("##newmaplayer", state.newMapTextureLayer, sizeof(state.newMapTextureLayer));
-        ImGui::TextDisabled("%s",L("Der Textur-Stack startet mit einem Basis-Layer; weitere Layer werden später im Layer-Dock angelegt.",
-                                   "The texture stack starts with a base layer; add more layers later in the Layer dock."));
+        ImGui::TextDisabled("%s",L("SPIELDATEN","GAME DATA"));
+        UI::Checkbox(L("MapInfo + MapViewInfo (Client und Server)##nm","MapInfo + MapViewInfo (client and server)##nm"), &state.newMapWriteMapInfo);
+        UI::Checkbox(L("World/Field.txt (Kartenliste des Servers)##nm","World/Field.txt (server map list)##nm"), &state.newMapWriteField);
+        UI::Checkbox(L("Gate von einer vorhandenen Karte (mit Rückweg)##nm","Gate from an existing map (with way back)##nm"), &state.newMapGate);
+        if (state.newMapGate) {
+            ImGui::SetNextItemWidth(140.0f);
+            UI::InputText(L("Karte##nmgate","Map##nmgate"), state.newMapGateFrom, sizeof(state.newMapGateFrom));
+            ImGui::SetNextItemWidth(90.0f);
+            UI::InputInt("X##nmgate", &state.newMapGateX, 0, 0);
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(90.0f);
+            UI::InputInt("Y##nmgate", &state.newMapGateY, 0, 0);
+            ImGui::TextDisabled("%s",L("Servername der Ausgangskarte und Position des Gates dort (z.B. Rou 5311 4428).",
+                                       "Server name of the source map and gate position there (e.g. Rou 5311 4428)."));
+        }
 
         ImGui::Separator();
-        ImGui::BeginDisabled(state.newMapName[0] == '\0');
-        if (UI::Button(L("Karte erstellen","Create map"), ImVec2(-1.0f, 40.0f))) {
-            const int w = std::max(2, state.newMapWidth);
-            const int h = std::max(2, state.newMapHeight);
-            state.heightmap = core::Heightmap(static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h), 50.0f, 50.0f);
-            state.mapHasHeightmap = true;
-            state.standaloneNifMap = false;
-            ClearMapHistory(state);
-            state.meshDirty = true;
-            SyncWalkGridSize(state);
-            state.textureStack = core::TextureLayerStack(1024u, 1024u);
-            state.selectedLayer = static_cast<int>(state.textureStack.AddLayer(
-                state.newMapTextureLayer[0] != '\0' ? state.newMapTextureLayer : "Base", "base.dds", 1.0f));
-            state.layerPreviewDirty = true;
-            std::snprintf(state.legacySaveStem, sizeof(state.legacySaveStem), "%s", state.newMapName);
-            state.legacyMapIniPath[0] = '\0';
-            if (state.project.projectFolder[0] != '\0') {
-                const auto outputDir = std::filesystem::path(state.project.projectFolder) /
-                    "Client" / "resmap" / state.newMapName;
-                std::snprintf(state.legacySaveDir, sizeof(state.legacySaveDir), "%s", outputDir.string().c_str());
-            } else {
-                state.legacySaveDir[0] = '\0';
-            }
-            state.mapDirty = true;
-            state.statusMessage = std::string(L("Neue Karte '","New map '")) + state.newMapName +
-                                  L("' angelegt (","' created (") +
-                                  std::to_string(w) + "x" + std::to_string(h) + ").";
-            state.screen = AppScreen::MapEditorWorkspace;
-        }
+        ImGui::BeginDisabled(state.newMapName[0] == '\0' || state.project.projectFolder[0] == '\0');
+        if (UI::Button(L("Karte erstellen und ins Projekt schreiben","Create map and write to project"), ImVec2(-1.0f, 40.0f)))
+            CreateNewMapFromWizard(state);
         ImGui::EndDisabled();
+        if (state.project.projectFolder[0] == '\0')
+            ImGui::TextColored(ImVec4(1.0f,0.6f,0.3f,1.0f), "%s", L("Erst einen Projektordner festlegen.","Set a project folder first."));
+        for (const auto& line : state.newMapReport)
+            ImGui::TextColored(line.rfind("- ",0)==0 ? ImVec4(1.0f,0.5f,0.4f,1.0f) : ImVec4(0.75f,0.85f,0.95f,1.0f), "%s", line.c_str());
         ImGui::EndChild();
     }
 
@@ -10625,6 +10684,16 @@ std::string PortalTargetMapName(const PortalMarker& marker) {
     return !marker.targetMapClient.empty() ? marker.targetMapClient : marker.targetMapServer;
 }
 
+// Kartenliste aus dem Client-Ordner des Projekts, falls noch nicht gescannt (z.B. bevor der
+// Karten-Startbildschirm geöffnet wurde).
+void EnsureDiscoveredMaps(EditorState& state) {
+    if (!state.discoveredMaps.empty() || state.project.clientFolder[0] == '\0') return;
+    const auto resolution = ResolveMapSearchRootAndScan(state.project.clientFolder);
+    state.discoveredMaps = resolution.maps;
+    MergeProjectOnlyMaps(state.project, state.discoveredMaps);
+    state.lastScannedMapRoot = state.project.clientFolder;
+}
+
 int FindDiscoveredMapByName(const EditorState& state, const std::string& mapName) {
     const std::string wanted = LowerAscii(TrimAscii(mapName));
     if (wanted.empty()) return -1;
@@ -12220,6 +12289,252 @@ static std::vector<std::size_t> CloneRowsById(EditorState& state, const char* fi
         report.push_back("- " + label + ": keine Vorlage-Zeile gefunden (übersprungen)");
     }
     return created;
+}
+
+// ============================================================================
+// Assistent "Neue Karte" bis ins Spiel: Karte aus Vorlage (core/legacy/NewMapFromTemplate), dazu
+// MapInfo.shn + MapViewInfo.shn (Client und Server), World/Field.txt (FieldList) und optional ein
+// Gate von einer vorhandenen Karte samt Rückweg (World/NPC.txt ShineNPC + LinkTable). Alles wird
+// sofort in den Projektordner geschrieben; die Quellordner bleiben unberührt.
+// ============================================================================
+namespace {
+// Fügt die Kartenzeile in eine Client- und Server-SHN ein (Vorlage: Zeile der Vorlagenkarte).
+void AddMapShnRows(EditorState& state, const char* fileName, long long templateId, const std::string& templateName,
+                   long long newId, const std::string& newName,
+                   const std::vector<std::pair<const char*, std::string>>& cells, std::vector<std::string>& report) {
+    for (const auto src : {EditorState::ShnSource::Client, EditorState::ShnSource::Server}) {
+        const auto rows = CloneRowsById(state, fileName, src, "MapName", templateId, templateName, newId, newName, report);
+        const int di = FindOrLoadShnDoc(state, fileName, src);
+        if (rows.empty() || di < 0) continue;
+        auto& f = state.shnFiles[static_cast<std::size_t>(di)].file;
+        for (const auto r : rows)
+            for (const auto& [col, value] : cells) SetShnCellText(f, r, col, value);
+        report.push_back(std::string(SaveShnDocument(state, di) ? "+ " : "- FEHLER ") + ShnSourceName(src) + " " + fileName +
+                         ": " + newName + " (ID " + std::to_string(newId) + ")");
+    }
+}
+
+// Höchste ID unter `below` (NA2016: reguläre Karten 0..159, Sonderkarten EventF/EventF01 ab 1000).
+long long MaxShnId(EditorState& state, const char* fileName, long long below = 1000) {
+    long long maxId = -1;
+    for (const auto src : {EditorState::ShnSource::Client, EditorState::ShnSource::Server}) {
+        const int di = FindOrLoadShnDoc(state, fileName, src);
+        if (di < 0) continue;
+        const auto& f = state.shnFiles[static_cast<std::size_t>(di)].file;
+        const int c = ShnColumnIndexByName(f, "ID");
+        if (c < 0) continue;
+        for (const auto& row : f.rows) {
+            long long v = 0;
+            if (ShnValueAsInt(row.values[static_cast<std::size_t>(c)], v) && v < below) maxId = std::max(maxId, v);
+        }
+    }
+    return maxId;
+}
+
+int ShineColumn(const core::legacy::ShineTable& t, const char* name) {
+    for (std::size_t i = 0; i < t.columns.size(); ++i)
+        if (LowerAscii(t.columns[i].name) == LowerAscii(name)) return static_cast<int>(i);
+    return -1;
+}
+
+void SetShineValue(core::legacy::ShineRecord& rec, const core::legacy::ShineTable& t, const char* col, const std::string& v) {
+    const int c = ShineColumn(t, col);
+    if (c < 0) return;
+    if (rec.values.size() <= static_cast<std::size_t>(c)) rec.values.resize(static_cast<std::size_t>(c) + 1);
+    rec.values[static_cast<std::size_t>(c)] = v;
+}
+
+// Shine-Textdateien ersetzen '#' beim Lesen durch Leerzeichen (#exchange); Anzeigenamen daher mit '#'.
+std::string ShineTextName(std::string s) {
+    for (char& c : s) if (c == ' ') c = '#';
+    return s;
+}
+} // namespace
+
+bool CreateNewMapFromWizard(EditorState& state) {
+    auto& rep = state.newMapReport;
+    rep.clear();
+    EnsureDiscoveredMaps(state);
+    const std::string name = state.newMapName;
+    if (state.project.projectFolder[0] == '\0') {
+        rep.push_back(L("- Kein Projektordner konfiguriert.", "- No project folder configured."));
+        return false;
+    }
+    if (!core::legacy::IsValidNewMapName(name)) {
+        rep.push_back(L("- Ungültiger Name: Buchstabe am Anfang, dann Buchstaben/Ziffern/_, höchstens 15 Zeichen.",
+                        "- Invalid name: letter first, then letters/digits/_, at most 15 characters."));
+        return false;
+    }
+    if (FindDiscoveredMapByName(state, name) >= 0) {
+        rep.push_back(L("- Eine Karte mit diesem Namen gibt es schon.", "- A map with this name already exists."));
+        return false;
+    }
+    if (state.newMapTemplate < 0 || static_cast<std::size_t>(state.newMapTemplate) >= state.discoveredMaps.size()) {
+        rep.push_back(L("- Keine Vorlagenkarte gewählt.", "- No template map chosen."));
+        return false;
+    }
+    const auto& tmplEntry = state.discoveredMaps[static_cast<std::size_t>(state.newMapTemplate)];
+    const std::filesystem::path tmplIni(tmplEntry.iniPath);
+    auto tmpl = core::legacy::OpenLegacyMap(LegacyMapWorkingIniPath(state, tmplIni));
+    if (!tmpl) {
+        rep.push_back(std::string("- ") + L("Vorlage nicht lesbar: ", "Template not readable: ") + tmpl.error());
+        return false;
+    }
+    const std::uint32_t points = state.newMapSize == 0 ? 129u : state.newMapSize == 2 ? 513u : 257u;
+    auto created = core::legacy::CreateMapFromTemplate(*tmpl, {name, points, state.newMapBaseHeight});
+    if (!created) {
+        rep.push_back("- " + created.error());
+        return false;
+    }
+    const float span = static_cast<float>(points - 1) * created->heightmap.BlockWidth();
+    const int centerX = static_cast<int>(span * 0.5f), centerY = static_cast<int>(span * 0.5f);
+
+    // Karte übernehmen (Texturen relativ zur Vorlage auflösen) und ins Projekt schreiben.
+    ApplyProjectToState(state, std::move(*created), tmplIni.parent_path());
+    LoadMapRenderData(state, tmplIni.parent_path(), tmplIni.stem().string());
+    state.legacySourceStem = name;
+    state.legacySourceFileNames.clear();
+    state.legacyShmdSourceCount = 0;
+    state.walkGridAtLoad = core::WalkGrid{}; // neue Karte: auch die Server-Begehbarkeit schreiben
+    state.legacyMapIniPath[0] = '\0';
+    std::snprintf(state.legacySaveStem, sizeof(state.legacySaveStem), "%s", name.c_str());
+    const auto outputDir = std::filesystem::path(state.project.projectFolder) / "Client" / "resmap" / "field" / name;
+    std::snprintf(state.legacySaveDir, sizeof(state.legacySaveDir), "%s", outputDir.string().c_str());
+    state.mapDirty = true;
+    if (!SaveLegacyMapProject(state)) {
+        rep.push_back("- " + state.statusMessage);
+        return false;
+    }
+    std::snprintf(state.legacyMapIniPath, sizeof(state.legacyMapIniPath), "%s", (outputDir / (name + ".ini")).string().c_str());
+    rep.push_back("+ Client resmap/field/" + name + ": INI, HTD, SHBD, SHMD, " +
+                  std::to_string(state.textureStack.LayerCount()) + L(" Masken", " masks") +
+                  (state.hasLegacyZoneMetadata ? ", AID" : "") + L(" (Vorlage ", " (template ") + tmplEntry.name + ")");
+    rep.push_back("+ Server 9Data/Shine/BlockInfo/" + name + ".shbd");
+
+    // Vorlage in MapInfo: Zeile, deren MapFolderName dem Vorlagenordner entspricht.
+    long long tmplId = -1;
+    std::string tmplName;
+    if (const int di = FindOrLoadShnDoc(state, "MapInfo.shn", EditorState::ShnSource::Client); di >= 0) {
+        const auto& f = state.shnFiles[static_cast<std::size_t>(di)].file;
+        const int cId = ShnColumnIndexByName(f, "ID"), cName = ShnColumnIndexByName(f, "MapName"),
+                  cFolder = ShnColumnIndexByName(f, "MapFolderName");
+        for (const auto& row : f.rows) {
+            if (cId < 0 || cName < 0 || cFolder < 0) break;
+            if (!SameMapName(core::legacy::ShnValueToString(row.values[static_cast<std::size_t>(cFolder)]), tmplEntry.name)) continue;
+            ShnValueAsInt(row.values[static_cast<std::size_t>(cId)], tmplId);
+            tmplName = TrimAscii(core::legacy::ShnValueToString(row.values[static_cast<std::size_t>(cName)]));
+            break;
+        }
+    }
+    const long long newId = std::max(MaxShnId(state, "MapInfo.shn"), MaxShnId(state, "MapViewInfo.shn")) + 1;
+    const std::string display = state.newMapDisplayName[0] ? state.newMapDisplayName : name;
+    if (state.newMapWriteMapInfo) {
+        if (tmplId < 0) {
+            rep.push_back(L("- MapInfo: Vorlage nicht gefunden, keine Einträge.", "- MapInfo: template not found, no entries."));
+        } else {
+            AddMapShnRows(state, "MapInfo.shn", tmplId, tmplName, newId, name,
+                          {{"Name", display}, {"MapFolderName", name}, {"RegenX", std::to_string(centerX)},
+                           {"RegenY", std::to_string(centerY)}, {"IsWMLink", "0"}, {"KingdomMap", "0"}, {"InSide", "0"}}, rep);
+            // Minimap aus: ein Minimap-Bild für die neue Karte gibt es (noch) nicht.
+            AddMapShnRows(state, "MapViewInfo.shn", tmplId, tmplName, newId, name,
+                          {{"MapFolderName", name}, {"MinimapView", "0"}, {"WorldMapView", "0"}}, rep);
+        }
+    }
+
+    // World/Field.txt: FieldList-Zeile der Vorlage klonen. Serial ist eindeutig, CheckSum == Serial
+    // (belegt an allen 153 NA2016-Einträgen); xsize/ysize = Blöcke.
+    if (state.newMapWriteField && !state.shineTextRoot.empty()) {
+        const auto source = std::filesystem::path(state.shineTextRoot) / "World" / "Field.txt";
+        auto field = core::legacy::LoadShineTextFile(PreferProjectOverride(state.project, core::ProjectOutputSide::Server, source));
+        auto* table = field ? field->FindTable("FieldList") : nullptr;
+        const int cMap = table ? ShineColumn(*table, "MapIDClient") : -1, cSerial = table ? ShineColumn(*table, "Serial") : -1;
+        const core::legacy::ShineRecord* tmplRec = nullptr;
+        long long maxSerial = -1;
+        if (table && cMap >= 0 && cSerial >= 0) {
+            for (const auto& rec : table->records) {
+                if (rec.values.size() <= static_cast<std::size_t>(std::max(cMap, cSerial))) continue;
+                maxSerial = std::max(maxSerial, std::atoll(rec.values[static_cast<std::size_t>(cSerial)].c_str()));
+                if (!tmplRec && SameMapName(rec.values[static_cast<std::size_t>(cMap)], tmplName.empty() ? tmplEntry.name : tmplName))
+                    tmplRec = &rec;
+            }
+        }
+        if (!tmplRec) {
+            rep.push_back(L("- Field.txt: Vorlage nicht gefunden, kein Eintrag.", "- Field.txt: template not found, no entry."));
+        } else {
+            core::legacy::ShineRecord rec = *tmplRec;
+            rec.sourceLine = 0;
+            const std::string serial = std::to_string(maxSerial + 1);
+            const std::string blocks = std::to_string(points - 1);
+            SetShineValue(rec, *table, "MapIDClient", name);
+            SetShineValue(rec, *table, "Serial", serial);
+            SetShineValue(rec, *table, "CheckSum", serial);
+            SetShineValue(rec, *table, "MapName", ShineTextName(display));
+            SetShineValue(rec, *table, "xsize", blocks);
+            SetShineValue(rec, *table, "ysize", blocks);
+            SetShineValue(rec, *table, "RegenCity", name);
+            SetShineValue(rec, *table, "RegenXA", std::to_string(centerX));
+            SetShineValue(rec, *table, "RegenYA", std::to_string(centerY));
+            table->records.push_back(std::move(rec));
+            auto saved = SaveProjectShineOverride(*field, ProjectServerShinePath(state.project, std::filesystem::path("World") / "Field.txt"));
+            rep.push_back(saved ? "+ Server World/Field.txt: FieldList " + name + " (Serial " + serial + ")"
+                                : "- FEHLER Field.txt: " + saved.error());
+        }
+    }
+
+    // Optional: Gate von einer vorhandenen Karte und zurück.
+    if (state.newMapGate) {
+        EnsureNpcTextLoaded(state);
+        auto* npcs = state.npcTextFile.FindTable("ShineNPC");
+        auto* links = state.npcTextFile.FindTable("LinkTable");
+        const std::string from = TrimAscii(state.newMapGateFrom);
+        if (!npcs || !links || from.empty()) {
+            rep.push_back(L("- Gate: NPC.txt oder Ausgangskarte fehlt.", "- Gate: NPC.txt or source map missing."));
+        } else {
+            const LinkTableColumns lc = FindLinkTableColumns(*links);
+            const auto addLink = [&](const std::string& arg, const std::string& map, int x, int y) {
+                core::legacy::ShineRecord rec;
+                rec.sourceLine = 0;
+                rec.values.assign(std::max<std::size_t>(links->columns.size(), static_cast<std::size_t>(lc.party) + 1), "");
+                rec.values[static_cast<std::size_t>(lc.argument)] = arg;
+                rec.values[static_cast<std::size_t>(lc.mapServer)] = map;
+                rec.values[static_cast<std::size_t>(lc.mapClient)] = map;
+                rec.values[static_cast<std::size_t>(lc.x)] = std::to_string(x);
+                rec.values[static_cast<std::size_t>(lc.y)] = std::to_string(y);
+                rec.values[static_cast<std::size_t>(lc.direct)] = "0";
+                rec.values[static_cast<std::size_t>(lc.party)] = "1";
+                links->records.push_back(std::move(rec));
+            };
+            const auto addGate = [&](const std::string& map, int x, int y, const std::string& arg) {
+                core::legacy::ShineRecord rec;
+                rec.sourceLine = 0;
+                rec.values = {"MapLinkGate", map, std::to_string(x), std::to_string(y), "0", "0", "Gate", arg};
+                npcs->records.push_back(std::move(rec));
+            };
+            const std::string toNew = "Gate" + name + "1", back = "Gate" + name + "2";
+            // Ankunft 150 Einheiten neben dem jeweiligen Gate, damit man nicht sofort zurückspringt.
+            addGate(from, state.newMapGateX, state.newMapGateY, toNew);
+            addLink(toNew, name, centerX, centerY - 150);
+            addGate(name, centerX, centerY + 150, back);
+            addLink(back, from, state.newMapGateX, state.newMapGateY - 150);
+            auto saved = SaveProjectShineOverride(state.npcTextFile, ProjectServerShinePath(state.project, std::filesystem::path("World") / "NPC.txt"));
+            rep.push_back(saved ? "+ Server World/NPC.txt: Gate " + from + " (" + std::to_string(state.newMapGateX) + "/" +
+                                      std::to_string(state.newMapGateY) + ") -> " + name + ", Rückweg " + name + " -> " + from
+                                : "- FEHLER NPC.txt: " + saved.error());
+        }
+    }
+
+    rep.push_back(L("Minimap: abgeschaltet (MinimapView 0). Der Client lädt Minimaps als resmenu\\minimap\\<Karte>.dds "
+                    "(Fiesta.bin); Größe/Format sind ohne ein Original-Minimap-Bild nicht belegt.",
+                    "Minimap: off (MinimapView 0). The client loads minimaps as resmenu\\minimap\\<map>.dds (Fiesta.bin); "
+                    "size/format are not established without an original minimap image."));
+    // Neue Karte in der Kartenliste (Projekt) sichtbar machen.
+    MergeProjectOnlyMaps(state.project, state.discoveredMaps);
+    state.mapInfoLoaded = false; // MapInfo mit dem neuen Eintrag neu lesen
+    state.npcRenderSetForMap.clear();
+    state.statusMessage = std::string(L("Neue Karte '", "New map '")) + name + L("' angelegt und ins Projekt geschrieben.",
+                                                                                  "' created and written to the project.");
+    state.screen = AppScreen::MapEditorWorkspace;
+    return true;
 }
 
 static void RunCreateCreature(EditorState& state) {
@@ -14283,6 +14598,7 @@ const core::WalkGrid* MapCheckGridForMap(EditorState& state, const std::string& 
     const std::string key = LowerAscii(folder);
     if (const auto it = state.mapCheckGridCache.find(key); it != state.mapCheckGridCache.end()) return it->second.get();
     std::shared_ptr<core::WalkGrid> grid;
+    EnsureDiscoveredMaps(state);
     int idx = FindDiscoveredMapByName(state, folder);
     if (idx < 0) idx = FindDiscoveredMapByName(state, mapName);
     if (idx >= 0 && !state.discoveredMaps[static_cast<std::size_t>(idx)].standaloneNif) {
@@ -22904,6 +23220,20 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         std::string path; std::getline(in >> std::ws, path);
         if (OpenMapPathIntoState(state, std::filesystem::path(path), true)) state.screen = AppScreen::MapEditorWorkspace;
     }
+    else if (cmd == "newmap") {
+        // newmap <Name> <Vorlage> <129|257|513> [Gate-Karte X Y]: Assistent "Neue Karte" ausführen.
+        std::string name, templ, from; int size = 257; in >> name >> templ >> size;
+        std::snprintf(state.newMapName, sizeof(state.newMapName), "%s", name.c_str());
+        EnsureDiscoveredMaps(state);
+        state.newMapTemplate = FindDiscoveredMapByName(state, templ);
+        state.newMapSize = size <= 129 ? 0 : size >= 513 ? 2 : 1;
+        state.newMapGate = static_cast<bool>(in >> from >> state.newMapGateX >> state.newMapGateY);
+        std::snprintf(state.newMapGateFrom, sizeof(state.newMapGateFrom), "%s", from.c_str());
+        const bool ok = CreateNewMapFromWizard(state);
+        std::printf("[newmap] %s ok=%d\n", name.c_str(), ok ? 1 : 0);
+        for (const auto& line : state.newMapReport) std::printf("[newmap] %s\n", line.c_str());
+        std::fflush(stdout);
+    }
     else if (cmd == "walkgen") {
         // walkgen changes|all [Neigung] | apply | discard: Block&Walk neu berechnen (Vorschau/Übernehmen).
         std::string mode; in >> mode;
@@ -23417,6 +23747,16 @@ int main() {
         DrawSettingsWindow(state);
         DrawMapCheckWindow(state);
         TickAutosave(state);
+        {
+            // Projektkarten verweisen auf Texturen/Modelle im Client-Ordner (siehe SetLegacyAssetFallbackRoots).
+            static std::string lastRoots;
+            const std::string roots = std::string(state.project.clientFolder) + "|" + state.resmapRootPath;
+            if (roots != lastRoots) {
+                lastRoots = roots;
+                core::legacy::SetLegacyAssetFallbackRoots({std::filesystem::path(state.project.clientFolder),
+                                                           std::filesystem::path(state.resmapRootPath)});
+            }
+        }
         DrawAutosaveRecoveryPopup(state);
         DrawManualWindow(state);
         SyncStatusToast(state);

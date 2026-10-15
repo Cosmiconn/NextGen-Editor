@@ -76,6 +76,7 @@ add_library(mapeditor_core
     src/core/MapCheck.cpp
     src/core/Autosave.cpp
     src/core/WalkGenerate.cpp
+    src/core/legacy/NewMapFromTemplate.cpp
     src/core/legacy/MapRenderSettings.cpp
     src/core/legacy/LegacyMapProject.cpp
 )
@@ -350,6 +351,10 @@ add_executable(test_walk_generate tests/test_walk_generate.cpp)
 target_link_libraries(test_walk_generate PRIVATE mapeditor_core)
 add_test(NAME walk_generate COMMAND test_walk_generate
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/Rou.ini)
+
+add_executable(test_new_map tests/test_new_map.cpp)
+target_link_libraries(test_new_map PRIVATE mapeditor_core)
+add_test(NAME new_map COMMAND test_new_map ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/Rou.ini)
 
 add_executable(test_map_render_settings tests/test_map_render_settings.cpp)
 target_link_libraries(test_map_render_settings PRIVATE mapeditor_core)

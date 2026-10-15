@@ -370,6 +370,25 @@ Ein TownPortal-Ziel liegt höchstens 205 Einheiten vom zugehörigen Gate_Town-NP
 - 'Save TownPortal.shn' and 'Save RecallCoord.txt'.
 A TownPortal target is at most 205 units away from the associated Gate_Town NPC.)MAN",
      "portal townportal recall schriftrolle teleport"},
+    {"map.newmap", "map",
+     "Neue Karte bis ins Spiel", "New map, ready for the game",
+     R"MAN(Karte > Neue Karte legt eine Karte an, die alle Einträge für Client und Server mitbringt, und schreibt sie sofort in den Projektordner (die Quellordner bleiben unberührt).
+- Kartenname: Ordner-, Datei- und Servername (Buchstabe am Anfang, dann Buchstaben/Ziffern/_, höchstens 15 Zeichen). Anzeigename: der Name im Spiel.
+- Vorlage: eine vorhandene Karte, deren Textur-Layer, Licht (.conf, SHMD-Szenenlicht), Himmel und .aid übernommen werden - so zeigen alle Verweise auf Dateien, die im Client existieren. Neu angelegt werden flaches Terrain, frische Masken (Layer 1 voll), ein freies Block&Walk-Gitter, eine weiße Vertex-Color-Bitmap und eine leere Objektliste.
+- Größe 129, 257 (12800 x 12800 Einheiten wie Roumen) oder 513 Höhenpunkte; Grundhöhe.
+- Spieldaten: MapInfo.shn und MapViewInfo.shn (Client und Server, ID = nächste freie unter 1000, Wiederbelebung in der Kartenmitte, Minimap aus), World/Field.txt (Serial = CheckSum = nächste freie Nummer, wie bei allen 153 Originaleinträgen), Server-Begehbarkeit 9Data/Shine/BlockInfo/<Karte>.shbd/.aid.
+- Optional ein Gate von einer vorhandenen Karte (Servername und Position) mit Rückweg: zwei ShineNPC-Gates und zwei LinkTable-Einträge in World/NPC.txt; Ankunft je 150 Einheiten neben dem Gate.
+Die Liste unter dem Knopf zeigt jede geschriebene Datei. Danach mit der Kartenprüfung kontrollieren.
+Minimap: Der Client lädt sie als resmenu\minimap\<Karte>.dds; Größe und Format sind ohne ein Original-Minimap-Bild nicht belegt, deshalb bleibt sie aus.)MAN",
+     R"MAN(Map > New map creates a map with all client and server entries and writes it to the project folder right away (the source folders stay untouched).
+- Map name: folder, file and server name (letter first, then letters/digits/_, at most 15 characters). Display name: the name in the game.
+- Template: an existing map whose texture layers, light (.conf, SHMD scene light), sky and .aid are taken over - so every reference points to files that exist in the client. Newly created are flat terrain, fresh masks (layer 1 full), a free Block&Walk grid, a white vertex colour bitmap and an empty object list.
+- Size 129, 257 (12800 x 12800 units like Roumen) or 513 height points; base height.
+- Game data: MapInfo.shn and MapViewInfo.shn (client and server, ID = next free one below 1000, respawn in the map centre, minimap off), World/Field.txt (Serial = CheckSum = next free number, as in all 153 original entries), server walkability 9Data/Shine/BlockInfo/<map>.shbd/.aid.
+- Optionally a gate from an existing map (server name and position) with a way back: two ShineNPC gates and two LinkTable entries in World/NPC.txt; arrival 150 units next to each gate.
+The list under the button shows every written file. Check the result with the map check afterwards.
+Minimap: the client loads it as resmenu\minimap\<map>.dds; size and format are not established without an original minimap image, so it stays off.)MAN",
+     "neue karte new map vorlage template mapinfo field gate assistent wizard"},
     {"map.mapcheck", "map",
      "Kartenprüfung", "Map check",
      R"MAN(Werkzeuge > Kartenprüfung prüft die offene Karte wie Unreals "Map Check" und listet alles, was im Spiel nicht funktionieren würde. Doppelklick springt zur Stelle (Objekte werden ausgewählt, Quests öffnen den Quest-Editor). 'Prüfen' wiederholt die Prüfung nach Änderungen.
