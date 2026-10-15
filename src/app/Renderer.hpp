@@ -108,8 +108,9 @@ public:
     // werden, im selben Frame.
     // uvScaleX/Y: welcher Teil der Overlay-Textur die Karte abdeckt (Block&Walk-Gitter ist quadratisch,
     // bei nicht-quadratischen Karten deckt die Karte nur einen Teil ab).
+    // colorMode 0: Rot nach Helligkeit; 1: Block&Walk-Vergleich (siehe Overlay-Shader).
     void DrawTopDownOverlay(std::uint32_t overlayTexture, float alpha, float uvScaleX = 1.0f, float uvScaleY = 1.0f,
-                            float uvOffsetX = 0.0f, float uvOffsetY = 0.0f);
+                            float uvOffsetX = 0.0f, float uvOffsetY = 0.0f, int colorMode = 0);
     [[nodiscard]] std::uint32_t EndTopDownScene();
 
     // Unabhängige, nicht-interaktive Ganzkarten-Draufsicht für das Minimap-Dock. Verwendet

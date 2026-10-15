@@ -74,6 +74,7 @@
 #include "mapeditor/core/LevelEditorTools.hpp"
 #include "mapeditor/core/MapCheck.hpp"
 #include "mapeditor/core/Autosave.hpp"
+#include "mapeditor/core/WalkGenerate.hpp"
 #include "mapeditor/core/legacy/MapRenderSettings.hpp"
 #include "mapeditor/app/Localization.hpp"
 
@@ -596,6 +597,18 @@ struct EditorState {
     // gesperrt sind (Gebäude ja, Gras/Schiffe nein). Modelle ohne Vergleich werden gesperrt.
     bool walkFootprintOnlyBlocking = true;
     core::WalkGrid walkGridAtLoad;
+    // Stand beim Laden: Grundlage für "Block&Walk nur für Geändertes neu berechnen".
+    core::Heightmap heightmapAtLoad;
+    core::ObjectPlacementSet placementAtLoad;
+    core::WalkGenerateSettings walkGenSettings;
+    int walkGenScope = 0;      // 0 = nur Geändertes, 1 = ganze Karte
+    bool walkGenObjects = true;
+    std::optional<core::WalkGrid> walkProposal;
+    core::WalkGridDiff walkProposalDiff, walkProposalVsOriginal;
+    std::size_t walkProposalRegionCells = 0;
+    std::string walkGenStatus;
+    GLuint walkDiffTex = 0;
+    bool walkDiffDirty = false;
     std::string modelBlockStatsKey;
     std::unordered_map<std::string, std::pair<std::size_t, std::size_t>> modelBlockStats; // Modell -> (Zellen, davon gesperrt)
     char walkLegacyPath[512] = "";
@@ -3462,6 +3475,9 @@ void ApplyProjectToState(EditorState& state, core::legacy::LegacyMapProject&& pr
         project.heightmap.Width() > 0 && project.heightmap.Height() > 0;
     state.preservedMapFiles = std::move(project.preservedFiles);
     state.heightmap = std::move(project.heightmap);
+    state.heightmapAtLoad = state.heightmap;
+    state.walkProposal.reset();
+    state.walkGenStatus.clear();
     state.mapHasHeightmap = hasHeightmap;
     state.standaloneNifMap = false;
     state.htdHeader = project.htdHeader;
@@ -3506,6 +3522,7 @@ void ApplyProjectToState(EditorState& state, core::legacy::LegacyMapProject&& pr
     state.legacySourceStem = project.sourceStem;
     state.legacySourceFileNames = project.sourceFileNames;
     state.placementSet = std::move(project.objects);
+    state.placementAtLoad = state.placementSet;
     state.selectedObject = kNoObjectSelection;
     state.selectedObjects.clear();
     state.selectedObjectModelPathFor = kNoObjectSelection;
@@ -15119,6 +15136,10 @@ static void DrawVisibilityPanel(EditorState& state);
 static std::vector<std::vector<std::pair<float, float>>> CollectVisibleObjectFootprints(EditorState& state);
 static const std::unordered_map<std::string, std::pair<std::size_t, std::size_t>>& ModelBlockStats(EditorState& state);
 static void StampObjectFootprints(EditorState& state, bool blocked);
+static void DrawWalkGeneratePanel(EditorState& state);
+static void UpdateWalkDiffTexture(EditorState& state);
+static void ComputeWalkProposal(EditorState& state);
+static void ApplyWalkProposal(EditorState& state);
 static void RefreshObjectVisibility(EditorState& state);
 static bool IsObjectHidden(const EditorState& state, std::size_t i);
 int PlaceObjectAtWorld(EditorState& state, const std::string& modelPath, float x, float y, float z);
@@ -15391,6 +15412,8 @@ void DrawToolsContent(EditorState& state) {
                                    "Affects only currently visible categories - ideal for buildings, decoration or selected groups."));
         ImGui::TextDisabled(L("Zellen im Gitter: %u x %u (%.0f x %.0f Einheiten)","Grid cells: %u x %u (%.0f x %.0f units)"), state.walkGrid.Cols(), state.walkGrid.Rows(),
                             state.walkGrid.Cols() * WalkGridCellSize(), state.walkGrid.Rows() * WalkGridCellSize());
+
+        DrawWalkGeneratePanel(state);
 
         ImGui::SeparatorText(L("Historie","History"));
         if (DrawCompactIconTextButton("walkUndo", L("Rückgängig","Undo"), DrawIconUndo,
@@ -16159,6 +16182,217 @@ static void StampObjectFootprints(EditorState& state, bool blocked) {
     }
 }
 
+// ============================================================================
+// Block&Walk aus Terrain und Objekten neu berechnen (core/WalkGenerate). Standard: nur dort, wo sich
+// Terrain oder Objekte seit dem Laden geändert haben; Handarbeit im Original (Meer, Wege) bleibt.
+// Ergebnis erst als Vorschau (Vergleichsfarben im 2D-View), Übernehmen = ein Undo-Schritt.
+// ============================================================================
+static std::string ObjectChangeKey(const core::PlacedObject& o) {
+    char buf[96];
+    std::snprintf(buf, sizeof(buf), "|%.2f|%.2f|%.2f|%.4f|%.4f|%.4f|%.4f|%.4f", o.posX, o.posY, o.posZ, o.rotX, o.rotY,
+                  o.rotZ, o.rotW, o.scale);
+    return LowerAscii(o.modelPath) + buf;
+}
+
+static void StampPolygonsBlocked(core::WalkGrid& grid, const std::vector<std::vector<std::pair<float, float>>>& polygons) {
+    core::WalkUndoPatch patch;
+    std::vector<std::uint64_t> seen;
+    for (const auto& polygon : polygons) core::ApplyWalkConvexPolygon(grid, polygon, true, patch, seen);
+}
+
+static void ComputeWalkProposal(EditorState& state) {
+    state.walkProposal.reset();
+    if (!MapSupportsTerrainEditing(state) || state.walkGrid.Cols() == 0 || state.walkGrid.Rows() == 0) {
+        state.walkGenStatus = L("Keine Karte mit Terrain und Block&Walk-Gitter geladen.", "No map with terrain and Block&Walk grid loaded.");
+        return;
+    }
+    const auto blocking = [&](const core::PlacedObject& o) {
+        return !(state.walkFootprintOnlyBlocking && ModelWalkableInSource(state, o.modelPath));
+    };
+    using Polygons = std::vector<std::vector<std::pair<float, float>>>;
+    const auto emptyGrid = [&] { return core::WalkGrid(state.walkGrid.Width(), state.walkGrid.Height(), 0); };
+    core::WalkGrid result;
+    if (state.walkGenScope == 0) {
+        core::WalkRegion region = core::TerrainChangeRegion(state.walkGrid, state.heightmapAtLoad, state.heightmap);
+        const std::size_t terrainCells = core::RegionCellCount(region);
+        core::WalkGrid add, remove;
+        std::size_t changedObjects = 0;
+        if (state.walkGenObjects) {
+            // Objekte über Modell+Transformation abgleichen (unabhängig von der SHMD-Reihenfolge).
+            std::unordered_map<std::string, int> loadKeys, currentKeys;
+            for (std::size_t i = 0; i < state.placementAtLoad.Count(); ++i) ++loadKeys[ObjectChangeKey(state.placementAtLoad.At(i))];
+            for (std::size_t i = 0; i < state.placementSet.Count(); ++i) ++currentKeys[ObjectChangeKey(state.placementSet.At(i))];
+            Polygons addPolys, removePolys, coverPolys;
+            for (std::size_t i = 0; i < state.placementSet.Count(); ++i) {
+                const auto& o = state.placementSet.At(i);
+                if (!blocking(o)) continue;
+                auto polygon = ObjectFootprintWorldPolygon(state, o);
+                if (polygon.size() < 3) continue;
+                auto it = loadKeys.find(ObjectChangeKey(o));
+                if (it != loadKeys.end() && it->second > 0) --it->second;
+                else addPolys.push_back(polygon);
+                coverPolys.push_back(std::move(polygon));
+            }
+            for (std::size_t i = 0; i < state.placementAtLoad.Count(); ++i) {
+                const auto& o = state.placementAtLoad.At(i);
+                auto it = currentKeys.find(ObjectChangeKey(o));
+                if (it != currentKeys.end() && it->second > 0) { --it->second; continue; }
+                if (!blocking(o)) continue;
+                auto polygon = ObjectFootprintWorldPolygon(state, o);
+                if (polygon.size() >= 3) removePolys.push_back(std::move(polygon));
+            }
+            changedObjects = addPolys.size() + removePolys.size();
+            add = emptyGrid();
+            remove = emptyGrid();
+            StampPolygonsBlocked(add, addPolys);
+            StampPolygonsBlocked(remove, removePolys);
+            if (!removePolys.empty()) {
+                // Freigeben nur, wo kein (anderes) aktuelles Objekt die Zelle noch abdeckt.
+                core::WalkGrid cover = emptyGrid();
+                StampPolygonsBlocked(cover, coverPolys);
+                for (std::uint32_t z = 0; z < remove.Height(); ++z)
+                    for (std::uint32_t w = 0; w < remove.Width(); ++w)
+                        remove.Set(w, z, static_cast<std::int16_t>(static_cast<std::uint16_t>(remove.At(w, z)) &
+                                                                   ~static_cast<std::uint16_t>(cover.At(w, z))));
+            }
+            for (const Polygons* list : {&addPolys, &removePolys}) {
+                for (const auto& polygon : *list) {
+                    float x0 = polygon[0].first, x1 = x0, z0 = polygon[0].second, z1 = z0;
+                    for (const auto& [px, pz] : polygon) {
+                        x0 = std::min(x0, px); x1 = std::max(x1, px);
+                        z0 = std::min(z0, pz); z1 = std::max(z1, pz);
+                    }
+                    core::AddRectToRegion(region, state.walkGrid, x0, z0, x1, z1);
+                }
+            }
+        }
+        state.walkProposalRegionCells = core::RegionCellCount(region);
+        result = core::UpdateWalkGridForChanges(state.walkGrid, state.heightmapAtLoad, state.heightmap, state.walkGenSettings,
+                                                region, add, remove);
+        char buf[200];
+        std::snprintf(buf, sizeof(buf), L("Geänderter Bereich: %zu Zellen (Terrain %zu), %zu geänderte Objekt-Grundflächen.",
+                                          "Changed area: %zu cells (terrain %zu), %zu changed object footprints."),
+                      state.walkProposalRegionCells, terrainCells, changedObjects);
+        state.walkGenStatus = buf;
+    } else {
+        core::WalkGrid extra;
+        if (state.walkGenObjects) {
+            Polygons polys;
+            for (std::size_t i = 0; i < state.placementSet.Count(); ++i) {
+                const auto& o = state.placementSet.At(i);
+                if (!blocking(o)) continue;
+                auto polygon = ObjectFootprintWorldPolygon(state, o);
+                if (polygon.size() >= 3) polys.push_back(std::move(polygon));
+            }
+            extra = emptyGrid();
+            StampPolygonsBlocked(extra, polys);
+        }
+        result = core::GenerateWalkGrid(state.walkGrid, state.heightmap, state.walkGenSettings, nullptr, extra);
+        state.walkProposalRegionCells = static_cast<std::size_t>(state.walkGrid.Cols()) * state.walkGrid.Rows();
+        state.walkGenStatus = L("Ganze Karte aus Terrain-Regeln und Objekt-Grundflächen neu berechnet.",
+                                "Whole map recomputed from terrain rules and object footprints.");
+    }
+    state.walkProposalDiff = core::DiffWalkGrids(state.walkGrid, result);
+    state.walkProposalVsOriginal = core::DiffWalkGrids(state.walkGridAtLoad, result);
+    state.walkProposal = std::move(result);
+    state.walkDiffDirty = true;
+}
+
+static void ApplyWalkProposal(EditorState& state) {
+    if (!state.walkProposal) return;
+    const auto& proposal = *state.walkProposal;
+    if (proposal.Width() != state.walkGrid.Width() || proposal.Height() != state.walkGrid.Height()) return;
+    core::WalkUndoPatch patch;
+    for (std::uint32_t z = 0; z < proposal.Height(); ++z)
+        for (std::uint32_t w = 0; w < proposal.Width(); ++w)
+            if (proposal.At(w, z) != state.walkGrid.At(w, z)) patch.entries.push_back({w, z, state.walkGrid.At(w, z)});
+    const std::size_t words = patch.entries.size();
+    if (!patch.entries.empty()) {
+        state.walkGrid = proposal;
+        PushWalkHistory(state, std::move(patch));
+        state.mapDirty = true;
+        state.walkPreviewDirty = true;
+        state.modelBlockStatsKey.clear();
+    }
+    state.walkProposal.reset();
+    state.statusMessage = words ? std::string(L("Block&Walk neu berechnet übernommen (", "Recomputed Block&Walk applied (")) +
+                                      std::to_string(state.walkProposalDiff.newlyBlocked) + L(" neu blockiert, ", " newly blocked, ") +
+                                      std::to_string(state.walkProposalDiff.newlyFree) + L(" neu begehbar). Ein Undo-Schritt.", " newly walkable). One undo step.")
+                                : std::string(L("Neu berechnet: keine Änderung.", "Recomputed: no change."));
+}
+
+// Vergleichstextur (R8): 0 bleibt begehbar, 85 bleibt blockiert, 170 neu blockiert, 255 neu begehbar.
+static void UpdateWalkDiffTexture(EditorState& state) {
+    if (!state.walkProposal) return;
+    const auto& a = state.walkGrid;
+    const auto& b = *state.walkProposal;
+    const std::uint32_t cols = a.Cols(), rows = a.Rows();
+    if (cols == 0 || rows == 0 || b.Cols() != cols || b.Rows() != rows) return;
+    std::vector<unsigned char> pixels(static_cast<std::size_t>(cols) * rows);
+    for (std::uint32_t z = 0; z < rows; ++z)
+        for (std::uint32_t x = 0; x < cols; ++x) {
+            const bool was = a.CellBlocked(x, z), now = b.CellBlocked(x, z);
+            pixels[static_cast<std::size_t>(z) * cols + x] = was ? (now ? 85 : 255) : (now ? 170 : 0);
+        }
+    if (state.walkDiffTex == 0) glGenTextures(1, &state.walkDiffTex);
+    glBindTexture(GL_TEXTURE_2D, state.walkDiffTex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, static_cast<int>(cols), static_cast<int>(rows), 0, GL_RED, GL_UNSIGNED_BYTE, pixels.data());
+    glBindTexture(GL_TEXTURE_2D, 0);
+    state.walkDiffDirty = false;
+}
+
+static void DrawWalkGeneratePanel(EditorState& state) {
+    ImGui::SeparatorText(L("Aus Terrain und Objekten neu berechnen", "Recompute from terrain and objects"));
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::SliderFloat(L("Max. Neigung (°)##walkGen", "Max. slope (°)##walkGen"), &state.walkGenSettings.maxSlopeDegrees, 5.0f, 80.0f, "%.0f");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", L("Steiler = blockiert. Gemessen: auf Roumen sind 98 % der Zellen steiler als 30° im Original blockiert.",
+                                  "Steeper = blocked. Measured: on Roumen 98 % of the cells steeper than 30° are blocked in the original."));
+    UI::Checkbox(L("Max. Höhe##walkGenMaxH", "Max. height##walkGenMaxH"), &state.walkGenSettings.useMaxHeight);
+    if (state.walkGenSettings.useMaxHeight) {
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(120.0f);
+        ImGui::InputFloat("##walkGenMaxHeight", &state.walkGenSettings.maxHeight, 0.0f, 0.0f, "%.0f");
+    }
+    UI::Checkbox(L("Min. Höhe (z.B. Wasser)##walkGenMinH", "Min. height (e.g. water)##walkGenMinH"), &state.walkGenSettings.useMinHeight);
+    if (state.walkGenSettings.useMinHeight) {
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(120.0f);
+        ImGui::InputFloat("##walkGenMinHeight", &state.walkGenSettings.minHeight, 0.0f, 0.0f, "%.0f");
+    }
+    UI::Checkbox(L("Objekt-Grundflächen einbeziehen##walkGen", "Include object footprints##walkGen"), &state.walkGenObjects);
+    ImGui::RadioButton(L("Nur Geändertes##walkGenScope", "Changes only##walkGenScope"), &state.walkGenScope, 0);
+    ImGui::SameLine();
+    ImGui::RadioButton(L("Ganze Karte##walkGenScope", "Whole map##walkGenScope"), &state.walkGenScope, 1);
+    ImGui::TextDisabled("%s", state.walkGenScope == 0
+        ? L("Nur wo sich Terrain oder Objekte seit dem Laden geändert haben; gibt nur frei, was wegen Hang oder Objekt gesperrt war.",
+            "Only where terrain or objects changed since loading; frees only what was blocked by slope or an object.")
+        : L("Ersetzt das ganze Gitter durch Terrain-Regeln + Grundflächen - für neue Karten. Handarbeit (Meer, Wege) geht verloren.",
+            "Replaces the whole grid with terrain rules + footprints - for new maps. Hand-made blocks (sea, paths) are lost."));
+    if (UI::Button(L("Vorschau berechnen##walkGen", "Compute preview##walkGen"))) ComputeWalkProposal(state);
+    if (!state.walkGenStatus.empty()) ImGui::TextWrapped("%s", state.walkGenStatus.c_str());
+    if (!state.walkProposal) return;
+    const auto& d = state.walkProposalDiff;
+    ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.1f, 1.0f), L("%zu neu blockiert", "%zu newly blocked"), d.newlyBlocked);
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.45f, 1.0f), L("%zu neu begehbar", "%zu newly walkable"), d.newlyFree);
+    ImGui::TextDisabled(L("Übereinstimmung mit dem Original danach: %.2f %%", "Agreement with the original afterwards: %.2f %%"),
+                        state.walkProposalVsOriginal.Agreement() * 100.0);
+    ImGui::TextDisabled("%s", L("2D-View: gelb = neu blockiert, grün = neu begehbar, rot = bleibt blockiert.",
+                                "2D view: yellow = newly blocked, green = newly walkable, red = stays blocked."));
+    if (UI::Button(L("Übernehmen##walkGen", "Apply##walkGen"))) ApplyWalkProposal(state);
+    ImGui::SameLine();
+    if (UI::Button(L("Verwerfen##walkGen", "Discard##walkGen"))) {
+        state.walkProposal.reset();
+        state.walkGenStatus.clear();
+    }
+}
+
 static std::vector<core::NifGroundContactSegment> ObjectGroundContactWorldSegments(
     EditorState& state, const core::PlacedObject& obj) {
     const auto& fp = GetOrComputeFootprint(state, obj.modelPath);
@@ -16584,7 +16818,12 @@ void DrawEditor2DContent(EditorState& state) {
         const float mapU = std::min(1.0f, spanX / gridSpanX), mapV = std::min(1.0f, spanZ / gridSpanZ);
         // Overlay-UV = Kartenausschnitt (normiert) * Anteil der Textur, den die Karte belegt.
         const float x0n = state.view2dCenterU - 0.5f / zoom, z0n = (1.0f - state.view2dCenterV) - 0.5f / zoom;
-        state.renderer.DrawTopDownOverlay(state.walkPreviewTex, 0.75f, mapU / zoom, mapV / zoom, x0n * mapU, z0n * mapV);
+        if (state.walkProposal) {
+            if (state.walkDiffDirty) UpdateWalkDiffTexture(state);
+            state.renderer.DrawTopDownOverlay(state.walkDiffTex, 0.85f, mapU / zoom, mapV / zoom, x0n * mapU, z0n * mapV, 1);
+        } else {
+            state.renderer.DrawTopDownOverlay(state.walkPreviewTex, 0.75f, mapU / zoom, mapV / zoom, x0n * mapU, z0n * mapV);
+        }
     }
     const GLuint tex = state.renderer.EndTopDownScene();
     state.renderer.ResetTopDownWindow();
@@ -22665,6 +22904,22 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         std::string path; std::getline(in >> std::ws, path);
         if (OpenMapPathIntoState(state, std::filesystem::path(path), true)) state.screen = AppScreen::MapEditorWorkspace;
     }
+    else if (cmd == "walkgen") {
+        // walkgen changes|all [Neigung] | apply | discard: Block&Walk neu berechnen (Vorschau/Übernehmen).
+        std::string mode; in >> mode;
+        if (mode == "apply") ApplyWalkProposal(state);
+        else if (mode == "discard") state.walkProposal.reset();
+        else {
+            float slope = state.walkGenSettings.maxSlopeDegrees;
+            if (in >> slope) state.walkGenSettings.maxSlopeDegrees = slope;
+            state.walkGenScope = mode == "all" ? 1 : 0;
+            ComputeWalkProposal(state);
+        }
+        std::printf("[walkgen] %s: blocked+%zu free+%zu region %zu vsOriginal %.4f | %s | %s\n", mode.c_str(),
+                    state.walkProposalDiff.newlyBlocked, state.walkProposalDiff.newlyFree, state.walkProposalRegionCells,
+                    state.walkProposalVsOriginal.Agreement(), state.walkGenStatus.c_str(), state.statusMessage.c_str());
+        std::fflush(stdout);
+    }
     else if (cmd == "stroke") {
         // stroke <x> <z> [n]: wendet den aktiven Pinsel n-mal an einer Weltposition an (wie ein Klick).
         float x = 0, z = 0; int n = 1; in >> x >> z >> n;
@@ -22939,6 +23194,16 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
     else if (cmd == "showall") ShowAllObjects(state);
     else if (cmd == "playtest") TogglePlaytest(state);
     else if (cmd == "preset") { int p = 0; in >> p; ApplyViewportPreset(state, p); }
+    else if (cmd == "workspace") { int p = 0; in >> p; RequestMapWorkspacePreset(state, p); }
+    else if (cmd == "view2d") {
+        // view2d <zoom> <weltX> <weltZ>: 2D-Ansicht zoomen und auf eine Weltposition zentrieren.
+        float zoom = 1.0f, x = 0.0f, z = 0.0f; in >> zoom >> x >> z;
+        const float spanX = static_cast<float>(std::max<std::uint32_t>(state.heightmap.Width(), 2) - 1) * state.heightmap.BlockWidth();
+        const float spanZ = static_cast<float>(std::max<std::uint32_t>(state.heightmap.Height(), 2) - 1) * state.heightmap.BlockHeight();
+        state.view2dZoom = zoom;
+        state.view2dCenterU = x / spanX;
+        state.view2dCenterV = 1.0f - z / spanZ;
+    }
     else if (cmd == "camera") {
         float tx = 0, ty = 0, tz = 0, yaw = 0, pitch = 0, dist = 1000;
         in >> tx >> ty >> tz >> yaw >> pitch >> dist;

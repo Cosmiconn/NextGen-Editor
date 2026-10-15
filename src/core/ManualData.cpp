@@ -212,15 +212,17 @@ Individual layers can be shown/hidden in the 'Visibility' area without changing 
 - Sperren / Freigeben: welche Art der Änderung der Pinsel macht.
 - Radius: Pinselgröße; '1 Zelle' trifft nur die Zelle unter dem Zeiger.
 - Aus Objekten: 'Grundflächen sichtbarer Objekte SPERREN/FREIGEBEN' stempelt die Grundfläche aller gerade sichtbaren Objekte (siehe Sichtbarkeit: z.B. nur 'Gebäude' einblenden) ins Gitter. Ein Klick lässt sich mit Rückgängig zurücknehmen.
+- Aus Terrain und Objekten neu berechnen: sperrt Hänge steiler als 'Max. Neigung' (Standard 30°; auf Roumen sind 98 % solcher Zellen im Original blockiert), optional alles über 'Max. Höhe' oder unter 'Min. Höhe' (z.B. Wasser), und die Grundflächen blockierender Objekte. 'Nur Geändertes' rechnet nur dort neu, wo sich Terrain oder Objekte seit dem Laden geändert haben, und gibt nur Zellen frei, die wegen Hang oder Objekt gesperrt waren - von Hand gesperrtes Meer oder Wege bleiben. 'Ganze Karte' ersetzt das Gitter (für neue Karten). 'Vorschau berechnen' zeigt im 2D-View gelb = neu blockiert, grün = neu begehbar; 'Übernehmen' ist ein Undo-Schritt.
 - Rückgängig / Wiederholen (Walk).
 Objekte erscheinen als Referenz mit ihrer Grundfläche; sie sind in diesem Werkzeug nicht anklickbar, damit man nichts versehentlich verschiebt.)MAN",
      R"MAN(The Block&Walk grid consists of cells of 6.25 world units. A cell is either blocked (red in the overlay) or walkable. Server points (NPCs, waypoints) always lie on walkable cells.
 - Block / Release: which kind of change the brush makes.
 - Radius: brush size; '1 cell' only hits the cell under the pointer.
 - From objects: 'Block/Release footprints of visible objects' stamps the footprint of all currently visible objects (see Visibility: e.g. show only 'Buildings') into the grid. One click can be reverted with Undo.
+- Recompute from terrain and objects: blocks slopes steeper than 'Max. slope' (default 30°; on Roumen 98 % of such cells are blocked in the original), optionally everything above 'Max. height' or below 'Min. height' (e.g. water), and the footprints of blocking objects. 'Changes only' recomputes only where terrain or objects changed since loading and frees only cells that were blocked by slope or an object - hand-made blocks such as sea or paths stay. 'Whole map' replaces the grid (for new maps). 'Compute preview' shows yellow = newly blocked, green = newly walkable in the 2D view; 'Apply' is one undo step.
 - Undo / Redo (Walk).
 Objects appear as a reference with their footprint; they cannot be clicked in this tool so nothing is moved by accident.)MAN",
-     "walk block begehbar gitter zelle sperren freigeben grundfläche"},
+     "walk block begehbar gitter zelle sperren freigeben grundfläche neu berechnen hang neigung slope recompute shbd"},
     {"map.objects", "map",
      "Tab Objekt Platzierung", "Object placement tab",
      R"MAN(Objekte sind 3D-Modelle (Häuser, Bäume, Steine ...) mit Position, Drehung und Skalierung.

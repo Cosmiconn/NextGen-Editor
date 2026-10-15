@@ -1,3 +1,10 @@
+## Block&Walk — recompute from terrain and objects
+- New in the Block&Walk tool: "Recompute from terrain and objects". Slopes steeper than a threshold (default 30°), optionally everything above a maximum or below a minimum height, and the footprints of blocking objects are blocked.
+- Measured on the real maps: on Roumen 98.4 % of the cells steeper than 30° are blocked in the original SHBD, on Uruga 82-98 % above 30°. Flat areas cannot be derived (sea, hand-made paths): a whole-map recomputation of Roumen agrees with the original on only 73 % of the cells.
+- Therefore "Changes only" is the default: it recomputes only where the terrain (compared with the heights at load time) or objects (matched by model and transform, independent of SHMD order) changed. It frees a cell only if it was blocked by the slope rule at load time or by the footprint of a removed/moved object that no other object still covers; hand-made blocks stay. Checked on Roumen: unchanged map = 0 cells changed; a raised hill (radius 250) blocks 3512 new cells, everything else stays bit-identical (99.92 % agreement with the original).
+- "Compute preview" colors the 2D view (yellow = newly blocked, green = newly walkable, red = stays blocked) and shows the counts; "Apply" is one undo step. "Whole map" is meant for new maps.
+- Core: `core/WalkGenerate` (`TerrainSlopeDegrees`, `TerrainChangeRegion`, `GenerateWalkGrid`, `UpdateWalkGridForChanges`, `DiffWalkGrids`) with `test_walk_generate` (incl. real Rou). Automation: `walkgen changes|all [slope] | apply | discard`, `workspace <n>`, `view2d <zoom> <x> <z>`.
+
 ## Map check, autosave and gate links
 - New: Tools > Map check, like Unreal's "Map Check". Lists what would not work in the game, double-click jumps to the spot:
   - NPCs and gates on blocked cells. Severity follows the distance to the nearest free cell (note up to 4 cells, warning up to 16, error beyond). Calibrated on the real maps: of 215 placed NPCs on Rou, Eld, Adl, Urg, Bera and EchoCave only 6 stand on a blocked cell, 5 of them 1-3 cells from a free one (behind counters).
