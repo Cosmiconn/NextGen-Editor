@@ -177,7 +177,8 @@ On large maps (e.g. Adelia 951x476 blocks) each blend texture covers only one re
 - Falloff: Weich, Linear, Kugel, Spitz oder Konstant.
 - Radius: Pinselgröße in Welteinheiten. Stärke: wie stark pro Zug.
 - Rückgängig / Wiederholen: nehmen ganze Pinselzüge zurück.
-Unten stehen Gittergröße und Höhenbereich. Objekte und NPCs folgen der Höhe beim Neuberechnen ihrer Position; gespeicherte Objekthöhen ändern sich dadurch nicht automatisch.)MAN",
+Unten stehen Gittergröße und Höhenbereich. Objekte und NPCs folgen der Höhe beim Neuberechnen ihrer Position; gespeicherte Objekthöhen ändern sich dadurch nicht automatisch.
+Höhendaten austauschen (Datei & Fiesta Import/Export): 'Exportieren' schreibt die Heightmap als 16-Bit-Graustufen-PNG oder RAW R16 (.r16/.raw, little endian, quadratisch) für World Machine, Gaea oder Photoshop; der Höhenbereich wird auf 0..65535 abgebildet und im PNG mitgeschrieben. 'Importieren' liest PNG (8/16 Bit) oder R16 mit dem angegebenen Bereich Min..Max ('Bereich aus Datei' übernimmt ihn aus einer vom Editor exportierten PNG), rechnet bei anderer Größe bilinear um und ist ein Undo-Schritt. Bildoberkante = Norden.)MAN",
      R"MAN(Edit the heightmap. Hold the left mouse button in the 2D view or the 3D viewport and move over the terrain (in the 3D viewport Alt+LMB still orbits the camera).
 - Raise / Lower: pull the terrain up or down.
 - Smooth: blends heights with the surroundings. Sharpen: the opposite, emphasizes edges and peaks.
@@ -189,7 +190,8 @@ Unten stehen Gittergröße und Höhenbereich. Objekte und NPCs folgen der Höhe 
 - Falloff: smooth, linear, spherical, tip or constant.
 - Radius: brush size in world units. Strength: how strong per stroke.
 - Undo / Redo: revert whole brush strokes.
-Below you find grid size and height range. Objects and NPCs follow the height when their position is recalculated; saved object heights do not change automatically.)MAN",
+Below you find grid size and height range. Objects and NPCs follow the height when their position is recalculated; saved object heights do not change automatically.
+Exchange height data (File & Fiesta import/export): 'Export' writes the heightmap as a 16-bit grayscale PNG or RAW R16 (.r16/.raw, little endian, square) for World Machine, Gaea or Photoshop; the height range is mapped to 0..65535 and stored in the PNG. 'Import' reads PNG (8/16 bit) or R16 with the given range Min..Max ('Range from file' takes it from a PNG the editor exported), resamples bilinearly if the size differs and is one undo step. Top edge of the image = north.)MAN",
      "höhenkarte heightmap gelände anheben absenken glätten einebnen rauschen noise terrassen erosion rampe schärfen falloff"},
     {"map.texturing", "map",
      "Tab Map Texturen", "Map textures tab",

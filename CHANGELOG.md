@@ -1,3 +1,9 @@
+## Terrain — exchange height data as 16-bit PNG or R16
+- New under Terrain > File & Fiesta import/export: export the heightmap as a 16-bit grayscale PNG or RAW R16 (little endian, square), as World Machine, Gaea or Photoshop expect, and import it back. The height range is mapped to 0..65535 and stored in the PNG (`tEXt` chunk `NextGenHeightRange`); on import Min..Max are entered or taken from the file. Different sizes are resampled bilinearly; the import is one undo step. Top edge of the image = north.
+- No external library: PNG is written with stored deflate blocks and read with a small own inflate (stored, fixed and dynamic Huffman blocks, all five row filters, 8/16 bit, gray/RGB(A)).
+- Checked: Rou.HTD -> PNG/R16 -> back differs by at most half a 16-bit step (0.023 units); ImageMagick reads the exported PNG as 16-bit grayscale; a 300x300 gradient PNG written by ImageMagick imports onto Roumen with north = 2000 and south = 0.
+- Core: `core/HeightmapExchange` with `test_heightmap_exchange` (incl. a zlib-compressed fixture using all filters). Automation: `heightexport <file>`, `heightimport <file> <min> <max>`.
+
 ## New map, ready for the game — and server walkability
 - Map > New map now creates a complete map from a template map and writes everything to the project folder at once:
   - Client `resmap/field/<map>`: INI, HTD, SHBD, SHMD, masks, AID, `.conf`, white vertex colour bitmap. Texture layers, light, sky and AID come from the template, so every path points to a file that exists in the client; terrain, masks, Block&Walk and objects are new.

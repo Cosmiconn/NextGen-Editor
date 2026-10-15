@@ -75,6 +75,7 @@
 #include "mapeditor/core/MapCheck.hpp"
 #include "mapeditor/core/Autosave.hpp"
 #include "mapeditor/core/WalkGenerate.hpp"
+#include "mapeditor/core/HeightmapExchange.hpp"
 #include "mapeditor/core/legacy/NewMapFromTemplate.hpp"
 #include "mapeditor/core/legacy/MapRenderSettings.hpp"
 #include "mapeditor/app/Localization.hpp"
@@ -1268,6 +1269,10 @@ struct EditorState {
     char newMapGateFrom[32] = "";
     int newMapGateX = 0, newMapGateY = 0;
     std::vector<std::string> newMapReport;
+    // Höhendaten-Austausch (PNG 16 Bit / R16) im Terrain-Werkzeug.
+    char heightExchangePath[512] = "";
+    float heightExchangeMin = 0.0f, heightExchangeMax = 1000.0f;
+    std::string heightExchangeStatus;
 
     // Steuert, welches der beiden Panels im Map-Editor-Start sichtbar ist (siehe die
     // "New Map"/"Map Öffnen"-Knöpfe in DrawMapEditorLauncher).
@@ -4491,6 +4496,50 @@ void DrawAdvancedFileOps(EditorState& state) {
         }
         ImGui::Separator();
 
+        ImGui::TextDisabled("%s", L("Höhendaten austauschen (16-Bit-PNG / R16, z.B. World Machine, Gaea)",
+                                    "Exchange height data (16-bit PNG / R16, e.g. World Machine, Gaea)"));
+        UI::InputText(L("Datei (.png/.r16/.raw)##hx","File (.png/.r16/.raw)##hx"), state.heightExchangePath, sizeof(state.heightExchangePath));
+        if (UI::Button(L("Exportieren##hx","Export##hx")) && state.heightExchangePath[0] != '\0') {
+            auto r = core::ExportHeightmapImage(state.heightmap, state.heightExchangePath);
+            const auto [lo, hi] = state.heightmap.MinMax();
+            char buf[160];
+            std::snprintf(buf, sizeof(buf), L("Exportiert, Höhenbereich %.1f .. %.1f","Exported, height range %.1f .. %.1f"), lo, hi);
+            state.heightExchangeStatus = r ? std::string(buf) : r.error();
+        }
+        ImGui::SameLine();
+        if (UI::Button(L("Bereich aus Datei##hx","Range from file##hx")) && state.heightExchangePath[0] != '\0') {
+            if (auto img = core::ImportHeightImage(state.heightExchangePath); img && img->range) {
+                state.heightExchangeMin = img->range->first;
+                state.heightExchangeMax = img->range->second;
+            } else {
+                state.heightExchangeStatus = img ? L("Datei enthält keinen Höhenbereich - bitte angeben.","File holds no height range - please enter it.")
+                                                 : img.error();
+            }
+        }
+        ImGui::SetNextItemWidth(110.0f);
+        ImGui::InputFloat(L("Min##hx","Min##hx"), &state.heightExchangeMin, 0.0f, 0.0f, "%.1f");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(110.0f);
+        ImGui::InputFloat(L("Max##hx","Max##hx"), &state.heightExchangeMax, 0.0f, 0.0f, "%.1f");
+        if (UI::Button(L("Importieren (ein Undo-Schritt)##hx","Import (one undo step)##hx")) && state.heightExchangePath[0] != '\0') {
+            auto img = core::ImportHeightImage(state.heightExchangePath);
+            if (!img) state.heightExchangeStatus = img.error();
+            else {
+                auto patch = core::ApplyHeightImage(state.heightmap, *img, state.heightExchangeMin, state.heightExchangeMax);
+                const std::size_t changed = patch.entries.size();
+                if (changed) {
+                    PushHeightmapHistory(state, std::move(patch));
+                    state.meshDirty = true;
+                    state.mapDirty = true;
+                }
+                state.heightExchangeStatus = std::to_string(img->width) + "x" + std::to_string(img->height) +
+                    L(" importiert, "," imported, ") + std::to_string(changed) + L(" Höhenpunkte geändert"," height points changed") +
+                    (img->width != state.heightmap.Width() || img->height != state.heightmap.Height()
+                         ? L(" (auf Kartengröße umgerechnet)"," (resampled to map size)") : "");
+            }
+        }
+        if (!state.heightExchangeStatus.empty()) ImGui::TextWrapped("%s", state.heightExchangeStatus.c_str());
+        ImGui::Separator();
         ImGui::TextDisabled("Legacy-Heightmap-Import/Export (.HTD / .HTDG)");
         UI::InputText("Pfad##legacy", state.legacyPath, sizeof(state.legacyPath));
         UI::InputInt("Breite (aus .ini)", &state.legacyWidth);
@@ -23232,6 +23281,23 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         const bool ok = CreateNewMapFromWizard(state);
         std::printf("[newmap] %s ok=%d\n", name.c_str(), ok ? 1 : 0);
         for (const auto& line : state.newMapReport) std::printf("[newmap] %s\n", line.c_str());
+        std::fflush(stdout);
+    }
+    else if (cmd == "heightexport" || cmd == "heightimport") {
+        // heightexport <Datei> | heightimport <Datei> <min> <max>
+        std::string file; in >> file;
+        if (cmd == "heightexport") {
+            auto r = core::ExportHeightmapImage(state.heightmap, file);
+            std::printf("[height] export %s %s\n", file.c_str(), r ? "ok" : r.error().c_str());
+        } else {
+            float lo = 0, hi = 1000; in >> lo >> hi;
+            auto img = core::ImportHeightImage(file);
+            if (img) {
+                auto patch = core::ApplyHeightImage(state.heightmap, *img, lo, hi);
+                std::printf("[height] import %s %ux%u changed %zu\n", file.c_str(), img->width, img->height, patch.entries.size());
+                if (!patch.entries.empty()) { PushHeightmapHistory(state, std::move(patch)); state.meshDirty = true; state.mapDirty = true; }
+            } else std::printf("[height] import %s %s\n", file.c_str(), img.error().c_str());
+        }
         std::fflush(stdout);
     }
     else if (cmd == "walkgen") {
