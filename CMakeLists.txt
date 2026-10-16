@@ -47,6 +47,7 @@ add_library(mapeditor_core
     src/core/EditOps.cpp
     src/core/BlendMap.cpp
     src/core/DdsImage.cpp
+    src/core/DdsWrite.cpp
     src/core/NifModel.cpp
     src/core/KfmFile.cpp
     src/core/KfAnimation.cpp
@@ -339,6 +340,10 @@ add_test(NAME kf_animation COMMAND test_kf_animation
 add_executable(test_nif_animation_pose tests/test_nif_animation_pose.cpp)
 target_link_libraries(test_nif_animation_pose PRIVATE mapeditor_core)
 add_test(NAME nif_animation_pose COMMAND test_nif_animation_pose)
+
+add_executable(test_dds_write tests/test_dds_write.cpp)
+target_link_libraries(test_dds_write PRIVATE mapeditor_core)
+add_test(NAME dds_write COMMAND test_dds_write "${NEXTGEN_NA2016_DATA}")
 
 add_executable(test_view_culling tests/test_view_culling.cpp)
 target_link_libraries(test_view_culling PRIVATE mapeditor_core)
