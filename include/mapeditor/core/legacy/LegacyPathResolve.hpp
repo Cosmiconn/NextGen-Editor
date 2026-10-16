@@ -11,6 +11,7 @@
 #include <cctype>
 #include <filesystem>
 #include <optional>
+#include <vector>
 #include <string>
 
 namespace theseed::mapeditor::core::legacy {
@@ -37,6 +38,11 @@ std::optional<std::filesystem::path> ResolveCaseInsensitivePath(
 
 // Probiert mehrere plausible Wurzeln der Reihe nach: (1) mapDir selbst, (2) zwei Ebenen über
 // mapDir (gemeinsame Asset-Wurzel bei Layout "<AssetRoot>/field/<Karte>/karte.ini").
+// Zusätzliche Client-Ordner, in denen ResolveLegacyAssetPath als letzte Möglichkeit sucht. Nötig für
+// Karten, die nur im Projektordner liegen (neue Karten, Projekt-Overrides): ihre INI verweist wie im
+// Original auf ".\resmap\field\<Vorlage>\...", die Dateien liegen aber im Client-Ordner.
+void SetLegacyAssetFallbackRoots(std::vector<std::filesystem::path> clientRoots);
+
 std::optional<std::filesystem::path> ResolveLegacyAssetPath(
     const std::filesystem::path& mapDir, const std::string& legacyPath);
 

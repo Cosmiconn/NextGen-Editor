@@ -212,15 +212,17 @@ Individual layers can be shown/hidden in the 'Visibility' area without changing 
 - Sperren / Freigeben: welche Art der Änderung der Pinsel macht.
 - Radius: Pinselgröße; '1 Zelle' trifft nur die Zelle unter dem Zeiger.
 - Aus Objekten: 'Grundflächen sichtbarer Objekte SPERREN/FREIGEBEN' stempelt die Grundfläche aller gerade sichtbaren Objekte (siehe Sichtbarkeit: z.B. nur 'Gebäude' einblenden) ins Gitter. Ein Klick lässt sich mit Rückgängig zurücknehmen.
+- Aus Terrain und Objekten neu berechnen: sperrt Hänge steiler als 'Max. Neigung' (Standard 30°; auf Roumen sind 98 % solcher Zellen im Original blockiert), optional alles über 'Max. Höhe' oder unter 'Min. Höhe' (z.B. Wasser), und die Grundflächen blockierender Objekte. 'Nur Geändertes' rechnet nur dort neu, wo sich Terrain oder Objekte seit dem Laden geändert haben, und gibt nur Zellen frei, die wegen Hang oder Objekt gesperrt waren - von Hand gesperrtes Meer oder Wege bleiben. 'Ganze Karte' ersetzt das Gitter (für neue Karten). 'Vorschau berechnen' zeigt im 2D-View gelb = neu blockiert, grün = neu begehbar; 'Übernehmen' ist ein Undo-Schritt.
 - Rückgängig / Wiederholen (Walk).
 Objekte erscheinen als Referenz mit ihrer Grundfläche; sie sind in diesem Werkzeug nicht anklickbar, damit man nichts versehentlich verschiebt.)MAN",
      R"MAN(The Block&Walk grid consists of cells of 6.25 world units. A cell is either blocked (red in the overlay) or walkable. Server points (NPCs, waypoints) always lie on walkable cells.
 - Block / Release: which kind of change the brush makes.
 - Radius: brush size; '1 cell' only hits the cell under the pointer.
 - From objects: 'Block/Release footprints of visible objects' stamps the footprint of all currently visible objects (see Visibility: e.g. show only 'Buildings') into the grid. One click can be reverted with Undo.
+- Recompute from terrain and objects: blocks slopes steeper than 'Max. slope' (default 30°; on Roumen 98 % of such cells are blocked in the original), optionally everything above 'Max. height' or below 'Min. height' (e.g. water), and the footprints of blocking objects. 'Changes only' recomputes only where terrain or objects changed since loading and frees only cells that were blocked by slope or an object - hand-made blocks such as sea or paths stay. 'Whole map' replaces the grid (for new maps). 'Compute preview' shows yellow = newly blocked, green = newly walkable in the 2D view; 'Apply' is one undo step.
 - Undo / Redo (Walk).
 Objects appear as a reference with their footprint; they cannot be clicked in this tool so nothing is moved by accident.)MAN",
-     "walk block begehbar gitter zelle sperren freigeben grundfläche"},
+     "walk block begehbar gitter zelle sperren freigeben grundfläche neu berechnen hang neigung slope recompute shbd"},
     {"map.objects", "map",
      "Tab Objekt Platzierung", "Object placement tab",
      R"MAN(Objekte sind 3D-Modelle (Häuser, Bäume, Steine ...) mit Position, Drehung und Skalierung.
@@ -368,6 +370,25 @@ Ein TownPortal-Ziel liegt höchstens 205 Einheiten vom zugehörigen Gate_Town-NP
 - 'Save TownPortal.shn' and 'Save RecallCoord.txt'.
 A TownPortal target is at most 205 units away from the associated Gate_Town NPC.)MAN",
      "portal townportal recall schriftrolle teleport"},
+    {"map.newmap", "map",
+     "Neue Karte bis ins Spiel", "New map, ready for the game",
+     R"MAN(Karte > Neue Karte legt eine Karte an, die alle Einträge für Client und Server mitbringt, und schreibt sie sofort in den Projektordner (die Quellordner bleiben unberührt).
+- Kartenname: Ordner-, Datei- und Servername (Buchstabe am Anfang, dann Buchstaben/Ziffern/_, höchstens 15 Zeichen). Anzeigename: der Name im Spiel.
+- Vorlage: eine vorhandene Karte, deren Textur-Layer, Licht (.conf, SHMD-Szenenlicht), Himmel und .aid übernommen werden - so zeigen alle Verweise auf Dateien, die im Client existieren. Neu angelegt werden flaches Terrain, frische Masken (Layer 1 voll), ein freies Block&Walk-Gitter, eine weiße Vertex-Color-Bitmap und eine leere Objektliste.
+- Größe 129, 257 (12800 x 12800 Einheiten wie Roumen) oder 513 Höhenpunkte; Grundhöhe.
+- Spieldaten: MapInfo.shn und MapViewInfo.shn (Client und Server, ID = nächste freie unter 1000, Wiederbelebung in der Kartenmitte, Minimap aus), World/Field.txt (Serial = CheckSum = nächste freie Nummer, wie bei allen 153 Originaleinträgen), Server-Begehbarkeit 9Data/Shine/BlockInfo/<Karte>.shbd/.aid.
+- Optional ein Gate von einer vorhandenen Karte (Servername und Position) mit Rückweg: zwei ShineNPC-Gates und zwei LinkTable-Einträge in World/NPC.txt; Ankunft je 150 Einheiten neben dem Gate.
+Die Liste unter dem Knopf zeigt jede geschriebene Datei. Danach mit der Kartenprüfung kontrollieren.
+Minimap: Der Client lädt sie als resmenu\minimap\<Karte>.dds; Größe und Format sind ohne ein Original-Minimap-Bild nicht belegt, deshalb bleibt sie aus.)MAN",
+     R"MAN(Map > New map creates a map with all client and server entries and writes it to the project folder right away (the source folders stay untouched).
+- Map name: folder, file and server name (letter first, then letters/digits/_, at most 15 characters). Display name: the name in the game.
+- Template: an existing map whose texture layers, light (.conf, SHMD scene light), sky and .aid are taken over - so every reference points to files that exist in the client. Newly created are flat terrain, fresh masks (layer 1 full), a free Block&Walk grid, a white vertex colour bitmap and an empty object list.
+- Size 129, 257 (12800 x 12800 units like Roumen) or 513 height points; base height.
+- Game data: MapInfo.shn and MapViewInfo.shn (client and server, ID = next free one below 1000, respawn in the map centre, minimap off), World/Field.txt (Serial = CheckSum = next free number, as in all 153 original entries), server walkability 9Data/Shine/BlockInfo/<map>.shbd/.aid.
+- Optionally a gate from an existing map (server name and position) with a way back: two ShineNPC gates and two LinkTable entries in World/NPC.txt; arrival 150 units next to each gate.
+The list under the button shows every written file. Check the result with the map check afterwards.
+Minimap: the client loads it as resmenu\minimap\<map>.dds; size and format are not established without an original minimap image, so it stays off.)MAN",
+     "neue karte new map vorlage template mapinfo field gate assistent wizard"},
     {"map.mapcheck", "map",
      "Kartenprüfung", "Map check",
      R"MAN(Werkzeuge > Kartenprüfung prüft die offene Karte wie Unreals "Map Check" und listet alles, was im Spiel nicht funktionieren würde. Doppelklick springt zur Stelle (Objekte werden ausgewählt, Quests öffnen den Quest-Editor). 'Prüfen' wiederholt die Prüfung nach Änderungen.

@@ -274,11 +274,21 @@ uniform sampler2D uTex;
 uniform float uAlpha;
 uniform vec2 uUvScale;
 uniform vec2 uUvOffset;
+uniform int uColorMode;
 void main() {
     // Rot-Einfärbung nach Helligkeit des Overlays (z.B. Block&Walk-Heatmap): höhere Werte
     // erscheinen deckender rot, niedrige nahezu transparent - macht das Muster auf der echten
     // Kartentextur gut erkennbar, ohne sie komplett zu verdecken.
     float v = texture(uTex, uUvOffset + vUv * uUvScale).r;
+    if (uColorMode == 1) {
+        // Vergleich Block&Walk vorher/nachher: 1/3 = bleibt blockiert, 2/3 = neu blockiert,
+        // 1 = neu begehbar, 0 = bleibt begehbar (durchsichtig).
+        if (v < 0.17) FragColor = vec4(0.0);
+        else if (v < 0.5) FragColor = vec4(1.0, 0.25, 0.15, 0.45 * uAlpha);
+        else if (v < 0.83) FragColor = vec4(1.0, 0.85, 0.1, uAlpha);
+        else FragColor = vec4(0.2, 1.0, 0.45, uAlpha);
+        return;
+    }
     FragColor = vec4(1.0, 0.25, 0.15, v * uAlpha);
 }
 )";
@@ -906,7 +916,7 @@ void HeightmapRenderer::BeginTopDownScene(int width, int height) {
 }
 
 void HeightmapRenderer::DrawTopDownOverlay(std::uint32_t overlayTexture, float alpha, float uvScaleX, float uvScaleY,
-                                           float uvOffsetX, float uvOffsetY) {
+                                           float uvOffsetX, float uvOffsetY, int colorMode) {
     if (overlayTexture == 0) return;
 
     glDisable(GL_DEPTH_TEST);
@@ -920,6 +930,7 @@ void HeightmapRenderer::DrawTopDownOverlay(std::uint32_t overlayTexture, float a
     glUniform1f(glGetUniformLocation(overlayShaderProgram_, "uAlpha"), alpha);
     glUniform2f(glGetUniformLocation(overlayShaderProgram_, "uUvScale"), uvScaleX, uvScaleY);
     glUniform2f(glGetUniformLocation(overlayShaderProgram_, "uUvOffset"), uvOffsetX, uvOffsetY);
+    glUniform1i(glGetUniformLocation(overlayShaderProgram_, "uColorMode"), colorMode);
 
     glBindVertexArray(overlayVao_);
     glDrawArrays(GL_TRIANGLES, 0, 6);

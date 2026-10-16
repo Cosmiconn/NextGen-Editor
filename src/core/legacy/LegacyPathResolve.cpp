@@ -1,6 +1,7 @@
 #include "mapeditor/core/legacy/LegacyPathResolve.hpp"
 
 #include <algorithm>
+#include <mutex>
 
 namespace theseed::mapeditor::core::legacy {
 
@@ -137,6 +138,37 @@ std::optional<std::filesystem::path> FindFileRecursiveBounded(
 }
 } // namespace
 
+namespace {
+std::mutex g_fallbackMutex;
+std::vector<std::filesystem::path> g_fallbackRoots;
+
+std::optional<std::filesystem::path> ResolveInFallbackRoots(const std::filesystem::path& native,
+                                                            const std::filesystem::path& stripped) {
+    std::vector<std::filesystem::path> roots;
+    {
+        std::lock_guard lock(g_fallbackMutex);
+        roots = g_fallbackRoots;
+    }
+    for (const auto& root : roots) {
+        if (root.empty()) continue;
+        if (stripped != native) {
+            // Client-Ordner mit resmap-Unterordner oder direkt der resmap-Ordner.
+            if (auto r = ResolveCaseInsensitivePath(root, std::filesystem::path("resmap") / stripped)) return r;
+            if (EqualsCaseInsensitive(root.filename().string(), "resmap"))
+                if (auto r = ResolveCaseInsensitivePath(root, stripped)) return r;
+        } else if (auto r = ResolveCaseInsensitivePath(root, native)) {
+            return r;
+        }
+    }
+    return std::nullopt;
+}
+} // namespace
+
+void SetLegacyAssetFallbackRoots(std::vector<std::filesystem::path> clientRoots) {
+    std::lock_guard lock(g_fallbackMutex);
+    g_fallbackRoots = std::move(clientRoots);
+}
+
 std::optional<std::filesystem::path> ResolveLegacyAssetPath(
     const std::filesystem::path& mapDir, const std::string& legacyPath) {
     const std::filesystem::path native = LegacyPathToNative(legacyPath);
@@ -201,7 +233,7 @@ std::optional<std::filesystem::path> ResolveLegacyAssetPath(
             }
         }
     }
-    return std::nullopt;
+    return ResolveInFallbackRoots(native, stripped);
 }
 
 std::optional<std::filesystem::path> FindSiblingFileByStem(
