@@ -269,6 +269,7 @@ std::expected<HeightImage, std::string> DecodePng(std::span<const std::uint8_t> 
     HeightImage img;
     int bitDepth = 0, colorType = 0, interlace = 0;
     std::vector<std::uint8_t> idat;
+    std::vector<std::uint8_t> palette; // PLTE, RGB-Tripel
     for (std::size_t pos = 8; pos + 12 <= bytes.size();) {
         const std::uint32_t len = GetBE32(&bytes[pos]);
         if (pos + 12 + len > bytes.size()) return std::unexpected("PNG: Chunk abgeschnitten");
@@ -280,6 +281,8 @@ std::expected<HeightImage, std::string> DecodePng(std::span<const std::uint8_t> 
             bitDepth = data[8];
             colorType = data[9];
             interlace = data[12];
+        } else if (type == "PLTE") {
+            palette.assign(data, data + len);
         } else if (type == "IDAT") {
             idat.insert(idat.end(), data, data + len);
         } else if (type == "tEXt") {
@@ -296,14 +299,17 @@ std::expected<HeightImage, std::string> DecodePng(std::span<const std::uint8_t> 
     }
     if (img.width == 0 || img.height == 0 || img.width > 16384 || img.height > 16384) return std::unexpected("PNG: ungültige Größe");
     if (interlace != 0) return std::unexpected("PNG: Interlacing wird nicht unterstützt");
-    if (bitDepth != 8 && bitDepth != 16) return std::unexpected("PNG: nur 8 oder 16 Bit je Kanal");
-    const int channels = colorType == 0 ? 1 : colorType == 4 ? 2 : colorType == 2 ? 3 : colorType == 6 ? 4 : 0;
-    if (channels == 0) return std::unexpected("PNG: Palettenbilder werden nicht unterstützt");
+    const int channels = colorType == 0 || colorType == 3 ? 1 : colorType == 4 ? 2 : colorType == 2 ? 3 : colorType == 6 ? 4 : 0;
+    if (channels == 0) return std::unexpected("PNG: unbekannter Farbtyp");
+    const bool lowBits = (colorType == 0 || colorType == 3) && (bitDepth == 1 || bitDepth == 2 || bitDepth == 4);
+    if (!lowBits && bitDepth != 8 && !(bitDepth == 16 && colorType != 3)) return std::unexpected("PNG: nicht unterstützte Bittiefe");
+    if (colorType == 3 && palette.size() < 3) return std::unexpected("PNG: Palette fehlt");
     if (idat.size() < 6) return std::unexpected("PNG: keine Bilddaten");
     auto raw = Inflate(std::span<const std::uint8_t>(idat).subspan(2, idat.size() - 6));
     if (!raw) return std::unexpected(raw.error());
-    const std::size_t bpp = static_cast<std::size_t>(channels) * (bitDepth / 8);
-    const std::size_t stride = bpp * img.width;
+    // Filter arbeiten auf ganzen Bytes (mindestens 1); Zeilen mit < 8 Bit je Pixel sind gepackt.
+    const std::size_t bpp = std::max<std::size_t>(1, static_cast<std::size_t>(channels) * (bitDepth / 8));
+    const std::size_t stride = lowBits ? (static_cast<std::size_t>(img.width) * bitDepth + 7) / 8 : bpp * img.width;
     if (raw->size() < (stride + 1) * img.height) return std::unexpected("PNG: zu wenig Bilddaten");
     std::vector<std::uint8_t> prev(stride, 0), cur(stride);
     img.values.resize(static_cast<std::size_t>(img.width) * img.height);
@@ -323,9 +329,24 @@ std::expected<HeightImage, std::string> DecodePng(std::span<const std::uint8_t> 
             cur[i] = static_cast<std::uint8_t>(v);
         }
         for (std::uint32_t x = 0; x < img.width; ++x) {
-            const std::uint8_t* px = &cur[x * bpp];
-            img.values[static_cast<std::size_t>(y) * img.width + x] =
-                bitDepth == 16 ? static_cast<std::uint16_t>((px[0] << 8) | px[1]) : static_cast<std::uint16_t>(px[0] * 257);
+            std::uint32_t sample = 0; // Rohwert (Graustufe oder Palettenindex)
+            if (lowBits) {
+                const std::size_t bit = static_cast<std::size_t>(x) * bitDepth;
+                sample = (cur[bit / 8] >> (8 - bitDepth - static_cast<int>(bit % 8))) & ((1u << bitDepth) - 1u);
+            } else {
+                const std::uint8_t* px = &cur[x * bpp];
+                sample = bitDepth == 16 ? static_cast<std::uint32_t>((px[0] << 8) | px[1]) : px[0];
+            }
+            std::uint16_t value = 0;
+            if (colorType == 3) {
+                const std::size_t at = static_cast<std::size_t>(sample) * 3;
+                value = static_cast<std::uint16_t>((at < palette.size() ? palette[at] : 0) * 257); // Rotkanal
+            } else if (bitDepth == 16) {
+                value = static_cast<std::uint16_t>(sample);
+            } else {
+                value = static_cast<std::uint16_t>(sample * 65535u / ((1u << bitDepth) - 1u));
+            }
+            img.values[static_cast<std::size_t>(y) * img.width + x] = value;
         }
         std::swap(prev, cur);
     }

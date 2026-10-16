@@ -1,3 +1,10 @@
+## Texturing — rules, layer lock, brush shapes from images
+- Texture by rules (like Unreal's auto material): the selected layer gets weight where slope and/or height lie in a range, with a soft transition; "Add only" or "Replace". Apply to the whole map (one undo step) or let the brush paint by the rule. Layer regions (Adl halves) are respected. Checked on Roumen: the rule 35-90° paints the rock layer on all 8333 sampled spots steeper than 35°, other layers stay unchanged.
+- Lock layers (texture panel or Layer dock context menu): brushes and rules leave a locked layer alone; locks follow the layer name, so reordering keeps them.
+- Brush shape from an image for terrain and texture brushes: a grayscale PNG or R16 replaces the falloff (white = full effect, top edge = north). Checked: a left-white mask raises only west of the brush centre.
+- The PNG reader now also takes 1/2/4-bit grayscale and palette images (ImageMagick writes simple masks that way).
+- Core: `core/TextureRules` (`test_texture_rules`, incl. real Rou), `BrushAlpha` in `EditOps`/`TexturePaintOps`. Automation: `texrule <min> <max> [replace]`, `brushalpha <png>|off`, `layerlock <i> on|off`.
+
 ## Terrain — exchange height data as 16-bit PNG or R16
 - New under Terrain > File & Fiesta import/export: export the heightmap as a 16-bit grayscale PNG or RAW R16 (little endian, square), as World Machine, Gaea or Photoshop expect, and import it back. The height range is mapped to 0..65535 and stored in the PNG (`tEXt` chunk `NextGenHeightRange`); on import Min..Max are entered or taken from the file. Different sizes are resampled bilinearly; the import is one undo step. Top edge of the image = north.
 - No external library: PNG is written with stored deflate blocks and read with a small own inflate (stored, fixed and dynamic Huffman blocks, all five row filters, 8/16 bit, gray/RGB(A)).

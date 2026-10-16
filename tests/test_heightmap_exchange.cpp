@@ -75,6 +75,22 @@ int main(int argc, char** argv) {
         Check(all, "alle Pixel exakt (Filter None/Sub/Up/Average/Paeth)");
     }
 
+    // Gepackte Graustufen (1 Bit) und Palettenbilder (2 Bit), wie ImageMagick sie für einfache Masken schreibt.
+    const std::filesystem::path fixtures = std::filesystem::path(argv[2]).parent_path();
+    if (auto bits = ImportHeightImage(fixtures / "brush_1bit.png")) {
+        const auto& v = bits->values;
+        Check(bits->width == 10 && v[0] == 65535 && v[1] == 0 && v[9] == 0 && v[10] == 65535 && v[14] == 65535 && v[15] == 0,
+              "1-Bit-PNG gelesen");
+    } else {
+        Check(false, "1-Bit-PNG gelesen");
+    }
+    if (auto pal = ImportHeightImage(fixtures / "brush_palette2.png")) {
+        Check(pal->width == 4 && pal->values[0] == 0 && pal->values[1] == 85 * 257 && pal->values[3] == 65535,
+              "Paletten-PNG (2 Bit) gelesen, Rotkanal");
+    } else {
+        Check(false, "Paletten-PNG (2 Bit) gelesen");
+    }
+
     // Andere Größe: 257er-Bild auf 129er-Karte, Ecken bleiben gleich.
     Heightmap small(129, 129);
     auto img = ImportHeightImage(dir / "rou.r16");

@@ -200,13 +200,19 @@ Exchange height data (File & Fiesta import/export): 'Export' writes the heightma
 - Radius / Stärke: Pinsel.
 - Layer hinzufügen: Name, Diffuse-Datei ('Durchsuchen...') und UV-Scale angeben. 'Layer entfernen' löscht den gewählten Layer.
 - Rückgängig / Wiederholen für Textur-Pinselzüge.
-Einzelne Layer lassen sich im Bereich 'Sichtbarkeit' ein- und ausblenden, ohne die Daten zu ändern.)MAN",
+Einzelne Layer lassen sich im Bereich 'Sichtbarkeit' ein- und ausblenden, ohne die Daten zu ändern.
+- Gewählten Layer sperren (auch im Kontextmenü des Layer-Docks): Pinsel und Regeln ändern ihn dann nicht.
+- Nach Regeln texturieren: der gewählte Layer bekommt Gewicht, wo Neigung (z.B. 35-90° für Fels) und/oder Höhe im Bereich liegen, mit weichem Übergang. 'Nur hinzufügen' malt dazu, 'Ersetzen' überschreibt den Layer. 'Auf ganze Karte anwenden' ist ein Undo-Schritt; mit 'Pinsel malt nach dieser Regel' wirkt die Regel nur unter dem Pinsel.
+- Pinselform aus Bild (auch beim Terrain): ein Graustufen-PNG (1-16 Bit, auch Palette) oder R16 ersetzt den Falloff; weiß = volle Wirkung, Bildoberkante = Norden.)MAN",
      R"MAN(Every map has several texture layers. Each layer has a diffuse texture (image), a UV scale (tile size) and a weight per map point (blend) that you paint.
 - Select a layer (list), then paint in the 2D view or the 3D viewport: 'Increase' strengthens the layer, 'Decrease' weakens it. Every layer has its own mask; painting changes only the selected layer. Layers lie on top of each other in list order (later over earlier), as in the game.
 - Radius / Strength: brush.
 - Add layer: enter name, diffuse file ('Browse...') and UV scale. 'Remove layer' deletes the selected layer.
 - Undo / Redo for texture strokes.
-Individual layers can be shown/hidden in the 'Visibility' area without changing the data.)MAN",
+Individual layers can be shown/hidden in the 'Visibility' area without changing the data.
+- Lock selected layer (also in the Layer dock context menu): brushes and rules then leave it unchanged.
+- Texture by rules: the selected layer gets weight where slope (e.g. 35-90° for rock) and/or height are in range, with a soft transition. 'Add only' paints on top, 'Replace' overwrites the layer. 'Apply to whole map' is one undo step; with 'Brush paints by this rule' the rule only acts under the brush.
+- Brush shape from image (also for terrain): a grayscale PNG (1-16 bit, palette too) or R16 replaces the falloff; white = full effect, top edge = north.)MAN",
      "textur layer blend diffuse uv scale malen"},
     {"map.walk", "map",
      "Tab Walk & Block (Begehbarkeit)", "Walk & Block tab",

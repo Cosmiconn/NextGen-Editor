@@ -35,6 +35,19 @@ enum class BrushFalloff {
 // Flatten nur anheben, nur absenken oder beides (Unreal: Flatten Mode).
 enum class FlattenSide { Both, RaiseOnly, LowerOnly };
 
+// Pinselform aus einem Graustufenbild (Alpha-Pinsel wie in Unreal): Werte 0..1, das Bild wird auf
+// das Quadrat [-Radius, Radius]² gelegt (Bildzeile 0 = Norden). Innerhalb des Pinselkreises ersetzt
+// es den Falloff.
+struct BrushAlpha {
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    std::vector<float> values;
+    [[nodiscard]] bool Empty() const noexcept { return width == 0 || height == 0 || values.empty(); }
+};
+
+// Gewicht der Pinselform an Versatz (dx, dz) zum Pinselzentrum, normiert auf den Radius.
+[[nodiscard]] float BrushAlphaWeight(const BrushAlpha& alpha, float dxNorm, float dzNorm);
+
 struct BrushSettings {
     float radius = 200.0f;        // Wirkradius in Weltraum-Einheiten
     float strength = 10.0f;       // Höhenänderung pro Anwendung (Raise/Lower/Noise); Blend-Faktor in % (Smooth/Flatten/Terrace/Erode/Sharpen)
@@ -45,6 +58,7 @@ struct BrushSettings {
     std::uint32_t noiseSeed = 1;
     float terraceStep = 100.0f;   // Stufenhöhe
     float erodeTalus = 20.0f;     // erlaubter Höhenunterschied je Block, darüber rutscht Material
+    const BrushAlpha* alpha = nullptr; // optionale Pinselform statt Falloff
 };
 
 // Falloff-Gewicht für normierte Distanz 0 (Zentrum) .. 1 (Rand).

@@ -76,6 +76,7 @@
 #include "mapeditor/core/Autosave.hpp"
 #include "mapeditor/core/WalkGenerate.hpp"
 #include "mapeditor/core/HeightmapExchange.hpp"
+#include "mapeditor/core/TextureRules.hpp"
 #include "mapeditor/core/legacy/NewMapFromTemplate.hpp"
 #include "mapeditor/core/legacy/MapRenderSettings.hpp"
 #include "mapeditor/app/Localization.hpp"
@@ -1269,6 +1270,14 @@ struct EditorState {
     char newMapGateFrom[32] = "";
     int newMapGateX = 0, newMapGateY = 0;
     std::vector<std::string> newMapReport;
+    // Texturregeln, gesperrte Layer (nach Name, übersteht Umsortieren) und Pinselform aus Bild.
+    core::TextureRule texRule;
+    bool texRuleBrush = false;
+    std::set<std::string> lockedTextureLayers;
+    core::BrushAlpha brushAlpha;
+    bool brushAlphaEnabled = false;
+    char brushAlphaPath[512] = "";
+    std::string brushAlphaStatus, texRuleStatus;
     // Höhendaten-Austausch (PNG 16 Bit / R16) im Terrain-Werkzeug.
     char heightExchangePath[512] = "";
     float heightExchangeMin = 0.0f, heightExchangeMax = 1000.0f;
@@ -15498,6 +15507,8 @@ void DrawCommandPalette(EditorState& state) {
 }
 
 static void DrawVisibilityPanel(EditorState& state);
+void DrawBrushAlphaControls(EditorState& state, const char* id);
+void DrawTextureRuleControls(EditorState& state);
 static std::vector<std::vector<std::pair<float, float>>> CollectVisibleObjectFootprints(EditorState& state);
 static const std::unordered_map<std::string, std::pair<std::size_t, std::size_t>>& ModelBlockStats(EditorState& state);
 static void StampObjectFootprints(EditorState& state, bool blocked);
@@ -15598,6 +15609,7 @@ void DrawToolsContent(EditorState& state) {
             break;
         default: break;
         }
+        DrawBrushAlphaControls(state, "terrainAlpha");
 
         ImGui::Separator();
         ImGui::BeginDisabled(!CanUndoMapEdit(state));
@@ -15667,6 +15679,15 @@ void DrawToolsContent(EditorState& state) {
             char label[32]; std::snprintf(label,sizeof(label),"%.2f##textureStrength",preset);
             if (UI::SmallButton(label)) state.paintSettings.strength=preset;
         }
+        if (state.selectedLayer >= 0 && static_cast<std::size_t>(state.selectedLayer) < state.textureStack.LayerCount()) {
+            const std::string layerName = state.textureStack.Layer(static_cast<std::size_t>(state.selectedLayer)).name;
+            bool locked = state.lockedTextureLayers.contains(layerName);
+            if (UI::Checkbox(L("Gewählten Layer sperren##texLock", "Lock selected layer##texLock"), &locked)) {
+                if (locked) state.lockedTextureLayers.insert(layerName); else state.lockedTextureLayers.erase(layerName);
+            }
+        }
+        DrawBrushAlphaControls(state, "texAlpha");
+        DrawTextureRuleControls(state);
 
         ImGui::Separator();
         ImGui::BeginDisabled(!CanUndoMapEdit(state));
@@ -17013,9 +17034,109 @@ void DrawMinimapPreviewContent(EditorState& state) {
 
 // Ein Pinselschritt an einer Weltposition für Terrain, Texturen und Block&Walk - gemeinsam für
 // die 2D-Ansicht und den 3D-Viewport (dort über PickTerrainFrom3D).
+bool TextureLayerLocked(const EditorState& state, int layer) {
+    return layer >= 0 && static_cast<std::size_t>(layer) < state.textureStack.LayerCount() &&
+           state.lockedTextureLayers.contains(state.textureStack.Layer(static_cast<std::size_t>(layer)).name);
+}
+
+// Pinselform aus einem Graustufenbild (PNG 8/16 Bit oder R16) laden.
+bool LoadBrushAlpha(EditorState& state, const std::filesystem::path& file) {
+    auto img = core::ImportHeightImage(file);
+    if (!img) {
+        state.brushAlphaStatus = img.error();
+        return false;
+    }
+    state.brushAlpha.width = img->width;
+    state.brushAlpha.height = img->height;
+    state.brushAlpha.values.resize(img->values.size());
+    for (std::size_t i = 0; i < img->values.size(); ++i) state.brushAlpha.values[i] = static_cast<float>(img->values[i]) / 65535.0f;
+    state.brushAlphaEnabled = true;
+    state.brushAlphaStatus = std::to_string(img->width) + "x" + std::to_string(img->height) + L(" geladen", " loaded");
+    return true;
+}
+
+void DrawBrushAlphaControls(EditorState& state, const char* id) {
+    ImGui::PushID(id);
+    ImGui::SeparatorText(L("Pinselform aus Bild", "Brush shape from image"));
+    UI::Checkbox(L("Bildform statt Falloff", "Image shape instead of falloff"), &state.brushAlphaEnabled);
+    ImGui::SetNextItemWidth(-90.0f);
+    UI::InputText("##brushAlphaPath", state.brushAlphaPath, sizeof(state.brushAlphaPath));
+    ImGui::SameLine();
+    if (UI::Button(L("Laden", "Load")) && state.brushAlphaPath[0] != '\0') LoadBrushAlpha(state, state.brushAlphaPath);
+    ImGui::TextDisabled("%s", L("Graustufen-PNG (8/16 Bit) oder R16; weiß = volle Wirkung, Bildoberkante = Norden.",
+                                "Grayscale PNG (8/16 bit) or R16; white = full effect, top edge = north."));
+    if (!state.brushAlphaStatus.empty()) ImGui::TextDisabled("%s", state.brushAlphaStatus.c_str());
+    ImGui::PopID();
+}
+
+void DrawTextureRuleControls(EditorState& state) {
+    ImGui::SeparatorText(L("Nach Regeln texturieren", "Texture by rules"));
+    auto& r = state.texRule;
+    UI::Checkbox(L("Neigung##texRule", "Slope##texRule"), &r.useSlope);
+    if (r.useSlope) {
+        ImGui::SetNextItemWidth(200.0f);
+        ImGui::DragFloatRange2(L("Grad##texRuleSlope", "Degrees##texRuleSlope"), &r.minSlope, &r.maxSlope, 0.5f, 0.0f, 90.0f, "%.0f°", "%.0f°");
+        ImGui::SetNextItemWidth(120.0f);
+        ImGui::SliderFloat(L("Übergang##texRuleSlopeF", "Feather##texRuleSlopeF"), &r.slopeFeather, 0.0f, 20.0f, "%.0f°");
+    }
+    UI::Checkbox(L("Höhe##texRule", "Height##texRule"), &r.useHeight);
+    if (r.useHeight) {
+        ImGui::SetNextItemWidth(200.0f);
+        ImGui::DragFloatRange2(L("Einheiten##texRuleHeight", "Units##texRuleHeight"), &r.minHeight, &r.maxHeight, 5.0f, -10000.0f, 10000.0f, "%.0f", "%.0f");
+        ImGui::SetNextItemWidth(120.0f);
+        ImGui::SliderFloat(L("Übergang##texRuleHeightF", "Feather##texRuleHeightF"), &r.heightFeather, 0.0f, 500.0f, "%.0f");
+    }
+    ImGui::SetNextItemWidth(120.0f);
+    ImGui::SliderFloat(L("Gewicht##texRule", "Weight##texRule"), &r.strength, 0.0f, 1.0f, "%.2f");
+    int mode = r.mode == core::TextureRuleMode::Replace ? 1 : 0;
+    ImGui::RadioButton(L("Nur hinzufügen##texRuleMode", "Add only##texRuleMode"), &mode, 0);
+    ImGui::SameLine();
+    ImGui::RadioButton(L("Ersetzen##texRuleMode", "Replace##texRuleMode"), &mode, 1);
+    r.mode = mode == 1 ? core::TextureRuleMode::Replace : core::TextureRuleMode::Raise;
+    UI::Checkbox(L("Pinsel malt nach dieser Regel", "Brush paints by this rule"), &state.texRuleBrush);
+    const bool layerOk = state.selectedLayer >= 0 && static_cast<std::size_t>(state.selectedLayer) < state.textureStack.LayerCount();
+    ImGui::BeginDisabled(!layerOk || TextureLayerLocked(state, state.selectedLayer));
+    if (UI::Button(L("Auf ganze Karte anwenden (ein Undo-Schritt)", "Apply to whole map (one undo step)"))) {
+        auto patch = core::ApplyTextureRule(state.textureStack, static_cast<std::size_t>(state.selectedLayer), state.heightmap, r, {});
+        const std::size_t changed = patch.entries.size();
+        if (changed) {
+            PushTexturePaintHistory(state, std::move(patch));
+            state.renderer.UpdateBlendTextures(state.textureStack);
+            state.layerPreviewDirty = true;
+            state.mapDirty = true;
+        }
+        state.texRuleStatus = std::to_string(changed) + L(" Maskenpixel geändert", " mask pixels changed");
+    }
+    ImGui::EndDisabled();
+    if (!state.texRuleStatus.empty()) ImGui::TextDisabled("%s", state.texRuleStatus.c_str());
+}
+
 bool ApplyBrushAtWorld(EditorState& state, float worldX, float worldZ) {
     const bool texMode = state.editMode == EditMode::TexturePaint;
     const bool walkMode = state.editMode == EditMode::BlockWalk;
+    const core::BrushAlpha* alpha = state.brushAlphaEnabled && !state.brushAlpha.Empty() ? &state.brushAlpha : nullptr;
+    state.brush.alpha = alpha;
+    state.paintSettings.alpha = alpha;
+    if (texMode && TextureLayerLocked(state, state.selectedLayer)) {
+        state.statusMessage = L("Layer ist gesperrt.", "Layer is locked.");
+        return false;
+    }
+    if (texMode && state.texRuleBrush && state.selectedLayer >= 0 &&
+        static_cast<std::size_t>(state.selectedLayer) < state.textureStack.LayerCount()) {
+        core::TextureRuleArea area;
+        area.wholeMap = false;
+        area.centerX = worldX;
+        area.centerZ = worldZ;
+        area.radius = state.paintSettings.radius;
+        auto patch = core::ApplyTextureRule(state.textureStack, static_cast<std::size_t>(state.selectedLayer), state.heightmap,
+                                            state.texRule, area);
+        if (patch.entries.empty()) return false;
+        PushTexturePaintHistory(state, std::move(patch));
+        state.renderer.UpdateBlendTextures(state.textureStack);
+        state.layerPreviewDirty = true;
+        state.mapDirty = true;
+        return true;
+    }
     if (texMode && (state.selectedLayer < 0 || static_cast<std::size_t>(state.selectedLayer) >= state.textureStack.LayerCount()))
         return false;
     const float spanX = static_cast<float>(state.heightmap.Width() > 1 ? state.heightmap.Width() - 1 : 1) * state.heightmap.BlockWidth();
@@ -20668,6 +20789,12 @@ void DrawLayerManagerPanel(EditorState& state) {
                 state.layerRenameFocusPending=true;
                 std::snprintf(state.layerRenameBuffer,sizeof(state.layerRenameBuffer),"%s",label.c_str());
             }
+            {
+                const bool locked = state.lockedTextureLayers.contains(layer.name);
+                if (UI::MenuItem(locked ? L("Entsperren","Unlock") : L("Sperren","Lock"))) {
+                    if (locked) state.lockedTextureLayers.erase(layer.name); else state.lockedTextureLayers.insert(layer.name);
+                }
+            }
             if (UI::MenuItem(L("Duplizieren","Duplicate"))) {
                 const int selectedBefore = state.selectedLayer;
                 const auto copy=layer;
@@ -23315,6 +23442,34 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
                     state.walkProposalDiff.newlyBlocked, state.walkProposalDiff.newlyFree, state.walkProposalRegionCells,
                     state.walkProposalVsOriginal.Agreement(), state.walkGenStatus.c_str(), state.statusMessage.c_str());
         std::fflush(stdout);
+    }
+    else if (cmd == "texrule") {
+        // texrule <minSlope> <maxSlope> [replace] : Regel auf den gewählten Layer (ganze Karte)
+        std::string mode; in >> state.texRule.minSlope >> state.texRule.maxSlope >> mode;
+        state.texRule.useSlope = true;
+        state.texRule.mode = mode == "replace" ? core::TextureRuleMode::Replace : core::TextureRuleMode::Raise;
+        std::size_t changed = 0;
+        if (state.selectedLayer >= 0 && static_cast<std::size_t>(state.selectedLayer) < state.textureStack.LayerCount() &&
+            !TextureLayerLocked(state, state.selectedLayer)) {
+            auto patch = core::ApplyTextureRule(state.textureStack, static_cast<std::size_t>(state.selectedLayer), state.heightmap, state.texRule, {});
+            changed = patch.entries.size();
+            if (changed) { PushTexturePaintHistory(state, std::move(patch)); state.renderer.UpdateBlendTextures(state.textureStack); state.layerPreviewDirty = true; state.mapDirty = true; }
+        }
+        std::printf("[texrule] layer %d changed %zu\n", state.selectedLayer, changed);
+        std::fflush(stdout);
+    }
+    else if (cmd == "brushalpha") {
+        std::string file; in >> file;
+        const bool ok = file == "off" ? (state.brushAlphaEnabled = false, true) : LoadBrushAlpha(state, file);
+        std::printf("[brushalpha] %s %d %s\n", file.c_str(), ok ? 1 : 0, state.brushAlphaStatus.c_str());
+        std::fflush(stdout);
+    }
+    else if (cmd == "layerlock") {
+        int l = 0; std::string v; in >> l >> v;
+        if (l >= 0 && static_cast<std::size_t>(l) < state.textureStack.LayerCount()) {
+            const auto& name = state.textureStack.Layer(static_cast<std::size_t>(l)).name;
+            if (v == "off") state.lockedTextureLayers.erase(name); else state.lockedTextureLayers.insert(name);
+        }
     }
     else if (cmd == "stroke") {
         // stroke <x> <z> [n]: wendet den aktiven Pinsel n-mal an einer Weltposition an (wie ein Klick).

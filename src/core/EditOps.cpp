@@ -50,6 +50,24 @@ float BoxAverage(const Heightmap& hm, std::uint32_t x, std::uint32_t z) {
 
 } // namespace
 
+float BrushAlphaWeight(const BrushAlpha& alpha, float dxNorm, float dzNorm) {
+    if (alpha.Empty()) return 0.0f;
+    const float u = std::clamp((dxNorm + 1.0f) * 0.5f, 0.0f, 1.0f) * static_cast<float>(alpha.width - 1);
+    const float v = std::clamp((1.0f - dzNorm) * 0.5f, 0.0f, 1.0f) * static_cast<float>(alpha.height - 1); // Zeile 0 = Norden
+    const auto x0 = static_cast<std::uint32_t>(u), y0 = static_cast<std::uint32_t>(v);
+    const std::uint32_t x1 = std::min(x0 + 1, alpha.width - 1), y1 = std::min(y0 + 1, alpha.height - 1);
+    const float fx = u - static_cast<float>(x0), fy = v - static_cast<float>(y0);
+    const auto at = [&](std::uint32_t x, std::uint32_t y) { return alpha.values[static_cast<std::size_t>(y) * alpha.width + x]; };
+    return (at(x0, y0) * (1 - fx) + at(x1, y0) * fx) * (1 - fy) + (at(x0, y1) * (1 - fx) + at(x1, y1) * fx) * fy;
+}
+
+namespace {
+float BrushShapeWeight(const BrushSettings& s, float dx, float dz, float dist) {
+    if (s.alpha && !s.alpha->Empty() && s.radius > 0.0f) return BrushAlphaWeight(*s.alpha, dx / s.radius, dz / s.radius);
+    return BrushFalloffWeight(s.falloff, dist / s.radius);
+}
+} // namespace
+
 float BrushFalloffWeight(BrushFalloff falloff, float normalizedDist) {
     const float d = std::clamp(normalizedDist, 0.0f, 1.0f);
     const float t = 1.0f - d;
@@ -96,7 +114,7 @@ UndoPatch ApplyBrush(Heightmap& heightmap, BrushMode mode, const BrushSettings& 
                 continue;
             }
 
-            const float falloff = BrushFalloffWeight(settings.falloff, dist / settings.radius);
+            const float falloff = BrushShapeWeight(settings, dx, dz, dist);
             const auto ux = static_cast<std::uint32_t>(x);
             const auto uz = static_cast<std::uint32_t>(z);
             const float oldValue = heightmap.At(ux, uz);
@@ -172,7 +190,7 @@ UndoPatch ApplyBrush(Heightmap& heightmap, BrushMode mode, const BrushSettings& 
                 const float dz = static_cast<float>(z) * heightmap.BlockHeight() - worldZ;
                 const float dist = std::sqrt(dx * dx + dz * dz);
                 if (dist > settings.radius) continue;
-                const float w = BrushFalloffWeight(settings.falloff, dist / settings.radius) * blend;
+                const float w = BrushShapeWeight(settings, dx, dz, dist) * blend;
                 const float h = heightmap.At(static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(z));
                 std::int64_t lx = -1, lz = -1;
                 float lowest = h;
