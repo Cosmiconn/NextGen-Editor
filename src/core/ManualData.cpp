@@ -377,12 +377,14 @@ Whether the server processes lines inserted via #recordin as expected has not be
 - Marker: Raute = TownPortal, Dreieck = Schriftrolle, Quadrat = Gate_Town-NPC, Ring = Regenerationspunkt der Karte.
 - X / Y: Zielposition. 'Position per Klick im 2D-View setzen' wählt die Position mit der Maus. 'Menü-Gruppe' und 'Mindestlevel' steuern das Menü.
 - 'TownPortal-Ziel hier hinzufügen', 'Entfernen', 'Verwerfen und neu laden'.
+- Portalbilder: Der Client zeigt in der Stadtportal-Auswahl resmenu/TownPortal/<Karte>.dds (und <Karte>_disable.dds für gesperrte Ziele). Der Bereich 'Portalbilder' zeigt beide (Projekt vor Client). 'Portalbilder erzeugen' nimmt den Ankunftsort aus der eingestellten 'Blickrichtung' auf und schreibt beide Dateien wie die Originale (256x256 DXT5 mit Mipmaps, abgerundete Ecken, graue Variante). Beim Hinzufügen eines Ziels werden fehlende Bilder automatisch erzeugt; die Kartenprüfung warnt, wenn sie fehlen.
 - 'TownPortal.shn speichern' und 'RecallCoord.txt speichern'.
 Ein TownPortal-Ziel liegt höchstens 205 Einheiten vom zugehörigen Gate_Town-NPC entfernt.)MAN",
      R"MAN(Fast-travel targets: TownPortal.shn (town portal targets) and RecallCoord.txt (scroll targets).
 - Markers: diamond = TownPortal, triangle = scroll, square = Gate_Town NPC, ring = regeneration point of the map.
 - X / Y: target position. 'Set position by click in 2D view' picks the position with the mouse. 'Menu group' and 'Minimum level' control the menu.
 - 'Add TownPortal target here', 'Remove', 'Discard and reload'.
+- Portal images: the client's town portal list shows resmenu/TownPortal/<map>.dds (and <map>_disable.dds for locked targets). The 'Portal images' area shows both (project before client). 'Generate portal images' captures the arrival point from the chosen 'View direction' and writes both files like the originals (256x256 DXT5 with mipmaps, rounded corners, grey variant). Adding a target generates missing images automatically; the map check warns when they are missing.
 - 'Save TownPortal.shn' and 'Save RecallCoord.txt'.
 A TownPortal target is at most 205 units away from the associated Gate_Town NPC.)MAN",
      "portal townportal recall schriftrolle teleport"},
@@ -667,7 +669,7 @@ const TipRow kTips[] = {
     {"Mindestlevel", "Charakterlevel, ab dem das Ziel im Menü erscheint.", "Character level from which the target appears in the menu."},
     {"Menü-Gruppe", "Gruppe/Sortierung des Ziels im Portal-Menü.", "Group/sorting of the target in the portal menu."},
     {"Position per Klick im 2D-View setzen", "Danach in die 2D-Ansicht klicken, um die Position zu setzen.", "Then click in the 2D view to set the position."},
-    {"TownPortal-Ziel hier hinzufügen", "Legt ein neues Stadtportal-Ziel an.", "Creates a new town portal target."},
+    {"TownPortal-Ziel hier hinzufügen", "Legt ein neues Stadtportal-Ziel an und erzeugt fehlende Portalbilder.", "Creates a new town portal target and generates missing portal images."},
     {"Verwerfen und neu laden", "Verwirft alle ungespeicherten Portal-Änderungen und liest neu.", "Discards all unsaved portal changes and rereads."},
     {"Event", "Name des Ereignisses/Skripts, das der NPC ausführt.", "Name of the event/script the NPC runs."},
     {"+ Wegpunkt hinzufügen", "Fügt einen Punkt zur Patrouillenroute hinzu.", "Adds a point to the patrol route."},
@@ -864,6 +866,13 @@ const TipRow kTips[] = {
     {"Versatz aus dieser Karte schaetzen (Block&Walk)", "Testet für alle NPCs dieser Karte, welcher Versatz sie im Schnitt am ehesten von der nächsten Wand weg blicken lässt (Annahme: Rücken zur Wand). Grobe Schätzung.", "For all NPCs on this map, tests which offset most often makes them face away from the nearest wall on average (assumption: back to the wall). A rough estimate."},
     {"Versatz bei Richtung 0 (Grad)", "Versatz der Zuordnung Richtung -> Blickwinkel bei Richtung 0 (gilt für alle NPCs). Per Block&Walk-Analyse auf 0 Grad voreingestellt, hier frei einstellbar.", "Offset of the direction -> facing-angle mapping at direction 0 (applies to all NPCs). Preset to 0 degrees from a Block&Walk analysis, freely adjustable here."},
     {"SmallButton:0##offreset", "Setzt den Versatz auf den Standardwert 0 Grad zurück.", "Resets the offset to the default of 0 degrees."},
+    {"RadioButton:Spiel", "Zeigt die Spiel-Minimap (resmenu/minimap/<Karte>.dds, Projekt vor Client) mit ihrem MapViewInfo-Ausschnitt.", "Shows the game minimap (resmenu/minimap/<map>.dds, project before client) with its MapViewInfo crop."},
+    {"RadioButton:Vorschau", "Zeigt die Editor-Draufsicht der ganzen Karte statt der Spiel-Minimap.", "Shows the editor's top-down view of the whole map instead of the game minimap."},
+    {"Minimap erzeugen", "Rendert die Karte von oben, schreibt resmenu/minimap/<Karte>.dds (512x512 DXT1) ins Projekt und setzt in MapViewInfo MinimapView 1 und den Ausschnitt 0,0-511,511.", "Renders the map from above, writes resmenu/minimap/<map>.dds (512x512 DXT1) to the project and sets MinimapView 1 and the crop 0,0-511,511 in MapViewInfo."},
+    {"Stil der Originale", "Erzeugte Minimap im Stil der handgemalten Originale: dunkle Konturen an der Grenze begehbar/blockiert, dunklere blockierte Flächen, Pergament-Rand.", "Generated minimap in the style of the hand-painted originals: dark outlines along the walkable border, darker blocked areas, parchment frame."},
+    {"mit Objekten", "Objekte und Wasser in die erzeugte Minimap mitzeichnen (Himmel nie).", "Draw objects and water into the generated minimap (never the sky)."},
+    {"Portalbilder erzeugen", "Nimmt den Ankunftsort des Stadtportals auf und schreibt resmenu/TownPortal/<Karte>.dds und <Karte>_disable.dds (256x256 DXT5 mit Mipmaps, abgerundete Ecken, graue Variante) ins Projekt.", "Captures the town portal's arrival point and writes resmenu/TownPortal/<map>.dds and <map>_disable.dds (256x256 DXT5 with mipmaps, rounded corners, grey variant) to the project."},
+    {"Blickrichtung", "Richtung, in die die Portal-Aufnahme schaut (0 = nach Norden).", "Direction the portal capture looks in (0 = north)."},
 };
 
 const ColumnDoc kColumns[] = {

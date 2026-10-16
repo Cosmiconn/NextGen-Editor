@@ -45,6 +45,7 @@ enum class MapCheckCode : std::uint8_t {
     QuestStartNpcUnknown,    // Start-NPC nicht in MobInfo
     QuestStartNpcNotPlaced,  // Start-NPC steht auf keiner Karte
     MinimapMissing,          // MapViewInfo.MinimapView = 1, aber kein resmenu\minimap\<Ordner>.dds
+    TownPortalImageMissing,  // TownPortal-Ziel auf der Karte, aber resmenu\TownPortal\<Karte>.dds/_disable fehlt
 };
 
 struct MapCheckIssue {

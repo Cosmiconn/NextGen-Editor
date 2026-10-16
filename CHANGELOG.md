@@ -1,3 +1,10 @@
+## Portals — town portal images
+- The client's town portal list loads `resmenu\TownPortal\<MapName>.DDS` and `<MapName>_disable.DDS` (from `Fiesta.bin`). The originals supplied by the user are perspective captures of the arrival point: 256×256 DXT5 with mipmaps, rounded corners in the alpha channel (radius about 25 px). The `_disable` variant is the same picture desaturated and darkened; measured on six pairs it keeps about 45 % of the saturation and 80 % of the brightness.
+- The portal editor shows both images for the map's town portal target (project before client). "Generate portal images" captures the arrival point from an adjustable view direction (offscreen, with sky and fog) and writes both files in that format to `<Project>/Client/resmenu/TownPortal/`. Adding a town portal target generates missing images automatically.
+- Map check: new warning `TownPortalImageMissing`.
+- Checked on Bera (target 7505/7279): both files are written with the original's size, format and mipmap chain.
+- Core: `core/legacy/TownPortalImage` (rounded corners, grey variant, paths), tested in `test_minimap`. The scene capture shared with the minimap is `CaptureSceneRgba`. Automation: `townportal add | images [yaw]`.
+
 ## Minimap — real client format, display and generation
 - The client minimap format is now established from the original `resmenu/minimap` files supplied by the user (not committed): `resmenu\minimap\<MapFolderName>.dds`, 512×512 DXT1/DXT3, north up. `MapViewInfo.StartX/StartY/EndX/EndY` is a square crop in normalised map coordinates 0..511, with the origin in the north-west and Y running south. Checked against the walkability of Bera (whole map), Roumen (79,86-474,482) and RouTemDn01 (0,106-405,511). Details in `docs/MINIMAP_FORMAT.md`; the export gate is open.
 - The minimap panel shows the game minimap of the open map (project override before client), with object dots, the 2D view rectangle and click-to-centre following the crop. It can switch to the editor preview.

@@ -498,6 +498,30 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
     else if (cmd == "surfacesnap") onOff(state.surfaceSnap);
     else if (cmd == "glow") onOff(state.viewportGlow);
     else if (cmd == "objectanim") onOff(state.viewportObjectAnimation);
+    else if (cmd == "townportal") {
+        // townportal add | images [yaw]: Ziel für die offene Karte anlegen bzw. Bilder des ersten Ziels erzeugen.
+        std::string sub; in >> sub;
+        EnsureTownPortalLoaded(state);
+        if (sub == "add") {
+            AddTownPortalForCurrentMap(state);
+            std::printf("[townportal] add: %s\n", state.statusMessage.c_str());
+        } else if (sub == "images") {
+            float yaw = state.townPortalImageYaw;
+            if (in >> yaw) state.townPortalImageYaw = yaw;
+            bool done = false;
+            for (const auto& m : CollectPortalMarkers(state)) {
+                if (m.kind != kPortalKindTown) continue;
+                std::vector<std::string> report;
+                const bool ok = GenerateTownPortalImages(state, TownPortalMapName(state, m.idx), m.x, m.y, report);
+                std::printf("[townportal] images ok=%d at %.0f/%.0f\n", ok ? 1 : 0, m.x, m.y);
+                for (const auto& line : report) std::printf("[townportal] %s\n", line.c_str());
+                done = true;
+                break;
+            }
+            if (!done) std::printf("[townportal] kein TownPortal-Ziel auf dieser Karte\n");
+        }
+        std::fflush(stdout);
+    }
     else if (cmd == "minimap") {
         // minimap generate | game on|off | style on|off | objects on|off | export <datei.ppm>
         std::string sub; in >> sub;

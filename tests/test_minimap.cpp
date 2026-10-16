@@ -1,7 +1,9 @@
 // test_minimap.cpp
-// Minimap-Konvention (MapViewInfo-Ausschnitt), Ausschnitt/Resampling und Stilisierung.
+// Minimap-Konvention (MapViewInfo-Ausschnitt), Ausschnitt/Resampling und Stilisierung;
+// Stadtportal-Bilder (abgerundete Ecken, graue Variante, Pfade).
 
 #include "mapeditor/core/legacy/Minimap.hpp"
+#include "mapeditor/core/legacy/TownPortalImage.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -68,6 +70,22 @@ int main() {
     Check(lum(32, 64) < 90.0f, "Kontur an der Grenze ist dunkel");
     Check(lum(0, 64) < 60.0f && lum(64, 0) < 60.0f, "Pergament-Rand ist dunkel");
     Check(MinimapRelativePath("NewTown") == "minimap/NewTown.dds", "Dateipfad relativ zu resmenu");
+
+    // Stadtportal-Bild: Ecken transparent, Mitte und Kantenmitte deckend (wie Bera.dds: Radius ~25 bei 256).
+    std::vector<std::uint8_t> portal(256 * 256 * 4, 255);
+    ApplyRoundedCorners(portal, 256, 25.0f);
+    const auto alpha = [&](int px, int py) { return portal[(static_cast<std::size_t>(py) * 256 + px) * 4 + 3]; };
+    Check(alpha(0, 0) == 0 && alpha(4, 4) == 0 && alpha(255, 255) == 0, "Portalbild: Ecken transparent");
+    Check(alpha(10, 10) == 255 && alpha(128, 128) == 255 && alpha(0, 128) == 255, "Portalbild: Innenfläche und Kantenmitte deckend");
+    Check(alpha(0, 20) > 0 && alpha(0, 20) < 255, "Portalbild: weiche Kante am Bogen");
+    std::vector<std::uint8_t> colour = {200, 100, 50, 255};
+    const auto grey = MakeTownPortalDisabled(colour);
+    const float l0 = 0.299f * 200 + 0.587f * 100 + 0.114f * 50, l1 = 0.299f * grey[0] + 0.587f * grey[1] + 0.114f * grey[2];
+    Check(std::abs(l1 / l0 - 0.80f) < 0.02f && (grey[0] - grey[2]) < (200 - 50) * 0.5f && grey[3] == 255,
+          "Graue Variante: Helligkeit x0.8, Sättigung reduziert, Alpha bleibt");
+    Check(TownPortalImageRelativePath("Bera", false) == "TownPortal/Bera.dds" &&
+              TownPortalImageRelativePath("Bera", true) == "TownPortal/Bera_disable.dds",
+          "Portalbild-Pfade");
 
     if (g_failures) std::fprintf(stderr, "%d Fehler\n", g_failures);
     return g_failures == 0 ? 0 : 1;

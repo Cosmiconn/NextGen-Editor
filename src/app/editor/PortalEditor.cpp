@@ -513,6 +513,14 @@ void SetSelectedPortalPosition(EditorState& state, long long x, long long y) {
 // Strukturvorlage, naechster freier Index). Startposition: Gate_Town-NPC, sonst Regen-Punkt,
 // sonst Kartenmitte. Ob der Client fuer NEUE Ziele weitere Daten braucht (Menuetext o.ae.),
 // ist NICHT geprueft - siehe CHANGELOG [0.44.25].
+// MapName-Spalte einer TownPortal-Zeile (= Dateiname der Portalbilder).
+std::string TownPortalMapName(EditorState& state, std::size_t row) {
+    const auto& f = state.townPortalShn;
+    const int cMap = FindShnColumnByName(f, "MapName");
+    if (cMap < 0 || row >= f.rows.size() || static_cast<std::size_t>(cMap) >= f.rows[row].values.size()) return CurrentMapServerName(state);
+    const std::string name = TrimAscii(core::legacy::ShnValueToString(f.rows[row].values[static_cast<std::size_t>(cMap)]));
+    return name.empty() ? CurrentMapServerName(state) : name;
+}
 void AddTownPortalForCurrentMap(EditorState& state) {
     auto& f = state.townPortalShn;
     const int cIdx = FindShnColumnByName(f, "Index");
@@ -539,6 +547,16 @@ void AddTownPortalForCurrentMap(EditorState& state) {
     state.selectedPortalKind = kPortalKindTown;
     state.selectedPortalIdx = static_cast<int>(r);
     state.townPortalDirty = true;
+    // Ohne <MapName>.dds/_disable.dds zeigt der Client das Ziel nicht richtig an: gleich erzeugen.
+    const std::string mapName = CurrentMapServerName(state);
+    if (GameResmenuPath(state, core::legacy::TownPortalImageRelativePath(mapName, false)).empty() ||
+        GameResmenuPath(state, core::legacy::TownPortalImageRelativePath(mapName, true)).empty()) {
+        std::vector<std::string> report;
+        GenerateTownPortalImages(state, mapName, px, py, report);
+        std::string summary = L("TownPortal-Ziel angelegt", "TownPortal target added");
+        for (const auto& line : report) summary += "  ·  " + line;
+        state.statusMessage = summary;
+    }
 }
 // Generischer Editor fuer einen ShineText-Record: Zahlenspalten (DWRD/BYTE/WORD) als Zahlenfeld,
 // alles andere als Textfeld. `firstEditable` = erste bearbeitbare Spalte (z.B. 1, wenn die erste
@@ -694,7 +712,46 @@ void DrawPortalsToolsPanel(EditorState& state) {
             ImGui::TextDisabled("%s",L("Diese Karte hat noch kein TownPortal-Ziel.","This map does not have a TownPortal target yet."));
         }
         if (UI::Button(L("TownPortal-Ziel hier hinzufügen","Add TownPortal target here"))) AddTownPortalForCurrentMap(state);
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s",L("Legt einen neuen Eintrag in TownPortal.shn an. Ob der Client dafür weitere Daten braucht, ist ungeprüft.","Creates a new entry in TownPortal.shn. It is unverified whether the client needs additional data for this."));
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s",L("Legt einen neuen Eintrag in TownPortal.shn an und erzeugt die Portalbilder (resmenu/TownPortal/<Karte>.dds und _disable.dds), falls sie fehlen.",
+                                                             "Creates a new entry in TownPortal.shn and generates the portal images (resmenu/TownPortal/<map>.dds and _disable.dds) if they are missing."));
+
+        // Portalbilder des (ausgewählten bzw. ersten) TownPortal-Ziels dieser Karte.
+        const PortalMarker* town = nullptr;
+        for (const auto& m : markers) {
+            if (m.kind != kPortalKindTown) continue;
+            if (!town || (state.selectedPortalKind == kPortalKindTown && state.selectedPortalIdx == static_cast<int>(m.idx))) town = &m;
+        }
+        if (town) {
+            const std::string mapName = TownPortalMapName(state, town->idx);
+            ImGui::SeparatorText(L("Portalbilder","Portal images"));
+            for (const bool grey : {false, true}) {
+                bool fromProject = false;
+                const auto path = GameResmenuPath(state, core::legacy::TownPortalImageRelativePath(mapName, grey), &fromProject);
+                const std::uint32_t tex = path.empty() ? 0 : GetOrLoadAssetThumbnail(state, path, false).tex;
+                ImGui::BeginGroup();
+                if (tex) {
+                    // DDS-Vorschaubilder liegen in OpenGL-Zeilenfolge vor: V spiegeln.
+                    ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(tex)), ImVec2(96, 96), ImVec2(0, 1), ImVec2(1, 0));
+                } else {
+                    ImGui::Dummy(ImVec2(96, 96));
+                    const ImVec2 r0 = ImGui::GetItemRectMin(), r1 = ImGui::GetItemRectMax();
+                    ImGui::GetWindowDrawList()->AddRect(r0, r1, IM_COL32(240, 82, 94, 200), 6.0f);
+                }
+                ImGui::TextDisabled("%s%s", grey ? "_disable" : L("aktiv","enabled"),
+                                    tex ? (fromProject ? L(" · Projekt"," · project") : " · Client") : L(" · fehlt"," · missing"));
+                ImGui::EndGroup();
+                if (!grey) ImGui::SameLine();
+            }
+            ImGui::SetNextItemWidth(160.0f);
+            UI::SliderFloat(L("Blickrichtung","View direction"), &state.townPortalImageYaw, -3.1416f, 3.1416f, "%.2f rad");
+            if (UI::Button(L("Portalbilder erzeugen","Generate portal images"))) {
+                std::vector<std::string> report;
+                GenerateTownPortalImages(state, mapName, town->x, town->y, report);
+                std::string summary;
+                for (const auto& line : report) summary += (summary.empty() ? "" : "  ·  ") + line;
+                state.statusMessage = summary;
+            }
+        }
     }
 
     ImGui::BeginDisabled(!state.townPortalDirty);

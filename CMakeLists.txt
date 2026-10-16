@@ -86,6 +86,7 @@ add_library(mapeditor_core
     src/core/Spline.cpp
     src/core/legacy/NewMapFromTemplate.cpp
     src/core/legacy/Minimap.cpp
+    src/core/legacy/TownPortalImage.cpp
     src/core/legacy/MapRenderSettings.cpp
     src/core/legacy/LegacyMapProject.cpp
 )

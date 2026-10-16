@@ -1,11 +1,13 @@
 // MinimapTools.cpp
-// Spiel-Minimap: MapViewInfo-Zeile der offenen Karte, Client-/Projektbild finden, Draufsicht
-// offscreen rendern und als resmenu\minimap\<Karte>.dds ins Projekt schreiben.
+// Client-Bilder der Karte: Spiel-Minimap (MapViewInfo-Zeile, Client-/Projektbild finden, Draufsicht
+// offscreen rendern, resmenu\minimap\<Karte>.dds schreiben) und Stadtportal-Bilder
+// (resmenu\TownPortal\<MapName>.dds und _disable.dds, perspektivische Aufnahme des Ankunftsorts).
 
 #include "EditorShared.hpp"
 
 #include "mapeditor/core/DdsWrite.hpp"
 #include "mapeditor/core/legacy/Minimap.hpp"
+#include "mapeditor/core/legacy/TownPortalImage.hpp"
 
 namespace nge {
 
@@ -55,52 +57,33 @@ std::optional<MapViewRow> FindMapViewRow(EditorState& state, EditorState::ShnSou
 std::filesystem::path GameMinimapPath(EditorState& state, const std::string& folder, bool* fromProject) {
     if (fromProject) *fromProject = false;
     if (folder.empty()) return {};
-    const std::string rel = core::legacy::MinimapRelativePath(folder);
-    const auto project = InterfaceProjectOverridePath(state, rel);
-    if (!project.empty()) {
-        // Projektordner: Groß-/Kleinschreibung wie im Client tolerieren.
-        if (auto hit = core::legacy::ResolveCaseInsensitivePath(project.parent_path().parent_path(), rel)) {
-            if (fromProject) *fromProject = true;
-            return *hit;
-        }
-    }
-    if (!state.interfaceRoot.empty())
-        if (auto hit = core::legacy::ResolveCaseInsensitivePath(state.interfaceRoot, rel)) return *hit;
-    return {};
+    return GameResmenuPath(state, core::legacy::MinimapRelativePath(folder), fromProject);
 }
 
-std::vector<std::uint8_t> RenderMinimapRgba(EditorState& state, std::uint32_t size, bool withObjects) {
-    const float spanX = MapSpanX(state), spanZ = MapSpanZ(state);
-    if (spanX <= 0.0f || spanZ <= 0.0f || size == 0 || g_disableGlUploads) return {};
-    const float half = 0.5f * std::max(spanX, spanZ);
-
-    // Orthografische Kamera fast senkrecht von oben (Pitch-Grenze 1.5 rad), von Süden: oben = Norden.
-    app::OrbitCamera cam;
-    cam.SetOrthographic(true);
-    cam.SetTarget(spanX * 0.5f, 0.0f, spanZ * 0.5f);
-    cam.SetDistance(half / std::tan(app::OrbitCamera::kFovY * 0.5f));
-    cam.SetOrientation(0.0f, 1.5f);
-
+std::vector<std::uint8_t> CaptureSceneRgba(EditorState& state, const app::OrbitCamera& cam, std::uint32_t size,
+                                           bool withObjects, bool withSky, bool withFog) {
+    if (size == 0 || g_disableGlUploads) return {};
     const int previousTarget = state.renderer.CurrentRenderTarget();
     const bool previousGlow = state.renderer.GlowEnabled();
     const auto lighting = state.renderer.GetSceneLighting();
-    auto noFog = lighting;
-    noFog.fogEnabled = false;
+    auto capture = lighting;
+    capture.fogEnabled = withFog && lighting.fromMapData;
     state.renderer.SelectRenderTarget(app::HeightmapRenderer::kCaptureTarget);
     state.renderer.SetGlowEnabled(false);
-    state.renderer.SetSceneLighting(noFog);
-    state.nifMeshRenderer.SetSceneLighting(noFog);
-    state.shmdCategoryMeshRenderer.SetSceneLighting(noFog);
+    state.renderer.SetSceneLighting(capture);
+    state.nifMeshRenderer.SetSceneLighting(capture);
+    state.shmdCategoryMeshRenderer.SetSceneLighting(capture);
 
     const int px = static_cast<int>(size);
     state.renderer.BeginScene(cam, px, px, false);
     if (withObjects) {
         state.nifMeshRenderer.Draw(state.placementSet, cam, px, px, &state.objectHidden);
-        // Wasser und Bodenobjekte ja, die Himmelskuppel nicht (sie läge über allem).
+        // Wasser und Bodenobjekte immer, die Himmelskuppel nur auf Wunsch (von oben läge sie über allem).
         std::vector<char> hidden = state.shmdCategoryHidden;
         hidden.resize(state.shmdCategoryRenderSet.Count(), 0);
-        for (std::size_t i = 0; i < hidden.size() && i < state.shmdCategoryRenderKind.size(); ++i)
-            if (state.shmdCategoryRenderKind[i] == 0) hidden[i] = 1;
+        if (!withSky)
+            for (std::size_t i = 0; i < hidden.size() && i < state.shmdCategoryRenderKind.size(); ++i)
+                if (state.shmdCategoryRenderKind[i] == 0) hidden[i] = 1;
         state.shmdCategoryMeshRenderer.Draw(state.shmdCategoryRenderSet, cam, px, px, &hidden);
     }
     const GLuint tex = state.renderer.EndScene();
@@ -119,16 +102,31 @@ std::vector<std::uint8_t> RenderMinimapRgba(EditorState& state, std::uint32_t si
     state.renderer.SetGlowEnabled(previousGlow);
     state.renderer.SelectRenderTarget(previousTarget);
 
-    // OpenGL liefert die unterste Zeile zuerst; Ergebnis: Zeile 0 = Norden.
-    std::vector<std::uint8_t> square(glPixels.size());
+    // OpenGL liefert die unterste Zeile zuerst; Ergebnis: Zeile 0 = obere Bildkante.
+    std::vector<std::uint8_t> image(glPixels.size());
     const std::size_t rowBytes = static_cast<std::size_t>(size) * 4;
     for (std::uint32_t y = 0; y < size; ++y)
-        std::memcpy(&square[y * rowBytes], &glPixels[(size - 1 - y) * rowBytes], rowBytes);
-    for (std::size_t i = 3; i < square.size(); i += 4) square[i] = 255;
-    if (std::abs(spanX - spanZ) < 1e-3f) return square;
+        std::memcpy(&image[y * rowBytes], &glPixels[(size - 1 - y) * rowBytes], rowBytes);
+    for (std::size_t i = 3; i < image.size(); i += 4) image[i] = 255;
+    return image;
+}
+
+std::vector<std::uint8_t> RenderMinimapRgba(EditorState& state, std::uint32_t size, bool withObjects) {
+    const float spanX = MapSpanX(state), spanZ = MapSpanZ(state);
+    if (spanX <= 0.0f || spanZ <= 0.0f) return {};
+    const float half = 0.5f * std::max(spanX, spanZ);
+
+    // Orthografische Kamera fast senkrecht von oben (Pitch-Grenze 1.5 rad), von Süden: oben = Norden.
+    app::OrbitCamera cam;
+    cam.SetOrthographic(true);
+    cam.SetTarget(spanX * 0.5f, 0.0f, spanZ * 0.5f);
+    cam.SetDistance(half / std::tan(app::OrbitCamera::kFovY * 0.5f));
+    cam.SetOrientation(0.0f, 1.5f);
+    auto square = CaptureSceneRgba(state, cam, size, withObjects, false, false);
+    if (square.empty() || std::abs(spanX - spanZ) < 1e-3f) return square;
     // Nicht quadratische Karte: das Kartenrechteck aus dem Quadrat um die Mitte schneiden.
-    const float x0 = (0.5f * 2.0f * half - spanX * 0.5f) / (2.0f * half);
-    const float z0 = (0.5f * 2.0f * half - spanZ * 0.5f) / (2.0f * half);
+    const float x0 = (half - spanX * 0.5f) / (2.0f * half);
+    const float z0 = (half - spanZ * 0.5f) / (2.0f * half);
     return core::legacy::CropResampleRgba(square, size, size, {x0, z0, 1.0f - x0, 1.0f - z0}, size, size);
 }
 
@@ -220,6 +218,62 @@ void ProcessPendingMinimap(EditorState& state) {
     const bool ok = GenerateMinimap(state, report);
     for (const auto& line : report) state.newMapReport.push_back(line);
     state.statusMessage = ok ? L("Minimap erzeugt.", "Minimap generated.") : L("Minimap konnte nicht erzeugt werden.", "Minimap could not be generated.");
+}
+
+std::filesystem::path GameResmenuPath(EditorState& state, const std::string& rel, bool* fromProject) {
+    if (fromProject) *fromProject = false;
+    const auto project = InterfaceProjectOverrideRoot(state);
+    if (!project.empty())
+        if (auto hit = core::legacy::ResolveCaseInsensitivePath(project, rel)) {
+            if (fromProject) *fromProject = true;
+            return *hit;
+        }
+    if (!state.interfaceRoot.empty())
+        if (auto hit = core::legacy::ResolveCaseInsensitivePath(state.interfaceRoot, rel)) return *hit;
+    return {};
+}
+
+bool GenerateTownPortalImages(EditorState& state, const std::string& mapName, float x, float y,
+                              std::vector<std::string>& report) {
+    if (state.project.projectFolder[0] == '\0' || mapName.empty()) {
+        report.push_back(L("- Portalbilder: kein Projektordner oder Kartenname.", "- Portal images: no project folder or map name."));
+        return false;
+    }
+    // Wie die Originale: Blick über den Ankunftsort, leicht erhöht, mit Himmel und Nebel.
+    const float ground = state.heightmap.Width() > 1 ? state.heightmap.SampleWorld(x, y) : 0.0f;
+    app::OrbitCamera cam;
+    cam.SetTarget(x, ground + 90.0f, y);
+    cam.SetDistance(950.0f);
+    cam.SetOrientation(state.townPortalImageYaw, 0.32f);
+    constexpr std::uint32_t kSize = 256;
+    auto rgba = CaptureSceneRgba(state, cam, kSize, true, true, true);
+    if (rgba.empty()) {
+        report.push_back(L("- Portalbilder: Aufnahme fehlgeschlagen.", "- Portal images: capture failed."));
+        return false;
+    }
+    core::legacy::ApplyRoundedCorners(rgba, kSize, 25.0f);
+    const auto disabled = core::legacy::MakeTownPortalDisabled(rgba);
+    bool ok = true;
+    for (const bool grey : {false, true}) {
+        const auto rel = core::legacy::TownPortalImageRelativePath(mapName, grey);
+        const auto target = InterfaceProjectOverridePath(state, rel);
+        auto written = target.empty() ? std::expected<void, std::string>(std::unexpected(std::string("kein Zielpfad")))
+                                      : core::WriteDdsFile(target, grey ? disabled : rgba, kSize, kSize, core::DdsFormat::Dxt5, true);
+        if (!written) {
+            report.push_back("- " + rel + ": " + written.error());
+            ok = false;
+            continue;
+        }
+        report.push_back("+ Client resmenu/" + rel + " (256x256 DXT5, Mipmaps)");
+        if (auto it = state.assetThumbnails.find(target.string()); it != state.assetThumbnails.end()) {
+            if (it->second.tex != 0) {
+                const GLuint t = it->second.tex;
+                glDeleteTextures(1, &t);
+            }
+            state.assetThumbnails.erase(it);
+        }
+    }
+    return ok;
 }
 
 } // namespace nge
