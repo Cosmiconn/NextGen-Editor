@@ -78,6 +78,7 @@ add_library(mapeditor_core
     src/core/WalkGenerate.cpp
     src/core/HeightmapExchange.cpp
     src/core/TextureRules.cpp
+    src/core/ObjectScatter.cpp
     src/core/legacy/NewMapFromTemplate.cpp
     src/core/legacy/MapRenderSettings.cpp
     src/core/legacy/LegacyMapProject.cpp
@@ -366,6 +367,10 @@ add_test(NAME heightmap_exchange COMMAND test_heightmap_exchange
 add_executable(test_texture_rules tests/test_texture_rules.cpp)
 target_link_libraries(test_texture_rules PRIVATE mapeditor_core)
 add_test(NAME texture_rules COMMAND test_texture_rules ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/Rou.HTD)
+
+add_executable(test_object_scatter tests/test_object_scatter.cpp)
+target_link_libraries(test_object_scatter PRIVATE mapeditor_core)
+add_test(NAME object_scatter COMMAND test_object_scatter)
 
 add_executable(test_map_render_settings tests/test_map_render_settings.cpp)
 target_link_libraries(test_map_render_settings PRIVATE mapeditor_core)

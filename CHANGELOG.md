@@ -1,3 +1,9 @@
+## Objects — paint foliage
+- New third mode in the Objects tool, "Paint (foliage)", like Unreal's foliage tool: a list of models is scattered with a brush in the 2D or 3D view. Each application tries `density` objects per 100x100 units and rejects spots closer than the minimum distance to objects of the list, so repeated painting fills an area up to that spacing and not beyond; random rotation and scale range, maximum slope, align to slope, height offset. Ctrl (or the erase option) removes objects of the list under the brush. One stroke is one undo step.
+- Checked on Roumen with tree05/tree06: three strokes (radius 400, density 3, spacing 120) place 45 trees in the town area, an erase stroke removes 23; in the mountains above 30° only 3 of 450 attempts land.
+- The object renderer keeps loaded models for the same map, so adding or moving objects no longer reloads every NIF.
+- Core: `core/ObjectScatter` with `test_object_scatter` (spacing, saturation, slope limit, slope alignment, erase). Automation: `scatter model <nif>`, `scatter set <radius> <density> <spacing> <maxSlope>`, `scatter erase on|off`.
+
 ## Texturing — rules, layer lock, brush shapes from images
 - Texture by rules (like Unreal's auto material): the selected layer gets weight where slope and/or height lie in a range, with a soft transition; "Add only" or "Replace". Apply to the whole map (one undo step) or let the brush paint by the rule. Layer regions (Adl halves) are respected. Checked on Roumen: the rule 35-90° paints the rock layer on all 8333 sampled spots steeper than 35°, other layers stay unchanged.
 - Lock layers (texture panel or Layer dock context menu): brushes and rules leave a locked layer alone; locks follow the layer name, so reordering keeps them.

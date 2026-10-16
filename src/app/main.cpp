@@ -77,6 +77,8 @@
 #include "mapeditor/core/WalkGenerate.hpp"
 #include "mapeditor/core/HeightmapExchange.hpp"
 #include "mapeditor/core/TextureRules.hpp"
+#include "mapeditor/core/ObjectScatter.hpp"
+#include <random>
 #include "mapeditor/core/legacy/NewMapFromTemplate.hpp"
 #include "mapeditor/core/legacy/MapRenderSettings.hpp"
 #include "mapeditor/app/Localization.hpp"
@@ -632,7 +634,13 @@ struct EditorState {
     int selectedObjectModelPathFor = -1;
     bool selectedObjectModelPathDirty = false;
     int objectListRangeAnchor = -1; // Shift-Bereichsauswahl in der Objektliste
-    int objectPlaceMode = 1; // 1 = Platzieren, 0 = Auswählen (ImGui::RadioButton braucht int*)
+    int objectPlaceMode = 1; // 1 = Platzieren, 0 = Auswählen, 2 = Malen (Foliage) (ImGui::RadioButton braucht int*)
+    // Objekte malen (Foliage): Einstellungen, Zufall, laufender Strich (ein Undo-Schritt je Strich).
+    core::ScatterSettings scatter;
+    std::mt19937 scatterRng{20261016u};
+    bool scatterErase = false;
+    bool scatterStrokeActive = false;
+    double scatterLastTime = 0.0;
 
     // Level-Editor Transform-Werkzeuge (0=Move, 1=Rotate, 2=Scale).
     int objectGizmoOperation = 0;
@@ -14906,6 +14914,8 @@ void RunMapCheck(EditorState& state) {
     }
     const auto& diag = state.nifMeshRenderer.Diagnostics();
     const auto modelIssue = [&](MapCheckCode code, MapCheckSeverity severity, const std::string& model, std::string detail) {
+        // Der Renderer sammelt Ladefehler je Karte; nur Modelle melden, die noch platziert sind.
+        if (!firstObjectOfModel.contains(model)) return;
         MapCheckIssue i;
         i.severity = severity;
         i.code = code;
@@ -15508,6 +15518,7 @@ void DrawCommandPalette(EditorState& state) {
 
 static void DrawVisibilityPanel(EditorState& state);
 void DrawBrushAlphaControls(EditorState& state, const char* id);
+void DrawScatterControls(EditorState& state);
 void DrawTextureRuleControls(EditorState& state);
 static std::vector<std::vector<std::pair<float, float>>> CollectVisibleObjectFootprints(EditorState& state);
 static const std::unordered_map<std::string, std::pair<std::size_t, std::size_t>>& ModelBlockStats(EditorState& state);
@@ -15828,6 +15839,10 @@ void DrawToolsContent(EditorState& state) {
         ImGui::EndDisabled();
         ImGui::SameLine();
         UI::RadioButton(L("Auswählen","Select"), &state.objectPlaceMode, 0);
+        ImGui::SameLine();
+        ImGui::BeginDisabled(state.standaloneNifMap || !MapSupportsTerrainEditing(state));
+        UI::RadioButton(L("Malen (Foliage)","Paint (foliage)"), &state.objectPlaceMode, 2);
+        ImGui::EndDisabled();
 
         if (state.objectPlaceMode) {
             UI::InputText(L("Modellpfad","Model path"), state.newObjectModelPath, sizeof(state.newObjectModelPath));
@@ -15856,8 +15871,12 @@ void DrawToolsContent(EditorState& state) {
                     std::snprintf(state.newObjectModelPath, sizeof(state.newObjectModelPath), "%s", legacyModelPath.c_str());
                 }
             }
-            UI::SliderFloat(L("Rotation um Hochachse (°)##new","Rotation around up axis (°)##new"), &state.newObjectRotDeg, -180.0f, 180.0f);
-            UI::SliderFloat(L("Skalierung##new","Scale##new"), &state.newObjectScale, 0.1f, 5.0f);
+            if (state.objectPlaceMode == 2) {
+                DrawScatterControls(state);
+            } else {
+                UI::SliderFloat(L("Rotation um Hochachse (°)##new","Rotation around up axis (°)##new"), &state.newObjectRotDeg, -180.0f, 180.0f);
+                UI::SliderFloat(L("Skalierung##new","Scale##new"), &state.newObjectScale, 0.1f, 5.0f);
+            }
         }
 
         ImGui::Separator();
@@ -17034,6 +17053,90 @@ void DrawMinimapPreviewContent(EditorState& state) {
 
 // Ein Pinselschritt an einer Weltposition für Terrain, Texturen und Block&Walk - gemeinsam für
 // die 2D-Ansicht und den 3D-Viewport (dort über PickTerrainFrom3D).
+// Eine Anwendung des Objekt-Pinsels (Malen oder, mit Strg bzw. 'Löschen', Entfernen).
+bool ScatterAtWorld(EditorState& state, float worldX, float worldZ) {
+    if (!RequireWritableMapGeometry(state) || !MapSupportsTerrainEditing(state)) return false;
+    const double now = ImGui::GetTime();
+    if (state.scatterStrokeActive && now - state.scatterLastTime < 0.08) return false; // ca. 12 Anwendungen/s
+    state.scatterLastTime = now;
+    if (!state.scatterStrokeActive) {
+        BeginObjectEditTransaction(state);
+        state.scatterStrokeActive = true;
+    }
+    const bool erase = state.scatterErase || ImGui::GetIO().KeyCtrl;
+    bool changed = false;
+    if (erase) {
+        for (const std::size_t index : core::ScatteredObjectsInRadius(state.placementSet, state.scatter.models, worldX, worldZ,
+                                                                      state.scatter.radius)) {
+            if (IsObjectEditorLocked(state, static_cast<int>(index))) continue;
+            state.placementSet.RemoveObject(index);
+            const auto at = static_cast<std::ptrdiff_t>(index);
+            if (index < state.objectEditorHidden.size()) state.objectEditorHidden.erase(state.objectEditorHidden.begin() + at);
+            if (index < state.objectEditorLocked.size()) state.objectEditorLocked.erase(state.objectEditorLocked.begin() + at);
+            if (index < state.objectEditorLabels.size()) state.objectEditorLabels.erase(state.objectEditorLabels.begin() + at);
+            if (index < state.objectEditorGroups.size()) state.objectEditorGroups.erase(state.objectEditorGroups.begin() + at);
+            changed = true;
+        }
+        if (changed) ClearObjectSelection(state);
+    } else {
+        auto objs = core::ScatterObjects(state.heightmap, state.placementSet, state.scatter, worldX, worldZ, state.scatterRng);
+        for (auto& o : objs) state.placementSet.AddObject(std::move(o));
+        changed = !objs.empty();
+        SyncObjectEditorMetadata(state);
+    }
+    if (!changed) return false;
+    state.pendingObjectEditChanged = true;
+    state.mapDirty = true;
+    // Nur der Objekt-Renderer: geladene Modelle bleiben im Cache, neue Instanzen erscheinen sofort.
+    state.nifMeshRenderer.LoadModelsForSet(state.placementSet, CurrentObjectAssetMapDir(state));
+    state.objectVisKey.clear();
+    return true;
+}
+
+void FinishScatterStrokeIfReleased(EditorState& state) {
+    if (!state.scatterStrokeActive || ImGui::IsMouseDown(ImGuiMouseButton_Left)) return;
+    state.scatterStrokeActive = false;
+    CommitObjectEditTransaction(state);
+}
+
+void DrawScatterControls(EditorState& state) {
+    ImGui::SeparatorText(L("Objekte malen", "Paint objects"));
+    auto& sc = state.scatter;
+    for (std::size_t i = 0; i < sc.models.size(); ++i) {
+        ImGui::PushID(static_cast<int>(i));
+        if (UI::SmallButton("x")) {
+            sc.models.erase(sc.models.begin() + static_cast<std::ptrdiff_t>(i));
+            ImGui::PopID();
+            break;
+        }
+        ImGui::SameLine();
+        ImGui::TextUnformatted(std::filesystem::path(core::legacy::LegacyPathToNative(sc.models[i])).filename().string().c_str());
+        ImGui::PopID();
+    }
+    if (sc.models.empty())
+        ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.3f, 1.0f), "%s", L("Noch kein Modell - oben eines wählen und hinzufügen.",
+                                                                   "No model yet - choose one above and add it."));
+    ImGui::BeginDisabled(state.newObjectModelPath[0] == '\0');
+    if (UI::Button(L("Modellpfad oben hinzufügen", "Add model path above"))) {
+        const std::string model = state.newObjectModelPath;
+        if (std::find(sc.models.begin(), sc.models.end(), model) == sc.models.end()) sc.models.push_back(model);
+    }
+    ImGui::EndDisabled();
+    UI::SliderFloat(L("Radius##scatter", "Radius##scatter"), &sc.radius, 20.0f, 2000.0f);
+    UI::SliderFloat(L("Dichte (je 100x100)##scatter", "Density (per 100x100)##scatter"), &sc.density, 0.1f, 20.0f);
+    UI::SliderFloat(L("Mindestabstand##scatter", "Min. distance##scatter"), &sc.minDistance, 0.0f, 500.0f);
+    ImGui::SetNextItemWidth(200.0f);
+    ImGui::DragFloatRange2(L("Skalierung##scatter", "Scale##scatter"), &sc.minScale, &sc.maxScale, 0.01f, 0.05f, 10.0f, "%.2f", "%.2f");
+    UI::SliderFloat(L("Max. Neigung (°)##scatter", "Max. slope (°)##scatter"), &sc.maxSlope, 0.0f, 90.0f);
+    UI::SliderFloat(L("Höhenversatz##scatter", "Height offset##scatter"), &sc.heightOffset, -100.0f, 100.0f);
+    UI::Checkbox(L("Zufällige Drehung##scatter", "Random rotation##scatter"), &sc.randomYaw);
+    ImGui::SameLine();
+    UI::Checkbox(L("Am Hang ausrichten##scatter", "Align to slope##scatter"), &sc.alignToSlope);
+    UI::Checkbox(L("Löschen statt malen (oder Strg halten)##scatter", "Erase instead of paint (or hold Ctrl)##scatter"), &state.scatterErase);
+    ImGui::TextDisabled("%s", L("Ziehen im 2D- oder 3D-View; ein Strich = ein Undo-Schritt. Löschen entfernt nur Objekte der Liste.",
+                                "Drag in the 2D or 3D view; one stroke = one undo step. Erase removes only objects of the list."));
+}
+
 bool TextureLayerLocked(const EditorState& state, int layer) {
     return layer >= 0 && static_cast<std::size_t>(layer) < state.textureStack.LayerCount() &&
            state.lockedTextureLayers.contains(state.textureStack.Layer(static_cast<std::size_t>(layer)).name);
@@ -17117,6 +17220,7 @@ bool ApplyBrushAtWorld(EditorState& state, float worldX, float worldZ) {
     const core::BrushAlpha* alpha = state.brushAlphaEnabled && !state.brushAlpha.Empty() ? &state.brushAlpha : nullptr;
     state.brush.alpha = alpha;
     state.paintSettings.alpha = alpha;
+    if (state.editMode == EditMode::ObjectPlacement && state.objectPlaceMode == 2) return ScatterAtWorld(state, worldX, worldZ);
     if (texMode && TextureLayerLocked(state, state.selectedLayer)) {
         state.statusMessage = L("Layer ist gesperrt.", "Layer is locked.");
         return false;
@@ -17769,7 +17873,9 @@ void DrawEditor2DContent(EditorState& state) {
     // Mouse-Down-Frames für flüssiges Verschieben. Die übrigen Modi behalten ihr
     // bisheriges Klick-/Drag-Verhalten.
     const bool clickTrigger = objectMode
-                                   ? (!suppressObjectClickForBox && (state.objectPlaceMode
+                                   ? (!suppressObjectClickForBox && (state.objectPlaceMode == 2
+                                          ? ImGui::IsMouseDown(ImGuiMouseButton_Left)
+                                          : state.objectPlaceMode
                                           ? ImGui::IsMouseClicked(ImGuiMouseButton_Left)
                                           : (ImGui::IsMouseClicked(ImGuiMouseButton_Left) ||
                                              ImGui::IsMouseDown(ImGuiMouseButton_Left))))
@@ -17802,7 +17908,9 @@ void DrawEditor2DContent(EditorState& state) {
                     // Objekte ihre individuellen Höhen/Offsets nicht beim ersten Pixel verlieren.
                     MoveSelectedObjectsBy(state, dx, 0.0f, dz);
                 }
-                if (state.objectPlaceMode && MapSupportsObjectGeometryEditing(state)) {
+                if (state.objectPlaceMode == 2) {
+                    ScatterAtWorld(state, worldX, worldZ);
+                } else if (state.objectPlaceMode && MapSupportsObjectGeometryEditing(state)) {
                     auto historyBefore = BeginObjectMutation(state);
                     core::PlacedObject obj;
                     obj.modelPath = state.newObjectModelPath;
@@ -19553,8 +19661,9 @@ void DrawPreview3DContent(EditorState& state) {
     // ---- Pinsel im 3D-Viewport (Terrain, Texturen, Block&Walk) wie Unreals Landscape-Modus:
     //  LMB malt auf dem Terrain unter der Maus, Alt+LMB dreht weiterhin die Kamera, RMB fliegt.
     const bool brushTool3D = (state.editMode == EditMode::Heightmap || state.editMode == EditMode::TexturePaint ||
-                              state.editMode == EditMode::BlockWalk) && MapSupportsTerrainEditing(state) &&
-                             !state.playtestActive;
+                              state.editMode == EditMode::BlockWalk ||
+                              (state.editMode == EditMode::ObjectPlacement && state.objectPlaceMode == 2)) &&
+                             MapSupportsTerrainEditing(state) && !state.playtestActive;
     if (brushTool3D && viewImageHovered && !viewportUiCapturing && !ImGui::GetIO().KeyAlt &&
         !ImGui::GetIO().KeyCtrl && ImGui::IsMouseDown(ImGuiMouseButton_Left) && !state.cameraLooking) {
         if (const auto hit = PickTerrainFrom3D(state, imageScreenPos, w, h, ImGui::GetMousePos()))
@@ -23443,6 +23552,17 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
                     state.walkProposalVsOriginal.Agreement(), state.walkGenStatus.c_str(), state.statusMessage.c_str());
         std::fflush(stdout);
     }
+    else if (cmd == "scatter") {
+        // scatter model <pfad> | scatter set <radius> <dichte> <abstand> <maxNeigung> | scatter erase on|off
+        std::string what; in >> what;
+        if (what == "model") { std::string m; in >> m; state.scatter.models.push_back(m); }
+        else if (what == "set") in >> state.scatter.radius >> state.scatter.density >> state.scatter.minDistance >> state.scatter.maxSlope;
+        else if (what == "erase") { std::string v; in >> v; state.scatterErase = v == "on"; }
+        state.editMode = EditMode::ObjectPlacement;
+        state.objectPlaceMode = 2;
+        std::printf("[scatter] objects %zu\n", state.placementSet.Count());
+        std::fflush(stdout);
+    }
     else if (cmd == "texrule") {
         // texrule <minSlope> <maxSlope> [replace] : Regel auf den gewählten Layer (ganze Karte)
         std::string mode; in >> state.texRule.minSlope >> state.texRule.maxSlope >> mode;
@@ -23968,6 +24088,7 @@ int main() {
         DrawSettingsWindow(state);
         DrawMapCheckWindow(state);
         TickAutosave(state);
+        FinishScatterStrokeIfReleased(state);
         {
             // Projektkarten verweisen auf Texturen/Modelle im Client-Ordner (siehe SetLegacyAssetFallbackRoots).
             static std::string lastRoots;

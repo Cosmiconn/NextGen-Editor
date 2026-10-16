@@ -242,7 +242,8 @@ Objects appear as a reference with their footprint; they cannot be clicked in th
 - 'Ausgewählte Objekte löschen' löscht die Auswahl. 'Alle normalen Objekte entfernen' entfernt nach Bestätigung alle normalen Placements, lässt Sky/Water/GroundObject aber bestehen.
 - Die Höhe wird beim Platzieren aus dem Gelände genommen.
 - Im 3D-Bild siehst Du die echten Modelle. Ausgewählte normale Objekte erhalten zusätzlich einen weißen Auswahl-Marker.
-Objekte lassen sich nach Kategorien (Bäume, Gebäude, Felsen ...) ein- und ausblenden (Bereich Sichtbarkeit) - hilfreich bei dichten Karten.)MAN",
+Objekte lassen sich nach Kategorien (Bäume, Gebäude, Felsen ...) ein- und ausblenden (Bereich Sichtbarkeit) - hilfreich bei dichten Karten.
+Malen (Foliage): Modelle über 'Modellpfad oben hinzufügen' in die Liste aufnehmen, dann im 2D- oder 3D-View ziehen. Jede Anwendung versucht 'Dichte' Objekte je 100x100 Einheiten und hält den Mindestabstand zu Objekten der Liste ein - wiederholtes Malen füllt die Fläche, aber nicht darüber hinaus. Zufällige Drehung und Skalierung, 'Max. Neigung' (steilere Stellen bleiben frei), 'Am Hang ausrichten', Höhenversatz. Strg oder 'Löschen statt malen' entfernt Objekte der Liste unter dem Pinsel. Ein Strich ist ein Undo-Schritt.)MAN",
      R"MAN(Objects are 3D models (houses, trees, stones ...) with position, rotation and scale.
 - Place: enter a model path or 'Browse...', set rotation and scale, then click into the 2D view.
 - Multi-select: Ctrl+click adds/removes individual objects, Shift+click selects a range in the list. In the 2D view, Shift+drag selects by rectangle and Alt+Shift+drag selects by lasso; hold Ctrl to extend the existing selection. 'Select all normal' or Ctrl+A selects all normal placements.
@@ -252,7 +253,8 @@ Objekte lassen sich nach Kategorien (Bäume, Gebäude, Felsen ...) ein- und ausb
 - 'Delete selected objects' deletes the selection. 'Remove all normal objects' removes all normal placements after confirmation while keeping Sky/Water/GroundObject.
 - Height is taken from the terrain when placing.
 - In the 3D image you see the real models. Selected normal objects also get a white selection marker.
-Objects can be shown/hidden by category (trees, buildings, rocks ...) in the Visibility area - helpful on dense maps.)MAN",
+Objects can be shown/hidden by category (trees, buildings, rocks ...) in the Visibility area - helpful on dense maps.
+Paint (foliage): add models to the list with 'Add model path above', then drag in the 2D or 3D view. Each application tries 'Density' objects per 100x100 units and keeps the minimum distance to objects of the list - repeated painting fills the area but not beyond. Random rotation and scale, 'Max. slope' (steeper spots stay empty), 'Align to slope', height offset. Ctrl or 'Erase instead of paint' removes objects of the list under the brush. One stroke is one undo step.)MAN",
      "objekte platzieren modell nif rotation skalierung löschen"},
     {"map.visibility", "map",
      "Bereich Sichtbarkeit", "Visibility area",
