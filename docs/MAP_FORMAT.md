@@ -127,7 +127,7 @@ sichtbar. Die genaue Achsen-Zuordnung (welche der beiden Dimensionen der Welt-X-
 
 **UX-Konsequenz:** Da das Rohgitter ein extremes Seitenverhältnis hat (1:16), zeigt der Editor
 es NICHT in seiner nativen Pixel-Form an. Stattdessen wird die Anzeigefläche im 2D-Editor immer
-anhand der Heightmap-Form bemessen (siehe `DrawEditor2D` in `main.cpp`) - die Grafikkarte
+anhand der Heightmap-Form bemessen (siehe `DrawEditor2DContent` in `src/app/editor/Editor2DView.cpp`) - die Grafikkarte
 streckt/staucht die Rohdaten beim Zeichnen automatisch auf diese Form, exakt wie eine Textur auf
 ein andersförmiges Quad. Der Nutzer malt dadurch auf einer Fläche, die wie die Heightmap
 aussieht; die Umrechnung in die krumme Rohform passiert unsichtbar bei jedem Pinselstrich

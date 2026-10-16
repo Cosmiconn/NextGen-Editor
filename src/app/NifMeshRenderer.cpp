@@ -5,6 +5,7 @@
 #include "mapeditor/core/AvatarPreview.hpp"
 
 #include "mapeditor/core/DdsImage.hpp"
+#include "mapeditor/core/ViewCulling.hpp"
 #include "mapeditor/core/legacy/LegacyPathResolve.hpp"
 
 #include <glad/glad.h>
@@ -1084,6 +1085,7 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
             }
             LoadedModel model;
             if (nifResult) {
+                model.nodeAnimation = nifResult->nodeAnimation;
                 const auto findParticleTexturePath = [&](const std::string& textureName)
                     -> std::optional<std::filesystem::path> {
                     if (textureName.empty()) return std::nullopt;
@@ -1289,6 +1291,7 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                     sub.lodNear = part.lodNear;
                     sub.lodFar = part.lodFar;
                     sub.lodCenter = {part.lodCenter.x, part.lodCenter.y, part.lodCenter.z};
+                    sub.animNode = part.animNode;
                     std::vector<std::uint32_t> validIndices;
                     validIndices.reserve(part.triangleIndices.size());
                     for (std::size_t t = 0; t + 2 < part.triangleIndices.size(); t += 3) {
@@ -2296,6 +2299,12 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
         std::chrono::duration<float>(std::chrono::steady_clock::now() - animationEpoch).count();
     const float animationTime =
         animationTimeOverride_.value_or(wallClockAnimationTime);
+    animationFrame_.clear();
+    frameStats_ = {};
+    const auto drawStart = std::chrono::steady_clock::now();
+    core::Mat4f viewProjArray{};
+    std::copy(viewProj.m, viewProj.m + 16, viewProjArray.begin());
+    const core::FrustumPlanes frustum = core::ExtractFrustumPlanes(viewProjArray);
 
     const auto& locViewProj = uniforms_.locViewProj;
     const auto& locView = uniforms_.locView;
@@ -2539,10 +2548,37 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
             }
 
             Mat4 effectiveModel = modelMat;
+            if (sub.animNode >= 0 && objectAnimation_ && !model->nodeAnimation.Empty()) {
+                auto frame = animationFrame_.find(model);
+                if (frame == animationFrame_.end()) {
+                    std::vector<Mat4> matrices;
+                    for (const auto& m : core::EvaluateNifNodeAnimation(model->nodeAnimation, animationTime)) {
+                        Mat4 mat;
+                        std::copy(m.begin(), m.end(), mat.m);
+                        matrices.push_back(mat);
+                    }
+                    frame = animationFrame_.emplace(model, std::move(matrices)).first;
+                }
+                if (static_cast<std::size_t>(sub.animNode) < frame->second.size())
+                    effectiveModel = modelMat * frame->second[static_cast<std::size_t>(sub.animNode)];
+            }
             if (sub.billboard) {
                 effectiveModel = ApplyBillboard(modelMat, obj.scale, sub.billboardPivot, sub.billboardMode,
                                                 sub.billboardInverseRotation, camera);
             }
+
+            // Sichtpyramide: Billboards drehen sich zur Kamera, ihr Bind-AABB gilt dann nicht.
+            if (frustumCulling_ && !sub.billboard) {
+                core::Mat4f modelArray{};
+                std::copy(effectiveModel.m, effectiveModel.m + 16, modelArray.begin());
+                core::Vec3f worldMin, worldMax;
+                core::TransformAabb(modelArray, sub.localBoundsMin, sub.localBoundsMax, worldMin, worldMax);
+                if (!core::AabbInFrustum(frustum, worldMin, worldMax)) {
+                    ++frameStats_.culledParts;
+                    continue;
+                }
+            }
+            ++frameStats_.drawnParts;
 
             const auto worldCenter = TransformPoint(effectiveModel, sub.localCenter);
             // OpenGL-Viewraum schaut entlang -Z. camera.ViewMatrix() enthaelt bereits die
@@ -2930,6 +2966,8 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
         glEnable(GL_BLEND);
         for (const auto& item : blendedItems) drawItem(item, true);
     }
+
+    frameStats_.cpuMs = std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - drawStart).count();
 
     // Exakten vorgefundenen GL-Zustand wiederherstellen.
     glBindVertexArray(static_cast<GLuint>(prevVao));

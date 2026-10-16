@@ -1283,29 +1283,72 @@ void SkipNiPointLight(ByteReader& r) {
 // gemischt LINEAR/QUADRATIC je Achse, plausible Y-Rotation von 0 auf -0.042 rad über 6.667s -
 // eine schaukelnde Blume): die berechnete Gesamtlänge landet exakt auf dem Namensfeld
 // ("Object12") des folgenden NiTriStrips.
-void SkipNiTransformData(ByteReader& r) {
+// Gelesen von ParseNiTransformData (weiter unten).
+
+// Lesende Gegenstücke zu SkipKeyGroup/SkipNiTransformData für eingebettete Knoten-Animationen
+// (Windmühlen, Boote, Schilder). Gleiche Feldfolge wie oben; unbekannte Key-Typen invalidieren.
+KfKeyGroupFloat ReadNifFloatKeyGroup(ByteReader& r) {
+    KfKeyGroupFloat g;
+    const std::uint32_t numKeys = r.CountU32(200000u);
+    if (numKeys == 0) return g;
+    g.interpolation = r.U32();
+    if (g.interpolation != 1 && g.interpolation != 2 && g.interpolation != 3 && g.interpolation != 5) { r.Invalidate(); return g; }
+    g.keys.reserve(numKeys);
+    for (std::uint32_t i = 0; i < numKeys && r.Ok(); ++i) {
+        KfFloatKey k;
+        k.time = r.F32();
+        k.value = r.F32();
+        if (g.interpolation == 2) { k.forward = r.F32(); k.backward = r.F32(); }
+        else if (g.interpolation == 3) { k.tension = r.F32(); k.bias = r.F32(); k.continuity = r.F32(); }
+        g.keys.push_back(k);
+    }
+    return g;
+}
+
+KfKeyGroupVec3 ReadNifVec3KeyGroup(ByteReader& r) {
+    KfKeyGroupVec3 g;
+    const std::uint32_t numKeys = r.CountU32(200000u);
+    if (numKeys == 0) return g;
+    g.interpolation = r.U32();
+    if (g.interpolation != 1 && g.interpolation != 2 && g.interpolation != 3 && g.interpolation != 5) { r.Invalidate(); return g; }
+    g.keys.reserve(numKeys);
+    auto vec = [&r]() { KfVec3 v; v.x = r.F32(); v.y = r.F32(); v.z = r.F32(); return v; };
+    for (std::uint32_t i = 0; i < numKeys && r.Ok(); ++i) {
+        KfVec3Key k;
+        k.time = r.F32();
+        k.value = vec();
+        if (g.interpolation == 2) { k.forward = vec(); k.backward = vec(); }
+        else if (g.interpolation == 3) { k.tension = r.F32(); k.bias = r.F32(); k.continuity = r.F32(); }
+        g.keys.push_back(k);
+    }
+    return g;
+}
+
+KfTransformKeys ParseNiTransformData(ByteReader& r) {
+    KfTransformKeys keys;
     const std::uint32_t numRotationKeys = r.CountU32(200000u);
     if (numRotationKeys > 0) {
-        const std::uint32_t rotationType = r.U32();
-        if (rotationType == 4) {
+        keys.rotationType = r.U32();
+        if (keys.rotationType == 4) {
             if (!r.LegacyLayout() && r.Version() <= 0x0A010000u) r.F32(); // legacy Euler order
-            // XYZ_ROTATION_KEY: num_rotation_keys ist hier laut Format immer 1 (Platzhalter),
-            // die eigentlichen Keys stecken in den drei folgenden KeyGroups.
-            SkipKeyGroup(r, 1); // X
-            SkipKeyGroup(r, 1); // Y
-            SkipKeyGroup(r, 1); // Z
-        } else {
-            std::size_t perKeyFloats = 0;
-            switch (rotationType) {
-                case 1: case 2: perKeyFloats = 1 + 4; break; // Zeit + Quaternion(4), keine Tangenten
-                case 3: perKeyFloats = 1 + 4 + 3; break;     // + TBC
-                default: r.Invalidate(); return;
+            for (auto& axis : keys.xyzRotation) axis = ReadNifFloatKeyGroup(r);
+        } else if (keys.rotationType >= 1 && keys.rotationType <= 3) {
+            keys.quaternionRotation.reserve(numRotationKeys);
+            for (std::uint32_t i = 0; i < numRotationKeys && r.Ok(); ++i) {
+                KfQuatKey k;
+                k.time = r.F32();
+                k.value.w = r.F32(); k.value.x = r.F32(); k.value.y = r.F32(); k.value.z = r.F32();
+                if (keys.rotationType == 3) { k.tension = r.F32(); k.bias = r.F32(); k.continuity = r.F32(); }
+                keys.quaternionRotation.push_back(k);
             }
-            r.Skip(static_cast<std::size_t>(numRotationKeys) * perKeyFloats * 4);
+        } else {
+            r.Invalidate();
+            return keys;
         }
     }
-    SkipKeyGroup(r, 3); // Translation (Vector3)
-    SkipKeyGroup(r, 1); // Scale (Skalar)
+    keys.translation = ReadNifVec3KeyGroup(r);
+    keys.scale = ReadNifFloatKeyGroup(r);
+    return keys;
 }
 
 // NiTimeController-Basis (gemeinsam für alle Controller-Typen): next_controller(Ref,i32) +
@@ -1682,12 +1725,27 @@ NifTextureTransformControllerState ParseNiTextureTransformController(ByteReader&
 // Override-Bewegung", empirisch an AdlF_Flower.nif bestätigt (Rotation blieb dort Identität
 // 1,0,0,0, Translation/Scale beide -FLT_MAX). data_ref zeigt exakt auf die folgende
 // NiTransformData.
-void SkipNiTransformInterpolator(ByteReader& r) {
-    r.Skip(12); // translation
-    r.Skip(16); // rotation (quaternion)
-    r.Skip(4);  // scale
-    r.I32();    // data ref
+struct NifTransformInterpolatorState {
+    KfTransform pose;
+    bool hasTranslation = false, hasRotation = false, hasScale = false;
+    std::int32_t dataRef = -1;
+};
+
+NifTransformInterpolatorState ParseNiTransformInterpolator(ByteReader& r) {
+    // -FLT_MAX markiert einen nicht gesetzten Kanal.
+    const auto valid = [](float v) { return std::isfinite(v) && v > -3.0e38f; };
+    NifTransformInterpolatorState s;
+    s.pose.translation.x = r.F32(); s.pose.translation.y = r.F32(); s.pose.translation.z = r.F32();
+    s.pose.rotation.w = r.F32(); s.pose.rotation.x = r.F32(); s.pose.rotation.y = r.F32(); s.pose.rotation.z = r.F32();
+    s.pose.scale = r.F32();
+    s.dataRef = r.I32();
+    s.hasTranslation = valid(s.pose.translation.x) && valid(s.pose.translation.y) && valid(s.pose.translation.z);
+    s.hasRotation = valid(s.pose.rotation.w) && valid(s.pose.rotation.x) && valid(s.pose.rotation.y) && valid(s.pose.rotation.z);
+    s.hasScale = valid(s.pose.scale);
+    return s;
 }
+
+// Gelesen von ParseNiTransformInterpolator (oben).
 
 // NiFloatInterpolator: aktueller Wert(float) + data_ref(i32, zeigt auf NiFloatData) = 8 Byte.
 // Byte-exakt verifiziert an AdlFH_field_burn_ground.nif: value=0.5, data_ref zeigt exakt auf
@@ -2999,6 +3057,9 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
     std::unordered_map<std::uint32_t, NifParticleControllerInfo> particleControllersByBlock;
     std::unordered_map<std::uint32_t, NifTextureTransformControllerState> texTransformControllersByBlock;
     std::unordered_map<std::uint32_t, NifFlipControllerState> flipControllersByBlock;
+    std::unordered_map<std::uint32_t, NifSingleControllerState> transformControllersByBlock;
+    std::unordered_map<std::uint32_t, NifTransformInterpolatorState> transformInterpolatorsByBlock;
+    std::unordered_map<std::uint32_t, KfTransformKeys> transformDataByBlock;
     std::unordered_map<std::size_t, std::int32_t> partBaseTextureRef;      // Legacy-Alias fuer Slot 0
     std::unordered_map<std::size_t, std::array<std::int32_t, 10>> partTextureRefs; // Part -> SourceTexture-Refs je Slot
     std::unordered_map<std::size_t, std::vector<std::vector<std::int32_t>>> partFlipSourceRefs;
@@ -3353,11 +3414,11 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         } else if (type == "NiCollisionData") {
             SkipNiCollisionData(r);
         } else if (type == "NiTransformController" || type == "NiKeyframeController") {
-            SkipNiTransformController(r);
+            transformControllersByBlock[blockIdx] = ParseNiSingleController(r);
         } else if (type == "NiTransformInterpolator") {
-            SkipNiTransformInterpolator(r);
+            transformInterpolatorsByBlock[blockIdx] = ParseNiTransformInterpolator(r);
         } else if (type == "NiTransformData" || type == "NiKeyframeData") {
-            SkipNiTransformData(r);
+            transformDataByBlock[blockIdx] = ParseNiTransformData(r);
         } else if (type == "NiAlphaController") {
             // NiAlphaController ist wie NiTransformController ein NiSingleInterpController
             // mit exakt derselben 30-Byte-Basis (next_controller/flags/frequency/phase/start/
@@ -4998,6 +5059,68 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 parent = static_cast<std::size_t>(parent) < parentOf2.size()
                     ? parentOf2[static_cast<std::size_t>(parent)] : -1;
             }
+        }
+
+        // Eingebettete Knoten-Animationen: NiTransformController.target zeigt auf einen Scene-Block.
+        // Für jeden Part, auf dessen Kette (Geometrie -> Wurzel) ein animierter Block liegt, wird
+        // diese Kette in nodeAnimation übernommen (Eltern vor Kindern) und part.animNode gesetzt.
+        {
+            std::unordered_map<std::int32_t, std::int32_t> trackOfScene;
+            for (const auto& [block, ctrl] : transformControllersByBlock) {
+                if (ctrl.targetRef < 0 || static_cast<std::size_t>(ctrl.targetRef) >= scene.size()) continue;
+                const auto ii = transformInterpolatorsByBlock.find(static_cast<std::uint32_t>(ctrl.interpolatorRef));
+                if (ii == transformInterpolatorsByBlock.end()) continue;
+                NifNodeTrack track;
+                const auto di = transformDataByBlock.find(static_cast<std::uint32_t>(ii->second.dataRef));
+                if (di != transformDataByBlock.end()) track.keys = di->second;
+                track.pose = ii->second.pose;
+                track.poseTranslation = ii->second.hasTranslation;
+                track.poseRotation = ii->second.hasRotation;
+                track.poseScale = ii->second.hasScale;
+                track.flags = ctrl.flags;
+                track.frequency = ctrl.frequency;
+                track.phase = ctrl.phase;
+                track.startTime = ctrl.startTime;
+                track.stopTime = ctrl.stopTime;
+                const bool animated = !track.keys.translation.keys.empty() || !track.keys.scale.keys.empty() ||
+                                      !track.keys.quaternionRotation.empty() || !track.keys.xyzRotation[0].keys.empty() ||
+                                      !track.keys.xyzRotation[1].keys.empty() || !track.keys.xyzRotation[2].keys.empty();
+                if (!animated || trackOfScene.contains(ctrl.targetRef)) continue;
+                trackOfScene[ctrl.targetRef] = static_cast<std::int32_t>(model.nodeAnimation.tracks.size());
+                model.nodeAnimation.tracks.push_back(std::move(track));
+            }
+            std::unordered_map<int, std::int32_t> animOfScene;
+            std::function<std::int32_t(int, int)> addNode = [&](int block, int depth) -> std::int32_t {
+                if (const auto it = animOfScene.find(block); it != animOfScene.end()) return it->second;
+                const int parentBlock = depth < 64 ? parentOf2[static_cast<std::size_t>(block)] : -1;
+                const std::int32_t parent = parentBlock >= 0 ? addNode(parentBlock, depth + 1) : -1;
+                NifAnimNode node;
+                node.parent = parent;
+                const SceneNode& sn = scene[static_cast<std::size_t>(block)];
+                if (sn.present) {
+                    node.rotation = sn.rotation;
+                    node.tx = sn.translation.x;
+                    node.ty = sn.translation.y;
+                    node.tz = sn.translation.z;
+                    node.scale = sn.scale;
+                }
+                if (const auto t = trackOfScene.find(block); t != trackOfScene.end()) node.track = t->second;
+                const auto index = static_cast<std::int32_t>(model.nodeAnimation.nodes.size());
+                model.nodeAnimation.nodes.push_back(node);
+                animOfScene[block] = index;
+                return index;
+            };
+            if (!trackOfScene.empty()) {
+                for (std::size_t p = 0; p < model.parts.size() && p < partGeometryBlock.size(); ++p) {
+                    if (partGeometryBlock[p] < 0 || model.parts[p].skinned) continue;
+                    bool animatedChain = false;
+                    int guard = 0;
+                    for (int b = partGeometryBlock[p]; b >= 0 && guard++ < 64; b = parentOf2[static_cast<std::size_t>(b)])
+                        if (trackOfScene.contains(b)) { animatedChain = true; break; }
+                    if (animatedChain) model.parts[p].animNode = addNode(partGeometryBlock[p], 0);
+                }
+            }
+            if (model.nodeAnimation.nodes.empty()) model.nodeAnimation.tracks.clear();
         }
 
         // Skin bindings now receive stable exported node indices. A missing mapping is kept as

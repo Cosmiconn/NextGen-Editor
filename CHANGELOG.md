@@ -1,3 +1,23 @@
+## Code — main.cpp split into modules
+- `src/app/main.cpp` (24,000 lines in one file) now only holds the program entry. The editor code lives in 27 topic modules under `src/app/editor/` (SHN editor, quest editor, portals, NPC editor, new-map wizard, skill editor, map check, 2D view, 3D viewport, workspace panels, NIF inspector, drop editor, automation and more). `EditorShared.hpp` has the shared types (`EditorState`) and the declarations of all editor functions, in the order of their definitions.
+- No behaviour change: function bodies are moved unchanged (only `static`/default arguments moved to the declarations). The editor code now sits in `namespace nge` instead of an anonymous namespace.
+- Compiles in parallel: the full editor rebuild takes about 1:45 min on 8 cores instead of one long single-file compile, and a change in one area only recompiles its module.
+- Checked: all 44 tests pass, Roumen opens and saves byte-identical, node animation and statistics overlay work in the editor, MinGW Windows build links. `test_manual` now takes several source files.
+
+## Viewport — skip objects outside the view
+- The object renderer tests every model part against the view frustum (world bounding box of the part, including its animation) and skips parts that lie completely outside. Billboards are never skipped.
+- The statistics overlay shows parts drawn, parts skipped and the CPU time of the object pass.
+- Checked on Roumen (overview, 1212 parts): 700 parts skipped, object CPU time 20 ms -> 11-13 ms; the 3D image is pixel-identical with culling on and off (also on Uruga at street level).
+- Core: `core/ViewCulling` with `test_view_culling` (perspective and orthographic planes, rotated/scaled boxes). Automation: `culling on|off`, `renderstats`.
+
+## Objects — animations from the NIF play in the 3D view
+- Map objects with embedded node animation (NiTransformController -> NiTransformInterpolator -> NiTransformData) now move in the 3D view: windmill blades, boats, signs, the Roumen lighthouse light. 55 of the 62 field NIFs with such controllers get animated parts; the remaining 7 only animate particle emitters or nodes without geometry.
+- Time follows Gamebryo: scene time x frequency + phase, then loop, reverse or clamp in [start, stop]. Keys: linear, constant, quadratic (Hermite with the stored tangents), TBC (Kochanek-Bartels) and XYZ rotation; quaternion TBC is interpolated spherically.
+- Each animated part gets one matrix per frame (animated world transform x inverse bind transform), computed once per model and shared by all instances, so the cost does not grow with the number of placed objects.
+- Show > "Object animations" turns it off (saved in the workspace settings). Selection and ray hits keep using the rest pose.
+- Checked on Bera: the windmill's main and side rotors turn about their axles and stay on the hub (t = 0 s vs 0.55 s).
+- Core: `core/NifNodeAnimation`, `NifMeshPart::animNode`, `NifModel::nodeAnimation`; `test_nif_node_animation` (controller time, interpolation, hierarchy and frame conversion, real `rou_lighthouse.nif` and `dogAnd.nif`). Automation: `objectanim on|off`, `animtime <s>|off`, `selectmodel <part of path> [n]`.
+
 ## Terrain — path tool (spline)
 - New in the Terrain tool: click control points in 2D/3D (Catmull-Rom curve, drawn in yellow in the 2D view), then flatten the terrain into a path of a given width with a soft edge (the path height follows the terrain, smoothed along the path), paint a texture layer along it, or place a model at a fixed spacing (centre, left, right or both sides, rotated along the path) for fences or lanterns. Each action is one undo step.
 - Checked on Roumen: a three-point path of 2807 units flattens 248 height points, paints 490 mask pixels and places 22 trees on both sides.

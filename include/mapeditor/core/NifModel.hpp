@@ -22,6 +22,8 @@
 // Aufrufer sollte in diesem Fall auf den Platzhalter-Marker zurückfallen (siehe
 // ObjectMarkerRenderer), nicht abstürzen.
 
+#include "mapeditor/core/NifNodeAnimation.hpp"
+
 #include <array>
 #include <cstdint>
 #include <expected>
@@ -647,6 +649,9 @@ struct NifMeshPart {
     float lodNear = 0.0f;
     float lodFar = 0.0f;
     NifVec3 lodCenter{};
+    // Index in NifModel::nodeAnimation.nodes, wenn ein Knoten der Kette per NiTransformController
+    // animiert ist (-1 = statisch).
+    std::int32_t animNode = -1;
 };
 
 // Scene-Graph-Knoten (z.B. Skelett-Knochen "Bip01 Head"). Neben der bisherigen
@@ -699,6 +704,7 @@ struct NifModel {
     // Exact controller block types encountered in this NIF. Kept independently from
     // modifier wiring so the ResMap renderer can prove controller coverage corpus-wide.
     std::vector<std::string> particleControllerTypes;
+    NifNodeAnimation nodeAnimation; // eingebettete NiTransformController (siehe NifNodeAnimation.hpp)
     std::vector<NifNodeInfo> nodes; // NiNode-Hierarchie inkl. lokaler Bind-Transforms; Namen können bei reinen Hierarchie-Knoten leer sein.
 };
 

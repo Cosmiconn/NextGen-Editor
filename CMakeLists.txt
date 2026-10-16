@@ -50,6 +50,8 @@ add_library(mapeditor_core
     src/core/NifModel.cpp
     src/core/KfmFile.cpp
     src/core/KfAnimation.cpp
+    src/core/NifNodeAnimation.cpp
+    src/core/ViewCulling.cpp
     src/core/NifAnimationPose.cpp
     src/core/TextureLayerStack.cpp
     src/core/TexturePaintOps.cpp
@@ -172,8 +174,40 @@ if(NEXTGEN_EDITOR_BUILD_GUI)
 find_package(imgui CONFIG REQUIRED)
 find_package(imguizmo CONFIG REQUIRED)
 
+# Editor-Module (vormals alles in main.cpp); gemeinsame Deklarationen in src/app/editor/EditorShared.hpp.
+set(NEXTGEN_EDITOR_MODULES
+    src/app/editor/EditorCore.cpp
+    src/app/editor/MapDocument.cpp
+    src/app/editor/ObjectEditing.cpp
+    src/app/editor/MapFiles.cpp
+    src/app/editor/UiWidgets.cpp
+    src/app/editor/ShnEditor.cpp
+    src/app/editor/ProjectScreens.cpp
+    src/app/editor/AssetThumbnails.cpp
+    src/app/editor/QuestEditor.cpp
+    src/app/editor/PortalEditor.cpp
+    src/app/editor/NpcEditor.cpp
+    src/app/editor/NewMapWizard.cpp
+    src/app/editor/CreatureWizard.cpp
+    src/app/editor/SkillEditor.cpp
+    src/app/editor/HelpAndShortcuts.cpp
+    src/app/editor/MapCheckWindow.cpp
+    src/app/editor/ToolPanels.cpp
+    src/app/editor/WalkAndVisibility.cpp
+    src/app/editor/BrushTools.cpp
+    src/app/editor/Editor2DView.cpp
+    src/app/editor/Viewport3D.cpp
+    src/app/editor/WorkspacePanels.cpp
+    src/app/editor/NifInspector.cpp
+    src/app/editor/DropEditor.cpp
+    src/app/editor/InterfaceWorkspace.cpp
+    src/app/editor/MapWorkspace.cpp
+    src/app/editor/Automation.cpp
+)
+
 add_executable(map_editor
     src/app/main.cpp
+    ${NEXTGEN_EDITOR_MODULES}
     src/app/KfmPanel.cpp
     src/app/Camera.cpp
     src/app/Renderer.cpp
@@ -206,7 +240,7 @@ target_link_libraries(map_editor PRIVATE
     OpenGL::GL
 )
 if (WIN32)
-    # Für den nativen "Ordner wählen"-Dialog (SHBrowseForFolder/CoTaskMemFree) in main.cpp.
+    # Für den nativen "Ordner wählen"-Dialog (SHBrowseForFolder/CoTaskMemFree) in editor/MapFiles.cpp.
     target_link_libraries(map_editor PRIVATE Shell32 Ole32 Windowscodecs)
 endif()
 endif() # NEXTGEN_EDITOR_BUILD_GUI
@@ -305,6 +339,16 @@ add_test(NAME kf_animation COMMAND test_kf_animation
 add_executable(test_nif_animation_pose tests/test_nif_animation_pose.cpp)
 target_link_libraries(test_nif_animation_pose PRIVATE mapeditor_core)
 add_test(NAME nif_animation_pose COMMAND test_nif_animation_pose)
+
+add_executable(test_view_culling tests/test_view_culling.cpp)
+target_link_libraries(test_view_culling PRIVATE mapeditor_core)
+add_test(NAME view_culling COMMAND test_view_culling)
+
+add_executable(test_nif_node_animation tests/test_nif_node_animation.cpp)
+target_link_libraries(test_nif_node_animation PRIVATE mapeditor_core)
+add_test(NAME nif_node_animation COMMAND test_nif_node_animation
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/rou_lighthouse.nif
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/dogAnd.nif)
 
 add_executable(test_packed_images tests/test_packed_images.cpp)
 target_link_libraries(test_packed_images PRIVATE mapeditor_core)
@@ -408,6 +452,7 @@ if(NEXTGEN_EDITOR_BUILD_GUI)
 # (NPC-Blickrichtung: Vorzeichen/Versatz).
 add_executable(test_npc_orientation
     tests/test_npc_orientation.cpp
+    ${NEXTGEN_EDITOR_MODULES}
     src/app/KfmPanel.cpp
     src/app/Camera.cpp
     src/app/Renderer.cpp
