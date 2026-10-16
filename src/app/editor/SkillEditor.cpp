@@ -771,6 +771,27 @@ void DrawSkillEditor(EditorState& state) {
         for (const auto& line : ed.report) ImGui::TextWrapped("%s", line.c_str());
         ImGui::Separator();
 
+        // --- Icon (ActiveSkillView IconFile/IconIndex) mit Atlas-Picker
+        {
+            const std::string iconFile = TrimAscii(SkillCellRead(state, d, skilled::Doc::View, "IconFile", sel));
+            int iconIndex = std::atoi(SkillCellRead(state, d, skilled::Doc::View, "IconIndex", sel).c_str());
+            DrawAtlasIcon(state, iconFile, iconIndex, 40.0f);
+            ImGui::SameLine();
+            ImGui::BeginGroup();
+            ImGui::Text("%s  %s #%d", L("Icon:", "Icon:"), iconFile.c_str(), iconIndex);
+            if (UI::Button(state.skillIconPickerOpen ? L("Icon-Auswahl schließen", "Close icon picker")
+                                                     : L("Icon wählen...", "Choose icon...")))
+                state.skillIconPickerOpen = !state.skillIconPickerOpen;
+            ImGui::EndGroup();
+            if (state.skillIconPickerOpen && !iconFile.empty()) {
+                ImGui::TextDisabled("%s", L("Klick auf ein Icon setzt IconIndex (Client und Server). Den Atlas wählt das Feld 'Icon-Datei'.",
+                                            "Click an icon to set IconIndex (client and server). The atlas is chosen by the 'Icon file' field."));
+                if (DrawIconAtlasPicker(state, iconFile, iconIndex))
+                    SkillCellWrite(state, d, skilled::Doc::View, "IconIndex", sel, std::to_string(iconIndex));
+            }
+            ImGui::Separator();
+        }
+
         // --- Formular
         for (const auto& sec : skilled::kSections) {
             if (!UI::CollapsingHeader(de ? sec.titleDe : sec.titleEn, sec.defaultOpen ? ImGuiTreeNodeFlags_DefaultOpen : 0)) continue;

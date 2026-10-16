@@ -952,6 +952,10 @@ void DrawShopEditorPopup(EditorState& state) {
                                 if (!known) ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(150, 40, 40, 255));
                                 else if (isEmpty) ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(45, 50, 58, 255));
                                 const std::string slotLabel = isEmpty ? L("(leer)","(empty)") : v;
+                                if (!isEmpty) {
+                                    DrawItemIconByInx(state, v, ImGui::GetFrameHeight());
+                                    ImGui::SameLine(0.0f, 3.0f);
+                                }
                                 if (UI::Button(slotLabel.c_str(), ImVec2(-1.0f, 0.0f))) {
                                     state.shopPickTable = static_cast<int>(t);
                                     state.shopPickRow = static_cast<int>(ri);

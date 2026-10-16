@@ -1204,6 +1204,8 @@ void DrawQuestEditor(EditorState& state) {
                 ImGui::TableSetColumnIndex(3);
                 if (it.active != 0 || it.id != 0) {
                     auto r = ResolveItemNameForQuest(state, it.id);
+                    DrawItemIconById(state, it.id, ImGui::GetTextLineHeight());
+                    ImGui::SameLine();
                     ImGui::TextColored(r.second ? kOk : kBad, "%s", r.first.c_str());
                     if (r.second && it.id != 0) {
                         ImGui::SameLine();
@@ -1332,6 +1334,8 @@ void DrawQuestEditor(EditorState& state) {
                 ImGui::TableSetColumnIndex(4);
                 if (e.type == 2) {
                     const auto r = ResolveItemNameForQuest(state, e.ItemId());
+                    DrawItemIconById(state, e.ItemId(), ImGui::GetTextLineHeight());
+                    ImGui::SameLine();
                     ImGui::TextColored(r.second ? kOk : kBad, "%s", r.first.c_str());
                     if (r.second) {
                         ImGui::SameLine();

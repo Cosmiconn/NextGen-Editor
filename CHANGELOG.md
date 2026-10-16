@@ -1,3 +1,13 @@
+## Data editors — item and skill icons
+- Icons from the client atlases are shown in the data editors: `resmenu\Icon\<IconFile>.dds`, 32×32 cells numbered row by row (`IconIndex` 0 = top left), with the project override before the client. The layout was checked on `ItemEqu000.dds`: 0 LeatherHelmet, 1 LeatherBoots, 2 LeatherPants, 3 LeatherShirt, 4 ChainHelmet, 8 LitanyHelmet. Hovering shows a larger version with atlas name and index.
+- Where they appear:
+  - Quest rewards and quest item rewards: icon before the item name.
+  - Drop table: up to six icons per drop group.
+  - Merchant slots: icon before the item.
+  - Skill editor: the skill's icon above the form. "Choose icon..." shows the whole atlas; a click sets `IconIndex` on client and server.
+- Items are mapped through `ItemViewInfo.shn` (InxName → IconFile/IconIndex).
+- Core: `core/legacy/IconAtlas` (cell for an index, capacity, path, DDS size from the header), with `test_icon_atlas` (optionally against the original `ItemEqu000.dds`). Automation: `skill <id> [picker]`.
+
 ## Portals — town portal images
 - The client's town portal list loads `resmenu\TownPortal\<MapName>.DDS` and `<MapName>_disable.DDS` (from `Fiesta.bin`). The originals supplied by the user are perspective captures of the arrival point: 256×256 DXT5 with mipmaps, rounded corners in the alpha channel (radius about 25 px). The `_disable` variant is the same picture desaturated and darkened; measured on six pairs it keeps about 45 % of the saturation and 80 % of the brightness.
 - The portal editor shows both images for the map's town portal target (project before client). "Generate portal images" captures the arrival point from an adjustable view direction (offscreen, with sky and fog) and writes both files in that format to `<Project>/Client/resmenu/TownPortal/`. Adding a town portal target generates missing images automatically.

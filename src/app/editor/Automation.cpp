@@ -304,6 +304,12 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         std::printf("[saveall] %s\n", report.c_str());
         std::fflush(stdout);
     }
+    else if (cmd == "skill") {
+        // skill <ID> [picker]: Skill im Skill-Editor wählen, optional den Icon-Atlas öffnen.
+        long long id = 0; std::string opt; in >> id >> opt;
+        state.skill.selectedId = id;
+        state.skillIconPickerOpen = opt == "picker";
+    }
     else if (cmd == "shop") {
         // shop <NPC-InxName>: öffnet den Händler-Inventar-Editor (Karte im NPC-Modus nötig).
         std::string npc; in >> npc;
@@ -498,6 +504,24 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
     else if (cmd == "surfacesnap") onOff(state.surfaceSnap);
     else if (cmd == "glow") onOff(state.viewportGlow);
     else if (cmd == "objectanim") onOff(state.viewportObjectAnimation);
+    else if (cmd == "capture") {
+        // capture <datei.ppm> <größe> <x> <y(server)> <yaw> <pitch> <abstand> [höhe über Boden]:
+        // Offscreen-Aufnahme wie die Portalbilder (mit Himmel und Nebel), für Vergleiche mit Client-Bildern.
+        std::string file; std::uint32_t size = 256; float x = 0, y = 0, yaw = 0, pitch = 0.3f, dist = 950, lift = 90;
+        in >> file >> size >> x >> y >> yaw >> pitch >> dist;
+        in >> lift;
+        const float ground = state.heightmap.Width() > 1 ? state.heightmap.SampleWorld(x, y) : 0.0f;
+        app::OrbitCamera cam;
+        cam.SetTarget(x, ground + lift, y);
+        cam.SetDistance(dist);
+        cam.SetOrientation(yaw, pitch);
+        const auto rgba = CaptureSceneRgba(state, cam, size, true, true, true);
+        std::ofstream out(file, std::ios::binary);
+        out << "P6\n" << size << " " << size << "\n255\n";
+        for (std::size_t i = 0; i + 3 < rgba.size(); i += 4) out.write(reinterpret_cast<const char*>(&rgba[i]), 3);
+        std::printf("[capture] %s %zu\n", file.c_str(), rgba.size());
+        std::fflush(stdout);
+    }
     else if (cmd == "townportal") {
         // townportal add | images [yaw]: Ziel für die offene Karte anlegen bzw. Bilder des ersten Ziels erzeugen.
         std::string sub; in >> sub;

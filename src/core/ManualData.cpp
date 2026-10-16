@@ -520,6 +520,7 @@ Whether the game accepts self-created entries has not been verified.)MAN",
      R"MAN(Ein Skill ist eine STUFE einer Skillreihe (TripleHit14 = Reihe TripleHit, Stufe 14). Er steckt in ActiveSkill (Client+Server), ActiveSkillInfoServer und ActiveSkillView (Client+Server); lernbare Skills haben ein Skillbuch-Item mit gleichem InxName.
 # Ändern
 Liste links (Suche nach Name, InxName oder ID), Formular rechts in Bereichen: Grunddaten, Kosten und Zeiten, Schaden, Bewegung/Ziele, Server-Werte, Darstellung, Zustände (Buffs/Debuffs) und 'Alle übrigen Spalten (roh)'. Jede Änderung wird sofort in ALLE Kopien (Client und Server) geschrieben. Der InxName eines vorhandenen Skills bleibt fest.
+Icon: Über dem Formular steht das Icon des Skills (ActiveSkillView IconFile/IconIndex, Bild aus resmenu/Icon/<IconFile>.dds, Projekt vor Client). 'Icon wählen...' zeigt den ganzen Atlas; ein Klick setzt IconIndex in Client und Server. Die Datenblätter zeigen Item-Icons ebenso: Quest-Belohnungen, Drop-Gruppen und die Händler-Slots (aus ItemViewInfo.shn).
 # Neu aus Vorhandenem
 - 'Neuen Skill aus diesem anlegen': klont alle Zeilen (Werte, Server-Werte, Darstellung) mit neuer ID und neuem InxName; optional mit Skillbuch-Item (neue Item-ID).
 - 'Nächste Stufe anlegen': legt <Reihe><Stufe+1> an, Voraussetzungs-Skill = dieser Skill.
@@ -531,6 +532,7 @@ Spalten, deren Bedeutung nur aus dem Namen abgeleitet ist, tragen im Tooltip den
      R"MAN(A skill is one STEP of a skill series (TripleHit14 = series TripleHit, step 14). It lives in ActiveSkill (client+server), ActiveSkillInfoServer and ActiveSkillView (client+server); learnable skills have a skill book item with the same InxName.
 # Modify
 List on the left (search by name, InxName or ID), form on the right in areas: basics, costs and timing, damage, movement/targets, server values, presentation, states (buffs/debuffs) and 'All remaining columns (raw)'. Every change is written immediately to ALL copies (client and server). The InxName of an existing skill stays fixed.
+Icon: above the form is the skill's icon (ActiveSkillView IconFile/IconIndex, image from resmenu/Icon/<IconFile>.dds, project before client). 'Choose icon...' shows the whole atlas; a click sets IconIndex on client and server. The data editors show item icons the same way: quest rewards, drop groups and merchant slots (from ItemViewInfo.shn).
 # New from existing
 - 'Create new skill from this one': clones all rows (values, server values, presentation) with a new ID and new InxName; optionally with a skill book item (new item ID).
 - 'Create next step': creates <series><step+1>, required skill = this skill.
@@ -873,6 +875,8 @@ const TipRow kTips[] = {
     {"mit Objekten", "Objekte und Wasser in die erzeugte Minimap mitzeichnen (Himmel nie).", "Draw objects and water into the generated minimap (never the sky)."},
     {"Portalbilder erzeugen", "Nimmt den Ankunftsort des Stadtportals auf und schreibt resmenu/TownPortal/<Karte>.dds und <Karte>_disable.dds (256x256 DXT5 mit Mipmaps, abgerundete Ecken, graue Variante) ins Projekt.", "Captures the town portal's arrival point and writes resmenu/TownPortal/<map>.dds and <map>_disable.dds (256x256 DXT5 with mipmaps, rounded corners, grey variant) to the project."},
     {"Blickrichtung", "Richtung, in die die Portal-Aufnahme schaut (0 = nach Norden).", "Direction the portal capture looks in (0 = north)."},
+    {"Icon wählen...", "Zeigt den Icon-Atlas (resmenu/Icon/<Icon-Datei>.dds); ein Klick auf ein Icon setzt IconIndex.", "Shows the icon atlas (resmenu/Icon/<icon file>.dds); clicking an icon sets IconIndex."},
+    {"Icon-Auswahl schließen", "Blendet den Icon-Atlas wieder aus.", "Hides the icon atlas again."},
 };
 
 const ColumnDoc kColumns[] = {

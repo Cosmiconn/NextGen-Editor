@@ -526,6 +526,10 @@ void DrawDropTableEditor(EditorState& state) {
                     std::string qty;
                     if (rows && !rows->empty()) qty = rows->front().minQty + "-" + rows->front().maxQty;
                     ImGui::BeginGroup();
+                    for (std::size_t i = 0; i < items.size() && i < 6; ++i) {
+                        DrawItemIconByInx(state, items[i], ImGui::GetTextLineHeight());
+                        ImGui::SameLine(0.0f, 2.0f);
+                    }
                     if (items.size() == 1) ImGui::TextUnformatted(state.dropGroups.DisplayName(items.front()).c_str());
                     else ImGui::Text(L("%zu Items","%zu items"), items.size());
                     if (!qty.empty()) { ImGui::SameLine(); ImGui::TextDisabled(L("· Menge %s","· qty %s"), qty.c_str()); }

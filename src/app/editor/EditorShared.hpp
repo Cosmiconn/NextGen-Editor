@@ -658,6 +658,12 @@ struct EditorState {
     std::vector<ShopItemEntry> itemEntries;                  // aus ItemInfo.shn, nach InxName sortiert
     std::unordered_map<std::string, std::size_t> itemByInx;  // InxName -> Index in itemEntries
     bool itemLookupTried = false;
+    std::unordered_map<long long, std::string> itemInxById;            // ItemInfo ID -> InxName (für Icons)
+    // Icons (resmenu/Icon): InxName -> (IconFile, IconIndex) aus ItemViewInfo.shn, Atlasgrößen je Pfad.
+    std::unordered_map<std::string, std::pair<std::string, int>> itemIconByInx;
+    bool itemIconsTried = false;
+    std::unordered_map<std::string, std::pair<std::uint32_t, std::uint32_t>> iconAtlasSizes;
+    bool skillIconPickerOpen = false;
     int shopPickTable = -1, shopPickRow = -1, shopPickCol = -1;
     bool shopPickRequested = false;
     char shopItemFilter[128] = "";
@@ -2048,6 +2054,14 @@ std::filesystem::path GameResmenuPath(EditorState& state, const std::string& rel
 // Stadtportal-Bilder <MapName>.dds und _disable.dds für ein Ziel (Weltposition x / Server-y) ins Projekt.
 bool GenerateTownPortalImages(EditorState& state, const std::string& mapName, float x, float y,
                               std::vector<std::string>& report);
+// Item-/Skill-Icons (IconTools.cpp).
+void EnsureItemIcons(EditorState& state);
+std::optional<std::pair<std::string, int>> ItemIconForInx(EditorState& state, const std::string& inx);
+std::optional<std::pair<std::string, int>> ItemIconForId(EditorState& state, long long id);
+bool DrawAtlasIcon(EditorState& state, const std::string& iconFile, int index, float size);
+bool DrawItemIconByInx(EditorState& state, const std::string& inx, float size);
+bool DrawItemIconById(EditorState& state, long long id, float size);
+bool DrawIconAtlasPicker(EditorState& state, const std::string& iconFile, int& index);
 bool ScatterAtWorld(EditorState& state, float worldX, float worldZ);
 std::filesystem::path PrefabDir(const EditorState& state);
 bool PlacePrefabAtWorld(EditorState& state, float worldX, float worldZ);

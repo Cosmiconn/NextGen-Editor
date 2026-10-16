@@ -87,6 +87,7 @@ add_library(mapeditor_core
     src/core/legacy/NewMapFromTemplate.cpp
     src/core/legacy/Minimap.cpp
     src/core/legacy/TownPortalImage.cpp
+    src/core/legacy/IconAtlas.cpp
     src/core/legacy/MapRenderSettings.cpp
     src/core/legacy/LegacyMapProject.cpp
 )
@@ -207,6 +208,7 @@ set(NEXTGEN_EDITOR_MODULES
     src/app/editor/MapWorkspace.cpp
     src/app/editor/Automation.cpp
     src/app/editor/MinimapTools.cpp
+    src/app/editor/IconTools.cpp
 )
 
 add_executable(map_editor
@@ -351,6 +353,10 @@ add_test(NAME dds_write COMMAND test_dds_write "${NEXTGEN_NA2016_DATA}")
 add_executable(test_minimap tests/test_minimap.cpp)
 target_link_libraries(test_minimap PRIVATE mapeditor_core)
 add_test(NAME minimap COMMAND test_minimap)
+
+add_executable(test_icon_atlas tests/test_icon_atlas.cpp)
+target_link_libraries(test_icon_atlas PRIVATE mapeditor_core)
+add_test(NAME icon_atlas COMMAND test_icon_atlas "${NEXTGEN_NA2016_DATA}")
 
 add_executable(test_view_culling tests/test_view_culling.cpp)
 target_link_libraries(test_view_culling PRIVATE mapeditor_core)
