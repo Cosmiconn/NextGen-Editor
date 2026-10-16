@@ -1,3 +1,14 @@
+## Renderer — client comparison with the full NA2016 resmap
+- Compared against the user's game screenshots (Roumen town, RouN harbour), the original town portal images (`Rou`, `Bera`) and the complete `resmap` folder (used locally only, not committed). Each change below was kept only because it brings the picture measurably closer; details and numbers in `docs/RENDERER.md` §5.
+- Embedded NIF textures were drawn upside down: `NiPixelData` is stored top-down and NIF UVs follow Direct3D, but the parser flipped them a second time. Fixed; external DDS/TGA/BMP files used by NIFs are turned the same way. The magic circle at the Roumen fountain is now a ring like in the portal image, and signs stand upright.
+- Hidden helper geometry (`APP_CULLED` on a node or mesh) is no longer drawn, for example the grey and white helper surfaces in `RouN_Rocks.nif` and the helper boxes in trees. Mesh particle templates stay.
+- NIF lighting follows the fixed-function pipeline: the texture now multiplies the whole lighting, emission included. `NiVertexColorProperty` mode `LIGHTING_E` lights with emission only. The RouN rocks show their texture and baked shading instead of white, and the light rays are faint again.
+- No specular highlight without `NiSpecularProperty` (the Gamebryo default). The Roumen roofs are matte instead of metallic.
+- The sky dome (`field_sky_01.nif`, built around the origin) follows the camera instead of standing at the map corner.
+- Light direction is horizontal along +X; the sun direction is in no map file. Flat ground now gets only `GlobalLight`. Roumen grass measures 108/133/49 against 107/139/43 in the game (before: 135/166/61). Bera is also closer.
+- `capture` accepts `<width>x<height>`; the offscreen capture `CaptureSceneRgba` takes any size.
+- New test `test_nif_client_render_state` (APP_CULLED, specular default and texture orientation on Roumen models).
+
 ## Data editors — item and skill icons
 - Icons from the client atlases are shown in the data editors: `resmenu\Icon\<IconFile>.dds`, 32×32 cells numbered row by row (`IconIndex` 0 = top left), with the project override before the client. The layout was checked on `ItemEqu000.dds`: 0 LeatherHelmet, 1 LeatherBoots, 2 LeatherPants, 3 LeatherShirt, 4 ChainHelmet, 8 LitanyHelmet. Hovering shows a larger version with atlas name and index.
 - Where they appear:

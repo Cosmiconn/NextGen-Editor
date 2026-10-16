@@ -41,6 +41,14 @@ inline SceneLighting SceneLightingFromEnvironment(const core::SceneEnvironment& 
         l.background[c] = std::clamp(env.backgroundColor[c], 0.0f, 1.0f);
     }
     l.backgroundFromMapData = true;
+    // Die Sonnenrichtung steht in keiner Kartendatei (GlobalLight.nif der Adl-Karten enthält nur
+    // lokale AmbLight-Zonen). Ein NiDirectionalLight ohne Rotation leuchtet entlang +X, also
+    // waagerecht: flacher Boden erhält nur GlobalLight. Gemessen an Rou (Stadt-Screenshot und
+    // Portalbild): Grasfarbe (108,133,49) zu Original (107,139,43); mit der früheren steilen
+    // Editor-Richtung (135,166,61). Der Azimut ist aus den Bildern nicht eindeutig bestimmbar.
+    l.lightDir[0] = 1.0f;
+    l.lightDir[1] = 0.0f;
+    l.lightDir[2] = 0.0f;
     // Bewusst nicht "far" nennen: <windows.h> definiert near/far als Makros.
     const float viewDistance = env.frustumFar > 1.0f && std::isfinite(env.frustumFar) ? env.frustumFar : 5000.0f;
     const float depth = std::clamp(env.fog[0], 0.0f, 1.0f);

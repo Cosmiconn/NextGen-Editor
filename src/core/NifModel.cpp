@@ -305,12 +305,13 @@ struct AVObjectBase {
     std::array<float, 9> rotation{};
     float scale = 1.0f;
     std::vector<std::int32_t> properties;
+    std::uint16_t flags = 0; // NiAVObject-Flags; Bit 0 = APP_CULLED (im Spiel unsichtbar)
 };
 
 AVObjectBase ParseAVObjectBase(ByteReader& r) {
     AVObjectBase base;
     base.net = ParseObjectNetBase(r);
-    r.U16(); // flags
+    base.flags = r.U16();
     base.translation = {r.F32(), r.F32(), r.F32()};
     for (float& v : base.rotation) v = r.F32();
     base.scale = r.F32();
@@ -2476,19 +2477,6 @@ std::shared_ptr<const NifEmbeddedTexture> ParseNiPixelData(
         decodedFaces[face] = std::move(*decoded);
     }
 
-    const auto flipVertical = [](DdsImage& image) {
-        const std::size_t rowBytes = static_cast<std::size_t>(image.width) * 4;
-        std::vector<std::uint8_t> row(rowBytes);
-        for (std::uint32_t y = 0; y < image.height / 2; ++y) {
-            auto* a = image.rgba.data() + static_cast<std::size_t>(y) * rowBytes;
-            auto* b = image.rgba.data() +
-                static_cast<std::size_t>(image.height - 1 - y) * rowBytes;
-            std::memcpy(row.data(), a, rowBytes);
-            std::memcpy(a, b, rowBytes);
-            std::memcpy(b, row.data(), rowBytes);
-        }
-    };
-
     auto out = std::make_shared<NifEmbeddedTexture>();
     out->width = top.width;
     out->height = top.height;
@@ -2498,8 +2486,10 @@ std::shared_ptr<const NifEmbeddedTexture> ParseNiPixelData(
     out->bytesPerPixel = bytesPerPixel;
     out->channels = channelInfo;
     if (faces == 1u) {
-        // Ordinary GL_TEXTURE_2D keeps the established OpenGL-V convention.
-        flipVertical(decodedFaces[0]);
+        // NiPixelData ist zeilenweise von oben nach unten gespeichert und die NIF-UVs folgen der
+        // Direct3D-Konvention (v = 0 oben). Hochgeladen mit Zeile 0 bei t = 0 und abgetastet mit
+        // t = v stimmt das ohne Spiegelung; die frühere Spiegelung stellte jede eingebettete Textur
+        // auf den Kopf (Rou: Magiekreis am Brunnen als Propeller statt Ring, Schilder kopfüber).
         out->rgba = std::move(decodedFaces[0].rgba);
     } else {
         // Cube-map faces intentionally remain in authored top-down row order, matching the
@@ -3080,6 +3070,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         bool billboard = false;
         std::uint16_t billboardMode = 0;
         std::int32_t lodDataRef = -1;
+        bool appCulled = false;
     };
     std::uint32_t materialIndex = 0;
     std::uint32_t pixelIndex = 0;
@@ -3148,6 +3139,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         sn.properties = n.base.properties;
         sn.effects = n.effects;
         sn.name = n.base.net.name;
+        sn.appCulled = (n.base.flags & 1u) != 0;
     };
 
     for (std::uint32_t blockIdx = 0; blockIdx < hdr.numBlocks; ++blockIdx) {
@@ -3456,6 +3448,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 sn.scale = psys.base.scale;
                 sn.properties = psys.base.properties;
                 sn.name = psys.base.net.name;
+                sn.appCulled = (psys.base.flags & 1u) != 0;
             }
             NifParticleSystemInfo publicSystem;
             publicSystem.blockIndex = blockIdx;
@@ -3635,6 +3628,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 sn.rotation = strips.base.rotation;
                 sn.scale = strips.base.scale;
                 sn.properties = strips.base.properties;
+                sn.appCulled = (strips.base.flags & 1u) != 0;
                 if (strips.dataRef >= 0) dataToGeometry[strips.dataRef] = blockIdx;
             }
             geomNodes.push_back({blockIdx, strips.dataRef, strips.skinInstanceRef,
@@ -4888,6 +4882,10 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             }
 
             NifMeshPart& part = model.parts[p];
+            // APP_CULLED an der Geometrie oder einem Vorfahren: der Client zeichnet den Part nicht
+            // (Kollisions-/Hilfsgeometrie, z. B. die untexturierten Felsflächen in RouN_Rocks.nif).
+            part.appCulled = false;
+            for (const int b : chain) part.appCulled = part.appCulled || scene[static_cast<std::size_t>(b)].appCulled;
 
             // NiTextureEffect is attached through NiNode::effects rather than the property
             // list. Resolve the effective child->parent chain for this geometry and preserve

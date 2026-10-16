@@ -362,6 +362,10 @@ add_executable(test_view_culling tests/test_view_culling.cpp)
 target_link_libraries(test_view_culling PRIVATE mapeditor_core)
 add_test(NAME view_culling COMMAND test_view_culling)
 
+add_executable(test_nif_client_render_state tests/test_nif_client_render_state.cpp)
+target_link_libraries(test_nif_client_render_state PRIVATE mapeditor_core)
+add_test(NAME nif_client_render_state COMMAND test_nif_client_render_state ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures)
+
 add_executable(test_nif_node_animation tests/test_nif_node_animation.cpp)
 target_link_libraries(test_nif_node_animation PRIVATE mapeditor_core)
 add_test(NAME nif_node_animation COMMAND test_nif_node_animation

@@ -1,6 +1,7 @@
 # Renderer – Stand und Datenherkunft
 
-**Stand:** 03.10.2026 · Bezug: Fiesta Online NA2016-Client (Fixtures der Karte Roumen `Rou`)
+**Stand:** 16.10.2026 · Bezug: Fiesta Online NA2016-Client (Fixtures der Karte Roumen `Rou`, vollständiger
+`resmap`-Ordner des Nutzers für den Abgleich, nicht eingecheckt)
 
 Dieses Dokument trennt strikt zwischen **aus Fiesta-Daten gelesen**, **verifiziert** und
 **Editor-Näherung**. Eine Näherung ist eine bewusste Darstellungsentscheidung des Editors, keine
@@ -52,11 +53,11 @@ Kern: `core/legacy/MapRenderSettings` + `test_map_render_settings` (gegen die ec
 
 - Mit SHMD-Umgebung (Standard): wie feste Funktionsbeleuchtung, auf 1 gesättigt.
   Terrain: `Textur × Vertexfarbe × min(1, Umgebung + Sonne·N·L)` (bei `Ground_DL_Enable=FALSE`
-  ohne Sonnenanteil); NIF: `Oberfläche × min(1, Material-Ambient·Umgebung + Sonne·N·L)` +
-  Spekular + Emission.
+  ohne Sonnenanteil); NIF: `Textur × min(1, Emission + Material-Ambient·Umgebung +
+  Material-Diffus·Sonne·N·L)` + Glow-Map (+ Spekular nur mit `NiSpecularProperty`), siehe §5.
 - Ohne SHMD-Umgebung (z. B. reine NIF-Karten): bisherige Editorformeln (`0,35 + 0,65·N·L` bzw.
   mit Vertexfarbe `0,62 + 0,55·N·L`).
-- Lichtrichtung fest (-0,4, -1, -0,3) – die Daten enthalten nur Farben, keine Richtung.
+- Lichtrichtung mit SHMD-Umgebung waagerecht entlang +X (siehe §5), sonst fest (-0,4, -1, -0,3).
 - Nebel: linear vom Auge aus, Start = `Frustum × (1 − Tiefe)`, Ende = `Frustum` (Lesart der Tiefe
   wie Gamebryos `NiFogProperty`-Depth). Im Spieltest immer aktiv, im Editor optional (bei großem
   Kameraabstand würde er sonst die ganze Karte einfärben), in Achsenansichten aus.
@@ -77,12 +78,36 @@ Alle drei sind im Viewport-Menü **Anzeigen → Darstellung** einzeln abschaltba
 
 ## 4. Offene Punkte (ehrlich)
 
-- Kein Abgleich gegen Client-Screenshots – dafür werden Referenzbilder aus dem echten NA2016-
-  Client benötigt (gleiche Kameraposition). Die Fixtures enthalten zudem nicht alle Roumen-
-  Texturen/NIFs (`L3_RE.dds`, `L7_D.dds`, `grass_01.dds` und mehrere `resmap/nifs/Common/*`
-  fehlen und erscheinen grau bzw. als Platzhalter).
-- Lichtrichtung: in SHMD/CONF nicht enthalten, daher fest. `NiFogProperty` in einzelnen NIFs
-  wird weiterhin nur übersprungen (der Kartennebel kommt aus der SHMD).
+- Abgleich bisher an Rou, RouN und Bera (§5); weitere Karten und Nachtszenen nicht geprüft.
+- Lichtrichtung: in keiner Datei enthalten; waagerecht ist gemessen, der Azimut nicht eindeutig.
+  `NiFogProperty` in einzelnen NIFs wird weiterhin nur übersprungen (der Kartennebel kommt aus
+  der SHMD).
+- Bera wirkt im Original heller und türkiser (mittlere Farbe 127/175/151 zu 157/176/156); die
+  Ursache (Glow-Formel, Nebel, Vertexfarben der Bodenmodelle) ist offen. Glow mit der jetzigen
+  Formel verschlechtert Rou deutlich und bleibt in Aufnahmen aus.
+- Die Sternenschicht `starsSmall512` der Himmelskuppel wird auch tagsüber gezeichnet
+  (Tag/Nacht-Steuerung des Clients unbekannt).
 - Proprietäre Shader, `NiTextureEffect`, `APPLY_HILIGHT2` und Partikelsimulation – siehe
   `docs/LEVEL_EDITOR_PARITY.md` §4.
 - Schatten werden nicht berechnet (die gebackenen Vertexfarben enthalten aber Terrain-Schatten).
+
+## 5. Abgleich mit dem Client (NA2016-`resmap`, Screenshots, Portalbilder)
+
+Referenzen: zwei Roumen-Stadtscreenshots (Rou), das Original-Portalbild `TownPortal/Rou.DDS`
+(Brunnenplatz), Hafen-/Platz-Screenshots (RouN) und `TownPortal/Bera.DDS`. Nachgestellt mit
+`capture <ppm> <B>x<H> <x> <y> <yaw> <pitch> <abstand> [höhe]` (Offscreen, Himmel und Nebel, ohne
+Glow); verglichen wurden Struktur (Helligkeit/Kanten) und mittlere Farben je Klasse (Gras, Dach,
+Rest). Übernommen wurde nur, was messbar näher am Original liegt.
+
+| Befund | Ursache | Änderung | Beleg |
+|---|---|---|---|
+| Eingebettete Texturen kopfüber | NiPixelData ist von oben nach unten gespeichert, NIF-UVs folgen Direct3D (v = 0 oben); der Parser spiegelte zusätzlich | keine Spiegelung mehr; externe DDS/TGA/BMP für NIFs werden in dieselbe Lage gedreht | Magiekreis am Rou-Brunnen wird zum Ring wie im Portalbild (vorher „Propeller“), Pferdekopf-Schild steht aufrecht; `test_nif_client_render_state` |
+| Graue/weiße Hilfsflächen (RouN-Felsen, Bäume) | NiAVObject-Flag `APP_CULLED` wurde ignoriert | Parts unter einem APP_CULLED-Knoten werden nicht gezeichnet (Mesh-Partikel-Vorlagen bleiben) | `RouN_Rocks.nif`: 2 von 5 Parts, `Urg_AlruinTL01.nif`: 16 Hilfsboxen |
+| Weiße Felsen, grelle Lichtstrahlen | Emission wurde ungetextet addiert; `NiVertexColorProperty`-Lichtmodus `LIGHTING_E` (nur Emission) ignoriert | ganze Beleuchtung × Textur; LIGHTING_E = `Textur × Emission` | RouN-Felsen zeigen Textur und gebackene Schatten, Lichtstrahlen dezent (Vertexfarbe ≤ 0,58, Alpha 0,2) |
+| Metallisch glänzende Dächer | ohne `NiSpecularProperty` wurde Material-Specular gezeichnet (wie NifSkope) | Gamebryo-Standard: kein Glanz ohne Property | Rou-Dächer matt wie im Screenshot |
+| Himmelskuppel als Fläche an der Kartenecke | `field_sky_01.nif` ist um den Ursprung modelliert (±4164, Unterkante +290) | Sky-Kategorie folgt der Kamera | RouN/Rou ohne Himmelsfläche über der Karte |
+| Gras/Dächer ~25 % zu hell | Sonnenrichtung steht in keiner Datei (`GlobalLight.nif` der Adl-Karten enthält nur AmbLight-Zonen); ein NiDirectionalLight ohne Rotation leuchtet entlang +X | Lichtrichtung waagerecht (+X): flacher Boden bekommt nur `GlobalLight` | Rou-Stadt: Gras 108/133/49 zu Original 107/139/43 (vorher 135/166/61), Klassenfehler 150 → 66; Bera: mittlere Abweichung 35–38 statt 53–97 |
+
+Nicht übernommen: Glow in Aufnahmen (Rou-Klassenfehler 66 → 166). Die Himmelsrichtung des Lichts
+(acht Richtungen getestet) ist zwischen Stadtscreenshot und Portalbild widersprüchlich; +X ist der
+Gamebryo-Standard und liegt in beiden nahe am Besten.
