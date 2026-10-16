@@ -177,7 +177,9 @@ On large maps (e.g. Adelia 951x476 blocks) each blend texture covers only one re
 - Falloff: Weich, Linear, Kugel, Spitz oder Konstant.
 - Radius: Pinselgröße in Welteinheiten. Stärke: wie stark pro Zug.
 - Rückgängig / Wiederholen: nehmen ganze Pinselzüge zurück.
-Unten stehen Gittergröße und Höhenbereich. Objekte und NPCs folgen der Höhe beim Neuberechnen ihrer Position; gespeicherte Objekthöhen ändern sich dadurch nicht automatisch.)MAN",
+Unten stehen Gittergröße und Höhenbereich. Objekte und NPCs folgen der Höhe beim Neuberechnen ihrer Position; gespeicherte Objekthöhen ändern sich dadurch nicht automatisch.
+Höhendaten austauschen (Datei & Fiesta Import/Export): 'Exportieren' schreibt die Heightmap als 16-Bit-Graustufen-PNG oder RAW R16 (.r16/.raw, little endian, quadratisch) für World Machine, Gaea oder Photoshop; der Höhenbereich wird auf 0..65535 abgebildet und im PNG mitgeschrieben. 'Importieren' liest PNG (8/16 Bit) oder R16 mit dem angegebenen Bereich Min..Max ('Bereich aus Datei' übernimmt ihn aus einer vom Editor exportierten PNG), rechnet bei anderer Größe bilinear um und ist ein Undo-Schritt. Bildoberkante = Norden.
+Weg (Spline): 'Punkte setzen' anhaken und in 2D/3D klicken - der Weg erscheint gelb im 2D-View. 'Terrain entlang ebnen' legt einen Weg der eingestellten Breite mit weichem Rand an; die Weghöhe folgt geglättet dem Gelände. 'Layer malen' malt den gewählten Layer entlang des Wegs, 'Objekte entlang setzen' setzt ein Modell im gewählten Abstand (Mitte, links, rechts oder beidseitig, entlang der Wegrichtung gedreht) - z.B. Zäune oder Laternen. Jede Aktion ist ein Undo-Schritt.)MAN",
      R"MAN(Edit the heightmap. Hold the left mouse button in the 2D view or the 3D viewport and move over the terrain (in the 3D viewport Alt+LMB still orbits the camera).
 - Raise / Lower: pull the terrain up or down.
 - Smooth: blends heights with the surroundings. Sharpen: the opposite, emphasizes edges and peaks.
@@ -189,7 +191,9 @@ Unten stehen Gittergröße und Höhenbereich. Objekte und NPCs folgen der Höhe 
 - Falloff: smooth, linear, spherical, tip or constant.
 - Radius: brush size in world units. Strength: how strong per stroke.
 - Undo / Redo: revert whole brush strokes.
-Below you find grid size and height range. Objects and NPCs follow the height when their position is recalculated; saved object heights do not change automatically.)MAN",
+Below you find grid size and height range. Objects and NPCs follow the height when their position is recalculated; saved object heights do not change automatically.
+Exchange height data (File & Fiesta import/export): 'Export' writes the heightmap as a 16-bit grayscale PNG or RAW R16 (.r16/.raw, little endian, square) for World Machine, Gaea or Photoshop; the height range is mapped to 0..65535 and stored in the PNG. 'Import' reads PNG (8/16 bit) or R16 with the given range Min..Max ('Range from file' takes it from a PNG the editor exported), resamples bilinearly if the size differs and is one undo step. Top edge of the image = north.
+Path (spline): tick 'Place points' and click in 2D/3D - the path appears in yellow in the 2D view. 'Flatten terrain along path' builds a path of the set width with a soft edge; the path height follows the terrain, smoothed. 'Paint layer' paints the chosen layer along the path, 'Place objects along path' places a model at the chosen spacing (centre, left, right or both, rotated along the path) - e.g. fences or lanterns. Each action is one undo step.)MAN",
      "höhenkarte heightmap gelände anheben absenken glätten einebnen rauschen noise terrassen erosion rampe schärfen falloff"},
     {"map.texturing", "map",
      "Tab Map Texturen", "Map textures tab",
@@ -198,13 +202,19 @@ Below you find grid size and height range. Objects and NPCs follow the height wh
 - Radius / Stärke: Pinsel.
 - Layer hinzufügen: Name, Diffuse-Datei ('Durchsuchen...') und UV-Scale angeben. 'Layer entfernen' löscht den gewählten Layer.
 - Rückgängig / Wiederholen für Textur-Pinselzüge.
-Einzelne Layer lassen sich im Bereich 'Sichtbarkeit' ein- und ausblenden, ohne die Daten zu ändern.)MAN",
+Einzelne Layer lassen sich im Bereich 'Sichtbarkeit' ein- und ausblenden, ohne die Daten zu ändern.
+- Gewählten Layer sperren (auch im Kontextmenü des Layer-Docks): Pinsel und Regeln ändern ihn dann nicht.
+- Nach Regeln texturieren: der gewählte Layer bekommt Gewicht, wo Neigung (z.B. 35-90° für Fels) und/oder Höhe im Bereich liegen, mit weichem Übergang. 'Nur hinzufügen' malt dazu, 'Ersetzen' überschreibt den Layer. 'Auf ganze Karte anwenden' ist ein Undo-Schritt; mit 'Pinsel malt nach dieser Regel' wirkt die Regel nur unter dem Pinsel.
+- Pinselform aus Bild (auch beim Terrain): ein Graustufen-PNG (1-16 Bit, auch Palette) oder R16 ersetzt den Falloff; weiß = volle Wirkung, Bildoberkante = Norden.)MAN",
      R"MAN(Every map has several texture layers. Each layer has a diffuse texture (image), a UV scale (tile size) and a weight per map point (blend) that you paint.
 - Select a layer (list), then paint in the 2D view or the 3D viewport: 'Increase' strengthens the layer, 'Decrease' weakens it. Every layer has its own mask; painting changes only the selected layer. Layers lie on top of each other in list order (later over earlier), as in the game.
 - Radius / Strength: brush.
 - Add layer: enter name, diffuse file ('Browse...') and UV scale. 'Remove layer' deletes the selected layer.
 - Undo / Redo for texture strokes.
-Individual layers can be shown/hidden in the 'Visibility' area without changing the data.)MAN",
+Individual layers can be shown/hidden in the 'Visibility' area without changing the data.
+- Lock selected layer (also in the Layer dock context menu): brushes and rules then leave it unchanged.
+- Texture by rules: the selected layer gets weight where slope (e.g. 35-90° for rock) and/or height are in range, with a soft transition. 'Add only' paints on top, 'Replace' overwrites the layer. 'Apply to whole map' is one undo step; with 'Brush paints by this rule' the rule only acts under the brush.
+- Brush shape from image (also for terrain): a grayscale PNG (1-16 bit, palette too) or R16 replaces the falloff; white = full effect, top edge = north.)MAN",
      "textur layer blend diffuse uv scale malen"},
     {"map.walk", "map",
      "Tab Walk & Block (Begehbarkeit)", "Walk & Block tab",
@@ -234,7 +244,9 @@ Objects appear as a reference with their footprint; they cannot be clicked in th
 - 'Ausgewählte Objekte löschen' löscht die Auswahl. 'Alle normalen Objekte entfernen' entfernt nach Bestätigung alle normalen Placements, lässt Sky/Water/GroundObject aber bestehen.
 - Die Höhe wird beim Platzieren aus dem Gelände genommen.
 - Im 3D-Bild siehst Du die echten Modelle. Ausgewählte normale Objekte erhalten zusätzlich einen weißen Auswahl-Marker.
-Objekte lassen sich nach Kategorien (Bäume, Gebäude, Felsen ...) ein- und ausblenden (Bereich Sichtbarkeit) - hilfreich bei dichten Karten.)MAN",
+Objekte lassen sich nach Kategorien (Bäume, Gebäude, Felsen ...) ein- und ausblenden (Bereich Sichtbarkeit) - hilfreich bei dichten Karten.
+Malen (Foliage): Modelle über 'Modellpfad oben hinzufügen' in die Liste aufnehmen, dann im 2D- oder 3D-View ziehen. Jede Anwendung versucht 'Dichte' Objekte je 100x100 Einheiten und hält den Mindestabstand zu Objekten der Liste ein - wiederholtes Malen füllt die Fläche, aber nicht darüber hinaus. Zufällige Drehung und Skalierung, 'Max. Neigung' (steilere Stellen bleiben frei), 'Am Hang ausrichten', Höhenversatz. Strg oder 'Löschen statt malen' entfernt Objekte der Liste unter dem Pinsel. Ein Strich ist ein Undo-Schritt.
+Prefabs: ausgewählte Objekte mit Namen als Prefab speichern (<Projekt>/Prefabs/<Name>.prefab, nur für den Editor). Ein Prefab in der Liste anklicken und in 2D oder 3D klicken setzt die Gruppe ein - mit 'Drehung', die Höhen folgen dem Terrain (gespeichert wird die Höhe über dem Boden). Prefabs stehen auf jeder Karte des Projekts zur Verfügung; Einsetzen ist ein Undo-Schritt.)MAN",
      R"MAN(Objects are 3D models (houses, trees, stones ...) with position, rotation and scale.
 - Place: enter a model path or 'Browse...', set rotation and scale, then click into the 2D view.
 - Multi-select: Ctrl+click adds/removes individual objects, Shift+click selects a range in the list. In the 2D view, Shift+drag selects by rectangle and Alt+Shift+drag selects by lasso; hold Ctrl to extend the existing selection. 'Select all normal' or Ctrl+A selects all normal placements.
@@ -244,7 +256,9 @@ Objekte lassen sich nach Kategorien (Bäume, Gebäude, Felsen ...) ein- und ausb
 - 'Delete selected objects' deletes the selection. 'Remove all normal objects' removes all normal placements after confirmation while keeping Sky/Water/GroundObject.
 - Height is taken from the terrain when placing.
 - In the 3D image you see the real models. Selected normal objects also get a white selection marker.
-Objects can be shown/hidden by category (trees, buildings, rocks ...) in the Visibility area - helpful on dense maps.)MAN",
+Objects can be shown/hidden by category (trees, buildings, rocks ...) in the Visibility area - helpful on dense maps.
+Paint (foliage): add models to the list with 'Add model path above', then drag in the 2D or 3D view. Each application tries 'Density' objects per 100x100 units and keeps the minimum distance to objects of the list - repeated painting fills the area but not beyond. Random rotation and scale, 'Max. slope' (steeper spots stay empty), 'Align to slope', height offset. Ctrl or 'Erase instead of paint' removes objects of the list under the brush. One stroke is one undo step.
+Prefabs: save selected objects under a name as a prefab (<Project>/Prefabs/<name>.prefab, editor only). Click a prefab in the list and then in 2D or 3D to place the group - with 'Rotation'; heights follow the terrain (the height above ground is stored). Prefabs are available on every map of the project; placing is one undo step.)MAN",
      "objekte platzieren modell nif rotation skalierung löschen"},
     {"map.visibility", "map",
      "Bereich Sichtbarkeit", "Visibility area",

@@ -1027,11 +1027,16 @@ std::uint32_t NifMeshRenderer::GetOrLoadEmbeddedTexture(const core::NifEmbeddedT
 
 void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, const std::filesystem::path& mapDir,
                                        const std::unordered_map<std::string, core::NifModel>* custom) {
-    for (auto& [path, model] : modelCache_) {
-        ReleaseModel(model);
+    // Modelle derselben Karte bleiben im Cache: Objekte malen/verschieben lädt sonst bei jeder
+    // Änderung alle NIFs neu. Neue Karte oder eigene (z.B. Avatar-)Modelle: Cache leeren.
+    if (custom != nullptr || mapDir != lastMapDir_) {
+        for (auto& [path, model] : modelCache_) {
+            ReleaseModel(model);
+        }
+        modelCache_.clear();
+        diagnostics_ = {};
     }
-    modelCache_.clear();
-    diagnostics_ = {};
+    lastMapDir_ = custom != nullptr ? std::filesystem::path() : mapDir;
     // Textur-Cache bewusst NICHT geleert - Texturen sind unabhängig vom Modell-Cache gültig
     // und werden oft von Modellen auf verschiedenen Karten wiederverwendet (z.B. "grass.dds").
     perObjectModel_.assign(set.Count(), nullptr);

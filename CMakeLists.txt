@@ -76,6 +76,11 @@ add_library(mapeditor_core
     src/core/MapCheck.cpp
     src/core/Autosave.cpp
     src/core/WalkGenerate.cpp
+    src/core/HeightmapExchange.cpp
+    src/core/TextureRules.cpp
+    src/core/ObjectScatter.cpp
+    src/core/Prefab.cpp
+    src/core/Spline.cpp
     src/core/legacy/NewMapFromTemplate.cpp
     src/core/legacy/MapRenderSettings.cpp
     src/core/legacy/LegacyMapProject.cpp
@@ -355,6 +360,27 @@ add_test(NAME walk_generate COMMAND test_walk_generate
 add_executable(test_new_map tests/test_new_map.cpp)
 target_link_libraries(test_new_map PRIVATE mapeditor_core)
 add_test(NAME new_map COMMAND test_new_map ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/Rou.ini)
+
+add_executable(test_heightmap_exchange tests/test_heightmap_exchange.cpp)
+target_link_libraries(test_heightmap_exchange PRIVATE mapeditor_core)
+add_test(NAME heightmap_exchange COMMAND test_heightmap_exchange
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/Rou.HTD ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/height_gradient16.png)
+
+add_executable(test_texture_rules tests/test_texture_rules.cpp)
+target_link_libraries(test_texture_rules PRIVATE mapeditor_core)
+add_test(NAME texture_rules COMMAND test_texture_rules ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/Rou.HTD)
+
+add_executable(test_object_scatter tests/test_object_scatter.cpp)
+target_link_libraries(test_object_scatter PRIVATE mapeditor_core)
+add_test(NAME object_scatter COMMAND test_object_scatter)
+
+add_executable(test_prefab tests/test_prefab.cpp)
+target_link_libraries(test_prefab PRIVATE mapeditor_core)
+add_test(NAME prefab COMMAND test_prefab)
+
+add_executable(test_spline tests/test_spline.cpp)
+target_link_libraries(test_spline PRIVATE mapeditor_core)
+add_test(NAME spline COMMAND test_spline)
 
 add_executable(test_map_render_settings tests/test_map_render_settings.cpp)
 target_link_libraries(test_map_render_settings PRIVATE mapeditor_core)

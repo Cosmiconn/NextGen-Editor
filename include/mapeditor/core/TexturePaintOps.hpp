@@ -4,6 +4,7 @@
 // Zelle summieren sich immer zu ~1.0 ("Splat-Map"-Prinzip) - Erhöhen des Ziel-Layers senkt die
 // übrigen Layer proportional zu ihrem aktuellen Anteil ab (und umgekehrt beim Absenken).
 
+#include "mapeditor/core/EditOps.hpp"
 #include "mapeditor/core/TextureLayerStack.hpp"
 
 #include <cstdint>
@@ -19,6 +20,7 @@ struct TexturePaintSettings {
     // Früher: Layer, die an der Gewichts-Normalisierung teilnahmen. Es wird nicht mehr normalisiert
     // (Fiesta-Layer sind unabhängige Masken); das Feld bleibt nur aus Kompatibilität bestehen.
     const std::vector<char>* participating = nullptr;
+    const BrushAlpha* alpha = nullptr; // optionale Pinselform statt Falloff
 };
 
 // Ein rückgängig machbarer Malschritt: pro betroffener Zelle die Gewichte ALLER Layer vor der

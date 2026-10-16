@@ -111,6 +111,7 @@ public:
 
 private:
     LoadDiagnostics diagnostics_;
+    std::filesystem::path lastMapDir_; // Karte, deren Modelle im Cache liegen
 
     struct TextureBinding {
         std::uint32_t texture = 0;

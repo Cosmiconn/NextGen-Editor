@@ -1,3 +1,32 @@
+## Terrain — path tool (spline)
+- New in the Terrain tool: click control points in 2D/3D (Catmull-Rom curve, drawn in yellow in the 2D view), then flatten the terrain into a path of a given width with a soft edge (the path height follows the terrain, smoothed along the path), paint a texture layer along it, or place a model at a fixed spacing (centre, left, right or both sides, rotated along the path) for fences or lanterns. Each action is one undo step.
+- Checked on Roumen: a three-point path of 2807 units flattens 248 height points, paints 490 mask pixels and places 22 trees on both sides.
+- Core: `core/Spline` with `test_spline`. Automation: `spline add <x> <z> | clear | flatten <width> | paint <layer> | objects <nif> <spacing> <offset>`.
+
+## Objects — prefabs
+- Save selected objects as a prefab (`<Project>/Prefabs/<name>.prefab`, an editor-only text format that is never shipped) and place it on any map of the project with a click in 2D or 3D, rotated around the up axis. Positions are stored relative to the group centre and heights relative to the ground under each object, so a group adapts to slopes. Placing is one undo step and selects the new objects.
+- Checked: four objects saved on Roumen, placed on Uruga rotated by 90°.
+- Core: `core/Prefab` with `test_prefab`. Automation: `prefab save <name>`, `prefab place <name> <x> <z> [deg]`; `select` takes several ids.
+
+## Objects — paint foliage
+- New third mode in the Objects tool, "Paint (foliage)", like Unreal's foliage tool: a list of models is scattered with a brush in the 2D or 3D view. Each application tries `density` objects per 100x100 units and rejects spots closer than the minimum distance to objects of the list, so repeated painting fills an area up to that spacing and not beyond; random rotation and scale range, maximum slope, align to slope, height offset. Ctrl (or the erase option) removes objects of the list under the brush. One stroke is one undo step.
+- Checked on Roumen with tree05/tree06: three strokes (radius 400, density 3, spacing 120) place 45 trees in the town area, an erase stroke removes 23; in the mountains above 30° only 3 of 450 attempts land.
+- The object renderer keeps loaded models for the same map, so adding or moving objects no longer reloads every NIF.
+- Core: `core/ObjectScatter` with `test_object_scatter` (spacing, saturation, slope limit, slope alignment, erase). Automation: `scatter model <nif>`, `scatter set <radius> <density> <spacing> <maxSlope>`, `scatter erase on|off`.
+
+## Texturing — rules, layer lock, brush shapes from images
+- Texture by rules (like Unreal's auto material): the selected layer gets weight where slope and/or height lie in a range, with a soft transition; "Add only" or "Replace". Apply to the whole map (one undo step) or let the brush paint by the rule. Layer regions (Adl halves) are respected. Checked on Roumen: the rule 35-90° paints the rock layer on all 8333 sampled spots steeper than 35°, other layers stay unchanged.
+- Lock layers (texture panel or Layer dock context menu): brushes and rules leave a locked layer alone; locks follow the layer name, so reordering keeps them.
+- Brush shape from an image for terrain and texture brushes: a grayscale PNG or R16 replaces the falloff (white = full effect, top edge = north). Checked: a left-white mask raises only west of the brush centre.
+- The PNG reader now also takes 1/2/4-bit grayscale and palette images (ImageMagick writes simple masks that way).
+- Core: `core/TextureRules` (`test_texture_rules`, incl. real Rou), `BrushAlpha` in `EditOps`/`TexturePaintOps`. Automation: `texrule <min> <max> [replace]`, `brushalpha <png>|off`, `layerlock <i> on|off`.
+
+## Terrain — exchange height data as 16-bit PNG or R16
+- New under Terrain > File & Fiesta import/export: export the heightmap as a 16-bit grayscale PNG or RAW R16 (little endian, square), as World Machine, Gaea or Photoshop expect, and import it back. The height range is mapped to 0..65535 and stored in the PNG (`tEXt` chunk `NextGenHeightRange`); on import Min..Max are entered or taken from the file. Different sizes are resampled bilinearly; the import is one undo step. Top edge of the image = north.
+- No external library: PNG is written with stored deflate blocks and read with a small own inflate (stored, fixed and dynamic Huffman blocks, all five row filters, 8/16 bit, gray/RGB(A)).
+- Checked: Rou.HTD -> PNG/R16 -> back differs by at most half a 16-bit step (0.023 units); ImageMagick reads the exported PNG as 16-bit grayscale; a 300x300 gradient PNG written by ImageMagick imports onto Roumen with north = 2000 and south = 0.
+- Core: `core/HeightmapExchange` with `test_heightmap_exchange` (incl. a zlib-compressed fixture using all filters). Automation: `heightexport <file>`, `heightimport <file> <min> <max>`.
+
 ## New map, ready for the game — and server walkability
 - Map > New map now creates a complete map from a template map and writes everything to the project folder at once:
   - Client `resmap/field/<map>`: INI, HTD, SHBD, SHMD, masks, AID, `.conf`, white vertex colour bitmap. Texture layers, light, sky and AID come from the template, so every path points to a file that exists in the client; terrain, masks, Block&Walk and objects are new.

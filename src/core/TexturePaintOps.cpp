@@ -54,7 +54,9 @@ TexturePaintPatch PaintLayerWeight(
 
             const auto ux = static_cast<std::uint32_t>(x);
             const auto uz = static_cast<std::uint32_t>(z);
-            const float falloff = Falloff(dist / settings.radius);
+            const float falloff = settings.alpha && !settings.alpha->Empty()
+                ? BrushAlphaWeight(*settings.alpha, dx / settings.radius, dz / settings.radius)
+                : Falloff(dist / settings.radius);
 
             // Alte Gewichte aller Layer sichern (für Undo UND Normalisierungs-Basis).
             std::vector<float> oldWeights(layerCount);
