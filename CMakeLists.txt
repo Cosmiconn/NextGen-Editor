@@ -79,6 +79,7 @@ add_library(mapeditor_core
     src/core/HeightmapExchange.cpp
     src/core/TextureRules.cpp
     src/core/ObjectScatter.cpp
+    src/core/Prefab.cpp
     src/core/legacy/NewMapFromTemplate.cpp
     src/core/legacy/MapRenderSettings.cpp
     src/core/legacy/LegacyMapProject.cpp
@@ -371,6 +372,10 @@ add_test(NAME texture_rules COMMAND test_texture_rules ${CMAKE_CURRENT_SOURCE_DI
 add_executable(test_object_scatter tests/test_object_scatter.cpp)
 target_link_libraries(test_object_scatter PRIVATE mapeditor_core)
 add_test(NAME object_scatter COMMAND test_object_scatter)
+
+add_executable(test_prefab tests/test_prefab.cpp)
+target_link_libraries(test_prefab PRIVATE mapeditor_core)
+add_test(NAME prefab COMMAND test_prefab)
 
 add_executable(test_map_render_settings tests/test_map_render_settings.cpp)
 target_link_libraries(test_map_render_settings PRIVATE mapeditor_core)

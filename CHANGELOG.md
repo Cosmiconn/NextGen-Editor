@@ -1,3 +1,8 @@
+## Objects — prefabs
+- Save selected objects as a prefab (`<Project>/Prefabs/<name>.prefab`, an editor-only text format that is never shipped) and place it on any map of the project with a click in 2D or 3D, rotated around the up axis. Positions are stored relative to the group centre and heights relative to the ground under each object, so a group adapts to slopes. Placing is one undo step and selects the new objects.
+- Checked: four objects saved on Roumen, placed on Uruga rotated by 90°.
+- Core: `core/Prefab` with `test_prefab`. Automation: `prefab save <name>`, `prefab place <name> <x> <z> [deg]`; `select` takes several ids.
+
 ## Objects — paint foliage
 - New third mode in the Objects tool, "Paint (foliage)", like Unreal's foliage tool: a list of models is scattered with a brush in the 2D or 3D view. Each application tries `density` objects per 100x100 units and rejects spots closer than the minimum distance to objects of the list, so repeated painting fills an area up to that spacing and not beyond; random rotation and scale range, maximum slope, align to slope, height offset. Ctrl (or the erase option) removes objects of the list under the brush. One stroke is one undo step.
 - Checked on Roumen with tree05/tree06: three strokes (radius 400, density 3, spacing 120) place 45 trees in the town area, an erase stroke removes 23; in the mountains above 30° only 3 of 450 attempts land.

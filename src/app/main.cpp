@@ -78,6 +78,7 @@
 #include "mapeditor/core/HeightmapExchange.hpp"
 #include "mapeditor/core/TextureRules.hpp"
 #include "mapeditor/core/ObjectScatter.hpp"
+#include "mapeditor/core/Prefab.hpp"
 #include <random>
 #include "mapeditor/core/legacy/NewMapFromTemplate.hpp"
 #include "mapeditor/core/legacy/MapRenderSettings.hpp"
@@ -641,6 +642,10 @@ struct EditorState {
     bool scatterErase = false;
     bool scatterStrokeActive = false;
     double scatterLastTime = 0.0;
+    // Prefabs (<Projekt>/Prefabs/*.prefab): gewähltes Prefab für Modus 3 (Einsetzen).
+    char prefabName[64] = "";
+    std::string prefabSelected;
+    std::string prefabStatus;
 
     // Level-Editor Transform-Werkzeuge (0=Move, 1=Rotate, 2=Scale).
     int objectGizmoOperation = 0;
@@ -15519,6 +15524,8 @@ void DrawCommandPalette(EditorState& state) {
 static void DrawVisibilityPanel(EditorState& state);
 void DrawBrushAlphaControls(EditorState& state, const char* id);
 void DrawScatterControls(EditorState& state);
+void DrawPrefabControls(EditorState& state);
+bool PlacePrefabAtWorld(EditorState& state, float worldX, float worldZ);
 void DrawTextureRuleControls(EditorState& state);
 static std::vector<std::vector<std::pair<float, float>>> CollectVisibleObjectFootprints(EditorState& state);
 static const std::unordered_map<std::string, std::pair<std::size_t, std::size_t>>& ModelBlockStats(EditorState& state);
@@ -15879,6 +15886,7 @@ void DrawToolsContent(EditorState& state) {
             }
         }
 
+        DrawPrefabControls(state);
         ImGui::Separator();
         ImGui::TextDisabled("%s",L("Auswahl erfolgt im separaten Objekt-Outliner oder direkt in 2D/3D.","Select objects in the separate Object Outliner or directly in 2D/3D."));
 
@@ -17093,6 +17101,74 @@ bool ScatterAtWorld(EditorState& state, float worldX, float worldZ) {
     return true;
 }
 
+std::filesystem::path PrefabDir(const EditorState& state) {
+    return std::filesystem::path(state.project.projectFolder) / "Prefabs";
+}
+
+bool PlacePrefabAtWorld(EditorState& state, float worldX, float worldZ) {
+    if (!RequireWritableMapGeometry(state) || state.prefabSelected.empty()) return false;
+    auto prefab = core::LoadPrefab(state.prefabSelected);
+    if (!prefab) {
+        state.prefabStatus = prefab.error();
+        return false;
+    }
+    auto historyBefore = BeginObjectMutation(state);
+    std::vector<int> created;
+    for (auto& o : core::InstantiatePrefab(*prefab, state.heightmap, worldX, worldZ, state.newObjectRotDeg))
+        created.push_back(static_cast<int>(state.placementSet.AddObject(std::move(o))));
+    SyncObjectEditorMetadata(state);
+    state.selectedObjects = created;
+    state.selectedObject = created.empty() ? kNoObjectSelection : created.front();
+    state.objectGizmoMatrixValid = false;
+    state.nifMeshRenderer.LoadModelsForSet(state.placementSet, CurrentObjectAssetMapDir(state));
+    state.objectVisKey.clear();
+    FinishObjectMutation(state, std::move(historyBefore), !created.empty());
+    state.prefabStatus = prefab->name + ": " + std::to_string(created.size()) + L(" Objekte eingesetzt", " objects placed");
+    return !created.empty();
+}
+
+void DrawPrefabControls(EditorState& state) {
+    ImGui::SeparatorText("Prefabs");
+    if (state.project.projectFolder[0] == '\0') {
+        ImGui::TextDisabled("%s", L("Prefabs liegen im Projektordner - erst ein Projekt festlegen.", "Prefabs live in the project folder - set a project first."));
+        return;
+    }
+    std::vector<int> selected;
+    for (const int id : state.selectedObjects)
+        if (id >= 0 && static_cast<std::size_t>(id) < state.placementSet.Count()) selected.push_back(id);
+    ImGui::SetNextItemWidth(160.0f);
+    UI::InputText(L("Name##prefab", "Name##prefab"), state.prefabName, sizeof(state.prefabName));
+    ImGui::SameLine();
+    ImGui::BeginDisabled(selected.empty() || state.prefabName[0] == '\0');
+    if (UI::Button(L("Auswahl speichern##prefab", "Save selection##prefab"))) {
+        std::string name = state.prefabName;
+        for (char& c : name) if (c == '/' || c == '\\' || c == ':' || c == '.') c = '_';
+        std::vector<core::PlacedObject> objects;
+        for (const int id : selected) objects.push_back(state.placementSet.At(static_cast<std::size_t>(id)));
+        const auto file = PrefabDir(state) / (name + ".prefab");
+        auto r = core::SavePrefab(core::MakePrefab(name, objects, state.heightmap), file);
+        state.prefabStatus = r ? name + ": " + std::to_string(objects.size()) + L(" Objekte gespeichert", " objects saved") : r.error();
+        if (r) state.prefabSelected = file.string();
+    }
+    ImGui::EndDisabled();
+    const auto files = core::ListPrefabs(PrefabDir(state));
+    if (files.empty()) ImGui::TextDisabled("%s", L("Noch keine Prefabs: Objekte auswählen, Namen eingeben, speichern.",
+                                                    "No prefabs yet: select objects, enter a name, save."));
+    for (const auto& f : files) {
+        const bool active = state.prefabSelected == f.string();
+        if (ImGui::Selectable((f.stem().string() + "##prefab" + f.string()).c_str(), active && state.objectPlaceMode == 3)) {
+            state.prefabSelected = f.string();
+            state.objectPlaceMode = 3;
+        }
+    }
+    if (state.objectPlaceMode == 3) {
+        UI::SliderFloat(L("Drehung (°)##prefab", "Rotation (°)##prefab"), &state.newObjectRotDeg, -180.0f, 180.0f);
+        ImGui::TextDisabled("%s", L("Klick in 2D oder 3D setzt das Prefab; Höhen folgen dem Terrain.",
+                                    "Click in 2D or 3D places the prefab; heights follow the terrain."));
+    }
+    if (!state.prefabStatus.empty()) ImGui::TextDisabled("%s", state.prefabStatus.c_str());
+}
+
 void FinishScatterStrokeIfReleased(EditorState& state) {
     if (!state.scatterStrokeActive || ImGui::IsMouseDown(ImGuiMouseButton_Left)) return;
     state.scatterStrokeActive = false;
@@ -17910,6 +17986,8 @@ void DrawEditor2DContent(EditorState& state) {
                 }
                 if (state.objectPlaceMode == 2) {
                     ScatterAtWorld(state, worldX, worldZ);
+                } else if (state.objectPlaceMode == 3) {
+                    PlacePrefabAtWorld(state, worldX, worldZ);
                 } else if (state.objectPlaceMode && MapSupportsObjectGeometryEditing(state)) {
                     auto historyBefore = BeginObjectMutation(state);
                     core::PlacedObject obj;
@@ -19664,10 +19742,17 @@ void DrawPreview3DContent(EditorState& state) {
                               state.editMode == EditMode::BlockWalk ||
                               (state.editMode == EditMode::ObjectPlacement && state.objectPlaceMode == 2)) &&
                              MapSupportsTerrainEditing(state) && !state.playtestActive;
+    const bool objectPaint3D = state.editMode == EditMode::ObjectPlacement && state.objectPlaceMode == 2;
     if (brushTool3D && viewImageHovered && !viewportUiCapturing && !ImGui::GetIO().KeyAlt &&
-        !ImGui::GetIO().KeyCtrl && ImGui::IsMouseDown(ImGuiMouseButton_Left) && !state.cameraLooking) {
+        (!ImGui::GetIO().KeyCtrl || objectPaint3D) && ImGui::IsMouseDown(ImGuiMouseButton_Left) && !state.cameraLooking) {
         if (const auto hit = PickTerrainFrom3D(state, imageScreenPos, w, h, ImGui::GetMousePos()))
             ApplyBrushAtWorld(state, hit->x, hit->z);
+    }
+    // Prefab einsetzen: Klick auf das Terrain.
+    if (state.editMode == EditMode::ObjectPlacement && state.objectPlaceMode == 3 && viewImageHovered && !viewportUiCapturing &&
+        !ImGui::GetIO().KeyAlt && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !state.cameraLooking) {
+        if (const auto hit = PickTerrainFrom3D(state, imageScreenPos, w, h, ImGui::GetMousePos()))
+            PlacePrefabAtWorld(state, hit->x, hit->z);
     }
     const bool lmbPaints3D = brushTool3D && !ImGui::GetIO().KeyAlt;
 
@@ -23552,6 +23637,27 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
                     state.walkProposalVsOriginal.Agreement(), state.walkGenStatus.c_str(), state.statusMessage.c_str());
         std::fflush(stdout);
     }
+    else if (cmd == "prefab") {
+        // prefab save <Name> (aktuelle Auswahl) | prefab place <Name> <x> <z> [Grad]
+        std::string what, name; in >> what >> name;
+        const auto file = PrefabDir(state) / (name + ".prefab");
+        if (what == "save") {
+            std::vector<core::PlacedObject> objects;
+            for (const int id : state.selectedObjects)
+                if (id >= 0 && static_cast<std::size_t>(id) < state.placementSet.Count()) objects.push_back(state.placementSet.At(static_cast<std::size_t>(id)));
+            auto r = core::SavePrefab(core::MakePrefab(name, objects, state.heightmap), file);
+            std::printf("[prefab] save %s %zu %s\n", name.c_str(), objects.size(), r ? "ok" : r.error().c_str());
+        } else if (what == "place") {
+            float x = 0, z = 0; in >> x >> z;
+            float yaw = 0; if (in >> yaw) state.newObjectRotDeg = yaw;
+            state.prefabSelected = file.string();
+            state.editMode = EditMode::ObjectPlacement;
+            state.objectPlaceMode = 3;
+            const bool ok = PlacePrefabAtWorld(state, x, z);
+            std::printf("[prefab] place %s %d objects %zu | %s\n", name.c_str(), ok ? 1 : 0, state.placementSet.Count(), state.prefabStatus.c_str());
+        }
+        std::fflush(stdout);
+    }
     else if (cmd == "scatter") {
         // scatter model <pfad> | scatter set <radius> <dichte> <abstand> <maxNeigung> | scatter erase on|off
         std::string what; in >> what;
@@ -23858,7 +23964,13 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         std::fflush(stdout);
     }
     else if (cmd == "selectall") SelectAllNormalObjects(state);
-    else if (cmd == "select") { int id = -1; in >> id; state.selectedObjects = {id}; state.selectedObject = id; state.objectGizmoMatrixValid = false; }
+    else if (cmd == "select") {
+        // select <id> [id ...]
+        std::vector<int> ids;
+        for (int id = 0; in >> id;) ids.push_back(id);
+        if (ids.empty()) ids.push_back(-1);
+        state.selectedObjects = ids; state.selectedObject = ids.front(); state.objectGizmoMatrixValid = false;
+    }
     else if (cmd == "focus") FocusCurrentSceneSelection(state);
     else if (cmd == "hide") HideSelectedObjects(state);
     else if (cmd == "isolate") HideUnselectedObjects(state);
