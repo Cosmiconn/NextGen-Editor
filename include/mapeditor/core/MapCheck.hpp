@@ -44,6 +44,7 @@ enum class MapCheckCode : std::uint8_t {
     TerrainTextureMissing,   // Terrain-Layer-Textur nicht gefunden
     QuestStartNpcUnknown,    // Start-NPC nicht in MobInfo
     QuestStartNpcNotPlaced,  // Start-NPC steht auf keiner Karte
+    MinimapMissing,          // MapViewInfo.MinimapView = 1, aber kein resmenu\minimap\<Ordner>.dds
 };
 
 struct MapCheckIssue {

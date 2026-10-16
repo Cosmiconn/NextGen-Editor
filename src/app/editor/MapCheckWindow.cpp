@@ -326,6 +326,17 @@ void RunMapCheck(EditorState& state) {
         }
     }
 
+    // Minimap: der Client lädt resmenu\minimap\<MapFolderName>.dds, wenn MinimapView gesetzt ist.
+    if (const auto viewRow = FindMapViewRow(state, EditorState::ShnSource::Client);
+        viewRow && viewRow->minimapView && GameMinimapPath(state, viewRow->folder).empty()) {
+        MapCheckIssue i;
+        i.severity = MapCheckSeverity::Warning;
+        i.code = MapCheckCode::MinimapMissing;
+        i.subject = viewRow->folder;
+        i.detail = core::legacy::MinimapRelativePath(viewRow->folder);
+        issues.push_back(i);
+    }
+
     // Spieldaten: aktivierte Quests mit Start-NPC, der nicht existiert oder auf keiner Karte steht.
     if (state.mapCheckIncludeQuests) {
         EnsureQuestDataLoaded(state);
@@ -428,6 +439,9 @@ std::string MapCheckMessage(const core::MapCheckIssue& i) {
         case MapCheckCode::QuestStartNpcNotPlaced:
             return std::string(L("Start-NPC steht auf keiner Karte - Quest kann nicht angenommen werden: ",
                                  "Starting NPC is not placed on any map - the quest cannot be accepted: ")) + i.detail;
+        case MapCheckCode::MinimapMissing:
+            return std::string(L("Minimap eingeschaltet, aber Bild fehlt: resmenu/", "Minimap enabled but image missing: resmenu/")) + i.detail +
+                   L(" (Minimap-Panel: 'Minimap erzeugen')", " (minimap panel: 'Generate minimap')");
     }
     return {};
 }
@@ -457,6 +471,7 @@ const char* MapCheckCategoryLabel(core::MapCheckCode code) {
         case MapCheckCode::TerrainTextureMissing: return "Terrain";
         case MapCheckCode::QuestStartNpcUnknown:
         case MapCheckCode::QuestStartNpcNotPlaced: return "Quest";
+        case MapCheckCode::MinimapMissing: return "Minimap";
     }
     return "";
 }

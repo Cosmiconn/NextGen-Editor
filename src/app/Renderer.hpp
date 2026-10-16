@@ -92,6 +92,7 @@ public:
     // <Karte>.conf [GlowScreenEffect]; wirkt nur, wenn SetGlowEnabled(true).
     void SetGlowSettings(const core::legacy::GlowScreenEffect& glow) { glow_ = glow; }
     void SetGlowEnabled(bool enabled) { glowEnabled_ = enabled; }
+    [[nodiscard]] bool GlowEnabled() const noexcept { return glowEnabled_; }
     // 1 = aus; wird auf GL_MAX_SAMPLES begrenzt.
     void SetMsaaSamples(int samples) { msaaSamples_ = std::max(1, samples); }
     [[nodiscard]] int MaxMsaaSamples() const noexcept { return maxMsaaSamples_; }
@@ -99,10 +100,15 @@ public:
     void SetViewMode(int mode) { viewMode_ = mode; }
     // Mehrere 3D-Viewports: jeder Viewport rendert in sein eigenes Ziel (FBO, MSAA, Glow), weil
     // ImGui alle Bilder erst am Frame-Ende zeichnet. Terrain-Mesh und Texturen bleiben geteilt.
-    static constexpr int kMaxRenderTargets = 4;
+    // Ziele 0..3 gehören den Viewports; kCaptureTarget ist für Offscreen-Aufnahmen (Minimap,
+    // Portalbilder), damit kein bereits für ImGui eingereihtes Viewport-Bild überschrieben wird.
+    static constexpr int kMaxRenderTargets = 5;
+    static constexpr int kCaptureTarget = 4;
     void SelectRenderTarget(int index);
+    [[nodiscard]] int CurrentRenderTarget() const noexcept { return currentTarget_; }
     // SHMD-Szenenlicht, Nebel und Hintergrundfarbe (siehe SceneLighting.hpp).
     void SetSceneLighting(const SceneLighting& lighting) { lighting_ = lighting; }
+    [[nodiscard]] const SceneLighting& GetSceneLighting() const noexcept { return lighting_; }
     // Zeichnet eine zusätzliche Textur halbtransparent über das zuletzt in BeginTopDownScene
     // gezeichnete Bild (z.B. die Block&Walk-Heatmap) - muss VOR EndTopDownScene aufgerufen
     // werden, im selben Frame.

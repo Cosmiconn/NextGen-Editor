@@ -150,7 +150,7 @@ bool CreateNewMapFromWizard(EditorState& state) {
             AddMapShnRows(state, "MapInfo.shn", tmplId, tmplName, newId, name,
                           {{"Name", display}, {"MapFolderName", name}, {"RegenX", std::to_string(centerX)},
                            {"RegenY", std::to_string(centerY)}, {"IsWMLink", "0"}, {"KingdomMap", "0"}, {"InSide", "0"}}, rep);
-            // Minimap aus: ein Minimap-Bild für die neue Karte gibt es (noch) nicht.
+            // MinimapView 0, bis die Minimap erzeugt ist (GenerateMinimap setzt 1 und den Ausschnitt).
             AddMapShnRows(state, "MapViewInfo.shn", tmplId, tmplName, newId, name,
                           {{"MapFolderName", name}, {"MinimapView", "0"}, {"WorldMapView", "0"}}, rep);
         }
@@ -238,10 +238,10 @@ bool CreateNewMapFromWizard(EditorState& state) {
         }
     }
 
-    rep.push_back(L("Minimap: abgeschaltet (MinimapView 0). Der Client lädt Minimaps als resmenu\\minimap\\<Karte>.dds "
-                    "(Fiesta.bin); Größe/Format sind ohne ein Original-Minimap-Bild nicht belegt.",
-                    "Minimap: off (MinimapView 0). The client loads minimaps as resmenu\\minimap\\<map>.dds (Fiesta.bin); "
-                    "size/format are not established without an original minimap image."));
+    // Minimap: wird erzeugt, sobald die Karte im 3D-Bild geladen ist (ProcessPendingMinimap); setzt
+    // dann MinimapView 1 und schreibt resmenu/minimap/<Karte>.dds ins Projekt.
+    state.minimapPendingGenerate = true;
+    rep.push_back(L("Minimap: wird nach dem Laden erzeugt (resmenu/minimap/", "Minimap: generated after loading (resmenu/minimap/") + name + ".dds).");
     // Neue Karte in der Kartenliste (Projekt) sichtbar machen.
     MergeProjectOnlyMaps(state.project, state.discoveredMaps);
     state.mapInfoLoaded = false; // MapInfo mit dem neuen Eintrag neu lesen

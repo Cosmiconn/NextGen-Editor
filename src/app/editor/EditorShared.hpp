@@ -75,6 +75,7 @@
 #include "mapeditor/core/Spline.hpp"
 #include <random>
 #include "mapeditor/core/legacy/NewMapFromTemplate.hpp"
+#include "mapeditor/core/legacy/Minimap.hpp"
 #include "mapeditor/core/legacy/MapRenderSettings.hpp"
 #include "mapeditor/app/Localization.hpp"
 
@@ -538,6 +539,10 @@ struct EditorState {
     // client-image evidence for a Fiesta exporter.
     bool minimapShowViewport = true;
     bool minimapShowObjects = false;
+    bool minimapShowGame = true;        // Spiel-Minimap (resmenu\minimap) statt Editor-Vorschau
+    bool minimapStyled = true;          // beim Erzeugen: Stil der Originale (Konturen, Pergament-Rand)
+    bool minimapWithObjects = true;     // beim Erzeugen: Objekte mitzeichnen
+    bool minimapPendingGenerate = false; // Assistent "Neue Karte": nach dem Laden erzeugen
     app::HeightmapRenderer renderer;
     app::ObjectMarkerRenderer objectMarkerRenderer;
     app::ObjectMarkerRenderer portalMarkerRenderer; // Portale-Tab: TownPortal-/Schriftrollen-Ziele im 3D-View
@@ -2018,6 +2023,20 @@ void DrawWalkFootprintPreview(EditorState& state, ImDrawList* drawList,
                                      const ImVec2& mapOrigin, const ImVec2& mapSize,
                                      float spanX, float spanZ);
 void DrawMinimapPreviewContent(EditorState& state);
+// MapViewInfo-Zeile der offenen Karte (MapName oder MapFolderName passt).
+struct MapViewRow {
+    int document = -1;
+    std::size_t row = 0;
+    std::string folder;       // MapFolderName = Dateiname der Minimap
+    bool minimapView = false; // MinimapView
+    core::legacy::MinimapView view;
+};
+std::optional<MapViewRow> FindMapViewRow(EditorState& state, EditorState::ShnSource source);
+std::filesystem::path GameMinimapPath(EditorState& state, const std::string& folder, bool* fromProject = nullptr);
+std::vector<std::uint8_t> RenderMinimapRgba(EditorState& state, std::uint32_t size, bool withObjects);
+std::vector<std::uint8_t> MinimapWalkMask(const EditorState& state, std::uint32_t size);
+bool GenerateMinimap(EditorState& state, std::vector<std::string>& report);
+void ProcessPendingMinimap(EditorState& state);
 bool ScatterAtWorld(EditorState& state, float worldX, float worldZ);
 std::filesystem::path PrefabDir(const EditorState& state);
 bool PlacePrefabAtWorld(EditorState& state, float worldX, float worldZ);

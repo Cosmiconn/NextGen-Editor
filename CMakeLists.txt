@@ -85,6 +85,7 @@ add_library(mapeditor_core
     src/core/Prefab.cpp
     src/core/Spline.cpp
     src/core/legacy/NewMapFromTemplate.cpp
+    src/core/legacy/Minimap.cpp
     src/core/legacy/MapRenderSettings.cpp
     src/core/legacy/LegacyMapProject.cpp
 )
@@ -204,6 +205,7 @@ set(NEXTGEN_EDITOR_MODULES
     src/app/editor/InterfaceWorkspace.cpp
     src/app/editor/MapWorkspace.cpp
     src/app/editor/Automation.cpp
+    src/app/editor/MinimapTools.cpp
 )
 
 add_executable(map_editor
@@ -344,6 +346,10 @@ add_test(NAME nif_animation_pose COMMAND test_nif_animation_pose)
 add_executable(test_dds_write tests/test_dds_write.cpp)
 target_link_libraries(test_dds_write PRIVATE mapeditor_core)
 add_test(NAME dds_write COMMAND test_dds_write "${NEXTGEN_NA2016_DATA}")
+
+add_executable(test_minimap tests/test_minimap.cpp)
+target_link_libraries(test_minimap PRIVATE mapeditor_core)
+add_test(NAME minimap COMMAND test_minimap)
 
 add_executable(test_view_culling tests/test_view_culling.cpp)
 target_link_libraries(test_view_culling PRIVATE mapeditor_core)

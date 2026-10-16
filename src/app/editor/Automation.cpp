@@ -498,6 +498,28 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
     else if (cmd == "surfacesnap") onOff(state.surfaceSnap);
     else if (cmd == "glow") onOff(state.viewportGlow);
     else if (cmd == "objectanim") onOff(state.viewportObjectAnimation);
+    else if (cmd == "minimap") {
+        // minimap generate | game on|off | style on|off | objects on|off | export <datei.ppm>
+        std::string sub; in >> sub;
+        if (sub == "generate") {
+            std::vector<std::string> report;
+            const bool ok = GenerateMinimap(state, report);
+            std::printf("[minimap] generate ok=%d\n", ok ? 1 : 0);
+            for (const auto& line : report) std::printf("[minimap] %s\n", line.c_str());
+        } else if (sub == "game") onOff(state.minimapShowGame);
+        else if (sub == "style") onOff(state.minimapStyled);
+        else if (sub == "objects") onOff(state.minimapWithObjects);
+        else if (sub == "export") {
+            // Rohe Draufsicht (ohne Stil) als PPM, für den Vergleich mit den Originalen.
+            std::string file; in >> file;
+            const auto rgba = RenderMinimapRgba(state, 512, state.minimapWithObjects);
+            std::ofstream out(file, std::ios::binary);
+            out << "P6\n512 512\n255\n";
+            for (std::size_t i = 0; i + 3 < rgba.size(); i += 4) out.write(reinterpret_cast<const char*>(&rgba[i]), 3);
+            std::printf("[minimap] export %s %zu\n", file.c_str(), rgba.size());
+        }
+        std::fflush(stdout);
+    }
     else if (cmd == "culling") {
         bool on = true; onOff(on);
         state.nifMeshRenderer.SetFrustumCullingEnabled(on);

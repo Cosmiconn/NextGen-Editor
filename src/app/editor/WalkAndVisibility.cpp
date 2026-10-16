@@ -621,9 +621,20 @@ void DrawWalkFootprintPreview(EditorState& state, ImDrawList* drawList,
     }
 }
 void DrawMinimapPreviewContent(EditorState& state) {
+    // Spiel-Minimap der Karte (Projekt vor Client) und ihr MapViewInfo-Ausschnitt.
+    const auto viewRow = FindMapViewRow(state, EditorState::ShnSource::Client);
+    bool fromProject = false;
+    const auto gamePath = viewRow ? GameMinimapPath(state, viewRow->folder, &fromProject) : std::filesystem::path{};
+    const bool showGame = state.minimapShowGame && !gamePath.empty();
     DrawPanelHeader("minimapHeader", "MINIMAP", DrawIconGrid, "panel.minimap",
-                    L("Editor-Vorschau","Editor preview"));
+                    showGame ? L("Spiel-Minimap","Game minimap") : L("Editor-Vorschau","Editor preview"));
 
+    if (!gamePath.empty()) {
+        if (UI::RadioButton(L("Spiel","Game"), state.minimapShowGame)) state.minimapShowGame = true;
+        ImGui::SameLine();
+        if (UI::RadioButton(L("Vorschau","Preview"), !state.minimapShowGame)) state.minimapShowGame = false;
+        ImGui::SameLine();
+    }
     UI::Checkbox(L("2D-Ausschnitt","2D viewport"), &state.minimapShowViewport);
     ImGui::SameLine();
     UI::Checkbox(L("Objekte","Objects"), &state.minimapShowObjects);
@@ -635,10 +646,13 @@ void DrawMinimapPreviewContent(EditorState& state) {
         return;
     }
 
+    // Bild <-> Karte: die Spiel-Minimap zeigt den MapViewInfo-Ausschnitt, die Vorschau die ganze Karte.
+    const core::legacy::MinimapCrop crop = showGame ? core::legacy::MinimapCropOf(viewRow->view) : core::legacy::MinimapCrop{};
+    const float footer = ImGui::GetTextLineHeightWithSpacing() * 2.0f + ImGui::GetFrameHeightWithSpacing() + 6.0f;
     ImVec2 avail = ImGui::GetContentRegionAvail();
     const float maxW = std::max(80.0f, avail.x);
-    const float maxH = std::max(80.0f, avail.y - ImGui::GetTextLineHeightWithSpacing() - 4.0f);
-    const float aspect = spanX / spanZ;
+    const float maxH = std::max(80.0f, avail.y - footer);
+    const float aspect = showGame ? 1.0f : spanX / spanZ;
     ImVec2 imageSize(maxW, maxW / std::max(aspect, 0.001f));
     if (imageSize.y > maxH) {
         imageSize.y = maxH;
@@ -649,21 +663,34 @@ void DrawMinimapPreviewContent(EditorState& state) {
 
     if (imageSize.x < maxW) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (maxW - imageSize.x) * 0.5f);
     const ImVec2 imageMin = ImGui::GetCursorScreenPos();
-    const int renderW = std::clamp(static_cast<int>(std::lround(imageSize.x)), 64, 1024);
-    const int renderH = std::clamp(static_cast<int>(std::lround(imageSize.y)), 64, 1024);
-    const std::uint32_t tex = state.renderer.RenderTopDownOverview(renderW, renderH);
+    std::uint32_t tex = 0;
+    if (showGame) {
+        tex = GetOrLoadAssetThumbnail(state, gamePath, false).tex;
+    } else {
+        const int renderW = std::clamp(static_cast<int>(std::lround(imageSize.x)), 64, 1024);
+        const int renderH = std::clamp(static_cast<int>(std::lround(imageSize.y)), 64, 1024);
+        tex = state.renderer.RenderTopDownOverview(renderW, renderH);
+    }
     if (tex == 0) {
         ImGui::Dummy(imageSize);
-        ImGui::TextDisabled("%s",L("Minimap-Vorschau nicht verfügbar.","Minimap preview unavailable."));
+        ImGui::TextDisabled("%s",L("Minimap nicht verfügbar.","Minimap unavailable."));
         return;
     }
 
-    ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(tex)), imageSize,
-                 ImVec2(0,0), ImVec2(1,1));
+    // DDS-Vorschaubilder liegen in OpenGL-Zeilenfolge vor (LoadDdsImage dreht), daher V spiegeln.
+    ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(tex)), imageSize, ImVec2(0, showGame ? 1.0f : 0.0f),
+                 ImVec2(1, showGame ? 0.0f : 1.0f));
     const bool hovered = ImGui::IsItemHovered();
     const ImVec2 imageMax(imageMin.x + imageSize.x, imageMin.y + imageSize.y);
     ImDrawList* dl = ImGui::GetWindowDrawList();
     dl->AddRect(imageMin, imageMax, IM_COL32(31,82,116,230), 3.0f, 0, 1.0f);
+    // Kartenanteil (u, v; v = 0 Norden) -> Bildschirm.
+    const auto toScreen = [&](float u, float v) {
+        float x = 0.0f, y = 0.0f;
+        core::legacy::MapToMinimapImage(crop, u, v, x, y);
+        return ImVec2(imageMin.x + x * imageSize.x, imageMin.y + y * imageSize.y);
+    };
+    dl->PushClipRect(imageMin, imageMax, true);
 
     if (state.minimapShowObjects) {
         RefreshObjectVisibility(state);
@@ -673,8 +700,7 @@ void DrawMinimapPreviewContent(EditorState& state) {
             const float u = std::clamp(obj.posX / spanX, 0.0f, 1.0f);
             const float v = 1.0f - std::clamp(obj.posZ / spanZ, 0.0f, 1.0f);
             const bool selected = std::find(state.selectedObjects.begin(), state.selectedObjects.end(), static_cast<int>(i)) != state.selectedObjects.end();
-            dl->AddCircleFilled(ImVec2(imageMin.x + u * imageSize.x, imageMin.y + v * imageSize.y),
-                                selected ? 2.8f : 1.3f,
+            dl->AddCircleFilled(toScreen(u, v), selected ? 2.8f : 1.3f,
                                 selected ? IM_COL32(255,255,255,245) : IM_COL32(65,190,230,150));
         }
     }
@@ -686,17 +712,17 @@ void DrawMinimapPreviewContent(EditorState& state) {
         const float v0 = std::clamp(state.view2dCenterV - half, 0.0f, 1.0f);
         const float u1 = std::clamp(state.view2dCenterU + half, 0.0f, 1.0f);
         const float v1 = std::clamp(state.view2dCenterV + half, 0.0f, 1.0f);
-        dl->AddRect(ImVec2(imageMin.x + u0 * imageSize.x, imageMin.y + v0 * imageSize.y),
-                    ImVec2(imageMin.x + u1 * imageSize.x, imageMin.y + v1 * imageSize.y),
-                    IM_COL32(32,221,242,245), 1.5f, 0, 2.0f);
+        dl->AddRect(toScreen(u0, v0), toScreen(u1, v1), IM_COL32(32,221,242,245), 1.5f, 0, 2.0f);
     }
+    dl->PopClipRect();
 
     if (hovered) {
         ImGui::SetTooltip("%s",L("Klick: 2D-Ansicht hier zentrieren","Click: center the 2D view here"));
         if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
             const ImVec2 mouse = ImGui::GetMousePos();
-            const float u = std::clamp((mouse.x - imageMin.x) / imageSize.x, 0.0f, 1.0f);
-            const float v = std::clamp((mouse.y - imageMin.y) / imageSize.y, 0.0f, 1.0f);
+            float u = 0.0f, v = 0.0f;
+            core::legacy::MinimapImageToMap(crop, std::clamp((mouse.x - imageMin.x) / imageSize.x, 0.0f, 1.0f),
+                                            std::clamp((mouse.y - imageMin.y) / imageSize.y, 0.0f, 1.0f), u, v);
             const float half = 0.5f / zoom;
             state.view2dCenterU = std::clamp(u, half, 1.0f - half);
             state.view2dCenterV = std::clamp(v, half, 1.0f - half);
@@ -704,8 +730,28 @@ void DrawMinimapPreviewContent(EditorState& state) {
         }
     }
 
-    ImGui::TextDisabled("%s",L("Editor-Preview · Fiesta-Export bis Formatverifikation gesperrt",
-                               "Editor preview · Fiesta export locked until format verification"));
+    if (UI::Button(L("Minimap erzeugen","Generate minimap"))) {
+        std::vector<std::string> report;
+        GenerateMinimap(state, report);
+        std::string summary;
+        for (const auto& line : report) summary += (summary.empty() ? "" : "  ·  ") + line;
+        state.statusMessage = summary;
+    }
+    ImGui::SameLine();
+    UI::Checkbox(L("Stil der Originale","Original style"), &state.minimapStyled);
+    ImGui::SameLine();
+    UI::Checkbox(L("mit Objekten","with objects"), &state.minimapWithObjects);
+    if (showGame) {
+        ImGui::TextDisabled("%s%s · %s %d,%d-%d,%d", fromProject ? L("Projekt: ","Project: ") : L("Client: ","Client: "),
+                            core::legacy::MinimapRelativePath(viewRow->folder).c_str(), L("Ausschnitt","crop"), viewRow->view.startX,
+                            viewRow->view.startY, viewRow->view.endX, viewRow->view.endY);
+    } else if (viewRow) {
+        ImGui::TextDisabled("%s", gamePath.empty() ? L("Keine Spiel-Minimap für diese Karte - 'Minimap erzeugen' schreibt sie ins Projekt.",
+                                                       "No game minimap for this map - 'Generate minimap' writes one to the project.")
+                                                   : L("Editor-Vorschau (ganze Karte).","Editor preview (whole map)."));
+    } else {
+        ImGui::TextDisabled("%s", L("Kein MapViewInfo-Eintrag für diese Karte.","No MapViewInfo entry for this map."));
+    }
 }
 
 } // namespace nge
