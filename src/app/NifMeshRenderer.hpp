@@ -104,6 +104,7 @@ public:
     void SetViewMode(int mode) { viewMode_ = mode; }
     // SHMD-Szenenlicht und Nebel (siehe SceneLighting.hpp).
     void SetSceneLighting(const SceneLighting& lighting) { lighting_ = lighting; }
+    [[nodiscard]] const SceneLighting& GetSceneLighting() const noexcept { return lighting_; }
 
     // Eingebettete Knoten-Animationen (Windmühlen, Boote, Schilder) abspielen; aus = Bind-Pose.
     void SetObjectAnimationEnabled(bool enabled) { objectAnimation_ = enabled; }

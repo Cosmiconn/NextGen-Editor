@@ -75,6 +75,8 @@
 #include "mapeditor/core/Spline.hpp"
 #include <random>
 #include "mapeditor/core/legacy/NewMapFromTemplate.hpp"
+#include "mapeditor/core/legacy/Minimap.hpp"
+#include "mapeditor/core/legacy/TownPortalImage.hpp"
 #include "mapeditor/core/legacy/MapRenderSettings.hpp"
 #include "mapeditor/app/Localization.hpp"
 
@@ -538,6 +540,11 @@ struct EditorState {
     // client-image evidence for a Fiesta exporter.
     bool minimapShowViewport = true;
     bool minimapShowObjects = false;
+    bool minimapShowGame = true;        // Spiel-Minimap (resmenu\minimap) statt Editor-Vorschau
+    bool minimapStyled = true;          // beim Erzeugen: Stil der Originale (Konturen, Pergament-Rand)
+    bool minimapWithObjects = true;     // beim Erzeugen: Objekte mitzeichnen
+    bool minimapPendingGenerate = false; // Assistent "Neue Karte": nach dem Laden erzeugen
+    float townPortalImageYaw = 0.0f;    // Blickrichtung der Portal-Aufnahme (0 = nach Norden)
     app::HeightmapRenderer renderer;
     app::ObjectMarkerRenderer objectMarkerRenderer;
     app::ObjectMarkerRenderer portalMarkerRenderer; // Portale-Tab: TownPortal-/Schriftrollen-Ziele im 3D-View
@@ -651,6 +658,12 @@ struct EditorState {
     std::vector<ShopItemEntry> itemEntries;                  // aus ItemInfo.shn, nach InxName sortiert
     std::unordered_map<std::string, std::size_t> itemByInx;  // InxName -> Index in itemEntries
     bool itemLookupTried = false;
+    std::unordered_map<long long, std::string> itemInxById;            // ItemInfo ID -> InxName (für Icons)
+    // Icons (resmenu/Icon): InxName -> (IconFile, IconIndex) aus ItemViewInfo.shn, Atlasgrößen je Pfad.
+    std::unordered_map<std::string, std::pair<std::string, int>> itemIconByInx;
+    bool itemIconsTried = false;
+    std::unordered_map<std::string, std::pair<std::uint32_t, std::uint32_t>> iconAtlasSizes;
+    bool skillIconPickerOpen = false;
     int shopPickTable = -1, shopPickRow = -1, shopPickCol = -1;
     bool shopPickRequested = false;
     char shopItemFilter[128] = "";
@@ -1693,6 +1706,7 @@ void EnsureDiscoveredMaps(EditorState& state);
 int FindDiscoveredMapByName(const EditorState& state, const std::string& mapName);
 bool NavigateToPortalTarget(EditorState& state, const PortalMarker& marker);
 void SetSelectedPortalPosition(EditorState& state, long long x, long long y);
+std::string TownPortalMapName(EditorState& state, std::size_t row);
 void AddTownPortalForCurrentMap(EditorState& state);
 bool DrawShineRecordFields(std::vector<std::string>& values, const std::vector<core::legacy::ShineColumn>& columns,
                            std::size_t firstEditable);
@@ -2018,6 +2032,36 @@ void DrawWalkFootprintPreview(EditorState& state, ImDrawList* drawList,
                                      const ImVec2& mapOrigin, const ImVec2& mapSize,
                                      float spanX, float spanZ);
 void DrawMinimapPreviewContent(EditorState& state);
+// MapViewInfo-Zeile der offenen Karte (MapName oder MapFolderName passt).
+struct MapViewRow {
+    int document = -1;
+    std::size_t row = 0;
+    std::string folder;       // MapFolderName = Dateiname der Minimap
+    bool minimapView = false; // MinimapView
+    core::legacy::MinimapView view;
+};
+std::optional<MapViewRow> FindMapViewRow(EditorState& state, EditorState::ShnSource source);
+std::filesystem::path GameMinimapPath(EditorState& state, const std::string& folder, bool* fromProject = nullptr);
+std::vector<std::uint8_t> RenderMinimapRgba(EditorState& state, std::uint32_t size, bool withObjects);
+std::vector<std::uint8_t> MinimapWalkMask(const EditorState& state, std::uint32_t size);
+bool GenerateMinimap(EditorState& state, std::vector<std::string>& report);
+void ProcessPendingMinimap(EditorState& state);
+// Offscreen-Aufnahme der Szene (eigenes Render-Ziel); Zeile 0 = obere Bildkante.
+std::vector<std::uint8_t> CaptureSceneRgba(EditorState& state, const app::OrbitCamera& cam, std::uint32_t size,
+                                           bool withObjects, bool withSky, bool withFog);
+// Datei relativ zu resmenu: Projekt-Override vor Client (Groß-/Kleinschreibung egal); leer = fehlt.
+std::filesystem::path GameResmenuPath(EditorState& state, const std::string& rel, bool* fromProject = nullptr);
+// Stadtportal-Bilder <MapName>.dds und _disable.dds für ein Ziel (Weltposition x / Server-y) ins Projekt.
+bool GenerateTownPortalImages(EditorState& state, const std::string& mapName, float x, float y,
+                              std::vector<std::string>& report);
+// Item-/Skill-Icons (IconTools.cpp).
+void EnsureItemIcons(EditorState& state);
+std::optional<std::pair<std::string, int>> ItemIconForInx(EditorState& state, const std::string& inx);
+std::optional<std::pair<std::string, int>> ItemIconForId(EditorState& state, long long id);
+bool DrawAtlasIcon(EditorState& state, const std::string& iconFile, int index, float size);
+bool DrawItemIconByInx(EditorState& state, const std::string& inx, float size);
+bool DrawItemIconById(EditorState& state, long long id, float size);
+bool DrawIconAtlasPicker(EditorState& state, const std::string& iconFile, int& index);
 bool ScatterAtWorld(EditorState& state, float worldX, float worldZ);
 std::filesystem::path PrefabDir(const EditorState& state);
 bool PlacePrefabAtWorld(EditorState& state, float worldX, float worldZ);

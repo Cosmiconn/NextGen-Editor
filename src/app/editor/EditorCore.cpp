@@ -853,6 +853,10 @@ void SyncProjectRoots(EditorState& state) {
     state.itemLookupTried = false;
     state.itemEntries.clear();
     state.itemByInx.clear();
+    state.itemInxById.clear();
+    state.itemIconByInx.clear();
+    state.itemIconsTried = false;
+    state.iconAtlasSizes.clear();
     state.mobViewInfoLoaded = false;
     state.townPortalLoaded = false;
     state.recallCoordLoaded = false;

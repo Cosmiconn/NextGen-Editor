@@ -1,6 +1,6 @@
 # Fiesta Minimap / Overview Format Investigation
 
-**Status:** metadata convention partially verified; image/export format gate remains closed.
+**Status:** verified against 180 original client minimaps (NA2016 `resmenu/minimap`); export is implemented (see "Verified image format" and "Export").
 
 ## Goal
 
@@ -107,15 +107,45 @@ Implemented preview scope:
 
 Still pending inside the preview (not exporter): water/special-object overlays and optional gameplay overlays can be added only as editor visualization. When a loaded map has a matching `MapViewInfo` record, its scale/crop metadata may later be displayed as **read-only diagnostic data**, but must not silently change export output before the image convention is verified.
 
-## Export implementation gate
+## Verified image format (original client minimaps)
 
-**Still closed.** Exporter work starts only after real client image assets establish all of:
+The user supplied the client's `resmenu/minimap` folder (180 files). The files themselves are not committed. Together with `Fiesta.bin` they establish all points of the hard rule above:
 
-- target file type;
-- output path/name;
-- image dimensions/aspect policy;
-- orientation;
-- alpha/channel expectations;
-- how `MapFolderName`, `MiniMapScale` and Start/End coordinates relate to that image.
+1. **Path:** `Fiesta.bin` loads `%sminimap\%s.dds` relative to `ResMenu\`, with the name taken from `MapViewInfo.MapFolderName`. Several maps share one image this way, for example `Job2_Dn02` uses `EldFor01`.
+2. **Format:** DDS, DXT1 or DXT3. Examples: `Rou.DDS` DXT3, `Bera.DDS` DXT1, `Adl.dds` DXT1 with mipmaps.
+3. **Size:** 512×512 for regular maps, independent of the map size.
+4. **Alpha:** not used visually. The images are opaque paintings, and DXT3 appears without any meaningful alpha.
+5. **Orientation:** north up. Image row 0 is the north edge.
+6. **Axis mapping:** `StartX/StartY/EndX/EndY` give a square crop in normalised map coordinates 0..511. The origin is the north-west corner, X runs east and Y runs south. The image shows exactly that crop.
+7. **Shape:** always square. Every crop in `MapViewInfo` is square, for example Rou 79,86→474,482 and Eld 187,159→379,351.
+8. **Tiles:** none; one image per map folder.
+9. **Extra metadata:** only the `MapViewInfo` row (`MinimapView`, crop, `MiniMapScale`, `ZoomMax`).
 
-The 512-based metadata convention is useful evidence, but it is not enough to invent the missing file mapping. If later examples disagree, the exporter must model the real variation rather than normalize it to a guessed universal rule.
+### Evidence for the crop convention
+
+Each original was compared against the walkability mask of the same map (`resmap/field/<map>/<map>.shbd` or `9Data/Shine/BlockInfo/<map>.shbd`), drawn north-up.
+
+| Map | Crop | Result |
+|---|---|---|
+| Bera | 0,0→511,511 | The whole map, matching the walkable layout 1:1. |
+| Rou | 79,86→474,482 | Edge correlation 0.087 with Y counted from the top, against ≤0.049 for every shifted variant and 0.015 with Y counted from the bottom. |
+| RouTemDn01 | 0,106→405,511 | Visual check: the dungeon's south corridor reaches the lower image edge only with Y counted from the top. |
+| Eld | 187,159→379,351 | Almost symmetric, so it does not discriminate between the two Y conventions. The full map (0.025) is clearly worse than the crop (0.097). |
+
+The originals are hand-painted: parchment frame, dark outlines, painted rocks and water. They are not renders.
+
+## Export (implemented)
+
+- **Minimap panel:**
+  - Shows the game minimap with the `MapViewInfo` crop applied. A project override takes precedence over the client file.
+  - Can switch to the editor preview.
+  - Object dots, the 2D view rectangle and clicks all use the crop convention.
+- **"Generate minimap"** (`src/app/editor/MinimapTools.cpp`):
+  - Renders an orthographic top-down view of terrain, objects and water into a 512×512 offscreen target. The sky is left out.
+  - Optionally stylises it like the originals (`core::legacy::StylizeMinimap`: dark outlines along the walkable border, darker blocked areas, ragged parchment frame).
+  - Writes `<Project>/Client/resmenu/minimap/<MapFolderName>.dds` as DXT1 without mipmaps, using `core::WriteDdsFile`.
+  - Sets `MinimapView=1` and the crop `0,0-511,511` in both `MapViewInfo.shn` files, because the generated image shows the whole map.
+- **New map wizard:** generates the minimap automatically once the new map is loaded.
+- **Map check:** `MinimapMissing` is reported when `MinimapView=1` is set but no image exists.
+
+`MiniMapScale` and `ZoomMax` are kept from the template row; their exact effect on the in-game zoom is not measured.

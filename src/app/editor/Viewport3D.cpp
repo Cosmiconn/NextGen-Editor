@@ -1007,6 +1007,8 @@ void DrawPreview3DContent(EditorState& state) {
         state.shmdCategoryMeshRenderer.SetSceneLighting(lighting);
         state.npcMeshRenderer.SetSceneLighting(lighting);
     }
+    // Assistent "Neue Karte": Minimap erst jetzt erzeugen (Terrain-Mesh, Modelle und Licht sind geladen).
+    ProcessPendingMinimap(state);
     state.renderer.BeginScene(state.camera, w, h, state.wireframe);
     // Immer neu aufbauen (statt Dirty-Tracking über alle Objekt-Mutationsstellen hinweg) -
     // bei ein paar Tausend Instanzen unproblematisch, aber garantiert nie veraltet (z.B. nach

@@ -1,3 +1,28 @@
+## Data editors — item and skill icons
+- Icons from the client atlases are shown in the data editors: `resmenu\Icon\<IconFile>.dds`, 32×32 cells numbered row by row (`IconIndex` 0 = top left), with the project override before the client. The layout was checked on `ItemEqu000.dds`: 0 LeatherHelmet, 1 LeatherBoots, 2 LeatherPants, 3 LeatherShirt, 4 ChainHelmet, 8 LitanyHelmet. Hovering shows a larger version with atlas name and index.
+- Where they appear:
+  - Quest rewards and quest item rewards: icon before the item name.
+  - Drop table: up to six icons per drop group.
+  - Merchant slots: icon before the item.
+  - Skill editor: the skill's icon above the form. "Choose icon..." shows the whole atlas; a click sets `IconIndex` on client and server.
+- Items are mapped through `ItemViewInfo.shn` (InxName → IconFile/IconIndex).
+- Core: `core/legacy/IconAtlas` (cell for an index, capacity, path, DDS size from the header), with `test_icon_atlas` (optionally against the original `ItemEqu000.dds`). Automation: `skill <id> [picker]`.
+
+## Portals — town portal images
+- The client's town portal list loads `resmenu\TownPortal\<MapName>.DDS` and `<MapName>_disable.DDS` (from `Fiesta.bin`). The originals supplied by the user are perspective captures of the arrival point: 256×256 DXT5 with mipmaps, rounded corners in the alpha channel (radius about 25 px). The `_disable` variant is the same picture desaturated and darkened; measured on six pairs it keeps about 45 % of the saturation and 80 % of the brightness.
+- The portal editor shows both images for the map's town portal target (project before client). "Generate portal images" captures the arrival point from an adjustable view direction (offscreen, with sky and fog) and writes both files in that format to `<Project>/Client/resmenu/TownPortal/`. Adding a town portal target generates missing images automatically.
+- Map check: new warning `TownPortalImageMissing`.
+- Checked on Bera (target 7505/7279): both files are written with the original's size, format and mipmap chain.
+- Core: `core/legacy/TownPortalImage` (rounded corners, grey variant, paths), tested in `test_minimap`. The scene capture shared with the minimap is `CaptureSceneRgba`. Automation: `townportal add | images [yaw]`.
+
+## Minimap — real client format, display and generation
+- The client minimap format is now established from the original `resmenu/minimap` files supplied by the user (not committed): `resmenu\minimap\<MapFolderName>.dds`, 512×512 DXT1/DXT3, north up. `MapViewInfo.StartX/StartY/EndX/EndY` is a square crop in normalised map coordinates 0..511, with the origin in the north-west and Y running south. Checked against the walkability of Bera (whole map), Roumen (79,86-474,482) and RouTemDn01 (0,106-405,511). Details in `docs/MINIMAP_FORMAT.md`; the export gate is open.
+- The minimap panel shows the game minimap of the open map (project override before client), with object dots, the 2D view rectangle and click-to-centre following the crop. It can switch to the editor preview.
+- "Generate minimap" renders an orthographic top-down view (terrain, objects, water; no sky) into a dedicated offscreen target. It can stylise the image like the hand-painted originals: outlines along the walkable border, darker blocked areas, parchment frame. It writes `<Project>/Client/resmenu/minimap/<map>.dds` (DXT1) and sets `MinimapView=1` and crop 0,0-511,511 in both `MapViewInfo.shn` files. On Roumen the generated image lines up with the original: town, harbour, lighthouse island and ship are in the same places.
+- New map wizard: the minimap is generated as soon as the new map is loaded.
+- Map check: new warning `MinimapMissing` (MinimapView set, image missing).
+- DDS writer: `core/DdsWrite` (DXT1/DXT3/DXT5 with optional mipmaps, headers as in the originals), with `test_dds_write`. Minimap core: `core/legacy/Minimap` (crop convention, resampling, stylisation), with `test_minimap`. Automation: `minimap generate | game on|off | style on|off | objects on|off | export <ppm>`.
+
 ## Code — main.cpp split into modules
 - `src/app/main.cpp` (24,000 lines in one file) now only holds the program entry. The editor code lives in 27 topic modules under `src/app/editor/` (SHN editor, quest editor, portals, NPC editor, new-map wizard, skill editor, map check, 2D view, 3D viewport, workspace panels, NIF inspector, drop editor, automation and more). `EditorShared.hpp` has the shared types (`EditorState`) and the declarations of all editor functions, in the order of their definitions.
 - No behaviour change: function bodies are moved unchanged (only `static`/default arguments moved to the declarations). The editor code now sits in `namespace nge` instead of an anonymous namespace.

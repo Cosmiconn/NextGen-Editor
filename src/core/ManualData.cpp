@@ -377,12 +377,14 @@ Whether the server processes lines inserted via #recordin as expected has not be
 - Marker: Raute = TownPortal, Dreieck = Schriftrolle, Quadrat = Gate_Town-NPC, Ring = Regenerationspunkt der Karte.
 - X / Y: Zielposition. 'Position per Klick im 2D-View setzen' wählt die Position mit der Maus. 'Menü-Gruppe' und 'Mindestlevel' steuern das Menü.
 - 'TownPortal-Ziel hier hinzufügen', 'Entfernen', 'Verwerfen und neu laden'.
+- Portalbilder: Der Client zeigt in der Stadtportal-Auswahl resmenu/TownPortal/<Karte>.dds (und <Karte>_disable.dds für gesperrte Ziele). Der Bereich 'Portalbilder' zeigt beide (Projekt vor Client). 'Portalbilder erzeugen' nimmt den Ankunftsort aus der eingestellten 'Blickrichtung' auf und schreibt beide Dateien wie die Originale (256x256 DXT5 mit Mipmaps, abgerundete Ecken, graue Variante). Beim Hinzufügen eines Ziels werden fehlende Bilder automatisch erzeugt; die Kartenprüfung warnt, wenn sie fehlen.
 - 'TownPortal.shn speichern' und 'RecallCoord.txt speichern'.
 Ein TownPortal-Ziel liegt höchstens 205 Einheiten vom zugehörigen Gate_Town-NPC entfernt.)MAN",
      R"MAN(Fast-travel targets: TownPortal.shn (town portal targets) and RecallCoord.txt (scroll targets).
 - Markers: diamond = TownPortal, triangle = scroll, square = Gate_Town NPC, ring = regeneration point of the map.
 - X / Y: target position. 'Set position by click in 2D view' picks the position with the mouse. 'Menu group' and 'Minimum level' control the menu.
 - 'Add TownPortal target here', 'Remove', 'Discard and reload'.
+- Portal images: the client's town portal list shows resmenu/TownPortal/<map>.dds (and <map>_disable.dds for locked targets). The 'Portal images' area shows both (project before client). 'Generate portal images' captures the arrival point from the chosen 'View direction' and writes both files like the originals (256x256 DXT5 with mipmaps, rounded corners, grey variant). Adding a target generates missing images automatically; the map check warns when they are missing.
 - 'Save TownPortal.shn' and 'Save RecallCoord.txt'.
 A TownPortal target is at most 205 units away from the associated Gate_Town NPC.)MAN",
      "portal townportal recall schriftrolle teleport"},
@@ -392,18 +394,20 @@ A TownPortal target is at most 205 units away from the associated Gate_Town NPC.
 - Kartenname: Ordner-, Datei- und Servername (Buchstabe am Anfang, dann Buchstaben/Ziffern/_, höchstens 15 Zeichen). Anzeigename: der Name im Spiel.
 - Vorlage: eine vorhandene Karte, deren Textur-Layer, Licht (.conf, SHMD-Szenenlicht), Himmel und .aid übernommen werden - so zeigen alle Verweise auf Dateien, die im Client existieren. Neu angelegt werden flaches Terrain, frische Masken (Layer 1 voll), ein freies Block&Walk-Gitter, eine weiße Vertex-Color-Bitmap und eine leere Objektliste.
 - Größe 129, 257 (12800 x 12800 Einheiten wie Roumen) oder 513 Höhenpunkte; Grundhöhe.
-- Spieldaten: MapInfo.shn und MapViewInfo.shn (Client und Server, ID = nächste freie unter 1000, Wiederbelebung in der Kartenmitte, Minimap aus), World/Field.txt (Serial = CheckSum = nächste freie Nummer, wie bei allen 153 Originaleinträgen), Server-Begehbarkeit 9Data/Shine/BlockInfo/<Karte>.shbd/.aid.
+- Spieldaten: MapInfo.shn und MapViewInfo.shn (Client und Server, ID = nächste freie unter 1000, Wiederbelebung in der Kartenmitte), World/Field.txt (Serial = CheckSum = nächste freie Nummer, wie bei allen 153 Originaleinträgen), Server-Begehbarkeit 9Data/Shine/BlockInfo/<Karte>.shbd/.aid.
 - Optional ein Gate von einer vorhandenen Karte (Servername und Position) mit Rückweg: zwei ShineNPC-Gates und zwei LinkTable-Einträge in World/NPC.txt; Ankunft je 150 Einheiten neben dem Gate.
 Die Liste unter dem Knopf zeigt jede geschriebene Datei. Danach mit der Kartenprüfung kontrollieren.
-Minimap: Der Client lädt sie als resmenu\minimap\<Karte>.dds; Größe und Format sind ohne ein Original-Minimap-Bild nicht belegt, deshalb bleibt sie aus.)MAN",
+Minimap: Nach dem Laden der neuen Karte erzeugt der Editor resmenu\minimap\<Karte>.dds (512x512 DXT1, Draufsicht im Stil der Originale) und schaltet MinimapView ein.
+Minimap-Panel: zeigt die Spiel-Minimap der offenen Karte (Projekt vor Client) mit ihrem MapViewInfo-Ausschnitt oder die Editor-Vorschau. 'Minimap erzeugen' rendert die Karte von oben (wahlweise mit Objekten und im Stil der Originale: dunkle Konturen an der Grenze begehbar/blockiert, Pergament-Rand), schreibt sie ins Projekt und setzt in MapViewInfo MinimapView 1 und den Ausschnitt 0,0-511,511 (ganze Karte). Die Kartenprüfung warnt, wenn MinimapView gesetzt ist, aber das Bild fehlt.)MAN",
      R"MAN(Map > New map creates a map with all client and server entries and writes it to the project folder right away (the source folders stay untouched).
 - Map name: folder, file and server name (letter first, then letters/digits/_, at most 15 characters). Display name: the name in the game.
 - Template: an existing map whose texture layers, light (.conf, SHMD scene light), sky and .aid are taken over - so every reference points to files that exist in the client. Newly created are flat terrain, fresh masks (layer 1 full), a free Block&Walk grid, a white vertex colour bitmap and an empty object list.
 - Size 129, 257 (12800 x 12800 units like Roumen) or 513 height points; base height.
-- Game data: MapInfo.shn and MapViewInfo.shn (client and server, ID = next free one below 1000, respawn in the map centre, minimap off), World/Field.txt (Serial = CheckSum = next free number, as in all 153 original entries), server walkability 9Data/Shine/BlockInfo/<map>.shbd/.aid.
+- Game data: MapInfo.shn and MapViewInfo.shn (client and server, ID = next free one below 1000, respawn in the map centre), World/Field.txt (Serial = CheckSum = next free number, as in all 153 original entries), server walkability 9Data/Shine/BlockInfo/<map>.shbd/.aid.
 - Optionally a gate from an existing map (server name and position) with a way back: two ShineNPC gates and two LinkTable entries in World/NPC.txt; arrival 150 units next to each gate.
 The list under the button shows every written file. Check the result with the map check afterwards.
-Minimap: the client loads it as resmenu\minimap\<map>.dds; size and format are not established without an original minimap image, so it stays off.)MAN",
+Minimap: once the new map is loaded the editor generates resmenu\minimap\<map>.dds (512x512 DXT1, top-down view in the style of the originals) and turns MinimapView on.
+Minimap panel: shows the open map's game minimap (project before client) with its MapViewInfo crop, or the editor preview. 'Generate minimap' renders the map from above (optionally with objects and in the style of the originals: dark outlines along the walkable border, parchment frame), writes it to the project and sets MinimapView 1 and the crop 0,0-511,511 (whole map) in MapViewInfo. The map check warns when MinimapView is set but the image is missing.)MAN",
      "neue karte new map vorlage template mapinfo field gate assistent wizard"},
     {"map.mapcheck", "map",
      "Kartenprüfung", "Map check",
@@ -516,6 +520,7 @@ Whether the game accepts self-created entries has not been verified.)MAN",
      R"MAN(Ein Skill ist eine STUFE einer Skillreihe (TripleHit14 = Reihe TripleHit, Stufe 14). Er steckt in ActiveSkill (Client+Server), ActiveSkillInfoServer und ActiveSkillView (Client+Server); lernbare Skills haben ein Skillbuch-Item mit gleichem InxName.
 # Ändern
 Liste links (Suche nach Name, InxName oder ID), Formular rechts in Bereichen: Grunddaten, Kosten und Zeiten, Schaden, Bewegung/Ziele, Server-Werte, Darstellung, Zustände (Buffs/Debuffs) und 'Alle übrigen Spalten (roh)'. Jede Änderung wird sofort in ALLE Kopien (Client und Server) geschrieben. Der InxName eines vorhandenen Skills bleibt fest.
+Icon: Über dem Formular steht das Icon des Skills (ActiveSkillView IconFile/IconIndex, Bild aus resmenu/Icon/<IconFile>.dds, Projekt vor Client). 'Icon wählen...' zeigt den ganzen Atlas; ein Klick setzt IconIndex in Client und Server. Die Datenblätter zeigen Item-Icons ebenso: Quest-Belohnungen, Drop-Gruppen und die Händler-Slots (aus ItemViewInfo.shn).
 # Neu aus Vorhandenem
 - 'Neuen Skill aus diesem anlegen': klont alle Zeilen (Werte, Server-Werte, Darstellung) mit neuer ID und neuem InxName; optional mit Skillbuch-Item (neue Item-ID).
 - 'Nächste Stufe anlegen': legt <Reihe><Stufe+1> an, Voraussetzungs-Skill = dieser Skill.
@@ -527,6 +532,7 @@ Spalten, deren Bedeutung nur aus dem Namen abgeleitet ist, tragen im Tooltip den
      R"MAN(A skill is one STEP of a skill series (TripleHit14 = series TripleHit, step 14). It lives in ActiveSkill (client+server), ActiveSkillInfoServer and ActiveSkillView (client+server); learnable skills have a skill book item with the same InxName.
 # Modify
 List on the left (search by name, InxName or ID), form on the right in areas: basics, costs and timing, damage, movement/targets, server values, presentation, states (buffs/debuffs) and 'All remaining columns (raw)'. Every change is written immediately to ALL copies (client and server). The InxName of an existing skill stays fixed.
+Icon: above the form is the skill's icon (ActiveSkillView IconFile/IconIndex, image from resmenu/Icon/<IconFile>.dds, project before client). 'Choose icon...' shows the whole atlas; a click sets IconIndex on client and server. The data editors show item icons the same way: quest rewards, drop groups and merchant slots (from ItemViewInfo.shn).
 # New from existing
 - 'Create new skill from this one': clones all rows (values, server values, presentation) with a new ID and new InxName; optionally with a skill book item (new item ID).
 - 'Create next step': creates <series><step+1>, required skill = this skill.
@@ -665,7 +671,7 @@ const TipRow kTips[] = {
     {"Mindestlevel", "Charakterlevel, ab dem das Ziel im Menü erscheint.", "Character level from which the target appears in the menu."},
     {"Menü-Gruppe", "Gruppe/Sortierung des Ziels im Portal-Menü.", "Group/sorting of the target in the portal menu."},
     {"Position per Klick im 2D-View setzen", "Danach in die 2D-Ansicht klicken, um die Position zu setzen.", "Then click in the 2D view to set the position."},
-    {"TownPortal-Ziel hier hinzufügen", "Legt ein neues Stadtportal-Ziel an.", "Creates a new town portal target."},
+    {"TownPortal-Ziel hier hinzufügen", "Legt ein neues Stadtportal-Ziel an und erzeugt fehlende Portalbilder.", "Creates a new town portal target and generates missing portal images."},
     {"Verwerfen und neu laden", "Verwirft alle ungespeicherten Portal-Änderungen und liest neu.", "Discards all unsaved portal changes and rereads."},
     {"Event", "Name des Ereignisses/Skripts, das der NPC ausführt.", "Name of the event/script the NPC runs."},
     {"+ Wegpunkt hinzufügen", "Fügt einen Punkt zur Patrouillenroute hinzu.", "Adds a point to the patrol route."},
@@ -862,6 +868,15 @@ const TipRow kTips[] = {
     {"Versatz aus dieser Karte schaetzen (Block&Walk)", "Testet für alle NPCs dieser Karte, welcher Versatz sie im Schnitt am ehesten von der nächsten Wand weg blicken lässt (Annahme: Rücken zur Wand). Grobe Schätzung.", "For all NPCs on this map, tests which offset most often makes them face away from the nearest wall on average (assumption: back to the wall). A rough estimate."},
     {"Versatz bei Richtung 0 (Grad)", "Versatz der Zuordnung Richtung -> Blickwinkel bei Richtung 0 (gilt für alle NPCs). Per Block&Walk-Analyse auf 0 Grad voreingestellt, hier frei einstellbar.", "Offset of the direction -> facing-angle mapping at direction 0 (applies to all NPCs). Preset to 0 degrees from a Block&Walk analysis, freely adjustable here."},
     {"SmallButton:0##offreset", "Setzt den Versatz auf den Standardwert 0 Grad zurück.", "Resets the offset to the default of 0 degrees."},
+    {"RadioButton:Spiel", "Zeigt die Spiel-Minimap (resmenu/minimap/<Karte>.dds, Projekt vor Client) mit ihrem MapViewInfo-Ausschnitt.", "Shows the game minimap (resmenu/minimap/<map>.dds, project before client) with its MapViewInfo crop."},
+    {"RadioButton:Vorschau", "Zeigt die Editor-Draufsicht der ganzen Karte statt der Spiel-Minimap.", "Shows the editor's top-down view of the whole map instead of the game minimap."},
+    {"Minimap erzeugen", "Rendert die Karte von oben, schreibt resmenu/minimap/<Karte>.dds (512x512 DXT1) ins Projekt und setzt in MapViewInfo MinimapView 1 und den Ausschnitt 0,0-511,511.", "Renders the map from above, writes resmenu/minimap/<map>.dds (512x512 DXT1) to the project and sets MinimapView 1 and the crop 0,0-511,511 in MapViewInfo."},
+    {"Stil der Originale", "Erzeugte Minimap im Stil der handgemalten Originale: dunkle Konturen an der Grenze begehbar/blockiert, dunklere blockierte Flächen, Pergament-Rand.", "Generated minimap in the style of the hand-painted originals: dark outlines along the walkable border, darker blocked areas, parchment frame."},
+    {"mit Objekten", "Objekte und Wasser in die erzeugte Minimap mitzeichnen (Himmel nie).", "Draw objects and water into the generated minimap (never the sky)."},
+    {"Portalbilder erzeugen", "Nimmt den Ankunftsort des Stadtportals auf und schreibt resmenu/TownPortal/<Karte>.dds und <Karte>_disable.dds (256x256 DXT5 mit Mipmaps, abgerundete Ecken, graue Variante) ins Projekt.", "Captures the town portal's arrival point and writes resmenu/TownPortal/<map>.dds and <map>_disable.dds (256x256 DXT5 with mipmaps, rounded corners, grey variant) to the project."},
+    {"Blickrichtung", "Richtung, in die die Portal-Aufnahme schaut (0 = nach Norden).", "Direction the portal capture looks in (0 = north)."},
+    {"Icon wählen...", "Zeigt den Icon-Atlas (resmenu/Icon/<Icon-Datei>.dds); ein Klick auf ein Icon setzt IconIndex.", "Shows the icon atlas (resmenu/Icon/<icon file>.dds); clicking an icon sets IconIndex."},
+    {"Icon-Auswahl schließen", "Blendet den Icon-Atlas wieder aus.", "Hides the icon atlas again."},
 };
 
 const ColumnDoc kColumns[] = {

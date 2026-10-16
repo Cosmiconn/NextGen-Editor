@@ -326,6 +326,39 @@ void RunMapCheck(EditorState& state) {
         }
     }
 
+    // Minimap: der Client lädt resmenu\minimap\<MapFolderName>.dds, wenn MinimapView gesetzt ist.
+    if (const auto viewRow = FindMapViewRow(state, EditorState::ShnSource::Client);
+        viewRow && viewRow->minimapView && GameMinimapPath(state, viewRow->folder).empty()) {
+        MapCheckIssue i;
+        i.severity = MapCheckSeverity::Warning;
+        i.code = MapCheckCode::MinimapMissing;
+        i.subject = viewRow->folder;
+        i.detail = core::legacy::MinimapRelativePath(viewRow->folder);
+        issues.push_back(i);
+    }
+
+    // Stadtportal: der Client lädt resmenu\TownPortal\<MapName>.DDS und <MapName>_disable.DDS.
+    EnsureTownPortalLoaded(state);
+    for (const auto& m : CollectPortalMarkers(state)) {
+        if (m.kind != kPortalKindTown) continue;
+        const std::string mapName = TownPortalMapName(state, m.idx);
+        std::string missing;
+        for (const bool grey : {false, true})
+            if (GameResmenuPath(state, core::legacy::TownPortalImageRelativePath(mapName, grey)).empty())
+                missing += (missing.empty() ? "" : ", ") + core::legacy::TownPortalImageRelativePath(mapName, grey);
+        if (missing.empty()) continue;
+        MapCheckIssue i;
+        i.severity = MapCheckSeverity::Warning;
+        i.code = MapCheckCode::TownPortalImageMissing;
+        i.subject = m.label;
+        i.detail = missing;
+        i.hasPosition = true;
+        i.x = m.x;
+        i.z = m.y;
+        issues.push_back(i);
+        break; // ein Eintrag je Karte genügt (alle Ziele teilen den Dateinamen)
+    }
+
     // Spieldaten: aktivierte Quests mit Start-NPC, der nicht existiert oder auf keiner Karte steht.
     if (state.mapCheckIncludeQuests) {
         EnsureQuestDataLoaded(state);
@@ -428,6 +461,12 @@ std::string MapCheckMessage(const core::MapCheckIssue& i) {
         case MapCheckCode::QuestStartNpcNotPlaced:
             return std::string(L("Start-NPC steht auf keiner Karte - Quest kann nicht angenommen werden: ",
                                  "Starting NPC is not placed on any map - the quest cannot be accepted: ")) + i.detail;
+        case MapCheckCode::TownPortalImageMissing:
+            return std::string(L("Stadtportal-Bild fehlt: resmenu/", "Town portal image missing: resmenu/")) + i.detail +
+                   L(" (Portale: 'Portalbilder erzeugen')", " (Portals: 'Generate portal images')");
+        case MapCheckCode::MinimapMissing:
+            return std::string(L("Minimap eingeschaltet, aber Bild fehlt: resmenu/", "Minimap enabled but image missing: resmenu/")) + i.detail +
+                   L(" (Minimap-Panel: 'Minimap erzeugen')", " (minimap panel: 'Generate minimap')");
     }
     return {};
 }
@@ -457,6 +496,8 @@ const char* MapCheckCategoryLabel(core::MapCheckCode code) {
         case MapCheckCode::TerrainTextureMissing: return "Terrain";
         case MapCheckCode::QuestStartNpcUnknown:
         case MapCheckCode::QuestStartNpcNotPlaced: return "Quest";
+        case MapCheckCode::MinimapMissing: return "Minimap";
+        case MapCheckCode::TownPortalImageMissing: return "TownPortal";
     }
     return "";
 }
