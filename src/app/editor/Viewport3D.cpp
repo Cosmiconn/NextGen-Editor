@@ -1053,6 +1053,7 @@ void DrawPreview3DContent(EditorState& state) {
     if (state.showObjectMeshes) state.nifMeshRenderer.Draw(state.placementSet, state.camera, w, h, &state.objectHidden);
     RefreshShmdCategoryVisibility(state);
     if (state.showObjectMeshes && state.shmdCategoryRenderSet.Count() > 0) {
+        PlaceSkyAtCamera(state, state.camera);
         state.shmdCategoryMeshRenderer.Draw(state.shmdCategoryRenderSet, state.camera, w, h, &state.shmdCategoryHidden);
     }
     EnsureNpcModelsLoaded(state);

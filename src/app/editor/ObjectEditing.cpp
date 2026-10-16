@@ -732,6 +732,18 @@ void ApplySelectedObjectModelPath(EditorState& state, const std::string& modelPa
     SyncSelectedObjectModelPath(state);
     FinishObjectMutation(state, std::move(historyBefore), changed);
 }
+void PlaceSkyAtCamera(EditorState& state, const app::OrbitCamera& cam) {
+    // field_sky_01.nif liegt bei +-4164 um den Ursprung (Unterkante +290): eine Kuppel um den
+    // Betrachter. An der Kartenecke (0,0) gezeichnet verdeckte sie Teile der Karte.
+    const std::size_t count = std::min(state.shmdCategoryRenderSet.Count(), state.shmdCategoryRenderKind.size());
+    for (std::size_t i = 0; i < count; ++i) {
+        if (state.shmdCategoryRenderKind[i] != 0) continue;
+        auto& sky = state.shmdCategoryRenderSet.At(i);
+        sky.posX = cam.EyeX();
+        sky.posY = cam.EyeY();
+        sky.posZ = -cam.EyeZ();
+    }
+}
 void RefreshShmdCategoryVisibility(EditorState& state) {
     state.shmdCategoryHidden.resize(state.shmdCategoryRenderSet.Count(), 0);
     for (std::size_t i = 0; i < state.shmdCategoryRenderSet.Count(); ++i) {

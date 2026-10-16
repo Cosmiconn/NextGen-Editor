@@ -505,19 +505,26 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
     else if (cmd == "glow") onOff(state.viewportGlow);
     else if (cmd == "objectanim") onOff(state.viewportObjectAnimation);
     else if (cmd == "capture") {
-        // capture <datei.ppm> <größe> <x> <y(server)> <yaw> <pitch> <abstand> [höhe über Boden]:
+        // capture <datei.ppm> <größe|BxH> <x> <y(server)> <yaw> <pitch> <abstand> [höhe über Boden]:
         // Offscreen-Aufnahme wie die Portalbilder (mit Himmel und Nebel), für Vergleiche mit Client-Bildern.
-        std::string file; std::uint32_t size = 256; float x = 0, y = 0, yaw = 0, pitch = 0.3f, dist = 950, lift = 90;
-        in >> file >> size >> x >> y >> yaw >> pitch >> dist;
+        std::string file, sizeText; float x = 0, y = 0, yaw = 0, pitch = 0.3f, dist = 950, lift = 90;
+        in >> file >> sizeText >> x >> y >> yaw >> pitch >> dist;
         in >> lift;
+        std::uint32_t width = 256, height = 256;
+        if (const auto cross = sizeText.find('x'); cross != std::string::npos) {
+            width = static_cast<std::uint32_t>(std::max(1, std::atoi(sizeText.substr(0, cross).c_str())));
+            height = static_cast<std::uint32_t>(std::max(1, std::atoi(sizeText.substr(cross + 1).c_str())));
+        } else if (!sizeText.empty()) {
+            width = height = static_cast<std::uint32_t>(std::max(1, std::atoi(sizeText.c_str())));
+        }
         const float ground = state.heightmap.Width() > 1 ? state.heightmap.SampleWorld(x, y) : 0.0f;
         app::OrbitCamera cam;
         cam.SetTarget(x, ground + lift, y);
         cam.SetDistance(dist);
         cam.SetOrientation(yaw, pitch);
-        const auto rgba = CaptureSceneRgba(state, cam, size, true, true, true);
+        const auto rgba = CaptureSceneRgba(state, cam, width, height, true, true, true);
         std::ofstream out(file, std::ios::binary);
-        out << "P6\n" << size << " " << size << "\n255\n";
+        out << "P6\n" << width << " " << height << "\n255\n";
         for (std::size_t i = 0; i + 3 < rgba.size(); i += 4) out.write(reinterpret_cast<const char*>(&rgba[i]), 3);
         std::printf("[capture] %s %zu\n", file.c_str(), rgba.size());
         std::fflush(stdout);

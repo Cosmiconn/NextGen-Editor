@@ -95,8 +95,8 @@ struct NifEmbeddedTexture {
     std::uint32_t bitsPerPixel = 0;
     std::uint32_t bytesPerPixel = 0;
     std::array<NifPixelChannelInfo, 4> channels{};
-    // 2D compatibility payload. For ordinary textures this is the vertically adjusted
-    // OpenGL image used by the existing renderer path. For cube maps it mirrors face 0.
+    // 2D payload in authored top-down row order (row 0 = v 0, Direct3D UV convention, sampled
+    // with t = v without flipping). For cube maps it mirrors face 0.
     std::vector<std::uint8_t> rgba;
     // Cube faces in authored top-down order (+X,-X,+Y,-Y,+Z,-Z). OpenGL cube-map
     // sampling uses this face row convention directly, unlike ordinary GL_TEXTURE_2D.
@@ -522,7 +522,7 @@ struct NifParticleSystemInfo {
     std::array<float, 4> bumpMapMatrix{1.0f, 0.0f, 0.0f, 1.0f};
     std::vector<NifTextureTransformAnimation> textureTransformAnimations;
     std::vector<NifTextureFlipAnimation> textureFlipAnimations;
-    bool specularEnabled = true;
+    bool specularEnabled = false; // wie NifMeshPart: ohne NiSpecularProperty kein Glanz
     bool hasVertexColorProperty = false;
     std::uint32_t vertexColorMode = 2;
     std::uint32_t vertexLightingMode = 1;
@@ -585,7 +585,9 @@ struct NifMeshPart {
     std::array<float, 4> bumpMapMatrix{1.0f, 0.0f, 0.0f, 1.0f};
     std::string diffuseTexture; // Alias fuer textureSlots[0].texture
     std::shared_ptr<const NifEmbeddedTexture> embeddedDiffuseTexture; // Alias fuer Slot 0
-    bool specularEnabled = true; // NiSpecularProperty fehlt => NifSkope nutzt Material-Specular
+    // NiSpecularProperty fehlt => Gamebryo-Standard ist "aus" (NifSkope zeigt Material-Specular,
+    // das Spiel nicht: Rou-Dächer glänzten sonst metallisch).
+    bool specularEnabled = false;
     // NiVertexColorProperty. Ohne explizite Property entspricht der klassische NIF-Pfad
     // bei vorhandenen Vertexfarben SRC_AMB_DIF + EMI_AMB_DIF; der Renderer entscheidet den
     // Default anhand davon, ob für diesen Part tatsächlich Vertexfarben vorhanden sind.
@@ -621,6 +623,8 @@ struct NifMeshPart {
     std::uint32_t stencilPassAction = 0;  // ACTION_KEEP
     // FaceDrawMode: 0=application default, 1=CCW, 2=CW, 3=both.
     std::uint32_t faceDrawMode = 3;
+    // NiAVObject-Flag APP_CULLED an der Geometrie oder einem Vorfahren: im Spiel unsichtbar.
+    bool appCulled = false;
 
     // Skinning wird beim Laden in der aktuellen Bind-/Skeleton-Pose CPU-seitig ausgewertet.
     // Die Metadaten bleiben fuer Diagnose/UI erhalten; Animationen selbst sind noch kein Teil

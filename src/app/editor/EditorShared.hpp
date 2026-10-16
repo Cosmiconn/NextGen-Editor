@@ -1305,6 +1305,8 @@ void ScaleSelectedObjectsBy(EditorState& state, float factor);
 void SyncSelectedObjectModelPath(EditorState& state);
 void ApplySelectedObjectModelPath(EditorState& state, const std::string& modelPath);
 void RefreshShmdCategoryVisibility(EditorState& state);
+// Himmelskuppeln (SHMD-Kategorie Sky) sind um den Ursprung modelliert und folgen im Client der Kamera.
+void PlaceSkyAtCamera(EditorState& state, const app::OrbitCamera& cam);
 void ApplyProjectToState(EditorState& state, core::legacy::LegacyMapProject&& project, const std::filesystem::path& mapDir);
 std::filesystem::path LegacyMapWorkingIniPath(
     const EditorState& state,
@@ -2049,6 +2051,8 @@ void ProcessPendingMinimap(EditorState& state);
 // Offscreen-Aufnahme der Szene (eigenes Render-Ziel); Zeile 0 = obere Bildkante.
 std::vector<std::uint8_t> CaptureSceneRgba(EditorState& state, const app::OrbitCamera& cam, std::uint32_t size,
                                            bool withObjects, bool withSky, bool withFog);
+std::vector<std::uint8_t> CaptureSceneRgba(EditorState& state, const app::OrbitCamera& cam, std::uint32_t width,
+                                           std::uint32_t height, bool withObjects, bool withSky, bool withFog);
 // Datei relativ zu resmenu: Projekt-Override vor Client (Groß-/Kleinschreibung egal); leer = fehlt.
 std::filesystem::path GameResmenuPath(EditorState& state, const std::string& rel, bool* fromProject = nullptr);
 // Stadtportal-Bilder <MapName>.dds und _disable.dds für ein Ziel (Weltposition x / Server-y) ins Projekt.

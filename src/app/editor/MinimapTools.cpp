@@ -62,7 +62,12 @@ std::filesystem::path GameMinimapPath(EditorState& state, const std::string& fol
 
 std::vector<std::uint8_t> CaptureSceneRgba(EditorState& state, const app::OrbitCamera& cam, std::uint32_t size,
                                            bool withObjects, bool withSky, bool withFog) {
-    if (size == 0 || g_disableGlUploads) return {};
+    return CaptureSceneRgba(state, cam, size, size, withObjects, withSky, withFog);
+}
+
+std::vector<std::uint8_t> CaptureSceneRgba(EditorState& state, const app::OrbitCamera& cam, std::uint32_t width,
+                                           std::uint32_t height, bool withObjects, bool withSky, bool withFog) {
+    if (width == 0 || height == 0 || g_disableGlUploads) return {};
     const int previousTarget = state.renderer.CurrentRenderTarget();
     const bool previousGlow = state.renderer.GlowEnabled();
     const auto lighting = state.renderer.GetSceneLighting();
@@ -74,21 +79,22 @@ std::vector<std::uint8_t> CaptureSceneRgba(EditorState& state, const app::OrbitC
     state.nifMeshRenderer.SetSceneLighting(capture);
     state.shmdCategoryMeshRenderer.SetSceneLighting(capture);
 
-    const int px = static_cast<int>(size);
-    state.renderer.BeginScene(cam, px, px, false);
+    const int px = static_cast<int>(width), py = static_cast<int>(height);
+    state.renderer.BeginScene(cam, px, py, false);
     if (withObjects) {
-        state.nifMeshRenderer.Draw(state.placementSet, cam, px, px, &state.objectHidden);
+        state.nifMeshRenderer.Draw(state.placementSet, cam, px, py, &state.objectHidden);
         // Wasser und Bodenobjekte immer, die Himmelskuppel nur auf Wunsch (von oben läge sie über allem).
         std::vector<char> hidden = state.shmdCategoryHidden;
         hidden.resize(state.shmdCategoryRenderSet.Count(), 0);
         if (!withSky)
             for (std::size_t i = 0; i < hidden.size() && i < state.shmdCategoryRenderKind.size(); ++i)
                 if (state.shmdCategoryRenderKind[i] == 0) hidden[i] = 1;
-        state.shmdCategoryMeshRenderer.Draw(state.shmdCategoryRenderSet, cam, px, px, &hidden);
+        PlaceSkyAtCamera(state, cam);
+        state.shmdCategoryMeshRenderer.Draw(state.shmdCategoryRenderSet, cam, px, py, &hidden);
     }
     const GLuint tex = state.renderer.EndScene();
 
-    std::vector<std::uint8_t> glPixels(static_cast<std::size_t>(size) * size * 4);
+    std::vector<std::uint8_t> glPixels(static_cast<std::size_t>(width) * height * 4);
     GLint prevTex = 0;
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &prevTex);
     glBindTexture(GL_TEXTURE_2D, tex);
@@ -104,9 +110,9 @@ std::vector<std::uint8_t> CaptureSceneRgba(EditorState& state, const app::OrbitC
 
     // OpenGL liefert die unterste Zeile zuerst; Ergebnis: Zeile 0 = obere Bildkante.
     std::vector<std::uint8_t> image(glPixels.size());
-    const std::size_t rowBytes = static_cast<std::size_t>(size) * 4;
-    for (std::uint32_t y = 0; y < size; ++y)
-        std::memcpy(&image[y * rowBytes], &glPixels[(size - 1 - y) * rowBytes], rowBytes);
+    const std::size_t rowBytes = static_cast<std::size_t>(width) * 4;
+    for (std::uint32_t y = 0; y < height; ++y)
+        std::memcpy(&image[y * rowBytes], &glPixels[(height - 1 - y) * rowBytes], rowBytes);
     for (std::size_t i = 3; i < image.size(); i += 4) image[i] = 255;
     return image;
 }

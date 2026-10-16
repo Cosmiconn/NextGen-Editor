@@ -111,6 +111,7 @@ uniform bool uAlphaTextureBlender11;
 uniform bool uAlphaTextureBlender;
 uniform bool uPgTerrain;
 uniform int uVertexColorMode;
+uniform bool uEmissiveOnly; // NiVertexColorProperty LIGHTING_E: nur Emission, kein Licht/Ambient
 uniform bool uParticleMode;
 uniform vec4 uParticleColor;
 uniform bool uHasTex[10];
@@ -268,6 +269,10 @@ void main() {
     }
 
     vec3 surface = materialDiffuse;
+    // Reines Texturprodukt ohne Materialfarbe: Gamebryo/feste Funktion moduliert die GESAMTE
+    // Beleuchtung (Emission + Ambient + Diffus) mit der Textur, nicht nur den Diffusanteil.
+    vec3 texOnly = vec3(1.0);
+    bool texOnlyValid = false;
     if (uVcAlphaTextureBlender && uHasTex[0] && uHasTex[1] && uHasTex[2]) {
         // Original Gamebryo VCAlphaTextureBlender-P.hlsl:
         // Texture1/Texture2 are blended by vertex alpha, then multiplied by Detail*2.
@@ -302,9 +307,11 @@ void main() {
             if (uApplyMode == 0) surface = base.rgb;                         // APPLY_REPLACE
             else if (uApplyMode == 1) surface = mix(surface, base.rgb, base.a); // APPLY_DECAL
             else surface *= base.rgb;                                       // APPLY_MODULATE / unknown future fallback
+            if (uApplyMode != 0 && uApplyMode != 1) texOnly = base.rgb;
         }
-        if (uHasTex[1]) surface *= texture(uTex1, slotUv(1)).rgb; // Dark map
-        if (uHasTex[2]) surface *= clamp(texture(uTex2, slotUv(2)).rgb * 2.0, 0.0, 2.0); // Detail map
+        if (uHasTex[1]) { vec3 dark = texture(uTex1, slotUv(1)).rgb; surface *= dark; texOnly *= dark; } // Dark map
+        if (uHasTex[2]) { vec3 det = clamp(texture(uTex2, slotUv(2)).rgb * 2.0, 0.0, 2.0); surface *= det; texOnly *= det; } // Detail map
+        texOnlyValid = uApplyMode != 0 && uApplyMode != 1;
     }
 
     // Decals are layered in file order. Their alpha controls only the sticker blend, not the
@@ -362,6 +369,17 @@ void main() {
     }
     vec3 specular = uSpecularColor * specPower * glossMask;
     vec3 emissive = materialEmission + glow;
+    if (texOnlyValid) {
+        // Feste Funktion: Farbe = Textur * sat(Emission + MatAmbient*Ambient + MatDiffus*Licht*N·L);
+        // nur Glow-Map und Glanz kommen additiv danach.
+        vec3 lightSum = uEmissiveOnly ? materialEmission
+            : uSceneLightFromMap
+            ? materialEmission + materialAmbient * uSceneAmbient + materialDiffuse * uSunColor * ndl
+            : materialEmission + materialAmbient * 0.28 + materialDiffuse * (0.22 + 0.78 * ndl);
+        ambient = vec3(0.0);
+        diffuse = texOnly * clamp(lightSum, 0.0, 1.0);
+        emissive = glow;
+    }
     // NIF TextureType::TEX_ENVIRONMENT_MAP is additive to the ordinary textured,
     // lit/decal result. It does not replace or multiply the base material.
     vec3 environment = uEnvironmentSphereCount > 0
@@ -744,6 +762,7 @@ void NifMeshRenderer::Init() {
     uniforms_.locAlphaTextureBlender = glGetUniformLocation(shaderProgram_, "uAlphaTextureBlender");
     uniforms_.locPgTerrain = glGetUniformLocation(shaderProgram_, "uPgTerrain");
     uniforms_.locVertexColorMode = glGetUniformLocation(shaderProgram_, "uVertexColorMode");
+    uniforms_.locEmissiveOnly = glGetUniformLocation(shaderProgram_, "uEmissiveOnly");
     uniforms_.locBumpLumaScale = glGetUniformLocation(shaderProgram_, "uBumpLumaScale");
     uniforms_.locBumpLumaOffset = glGetUniformLocation(shaderProgram_, "uBumpLumaOffset");
     uniforms_.locBumpMatrix = glGetUniformLocation(shaderProgram_, "uBumpMatrix");
@@ -892,6 +911,20 @@ std::uint32_t NifMeshRenderer::GetOrLoadTexture(const std::filesystem::path& res
         imageResult = LoadWicImage(resolvedPath);
 #endif
     if (imageResult) {
+        // Die Loader liefern die OpenGL-Zeilenfolge (unterste Zeile zuerst, wie für das Gelände).
+        // NIF-UVs folgen Direct3D (v = 0 oben) und werden mit t = v abgetastet: zurückdrehen, damit
+        // externe Texturen genauso liegen wie eingebettete NiPixelData.
+        const std::size_t rowBytes = static_cast<std::size_t>(imageResult->width) * 4u;
+        if (imageResult->rgba.size() >= rowBytes * imageResult->height) {
+            std::vector<std::uint8_t> row(rowBytes);
+            for (std::uint32_t y = 0; y < imageResult->height / 2u; ++y) {
+                auto* a = imageResult->rgba.data() + static_cast<std::size_t>(y) * rowBytes;
+                auto* b = imageResult->rgba.data() + static_cast<std::size_t>(imageResult->height - 1u - y) * rowBytes;
+                std::copy(a, a + rowBytes, row.data());
+                std::copy(b, b + rowBytes, a);
+                std::copy(row.data(), row.data() + rowBytes, b);
+            }
+        }
         glGenTextures(1, &tex);
         glBindTexture(GL_TEXTURE_2D, tex);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -1166,6 +1199,8 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                      corePartIndex < nifResult->parts.size(); ++corePartIndex) {
                     const auto& part = nifResult->parts[corePartIndex];
                     if (part.positions.empty() || part.triangleIndices.empty()) continue;
+                    // APP_CULLED-Geometrie zeichnet der Client nicht; Vorlagen für Mesh-Partikel bleiben.
+                    if (part.appCulled && !meshParticleTemplateParts.contains(corePartIndex)) continue;
 
                     const std::vector<core::NifVec3>& normals =
                         part.normals.size() == part.positions.size() ? part.normals : ComputeFallbackNormals(part);
@@ -1232,6 +1267,8 @@ void NifMeshRenderer::LoadModelsForSet(const core::ObjectPlacementSet& set, cons
                             sub.vertexColorMode = 2;
                         }
                     }
+                    // LIGHTING_E (Modus 0): Farbe = Emission * Textur, unabhängig von Vertexfarben.
+                    sub.emissiveOnly = part.hasVertexColorProperty && part.vertexLightingMode == 0;
                     sub.bumpMapLumaScale = part.bumpMapLumaScale;
                     sub.bumpMapLumaOffset = part.bumpMapLumaOffset;
                     // NIF Matrix22 is read row-major; glUniformMatrix2fv expects column-major.
@@ -2895,6 +2932,7 @@ void NifMeshRenderer::Draw(const core::ObjectPlacementSet& set, const OrbitCamer
         glUniform1i(locAlphaTextureBlender, sub.alphaTextureBlender ? 1 : 0);
         glUniform1i(locPgTerrain, sub.pgTerrain ? 1 : 0);
         glUniform1i(locVertexColorMode, static_cast<int>(sub.vertexColorMode));
+        glUniform1i(uniforms_.locEmissiveOnly, sub.emissiveOnly ? 1 : 0);
         glUniform1f(locBumpLumaScale, sub.bumpMapLumaScale);
         glUniform1f(locBumpLumaOffset, sub.bumpMapLumaOffset);
         glUniformMatrix2fv(locBumpMatrix, 1, GL_FALSE, sub.bumpMapMatrix.data());
