@@ -79,6 +79,7 @@
 #include "mapeditor/core/TextureRules.hpp"
 #include "mapeditor/core/ObjectScatter.hpp"
 #include "mapeditor/core/Prefab.hpp"
+#include "mapeditor/core/Spline.hpp"
 #include <random>
 #include "mapeditor/core/legacy/NewMapFromTemplate.hpp"
 #include "mapeditor/core/legacy/MapRenderSettings.hpp"
@@ -642,6 +643,15 @@ struct EditorState {
     bool scatterErase = false;
     bool scatterStrokeActive = false;
     double scatterLastTime = 0.0;
+    // Weg-Werkzeug (Terrain): Kontrollpunkte und Einstellungen.
+    std::vector<core::SplinePoint> splinePoints;
+    bool splineEdit = false;
+    core::SplineWidth splineWidth;
+    float splineSmooth = 300.0f;
+    int splineLayer = -1;
+    core::SplineObjectSettings splineObjects;
+    char splineModel[512] = "";
+    std::string splineStatus;
     // Prefabs (<Projekt>/Prefabs/*.prefab): gewähltes Prefab für Modus 3 (Einsetzen).
     char prefabName[64] = "";
     std::string prefabSelected;
@@ -15525,6 +15535,8 @@ static void DrawVisibilityPanel(EditorState& state);
 void DrawBrushAlphaControls(EditorState& state, const char* id);
 void DrawScatterControls(EditorState& state);
 void DrawPrefabControls(EditorState& state);
+void DrawSplineControls(EditorState& state);
+void DrawSpline2D(const EditorState& state, ImDrawList* drawList, const ImVec2& origin, const ImVec2& size, float spanX, float spanZ);
 bool PlacePrefabAtWorld(EditorState& state, float worldX, float worldZ);
 void DrawTextureRuleControls(EditorState& state);
 static std::vector<std::vector<std::pair<float, float>>> CollectVisibleObjectFootprints(EditorState& state);
@@ -15628,6 +15640,7 @@ void DrawToolsContent(EditorState& state) {
         default: break;
         }
         DrawBrushAlphaControls(state, "terrainAlpha");
+        DrawSplineControls(state);
 
         ImGui::Separator();
         ImGui::BeginDisabled(!CanUndoMapEdit(state));
@@ -17169,6 +17182,95 @@ void DrawPrefabControls(EditorState& state) {
     if (!state.prefabStatus.empty()) ImGui::TextDisabled("%s", state.prefabStatus.c_str());
 }
 
+bool TextureLayerLocked(const EditorState& state, int layer);
+
+void DrawSplineControls(EditorState& state) {
+    ImGui::SeparatorText(L("Weg (Spline)", "Path (spline)"));
+    UI::Checkbox(L("Punkte setzen (Klick in 2D/3D)", "Place points (click in 2D/3D)"), &state.splineEdit);
+    ImGui::Text(L("%zu Punkte", "%zu points"), state.splinePoints.size());
+    ImGui::SameLine();
+    if (UI::SmallButton(L("Letzten entfernen##spline", "Remove last##spline")) && !state.splinePoints.empty()) state.splinePoints.pop_back();
+    ImGui::SameLine();
+    if (UI::SmallButton(L("Alle löschen##spline", "Clear##spline"))) state.splinePoints.clear();
+    UI::SliderFloat(L("Breite##spline", "Width##spline"), &state.splineWidth.width, 20.0f, 1000.0f);
+    UI::SliderFloat(L("Weicher Rand##spline", "Soft edge##spline"), &state.splineWidth.falloff, 0.0f, 500.0f);
+    const bool ready = state.splinePoints.size() >= 2 && MapSupportsTerrainEditing(state);
+    const auto samples = ready ? core::SampleSpline(state.splinePoints, 25.0f) : std::vector<core::SplineSample>{};
+    if (ready) ImGui::TextDisabled(L("Länge %.0f Einheiten", "Length %.0f units"), samples.empty() ? 0.0f : samples.back().distance);
+
+    ImGui::BeginDisabled(!ready);
+    UI::SliderFloat(L("Glättung der Weghöhe##spline", "Path height smoothing##spline"), &state.splineSmooth, 0.0f, 2000.0f);
+    if (UI::Button(L("Terrain entlang ebnen", "Flatten terrain along path"))) {
+        auto patch = core::FlattenAlongSpline(state.heightmap, samples, state.splineWidth, state.splineSmooth);
+        const std::size_t n = patch.entries.size();
+        if (n) { PushHeightmapHistory(state, std::move(patch)); state.meshDirty = true; state.mapDirty = true; }
+        state.splineStatus = std::to_string(n) + L(" Höhenpunkte geändert", " height points changed");
+    }
+    // Layer zum Malen
+    if (state.splineLayer < 0 || static_cast<std::size_t>(state.splineLayer) >= state.textureStack.LayerCount())
+        state.splineLayer = state.textureStack.LayerCount() > 0 ? 0 : -1;
+    ImGui::SetNextItemWidth(160.0f);
+    if (ImGui::BeginCombo(L("Layer##spline", "Layer##spline"), state.splineLayer >= 0 ? state.textureStack.Layer(static_cast<std::size_t>(state.splineLayer)).name.c_str() : "-")) {
+        for (std::size_t i = 0; i < state.textureStack.LayerCount(); ++i)
+            if (ImGui::Selectable(state.textureStack.Layer(i).name.c_str(), state.splineLayer == static_cast<int>(i))) state.splineLayer = static_cast<int>(i);
+        ImGui::EndCombo();
+    }
+    ImGui::SameLine();
+    ImGui::BeginDisabled(state.splineLayer < 0 || TextureLayerLocked(state, state.splineLayer));
+    if (UI::Button(L("Layer malen##spline", "Paint layer##spline"))) {
+        auto patch = core::PaintAlongSpline(state.textureStack, static_cast<std::size_t>(state.splineLayer), state.heightmap, samples, state.splineWidth);
+        const std::size_t n = patch.entries.size();
+        if (n) {
+            PushTexturePaintHistory(state, std::move(patch));
+            state.renderer.UpdateBlendTextures(state.textureStack);
+            state.layerPreviewDirty = true;
+            state.mapDirty = true;
+        }
+        state.splineStatus = std::to_string(n) + L(" Maskenpixel gemalt", " mask pixels painted");
+    }
+    ImGui::EndDisabled();
+
+    ImGui::SetNextItemWidth(-1.0f);
+    UI::InputText("##splineModel", state.splineModel, sizeof(state.splineModel));
+    ImGui::TextDisabled("%s", L("Modell für Objekte entlang des Wegs (z.B. resmap\\nifs\\Common\\FenceWood1_1.nif)",
+                                "Model for objects along the path (e.g. resmap\\nifs\\Common\\FenceWood1_1.nif)"));
+    auto& so = state.splineObjects;
+    UI::SliderFloat(L("Abstand##splineObj", "Spacing##splineObj"), &so.spacing, 20.0f, 2000.0f);
+    UI::SliderFloat(L("Seitlicher Versatz##splineObj", "Side offset##splineObj"), &so.sideOffset, 0.0f, 1000.0f);
+    int side = static_cast<int>(so.side);
+    ImGui::RadioButton(L("Mitte##splineSide", "Centre##splineSide"), &side, 0); ImGui::SameLine();
+    ImGui::RadioButton(L("Links##splineSide", "Left##splineSide"), &side, 1); ImGui::SameLine();
+    ImGui::RadioButton(L("Rechts##splineSide", "Right##splineSide"), &side, 2); ImGui::SameLine();
+    ImGui::RadioButton(L("Beide##splineSide", "Both##splineSide"), &side, 3);
+    so.side = static_cast<core::SplineSide>(side);
+    UI::SliderFloat(L("Zusatzdrehung (°)##splineObj", "Extra rotation (°)##splineObj"), &so.yawOffsetDegrees, -180.0f, 180.0f);
+    UI::SliderFloat(L("Skalierung##splineObj", "Scale##splineObj"), &so.scale, 0.1f, 5.0f);
+    ImGui::BeginDisabled(state.splineModel[0] == '\0');
+    if (UI::Button(L("Objekte entlang setzen", "Place objects along path"))) {
+        so.model = state.splineModel;
+        auto objs = core::ObjectsAlongSpline(state.splinePoints, state.heightmap, so);
+        auto historyBefore = BeginObjectMutation(state);
+        for (auto& o : objs) state.placementSet.AddObject(std::move(o));
+        SyncObjectEditorMetadata(state);
+        state.nifMeshRenderer.LoadModelsForSet(state.placementSet, CurrentObjectAssetMapDir(state));
+        state.objectVisKey.clear();
+        FinishObjectMutation(state, std::move(historyBefore), !objs.empty());
+        state.splineStatus = std::to_string(objs.size()) + L(" Objekte gesetzt", " objects placed");
+    }
+    ImGui::EndDisabled();
+    ImGui::EndDisabled();
+    if (!state.splineStatus.empty()) ImGui::TextDisabled("%s", state.splineStatus.c_str());
+}
+
+void DrawSpline2D(const EditorState& state, ImDrawList* drawList, const ImVec2& origin, const ImVec2& size, float spanX, float spanZ) {
+    if (state.splinePoints.empty() || spanX <= 0.0f || spanZ <= 0.0f) return;
+    const auto toScreen = [&](float x, float z) { return ImVec2(origin.x + x / spanX * size.x, origin.y + (1.0f - z / spanZ) * size.y); };
+    const auto samples = core::SampleSpline(state.splinePoints, 25.0f);
+    for (std::size_t i = 1; i < samples.size(); ++i)
+        drawList->AddLine(toScreen(samples[i - 1].x, samples[i - 1].z), toScreen(samples[i].x, samples[i].z), IM_COL32(255, 210, 60, 230), 2.0f);
+    for (const auto& p : state.splinePoints) drawList->AddCircleFilled(toScreen(p.x, p.z), 4.0f, IM_COL32(255, 240, 120, 255));
+}
+
 void FinishScatterStrokeIfReleased(EditorState& state) {
     if (!state.scatterStrokeActive || ImGui::IsMouseDown(ImGuiMouseButton_Left)) return;
     state.scatterStrokeActive = false;
@@ -17297,6 +17399,11 @@ bool ApplyBrushAtWorld(EditorState& state, float worldX, float worldZ) {
     state.brush.alpha = alpha;
     state.paintSettings.alpha = alpha;
     if (state.editMode == EditMode::ObjectPlacement && state.objectPlaceMode == 2) return ScatterAtWorld(state, worldX, worldZ);
+    if (state.editMode == EditMode::Heightmap && state.splineEdit) {
+        if (!ImGui::IsMouseClicked(ImGuiMouseButton_Left)) return false;
+        state.splinePoints.push_back({worldX, worldZ});
+        return true;
+    }
     if (texMode && TextureLayerLocked(state, state.selectedLayer)) {
         state.statusMessage = L("Layer ist gesperrt.", "Layer is locked.");
         return false;
@@ -17690,6 +17797,7 @@ void DrawEditor2DContent(EditorState& state) {
         }
     }
 
+    DrawSpline2D(state, ImGui::GetWindowDrawList(), cursorScreenPos, imageSize, spanX, spanZ);
     if (state.editMode == EditMode::Portals && state.legacySaveStem[0] != '\0') {
         DrawPortalMarkers2D(state, cursorScreenPos, imageSize, spanX, spanZ);
     }
@@ -23635,6 +23743,38 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         std::printf("[walkgen] %s: blocked+%zu free+%zu region %zu vsOriginal %.4f | %s | %s\n", mode.c_str(),
                     state.walkProposalDiff.newlyBlocked, state.walkProposalDiff.newlyFree, state.walkProposalRegionCells,
                     state.walkProposalVsOriginal.Agreement(), state.walkGenStatus.c_str(), state.statusMessage.c_str());
+        std::fflush(stdout);
+    }
+    else if (cmd == "spline") {
+        // spline add <x> <z> | spline clear | spline flatten <breite> | spline paint <layer> | spline objects <modell> <abstand> <versatz>
+        std::string what; in >> what;
+        const auto samples = core::SampleSpline(state.splinePoints, 25.0f);
+        std::size_t n = 0;
+        if (what == "add") { core::SplinePoint p; in >> p.x >> p.z; state.splinePoints.push_back(p); }
+        else if (what == "clear") state.splinePoints.clear();
+        else if (what == "flatten") {
+            in >> state.splineWidth.width;
+            auto patch = core::FlattenAlongSpline(state.heightmap, samples, state.splineWidth, state.splineSmooth);
+            n = patch.entries.size();
+            if (n) { PushHeightmapHistory(state, std::move(patch)); state.meshDirty = true; state.mapDirty = true; }
+        } else if (what == "paint") {
+            int layer = 0; in >> layer;
+            auto patch = core::PaintAlongSpline(state.textureStack, static_cast<std::size_t>(layer), state.heightmap, samples, state.splineWidth);
+            n = patch.entries.size();
+            if (n) { PushTexturePaintHistory(state, std::move(patch)); state.renderer.UpdateBlendTextures(state.textureStack); state.layerPreviewDirty = true; state.mapDirty = true; }
+        } else if (what == "objects") {
+            in >> state.splineObjects.model >> state.splineObjects.spacing >> state.splineObjects.sideOffset;
+            auto objs = core::ObjectsAlongSpline(state.splinePoints, state.heightmap, state.splineObjects);
+            n = objs.size();
+            auto historyBefore = BeginObjectMutation(state);
+            for (auto& o : objs) state.placementSet.AddObject(std::move(o));
+            SyncObjectEditorMetadata(state);
+            state.nifMeshRenderer.LoadModelsForSet(state.placementSet, CurrentObjectAssetMapDir(state));
+            state.objectVisKey.clear();
+            FinishObjectMutation(state, std::move(historyBefore), n > 0);
+        }
+        std::printf("[spline] %s points %zu changed %zu length %.0f\n", what.c_str(), state.splinePoints.size(), n,
+                    samples.empty() ? 0.0f : samples.back().distance);
         std::fflush(stdout);
     }
     else if (cmd == "prefab") {

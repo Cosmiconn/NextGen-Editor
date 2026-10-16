@@ -1,3 +1,8 @@
+## Terrain — path tool (spline)
+- New in the Terrain tool: click control points in 2D/3D (Catmull-Rom curve, drawn in yellow in the 2D view), then flatten the terrain into a path of a given width with a soft edge (the path height follows the terrain, smoothed along the path), paint a texture layer along it, or place a model at a fixed spacing (centre, left, right or both sides, rotated along the path) for fences or lanterns. Each action is one undo step.
+- Checked on Roumen: a three-point path of 2807 units flattens 248 height points, paints 490 mask pixels and places 22 trees on both sides.
+- Core: `core/Spline` with `test_spline`. Automation: `spline add <x> <z> | clear | flatten <width> | paint <layer> | objects <nif> <spacing> <offset>`.
+
 ## Objects — prefabs
 - Save selected objects as a prefab (`<Project>/Prefabs/<name>.prefab`, an editor-only text format that is never shipped) and place it on any map of the project with a click in 2D or 3D, rotated around the up axis. Positions are stored relative to the group centre and heights relative to the ground under each object, so a group adapts to slopes. Placing is one undo step and selects the new objects.
 - Checked: four objects saved on Roumen, placed on Uruga rotated by 90°.
