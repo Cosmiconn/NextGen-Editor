@@ -50,6 +50,7 @@ add_library(mapeditor_core
     src/core/NifModel.cpp
     src/core/KfmFile.cpp
     src/core/KfAnimation.cpp
+    src/core/NifNodeAnimation.cpp
     src/core/NifAnimationPose.cpp
     src/core/TextureLayerStack.cpp
     src/core/TexturePaintOps.cpp
@@ -305,6 +306,12 @@ add_test(NAME kf_animation COMMAND test_kf_animation
 add_executable(test_nif_animation_pose tests/test_nif_animation_pose.cpp)
 target_link_libraries(test_nif_animation_pose PRIVATE mapeditor_core)
 add_test(NAME nif_animation_pose COMMAND test_nif_animation_pose)
+
+add_executable(test_nif_node_animation tests/test_nif_node_animation.cpp)
+target_link_libraries(test_nif_node_animation PRIVATE mapeditor_core)
+add_test(NAME nif_node_animation COMMAND test_nif_node_animation
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/rou_lighthouse.nif
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/dogAnd.nif)
 
 add_executable(test_packed_images tests/test_packed_images.cpp)
 target_link_libraries(test_packed_images PRIVATE mapeditor_core)

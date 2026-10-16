@@ -745,6 +745,7 @@ struct EditorState {
     int viewportViewMode = 0;      // 0 beleuchtet, 1 unbeleuchtet, 2 nur Licht, 3 Normalen, 4 Vertexfarbe, 5 UV0, 6 Alpha
     int viewportMsaaSamples = 4;   // 1 = aus
     bool viewportGlow = true;      // Glow aus <Karte>.conf
+    bool viewportObjectAnimation = true; // im NIF eingebettete Knoten-Animationen (Windmühlen, Boote)
     bool viewportVertexColors = true;
     // SHMD-Szenenumgebung (GlobalLight, DirectionLight*, Fog, BackGroundColor, Frustum).
     bool sceneEnvironmentFromShmd = false;
@@ -1689,6 +1690,7 @@ void SaveViewportSettings(EditorState& state) {
         << "view_mode=" << state.viewportViewMode << "\n"
         << "msaa=" << state.viewportMsaaSamples << "\n"
         << "glow=" << (state.viewportGlow ? 1 : 0) << "\n"
+        << "object_animation=" << (state.viewportObjectAnimation ? 1 : 0) << "\n"
         << "vertex_colors=" << (state.viewportVertexColors ? 1 : 0) << "\n"
         << "map_lighting=" << (state.viewportMapLighting ? 1 : 0) << "\n"
         << "map_background=" << (state.viewportMapBackground ? 1 : 0) << "\n"
@@ -1730,6 +1732,7 @@ void LoadViewportSettings(EditorState& state) {
         else if (key == "view_mode") state.viewportViewMode = std::clamp(std::atoi(value), 0, 7);
         else if (key == "msaa") state.viewportMsaaSamples = std::clamp(std::atoi(value), 1, 8);
         else if (key == "glow") state.viewportGlow = b;
+        else if (key == "object_animation") state.viewportObjectAnimation = b;
         else if (key == "vertex_colors") state.viewportVertexColors = b;
         else if (key == "map_lighting") state.viewportMapLighting = b;
         else if (key == "map_background") state.viewportMapBackground = b;
@@ -19032,6 +19035,12 @@ void DrawViewportShowFlagsMenu(EditorState& state) {
         else
             ImGui::SetTooltip("%s", L("Keine [GlowScreenEffect]-Daten für diese Karte.", "No [GlowScreenEffect] data for this map."));
     }
+    renderChanged |= ImGui::MenuItem(L("Objekt-Animationen", "Object animations"), nullptr, &state.viewportObjectAnimation);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", L("Im NIF eingebettete Bewegungen abspielen (Windmühlenflügel, Boote, Schilder, Leuchtturm).\n"
+                                  "Aus: alle Objekte in der Ruhepose.",
+                                  "Play motion embedded in the NIF (windmill blades, boats, signs, lighthouse).\n"
+                                  "Off: all objects in their rest pose."));
     const bool hasEnv = state.sceneEnvironmentFromShmd;
     renderChanged |= ImGui::MenuItem(L("Kartenlicht (SHMD)", "Map lighting (SHMD)"), nullptr, &state.viewportMapLighting, hasEnv);
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
@@ -19570,6 +19579,8 @@ void DrawPreview3DContent(EditorState& state) {
     state.renderer.SetViewMode(state.viewportViewMode);
     state.nifMeshRenderer.SetViewMode(state.viewportViewMode);
     state.shmdCategoryMeshRenderer.SetViewMode(state.viewportViewMode);
+    state.nifMeshRenderer.SetObjectAnimationEnabled(state.viewportObjectAnimation);
+    state.shmdCategoryMeshRenderer.SetObjectAnimationEnabled(state.viewportObjectAnimation);
     state.npcMeshRenderer.SetViewMode(state.viewportViewMode);
     {
         // SHMD-Umgebung -> Licht, Nebel, Hintergrund (Datenherkunft: docs/RENDERER.md).
@@ -24111,6 +24122,23 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         if (ids.empty()) ids.push_back(-1);
         state.selectedObjects = ids; state.selectedObject = ids.front(); state.objectGizmoMatrixValid = false;
     }
+    else if (cmd == "selectmodel") {
+        // selectmodel <Teil des Modellpfads> [n]: das n-te passende Objekt auswählen (ohne n alle).
+        std::string needle; int nth = -1; in >> needle >> nth;
+        for (char& c : needle) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        std::vector<int> ids;
+        for (std::size_t i = 0; i < state.placementSet.Count(); ++i) {
+            std::string m = state.placementSet.At(i).modelPath;
+            for (char& c : m) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            if (m.find(needle) != std::string::npos) ids.push_back(static_cast<int>(i));
+        }
+        if (nth >= 0) ids = nth < static_cast<int>(ids.size()) ? std::vector<int>{ids[static_cast<std::size_t>(nth)]} : std::vector<int>{};
+        state.selectedObjects = ids;
+        state.selectedObject = ids.empty() ? kNoObjectSelection : ids.front();
+        state.objectGizmoMatrixValid = false;
+        std::printf("[automation] selectmodel %s -> %zu\n", needle.c_str(), ids.size());
+        std::fflush(stdout);
+    }
     else if (cmd == "focus") FocusCurrentSceneSelection(state);
     else if (cmd == "hide") HideSelectedObjects(state);
     else if (cmd == "isolate") HideUnselectedObjects(state);
@@ -24140,6 +24168,14 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
     else if (cmd == "gameview") onOff(state.gameView);
     else if (cmd == "surfacesnap") onOff(state.surfaceSnap);
     else if (cmd == "glow") onOff(state.viewportGlow);
+    else if (cmd == "objectanim") onOff(state.viewportObjectAnimation);
+    else if (cmd == "animtime") {
+        // animtime <Sekunden>|off: Animationszeit für reproduzierbare Bilder festhalten.
+        std::string v; in >> v;
+        const std::optional<float> t = v == "off" ? std::nullopt : std::optional<float>(std::strtof(v.c_str(), nullptr));
+        state.nifMeshRenderer.SetAnimationTimeOverrideForTesting(t);
+        state.shmdCategoryMeshRenderer.SetAnimationTimeOverrideForTesting(t);
+    }
     else if (cmd == "vertexcolors") onOff(state.viewportVertexColors);
     else if (cmd == "maplighting") onOff(state.viewportMapLighting);
     else if (cmd == "mapbackground") onOff(state.viewportMapBackground);

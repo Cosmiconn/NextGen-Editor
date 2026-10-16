@@ -105,6 +105,10 @@ public:
     // SHMD-Szenenlicht und Nebel (siehe SceneLighting.hpp).
     void SetSceneLighting(const SceneLighting& lighting) { lighting_ = lighting; }
 
+    // Eingebettete Knoten-Animationen (Windmühlen, Boote, Schilder) abspielen; aus = Bind-Pose.
+    void SetObjectAnimationEnabled(bool enabled) { objectAnimation_ = enabled; }
+    [[nodiscard]] bool ObjectAnimationEnabled() const { return objectAnimation_; }
+
     void SetAnimationTimeOverrideForTesting(std::optional<float> seconds) {
         animationTimeOverride_ = seconds;
     }
@@ -210,6 +214,7 @@ private:
         float lodNear = 0.0f;
         float lodFar = 0.0f;
         std::array<float, 3> lodCenter{0.0f, 0.0f, 0.0f};
+        std::int32_t animNode = -1; // Index in LoadedModel::nodeAnimation.nodes
     };
     struct ParticleSystem {
         SubMesh material;
@@ -235,7 +240,11 @@ private:
     struct LoadedModel {
         std::vector<SubMesh> subMeshes;
         std::vector<ParticleSystem> particleSystems;
+        core::NifNodeAnimation nodeAnimation; // eingebettete NiTransformController
     };
+    // Knotenmatrizen je Modell für das aktuelle Bild (alle Instanzen teilen die Szenenzeit).
+    std::unordered_map<const LoadedModel*, std::vector<Mat4>> animationFrame_;
+    bool objectAnimation_ = true;
 
     void ReleaseModel(LoadedModel& model);
     // Lädt (oder liefert aus dem Cache) die GL-Textur für einen aufgelösten Dateipfad - mehrere
