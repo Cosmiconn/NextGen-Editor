@@ -8,7 +8,7 @@ Signalen gefunden wurde, plus eine Einschätzung der Zuverlässigkeit jedes Sign
 
 ## Methodik (zwei Signale, kombiniert)
 
-1. **Namens-Stamm-Gruppierung** (`ShnNameStem` in `main.cpp`): bekannte Suffixe abtrennen
+1. **Namens-Stamm-Gruppierung** (`ShnNameStem` in `src/app/editor/ShnEditor.cpp`): bekannte Suffixe abtrennen
    (`InfoServer`, `ViewInfo`, `Info`, `View`, `Server`, `Desc`, `Group`, `Data`, `List`, `Rate`,
    `Count`, `Type`, `State`) und nach übereinstimmendem Rest gruppieren. **Deutlich
    zuverlässiger** als reine Zeilenanzahl - findet auch Teilmengen-Beziehungen, bei denen die
@@ -99,7 +99,7 @@ Basis-Datei ändert (nicht nur bei neuen Einträgen):
 
 ## Wo das im Editor ankommt
 
-`FindDependencyPeers` (main.cpp, vereint `FindRowCountPeers` + `FindNameStemPeers`) markiert
+`FindDependencyPeers` (src/app/editor/ShnEditor.cpp, vereint `FindRowCountPeers` + `FindNameStemPeers`) markiert
 im Datei-Browser des Single-SHN-Editors automatisch alle hier per Namens-Stamm ODER
 Zeilenanzahl gefundenen Familienmitglieder mit einem gelben ⚠-Symbol + Tooltip.
 

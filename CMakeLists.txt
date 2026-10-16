@@ -174,8 +174,40 @@ if(NEXTGEN_EDITOR_BUILD_GUI)
 find_package(imgui CONFIG REQUIRED)
 find_package(imguizmo CONFIG REQUIRED)
 
+# Editor-Module (vormals alles in main.cpp); gemeinsame Deklarationen in src/app/editor/EditorShared.hpp.
+set(NEXTGEN_EDITOR_MODULES
+    src/app/editor/EditorCore.cpp
+    src/app/editor/MapDocument.cpp
+    src/app/editor/ObjectEditing.cpp
+    src/app/editor/MapFiles.cpp
+    src/app/editor/UiWidgets.cpp
+    src/app/editor/ShnEditor.cpp
+    src/app/editor/ProjectScreens.cpp
+    src/app/editor/AssetThumbnails.cpp
+    src/app/editor/QuestEditor.cpp
+    src/app/editor/PortalEditor.cpp
+    src/app/editor/NpcEditor.cpp
+    src/app/editor/NewMapWizard.cpp
+    src/app/editor/CreatureWizard.cpp
+    src/app/editor/SkillEditor.cpp
+    src/app/editor/HelpAndShortcuts.cpp
+    src/app/editor/MapCheckWindow.cpp
+    src/app/editor/ToolPanels.cpp
+    src/app/editor/WalkAndVisibility.cpp
+    src/app/editor/BrushTools.cpp
+    src/app/editor/Editor2DView.cpp
+    src/app/editor/Viewport3D.cpp
+    src/app/editor/WorkspacePanels.cpp
+    src/app/editor/NifInspector.cpp
+    src/app/editor/DropEditor.cpp
+    src/app/editor/InterfaceWorkspace.cpp
+    src/app/editor/MapWorkspace.cpp
+    src/app/editor/Automation.cpp
+)
+
 add_executable(map_editor
     src/app/main.cpp
+    ${NEXTGEN_EDITOR_MODULES}
     src/app/KfmPanel.cpp
     src/app/Camera.cpp
     src/app/Renderer.cpp
@@ -208,7 +240,7 @@ target_link_libraries(map_editor PRIVATE
     OpenGL::GL
 )
 if (WIN32)
-    # Für den nativen "Ordner wählen"-Dialog (SHBrowseForFolder/CoTaskMemFree) in main.cpp.
+    # Für den nativen "Ordner wählen"-Dialog (SHBrowseForFolder/CoTaskMemFree) in editor/MapFiles.cpp.
     target_link_libraries(map_editor PRIVATE Shell32 Ole32 Windowscodecs)
 endif()
 endif() # NEXTGEN_EDITOR_BUILD_GUI
@@ -420,6 +452,7 @@ if(NEXTGEN_EDITOR_BUILD_GUI)
 # (NPC-Blickrichtung: Vorzeichen/Versatz).
 add_executable(test_npc_orientation
     tests/test_npc_orientation.cpp
+    ${NEXTGEN_EDITOR_MODULES}
     src/app/KfmPanel.cpp
     src/app/Camera.cpp
     src/app/Renderer.cpp

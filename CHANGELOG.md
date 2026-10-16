@@ -1,3 +1,9 @@
+## Code — main.cpp split into modules
+- `src/app/main.cpp` (24,000 lines in one file) now only holds the program entry. The editor code lives in 27 topic modules under `src/app/editor/` (SHN editor, quest editor, portals, NPC editor, new-map wizard, skill editor, map check, 2D view, 3D viewport, workspace panels, NIF inspector, drop editor, automation and more). `EditorShared.hpp` has the shared types (`EditorState`) and the declarations of all editor functions, in the order of their definitions.
+- No behaviour change: function bodies are moved unchanged (only `static`/default arguments moved to the declarations). The editor code now sits in `namespace nge` instead of an anonymous namespace.
+- Compiles in parallel: the full editor rebuild takes about 1:45 min on 8 cores instead of one long single-file compile, and a change in one area only recompiles its module.
+- Checked: all 44 tests pass, Roumen opens and saves byte-identical, node animation and statistics overlay work in the editor, MinGW Windows build links. `test_manual` now takes several source files.
+
 ## Viewport — skip objects outside the view
 - The object renderer tests every model part against the view frustum (world bounding box of the part, including its animation) and skips parts that lie completely outside. Billboards are never skipped.
 - The statistics overlay shows parts drawn, parts skipped and the CPU time of the object pass.

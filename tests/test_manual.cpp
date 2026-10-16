@@ -1,6 +1,6 @@
 // test_manual.cpp
 // Prueft Handbuch, Tooltips und Spalten-Referenz (CHANGELOG [0.44.33]).
-// Aufruf: test_manual [pfad/zu/src/app/main.cpp]  - mit Pfad wird zusaetzlich geprueft, dass JEDES Bedienelement im
+// Aufruf: test_manual [src/app/main.cpp src/app/editor/*.cpp ...]  - mit Pfaden wird zusaetzlich geprueft, dass JEDES Bedienelement im
 // Code (UI::Button("...") usw.) einen Tooltip in beiden Sprachen hat.
 
 #include "mapeditor/core/Manual.hpp"
@@ -87,9 +87,12 @@ int main(int argc, char** argv) {
 
     if (argc >= 2) {
         std::printf("\n== Abdeckung: Tooltip fuer JEDES Bedienelement im Code ==\n");
-        std::ifstream in(argv[1]);
+        // Alle übergebenen Quelldateien (main.cpp und src/app/editor/*.cpp) zusammen prüfen.
         std::stringstream buf;
-        buf << in.rdbuf();
+        for (int a = 1; a < argc; ++a) {
+            std::ifstream in(argv[a]);
+            buf << in.rdbuf() << '\n';
+        }
         const std::string src = buf.str();
         const std::regex re(R"RX(UI::(Button|SmallButton|Checkbox|RadioButton|SliderFloat|SliderInt|InputInt|InputFloat|InputText|InputTextWithHint|Combo|CollapsingHeader|TabItemButton|Selectable|MenuItem)\(\s*(?:T\("([^"]+)"\)|"([^"]+)"))RX");
         std::set<std::string> seen, missing;
