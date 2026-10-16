@@ -107,6 +107,14 @@ public:
 
     // Eingebettete Knoten-Animationen (Windmühlen, Boote, Schilder) abspielen; aus = Bind-Pose.
     void SetObjectAnimationEnabled(bool enabled) { objectAnimation_ = enabled; }
+    // Teile außerhalb der Sichtpyramide überspringen (an = Standard; aus nur zum Vergleich).
+    void SetFrustumCullingEnabled(bool enabled) { frustumCulling_ = enabled; }
+    struct FrameStats {
+        std::size_t drawnParts = 0;  // Draw-Aufrufe für Mesh-Teile
+        std::size_t culledParts = 0; // außerhalb der Sichtpyramide übersprungen
+        float cpuMs = 0.0f;          // CPU-Zeit von Draw() (Aufbau + Absenden, ohne GPU-Wartezeit)
+    };
+    [[nodiscard]] const FrameStats& LastFrameStats() const { return frameStats_; }
     [[nodiscard]] bool ObjectAnimationEnabled() const { return objectAnimation_; }
 
     void SetAnimationTimeOverrideForTesting(std::optional<float> seconds) {
@@ -245,6 +253,8 @@ private:
     // Knotenmatrizen je Modell für das aktuelle Bild (alle Instanzen teilen die Szenenzeit).
     std::unordered_map<const LoadedModel*, std::vector<Mat4>> animationFrame_;
     bool objectAnimation_ = true;
+    bool frustumCulling_ = true;
+    FrameStats frameStats_;
 
     void ReleaseModel(LoadedModel& model);
     // Lädt (oder liefert aus dem Cache) die GL-Textur für einen aufgelösten Dateipfad - mehrere

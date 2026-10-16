@@ -19406,6 +19406,14 @@ void DrawViewportStats(EditorState& state, const ImVec2& imagePos, int w) {
                   objects, state.nifMeshRenderer.RealMeshCount() + state.shmdCategoryMeshRenderer.RealMeshCount(),
                   CountEditorHiddenObjects(state));
     lines.emplace_back(buf);
+    {
+        const auto& a = state.nifMeshRenderer.LastFrameStats();
+        const auto& b = state.shmdCategoryMeshRenderer.LastFrameStats();
+        std::snprintf(buf, sizeof(buf), L("Teile gezeichnet %zu  ·  außerhalb Sicht %zu  ·  Objekte %.1f ms CPU",
+                                          "Parts drawn %zu  ·  off-screen %zu  ·  objects %.1f ms CPU"),
+                      a.drawnParts + b.drawnParts, a.culledParts + b.culledParts, a.cpuMs + b.cpuMs);
+        lines.emplace_back(buf);
+    }
     std::snprintf(buf, sizeof(buf), L("NPCs %zu  ·  Auswahl %zu", "NPCs %zu  ·  selection %zu"),
                   state.npcRenderSet.Count(), state.selectedObjects.size());
     lines.emplace_back(buf);
@@ -24169,6 +24177,16 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
     else if (cmd == "surfacesnap") onOff(state.surfaceSnap);
     else if (cmd == "glow") onOff(state.viewportGlow);
     else if (cmd == "objectanim") onOff(state.viewportObjectAnimation);
+    else if (cmd == "culling") {
+        bool on = true; onOff(on);
+        state.nifMeshRenderer.SetFrustumCullingEnabled(on);
+        state.shmdCategoryMeshRenderer.SetFrustumCullingEnabled(on);
+    }
+    else if (cmd == "renderstats") {
+        const auto& a = state.nifMeshRenderer.LastFrameStats();
+        std::printf("[renderstats] drawn=%zu culled=%zu cpu=%.2fms\n", a.drawnParts, a.culledParts, a.cpuMs);
+        std::fflush(stdout);
+    }
     else if (cmd == "animtime") {
         // animtime <Sekunden>|off: Animationszeit für reproduzierbare Bilder festhalten.
         std::string v; in >> v;

@@ -292,7 +292,7 @@ Animations: motion stored in the NIF itself (windmill blades, rocking boats, sig
 - Tempo 1..8, G (Spielansicht: alle Editor-Helfer aus) und Spieltest.
 - Anzeigen -> Darstellung: Ansichtsmodus (beleuchtet, unbeleuchtet, nur Licht/Vertexfarbe, Normalen), Terrain-Vertexfarben der Karte (#VerTexColorTexture), Glow aus <Karte>.conf und Kantenglättung. Die Achsenansichten sind orthografisch: Ziehen verschiebt, Mausrad zoomt, Drehen kehrt zur Perspektive zurück. Details und Datenherkunft: docs/RENDERER.md.
 # Statistik
-FPS, Objekt-/Mesh-/NPC-Anzahl, ausgeblendete Objekte, Kameraziel sowie Weltposition unter dem Mauszeiger mit Höhe und SHBD-Zelle (begehbar/blockiert).
+FPS, Objekt-/Mesh-/NPC-Anzahl, ausgeblendete Objekte, gezeichnete Modellteile und solche außerhalb des Bildes (werden gar nicht erst gezeichnet) samt CPU-Zeit der Objekte, Kameraziel sowie Weltposition unter dem Mauszeiger mit Höhe und SHBD-Zelle (begehbar/blockiert).
 # Spieltest
 Startet eine Spielfigur direkt im Viewport (Alt+P oder Knopf 'Spieltest'). Spawn: MapInfo.shn RegenX/RegenY der offenen Karte, sonst das Kameraziel; danach die nächste begehbare SHBD-Zelle. W/A/S/D laufen relativ zur Kamera, Shift geht langsam, rechte/linke Maustaste dreht, Mausrad zoomt, C schaltet die Kollision, Esc beendet und stellt die Editor-Kamera wieder her. Die Kollision nutzt das geladene Block&Walk-Gitter (gesetztes Bit = blockiert, 6,25 Einheiten je Zelle) mit 1,5 Zellen Radius und gleitet an Wänden entlang. Laufgeschwindigkeit und Radius sind Editorwerte, keine aus dem Client belegten Konstanten. Ist kein begehbares SHBD geladen, läuft der Spieltest ohne Kollision und meldet das.
 # Auswahl und Sichtbarkeit
@@ -310,7 +310,7 @@ Das Fenster 'Ausgabe' sammelt alle Statusmeldungen mit Zeit, Kategorie und Schwe
 - Speed 1..8, G (game view: all editor helpers off) and playtest.
 - Show -> Rendering: view mode (lit, unlit, lighting/vertex color only, normals), the map's terrain vertex colors (#VerTexColorTexture), glow from <map>.conf and anti-aliasing. Axis views are orthographic: dragging pans, the mouse wheel zooms, rotating returns to perspective. Details and data sources: docs/RENDERER.md.
 # Stats
-FPS, object/mesh/NPC counts, hidden objects, camera target and the world position under the mouse pointer with height and SHBD cell (walkable/blocked).
+FPS, object/mesh/NPC counts, hidden objects, model parts drawn and those outside the view (skipped entirely) with the CPU time spent on objects, camera target and the world position under the mouse pointer with height and SHBD cell (walkable/blocked).
 # Playtest
 Starts a player character directly in the viewport (Alt+P or the 'Playtest' button). Spawn: MapInfo.shn RegenX/RegenY of the open map, otherwise the camera target; then the nearest walkable SHBD cell. W/A/S/D run relative to the camera, Shift walks, right/left mouse button turns, mouse wheel zooms, C toggles collision, Esc ends and restores the editor camera. Collision uses the loaded block & walk grid (set bit = blocked, 6.25 units per cell) with a 1.5 cell radius and slides along walls. Run speed and radius are editor values, not constants verified from the client. If no walkable SHBD is loaded, the playtest runs without collision and says so.
 # Selection and visibility

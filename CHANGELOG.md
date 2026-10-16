@@ -1,3 +1,9 @@
+## Viewport — skip objects outside the view
+- The object renderer tests every model part against the view frustum (world bounding box of the part, including its animation) and skips parts that lie completely outside. Billboards are never skipped.
+- The statistics overlay shows parts drawn, parts skipped and the CPU time of the object pass.
+- Checked on Roumen (overview, 1212 parts): 700 parts skipped, object CPU time 20 ms -> 11-13 ms; the 3D image is pixel-identical with culling on and off (also on Uruga at street level).
+- Core: `core/ViewCulling` with `test_view_culling` (perspective and orthographic planes, rotated/scaled boxes). Automation: `culling on|off`, `renderstats`.
+
 ## Objects — animations from the NIF play in the 3D view
 - Map objects with embedded node animation (NiTransformController -> NiTransformInterpolator -> NiTransformData) now move in the 3D view: windmill blades, boats, signs, the Roumen lighthouse light. 55 of the 62 field NIFs with such controllers get animated parts; the remaining 7 only animate particle emitters or nodes without geometry.
 - Time follows Gamebryo: scene time x frequency + phase, then loop, reverse or clamp in [start, stop]. Keys: linear, constant, quadratic (Hermite with the stored tangents), TBC (Kochanek-Bartels) and XYZ rotation; quaternion TBC is interpolated spherically.

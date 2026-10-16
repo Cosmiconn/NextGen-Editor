@@ -51,6 +51,7 @@ add_library(mapeditor_core
     src/core/KfmFile.cpp
     src/core/KfAnimation.cpp
     src/core/NifNodeAnimation.cpp
+    src/core/ViewCulling.cpp
     src/core/NifAnimationPose.cpp
     src/core/TextureLayerStack.cpp
     src/core/TexturePaintOps.cpp
@@ -306,6 +307,10 @@ add_test(NAME kf_animation COMMAND test_kf_animation
 add_executable(test_nif_animation_pose tests/test_nif_animation_pose.cpp)
 target_link_libraries(test_nif_animation_pose PRIVATE mapeditor_core)
 add_test(NAME nif_animation_pose COMMAND test_nif_animation_pose)
+
+add_executable(test_view_culling tests/test_view_culling.cpp)
+target_link_libraries(test_view_culling PRIVATE mapeditor_core)
+add_test(NAME view_culling COMMAND test_view_culling)
 
 add_executable(test_nif_node_animation tests/test_nif_node_animation.cpp)
 target_link_libraries(test_nif_node_animation PRIVATE mapeditor_core)
