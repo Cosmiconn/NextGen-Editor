@@ -87,4 +87,13 @@ struct ReplaceResult {
 [[nodiscard]] RgbaImage CropImage(const RgbaImage& image, std::uint32_t x, std::uint32_t y, std::uint32_t width, std::uint32_t height);
 void PasteImage(RgbaImage& target, const RgbaImage& piece, std::uint32_t x, std::uint32_t y);
 
+// Übernimmt aus "updated" nur die Blöcke, die das Rechteck (Pixel der obersten Stufe) berühren - in
+// jeder Mipmap-Stufe; alle anderen Bytes bleiben die von "original". So bleiben beim Ersetzen einer
+// Atlaszelle die übrigen Icons bitgleich (DXT neu zu kodieren wäre verlustbehaftet). Beide Dateien
+// müssen dasselbe Format, dieselbe Größe und Mipmap-Zahl haben.
+[[nodiscard]] std::expected<std::vector<std::uint8_t>, std::string> SpliceDdsRegion(std::span<const std::uint8_t> original,
+                                                                                   std::span<const std::uint8_t> updated,
+                                                                                   std::uint32_t x, std::uint32_t y,
+                                                                                   std::uint32_t width, std::uint32_t height);
+
 } // namespace theseed::mapeditor::core

@@ -273,6 +273,7 @@ void OpenImageReplaceDialog(EditorState& state, const std::string& targetRel, co
     r.applied = false;
     r.extraTargets.clear();
     r.onApply = nullptr;
+    r.cellMode = false;
 }
 
 bool ApplyImageReplacement(EditorState& state) {
@@ -335,6 +336,7 @@ void DrawImageReplaceDialog(EditorState& state) {
         if (auto fmt = core::InspectImageFile(formatPath)) r.originalFormat = *fmt;
         else r.originalError = fmt.error();
         if (auto img = core::LoadImageFile(formatPath)) {
+            if (r.cellMode) *img = core::CropImage(*img, r.cellX, r.cellY, r.cellW, r.cellH);
             r.originalTex = UploadThumbnailTexture(img->rgba, img->width, img->height);
             r.originalW = static_cast<float>(img->width);
             r.originalH = static_cast<float>(img->height);
@@ -390,8 +392,14 @@ void DrawImageReplaceDialog(EditorState& state) {
     ImGui::SetNextItemWidth(220.0f);
     UI::Combo(L("Anpassung##imageReplace", "Fitting##imageReplace"), &r.fit, fitNames, 3);
     ImGui::SameLine();
-    UI::Checkbox(L("Größe des Originals behalten##imageReplaceKeep", "Keep original size##imageReplaceKeep"), &r.keepSize);
-    if (r.originalFormat) {
+    if (r.cellMode) {
+        ImGui::SameLine();
+        ImGui::TextDisabled(L("Zelle %ux%u bei %u,%u - der übrige Atlas bleibt unverändert", "Cell %ux%u at %u,%u - the rest of the atlas stays unchanged"),
+                            r.cellW, r.cellH, r.cellX, r.cellY);
+    } else {
+        UI::Checkbox(L("Größe des Originals behalten##imageReplaceKeep", "Keep original size##imageReplaceKeep"), &r.keepSize);
+    }
+    if (r.originalFormat && !r.cellMode) {
         ImGui::SameLine();
         ImGui::TextDisabled("(%ux%u)", r.originalFormat->width, r.originalFormat->height);
     }
@@ -399,13 +407,43 @@ void DrawImageReplaceDialog(EditorState& state) {
     // Ergebnis bauen, sobald sich Quelle, Optionen oder Vorlage ändern; die Vorschau zeigt die
     // tatsächlich geschriebenen Bytes (DXT-Kompression, 16-Bit-TGA, JPG sind also sichtbar).
     const std::string key = r.loadedSource + "|" + std::to_string(r.fit) + "|" + (r.keepSize ? "1" : "0") + "|" +
-                            r.originalTexFor;
+                            r.originalTexFor + (r.cellMode ? "|cell" + std::to_string(r.cellX) + "," + std::to_string(r.cellY) : "");
     if (key != r.resultKey) {
         r.resultKey = key;
         r.result.reset();
         r.resultUnchanged = false;
         DeleteTexture(r.previewTex);
-        if (r.sourceImage.Valid() && r.originalFormat) {
+        if (r.sourceImage.Valid() && r.originalFormat && r.cellMode) {
+            // Atlas laden, Zelle einsetzen, im Originalformat kodieren; Vorschau = Zelle aus den Bytes.
+            auto atlas = core::LoadImageFile(r.originalTexFor);
+            if (atlas) {
+                core::PasteImage(*atlas, core::ResizeImage(r.sourceImage, r.cellW, r.cellH,
+                                                           static_cast<core::FitMode>(std::clamp(r.fit, 0, 2))),
+                                 r.cellX, r.cellY);
+                auto bytes = core::EncodeImage(*atlas, *r.originalFormat);
+                // DDS: nur die Blöcke der Zelle übernehmen, die übrigen Icons bleiben bitgleich.
+                if (bytes && r.originalFormat->container == core::ImageContainer::Dds)
+                    if (auto original = ReadResmenuBytes(r.originalTexFor))
+                        if (auto spliced = core::SpliceDdsRegion(*original, *bytes, r.cellX, r.cellY, r.cellW, r.cellH))
+                            bytes = std::move(*spliced);
+                if (bytes) {
+                    core::ReplaceResult cell;
+                    cell.bytes = std::move(*bytes);
+                    cell.format = *r.originalFormat;
+                    cell.image = std::move(*atlas);
+                    auto decoded = core::DecodeImage(cell.bytes);
+                    const auto shown = core::CropImage(decoded ? *decoded : cell.image, r.cellX, r.cellY, r.cellW, r.cellH);
+                    r.previewTex = UploadThumbnailTexture(shown.rgba, shown.width, shown.height);
+                    r.previewW = static_cast<float>(shown.width);
+                    r.previewH = static_cast<float>(shown.height);
+                    r.result = std::move(cell);
+                } else {
+                    r.error = bytes.error();
+                }
+            } else {
+                r.error = atlas.error();
+            }
+        } else if (r.sourceImage.Valid() && r.originalFormat) {
             core::ReplaceOptions options;
             options.fit = static_cast<core::FitMode>(std::clamp(r.fit, 0, 2));
             options.keepOriginalSize = r.keepSize;
@@ -456,7 +494,8 @@ void DrawImageReplaceDialog(EditorState& state) {
     ImGui::SameLine();
     std::string resultInfo = L("Quelle wählen", "Choose a source");
     if (r.result)
-        resultInfo = core::DescribeImageFormat(r.result->format) + " · " + std::to_string(r.result->bytes.size()) + " Bytes" +
+        resultInfo = (r.cellMode ? std::to_string(r.cellW) + "x" + std::to_string(r.cellH) + L(" in ", " in ") : std::string()) +
+                     core::DescribeImageFormat(r.result->format) + " · " + std::to_string(r.result->bytes.size()) + " Bytes" +
                      (r.resultUnchanged ? L(" · Quelle unverändert übernommen", " · source taken over unchanged") : "");
     else if (r.sourceImage.Valid())
         resultInfo = std::to_string(r.sourceImage.width) + "x" + std::to_string(r.sourceImage.height);

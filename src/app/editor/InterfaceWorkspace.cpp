@@ -199,8 +199,20 @@ void DrawInterfaceWorkspace(EditorState& state) {
     ImGui::SameLine();
     if (UI::RadioButton(L("Ladebildschirme##interfaceMode", "Loading screens##interfaceMode"), state.interfaceMode == 1))
         state.interfaceMode = 1;
+    ImGui::SameLine();
+    if (UI::RadioButton(L("Icons##interfaceMode", "Icons##interfaceMode"), state.interfaceMode == 2)) state.interfaceMode = 2;
+    ImGui::SameLine();
+    if (UI::RadioButton(L("Porträts##interfaceMode", "Portraits##interfaceMode"), state.interfaceMode == 3)) state.interfaceMode = 3;
     if (state.interfaceMode == 1) {
         DrawLoadingScreenEditor(state);
+        return;
+    }
+    if (state.interfaceMode == 2) {
+        DrawIconAtlasEditor(state);
+        return;
+    }
+    if (state.interfaceMode == 3) {
+        DrawPortraitEditor(state);
         return;
     }
 

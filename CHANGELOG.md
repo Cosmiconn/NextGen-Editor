@@ -1,3 +1,24 @@
+## Interface — icon atlas editor and portraits
+- New **Icons** switch in the interface tab, covering every atlas below `resmenu/Icon` (8×8 grid, cell = atlas width / 8).
+  - **Usage index:** every cell knows its users from ItemViewInfo (Icon, SubIcon, PeriodIcon), ActiveSkillView, PassiveSkillView and AbStateView. The list shows used cells per atlas.
+  - **Free cells:** a green corner marks free cells, and the tooltip says whether a free cell is also empty (fully transparent).
+  - **Cell details:** a preview, the users with a jump into the item, skill, passive or state editor, and **Replace cell...**.
+  - **Replace cell:** the source is fitted into the cell and the atlas is written in its original format. For DDS only the blocks touched by the cell are taken over in every mipmap level (`core::SpliceDdsRegion`), so all other icons stay bit-identical. On `ItemEqu000` #33 exactly the cell's 64 DXT3 blocks change.
+  - **Atlas-wide actions:** "Replace atlas...", "Export as PNG", and "New empty atlas" (transparent, same format and size, next free number).
+  - The item, skill, passive and state editors have an **In atlas editor** button that opens the icon's cell.
+- New **Portraits** switch:
+  - Mob portraits come from `game/MobPortrait/<MobViewInfo.MobPortrait>`, NPC dialog faces from `game/NPCFaceCut/<NpcDialogData.FaceCutFile>`.
+  - The list combines files and references and flags missing files (NA2016: 56 mob portrait names, 126 rows) and unused files.
+  - The detail view shows every variant with its format and lists the users (mobs jump into the mob editor).
+  - **Replace...** writes all variants. **Create file...** fills a missing file.
+  - **New portrait** creates the file and can assign it to a mob or NPC in the same undo step (MobViewInfo on client and server).
+- The replace dialog has a cell mode: only a rectangle of the target changes.
+- Fixed: the icon picker laid out the 128-pixel state atlases in 4 columns; it now always shows the 8×8 grid.
+- New automation commands `iconeditor <atlas> <index>`, `iconreplace <source>` and `portrait <mob|npc> <name>`.
+- Tests:
+  - `test_image_io`: DDS cell splicing — blocks outside the cell stay identical, a size mismatch is refused.
+  - `test_data_editors`: icon usage (Icon/SubIcon, case-insensitive atlas names, free cells) and portrait users and assignment on both sides with undo.
+
 ## Interface — loading screen editor
 - New **Loading screens** switch in the interface tab. A map's loading image is `resmenu/loading/<MapViewInfo.Loading>.png` (or `.tga`); NA2016 has 138 maps sharing 129 images.
   - The list shows map, display name (MapInfo) and image, how many maps share it, and maps whose image is missing (`KDTrDn` in NA2016).

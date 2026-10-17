@@ -809,6 +809,10 @@ void DrawSkillEditor(EditorState& state) {
             if (UI::Button(state.skillIconPickerOpen ? L("Icon-Auswahl schließen", "Close icon picker")
                                                      : L("Icon wählen...", "Choose icon...")))
                 state.skillIconPickerOpen = !state.skillIconPickerOpen;
+            if (!iconFile.empty() && iconFile != "-") {
+                ImGui::SameLine();
+                if (UI::Button(L("Im Atlas-Editor##skill", "In atlas editor##skill"))) OpenIconInAtlasEditor(state, iconFile, iconIndex);
+            }
             ImGui::EndGroup();
             if (state.skillIconPickerOpen && !iconFile.empty()) {
                 ImGui::TextDisabled("%s", L("Klick auf ein Icon setzt IconIndex (Client und Server). Den Atlas wählt das Feld 'Icon-Datei'.",
