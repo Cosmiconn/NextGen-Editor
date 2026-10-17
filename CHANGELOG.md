@@ -1,3 +1,18 @@
+## Interface — loading screen editor
+- New **Loading screens** switch in the interface tab. A map's loading image is `resmenu/loading/<MapViewInfo.Loading>.png` (or `.tga`); NA2016 has 138 maps sharing 129 images.
+  - The list shows map, display name (MapInfo) and image, how many maps share it, and maps whose image is missing (`KDTrDn` in NA2016).
+  - The preview takes the project copy first; "used by" jumps to the other maps that share the image.
+  - A "!" marks maps whose server value of `Loading` differs from the client.
+- Actions, each one undo step:
+  - **Assign other image...** picks an existing image with a preview and writes `MapViewInfo.Loading` on client and server.
+  - **Replace image...** writes every existing variant from the same source in its own format (e.g. `Eld.PNG` as RGB PNG and `Eld.tga` as 16-bit TGA) and warns how many maps are affected.
+  - **Own image for this map...** creates `loading/<name>.png` in the format of the previous PNG and points this map to it. This splits a shared image off for one map.
+- The shared files are listed and replaceable: `NowLoading.tga` (1920×1080), `ProgressBar.tga`, `NowLoadingTextColor.tga` and the tip images in `loading/Tips`. Their position on the client's screen is not proven, so they are shown one by one.
+- The image replace dialog can write further files of the same image and run a follow-up change in the same undo step.
+- Column reference for `MapViewInfo.Loading` and `LoadLocation` (meaning of LoadLocation marked as not proven).
+- New automation commands `loadingscreen <map>`, `loadingassign <image>` and `loadingown <source>`.
+- Tests: `test_data_editors` covers variant lookup (case-insensitive, PNG before TGA), assignment on both sides with undo, and replacing PNG + TGA in their own formats with one undo/redo step.
+
 ## Interface — replace images with conversion
 - New image pipeline in the core library (`core/ImageIO`), measured against all 5,602 files of the NA2016 `Client/resmenu`:
   - reads PNG, JPG, BMP (stb_image, vendored under `third_party/stb`), TGA 16/24/32 bit incl. RLE and DDS DXT1/3/5 and uncompressed;

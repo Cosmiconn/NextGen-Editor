@@ -503,6 +503,79 @@ int main() {
         Check(DataUndo(st) && FormCellRead(st, subDocs, 0, "Strength", 21) == "2", "Undo stellt den Stufenwert wieder her");
     }
 
+    std::printf("\n== Ladebildschirme: Zuweisen und Ersetzen mit Undo ==\n");
+    {
+        // MapViewInfo (Client und Server) und resmenu/loading mit A.png + A.tga (gemeinsam genutzt) und B.png.
+        core::legacy::ShnFile mvi;
+        mvi.encrypted = false;
+        mvi.columns = {UIntColumn("ID"), StringColumn("MapName", 32), StringColumn("Loading", 32), UIntColumn("LoadLocation")};
+        for (std::uint32_t i = 1; i <= 2; ++i) {
+            core::legacy::ShnRow r;
+            r.values = {i, std::string(i == 1 ? "MapOne" : "MapTwo"), std::string("A"), 0u};
+            mvi.rows.push_back(std::move(r));
+        }
+        std::filesystem::create_directories(shine / "View");
+        (void)core::legacy::SaveShnFile(mvi, ressystem / "MapViewInfo.shn");
+        (void)core::legacy::SaveShnFile(mvi, shine / "View" / "MapViewInfo.shn");
+        const auto loading = client / "resmenu" / "loading";
+        std::filesystem::create_directories(loading);
+        core::RgbaImage grey;
+        grey.width = 64;
+        grey.height = 48;
+        grey.rgba.assign(std::size_t{64} * 48 * 4, 128);
+        const auto writeImage = [&](const std::filesystem::path& path, core::ImageContainer container, int tgaBits) {
+            core::ImageFormat f;
+            f.container = container;
+            f.width = 64;
+            f.height = 48;
+            f.tgaBits = tgaBits;
+            f.pngAlpha = false;
+            const auto bytes = core::EncodeImage(grey, f);
+            std::ofstream(path, std::ios::binary).write(reinterpret_cast<const char*>(bytes->data()), static_cast<std::streamsize>(bytes->size()));
+        };
+        writeImage(loading / "A.PNG", core::ImageContainer::Png, 32);
+        writeImage(loading / "A.tga", core::ImageContainer::Tga, 16);
+        writeImage(loading / "B.png", core::ImageContainer::Png, 32);
+        st.interfaceRoot.clear();
+
+        const auto files = LoadingImageFiles(st, "a");
+        Check(files.size() == 2 && files[0] == "loading/A.PNG" && files[1] == "loading/A.tga",
+              "Ladebild-Varianten gefunden (Groß/Klein egal, PNG vor TGA)");
+        st.dataHistory.Clear();
+        const int clientDoc = SharedShnDoc(st, "MapViewInfo.shn", EditorState::ShnSource::Client);
+        const int serverDoc = SharedShnDoc(st, "MapViewInfo.shn", EditorState::ShnSource::Server);
+        Check(clientDoc >= 0 && serverDoc >= 0, "MapViewInfo Client und Server geladen");
+        Check(SetMapViewLoading(st, 2, "B") && ShnCellText(ShnDocFile(st, clientDoc), 1, "Loading") == "B" &&
+                  ShnCellText(ShnDocFile(st, serverDoc), 1, "Loading") == "B" && ShnCellText(ShnDocFile(st, clientDoc), 0, "Loading") == "A",
+              "Zuweisen schreibt nur diese Karte, in Client und Server");
+        Check(st.dataHistory.UndoCount() == 1 && DataUndo(st) && ShnCellText(ShnDocFile(st, serverDoc), 1, "Loading") == "A",
+              "ein Undo-Schritt stellt beide Seiten wieder her");
+
+        // Ersetzen: Hauptdatei A.PNG, A.tga als weitere Datei im eigenen Format, dazu onApply.
+        core::RgbaImage red = grey;
+        for (std::size_t i = 0; i < red.rgba.size(); i += 4) red.rgba[i] = 250;
+        OpenImageReplaceDialog(st, files[0], "A");
+        auto& r = st.imageReplace;
+        r.extraTargets = {files[1]};
+        r.sourceImage = red;
+        r.result = core::BuildReplacement(red, *core::InspectImageFile(loading / "A.PNG"), {}).value();
+        r.onApply = [](EditorState& s) { SetMapViewLoading(s, 1, "A"); };
+        st.dataHistory.Clear();
+        Check(ApplyImageReplacement(st), "Ersetzen übernommen");
+        const auto projectLoading = base / "Project" / "Client" / "resmenu" / "loading";
+        const auto png = core::InspectImageFile(projectLoading / "A.PNG");
+        const auto tga = core::InspectImageFile(projectLoading / "A.tga");
+        Check(png && png->container == core::ImageContainer::Png && !png->pngAlpha && tga && tga->container == core::ImageContainer::Tga &&
+                  tga->tgaBits == 16 && tga->width == 64,
+              "PNG und TGA als Projektkopien, jeweils im Format des Originals");
+        const auto tgaImage = core::LoadImageFile(projectLoading / "A.tga");
+        Check(tgaImage && tgaImage->rgba[0] > 240 && tgaImage->rgba[3] == 255, "TGA-Variante zeigt das neue Bild (deckend)");
+        Check(st.dataHistory.UndoCount() == 1 && DataUndo(st) && !std::filesystem::exists(projectLoading / "A.PNG") &&
+                  !std::filesystem::exists(projectLoading / "A.tga"),
+              "ein Undo entfernt beide neu angelegten Projektkopien");
+        Check(DataRedo(st) && std::filesystem::exists(projectLoading / "A.tga"), "Redo legt sie wieder an");
+    }
+
     std::filesystem::remove_all(base, ec);
     if (g_failures) std::fprintf(stderr, "%d Fehler\n", g_failures);
     return g_failures == 0 ? 0 : 1;

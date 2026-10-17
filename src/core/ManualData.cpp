@@ -576,6 +576,25 @@ The percentage editors change ALL rows of the column - check first, then save.)M
 - 'Apply' writes the project copy; Ctrl+Z restores the previous state (also after 'Remove project copy').
 - 'Export as PNG' stores the image below <Project>/Export/resmenu/..., e.g. as a template for an image editor.)MAN",
      "interface resmenu bild image textur texture ersetzen replace konvertieren convert dds tga png schachbrett export"},
+    {"shn.loading", "shn",
+     "Ladebildschirme", "Loading screens",
+     R"MAN(Interface-Tab, Umschalter 'Ladebildschirme'. Beim Betreten einer Karte zeigt der Client resmenu/loading/<Name>.png (bzw. .tga); <Name> steht in MapViewInfo.Loading. Mehrere Karten teilen sich oft ein Bild (NA2016: 138 Karten, 129 Bilder, BFGate01 viermal).
+- Liste: Karte, Anzeigename (MapInfo) und Ladebild; 'x4' = von 4 Karten genutzt, rot = Datei fehlt. Oben stehen Karten ohne Ladebild.
+- 'Anderes Bild zuweisen...': vorhandenes Ladebild mit Vorschau wählen; MapViewInfo.Loading wird in Client und Server gesetzt (ein Undo-Schritt). Speichern mit 'Alle geänderten SHN speichern'.
+- 'Bild ersetzen...': ersetzt das Bild für ALLE Karten, die es nutzen (Hinweis 'betrifft N Karten'). Gibt es das Bild als PNG und TGA, werden beide aus derselben Quelle geschrieben, jeweils in ihrem Format.
+- 'Eigenes Bild für diese Karte...': legt loading/<Name>.png als Projektkopie an (Format der bisherigen PNG, meist 1024x768) und setzt Loading dieser Karte auf den neuen Namen - so wird ein geteiltes Bild nur für diese Karte abgespalten. Ein Strg+Z nimmt Datei und Zuweisung zurück.
+- Neue Karten aus dem Assistenten übernehmen das Ladebild der Vorlage; hier lässt es sich abspalten.
+- LoadLocation (0/1) wird angezeigt und in beide Seiten geschrieben; die Bedeutung ist nicht belegt.
+- 'Gemeinsame Ladebild-Dateien': NowLoading.tga (1920x1080), ProgressBar.tga, NowLoadingTextColor.tga und die Tipp-Bilder loading/Tips - jeweils ersetzbar. Wo der Client sie platziert, ist nicht belegt; die Vorschau zeigt sie einzeln.)MAN",
+     R"MAN(Interface tab, switch 'Loading screens'. When entering a map the client shows resmenu/loading/<name>.png (or .tga); <name> is MapViewInfo.Loading. Several maps often share one image (NA2016: 138 maps, 129 images, BFGate01 four times).
+- List: map, display name (MapInfo) and loading image; 'x4' = used by 4 maps, red = file missing. Maps without a loading image are listed at the top.
+- 'Assign other image...': choose an existing loading image with preview; MapViewInfo.Loading is set on client and server (one undo step). Save with 'Save all changed SHN'.
+- 'Replace image...': replaces the image for ALL maps using it (note 'affects N maps'). If the image exists as PNG and TGA, both are written from the same source, each in its own format.
+- 'Own image for this map...': creates loading/<name>.png as a project copy (format of the previous PNG, usually 1024x768) and points this map's Loading to the new name - this splits a shared image off for this map only. One Ctrl+Z reverts file and assignment.
+- New maps from the wizard take over the template's loading image; split it off here.
+- LoadLocation (0/1) is shown and written to both sides; its meaning is not proven.
+- 'Shared loading files': NowLoading.tga (1920x1080), ProgressBar.tga, NowLoadingTextColor.tga and the tip images loading/Tips - each replaceable. Where the client places them is not proven; the preview shows them one by one.)MAN",
+     "ladebild loading screen ladebildschirm mapviewinfo karte map nowloading progressbar tipps tips abspalten split"},
     {"creators.npcmob", "creators",
      "Custom NPC / Mob erstellen", "Creating a custom NPC / mob",
      R"MAN(Tab 'Custom NPC/Mob' im SHN-Editor. Der Assistent klont eine Vorlage in alle Tabellen (MobInfo, MobInfoServer, MobViewInfo, MobSpecies, QuestSpecies, MobWeapon) mit einer überall freien ID.
@@ -683,6 +702,24 @@ World X = east, world Z = north, Y = height. In NPC.txt Coord-X / Coord-Y are wo
 
 struct TipRow { const char* key; const char* de; const char* en; };
 const TipRow kTips[] = {
+    {"Dateien", "Alle Dateien unter Client/resmenu (Bilder und Fenster-NIFs).", "All files below Client/resmenu (images and window NIFs)."},
+    {"Files", "Alle Dateien unter Client/resmenu (Bilder und Fenster-NIFs).", "All files below Client/resmenu (images and window NIFs)."},
+    {"Ladebildschirme", "Ladebilder der Karten (MapViewInfo.Loading) zuweisen, ersetzen und abspalten.", "Assign, replace and split the maps' loading images (MapViewInfo.Loading)."},
+    {"Loading screens", "Ladebilder der Karten (MapViewInfo.Loading) zuweisen, ersetzen und abspalten.", "Assign, replace and split the maps' loading images (MapViewInfo.Loading)."},
+    {"Anderes Bild zuweisen...", "Vorhandenes Ladebild wählen; setzt MapViewInfo.Loading dieser Karte in Client und Server.", "Choose an existing loading image; sets this map's MapViewInfo.Loading on client and server."},
+    {"Assign other image...", "Vorhandenes Ladebild wählen; setzt MapViewInfo.Loading dieser Karte in Client und Server.", "Choose an existing loading image; sets this map's MapViewInfo.Loading on client and server."},
+    {"Button:Zuweisen##loadingPick", "Weist das gewählte Ladebild der Karte zu (Strg+Z nimmt es zurück).", "Assigns the chosen loading image to the map (Ctrl+Z reverts it)."},
+    {"Button:Assign##loadingPick", "Weist das gewählte Ladebild der Karte zu (Strg+Z nimmt es zurück).", "Assigns the chosen loading image to the map (Ctrl+Z reverts it)."},
+    {"Bild ersetzen...", "Ersetzt das Ladebild (alle Varianten PNG/TGA) - gilt für jede Karte, die es nutzt.", "Replaces the loading image (all PNG/TGA variants) - applies to every map that uses it."},
+    {"Replace image...", "Ersetzt das Ladebild (alle Varianten PNG/TGA) - gilt für jede Karte, die es nutzt.", "Replaces the loading image (all PNG/TGA variants) - applies to every map that uses it."},
+    {"Eigenes Bild für diese Karte...", "Legt loading/<Name>.png aus einer Quelle an und weist es nur dieser Karte zu (ein Undo-Schritt).", "Creates loading/<name>.png from a source and assigns it to this map only (one undo step)."},
+    {"Own image for this map...", "Legt loading/<Name>.png aus einer Quelle an und weist es nur dieser Karte zu (ein Undo-Schritt).", "Creates loading/<name>.png from a source and assigns it to this map only (one undo step)."},
+    {"InputText:##loadingNewName", "Name des neuen Ladebilds (Buchstaben, Ziffern, _ und -); vorgeschlagen wird der Kartenname.", "Name of the new loading image (letters, digits, _ and -); the map name is suggested."},
+    {"InputText:##loadingFilter", "Karten nach Name, Anzeigename oder Ladebild filtern.", "Filter maps by name, display name or loading image."},
+    {"InputText:##loadingPickFilter", "Ladebilder nach Namen filtern.", "Filter loading images by name."},
+    {"Gemeinsame Ladebild-Dateien", "NowLoading, ProgressBar, NowLoadingTextColor und die Tipp-Bilder - gelten für alle Karten.", "NowLoading, ProgressBar, NowLoadingTextColor and the tip images - shared by all maps."},
+    {"Shared loading files", "NowLoading, ProgressBar, NowLoadingTextColor und die Tipp-Bilder - gelten für alle Karten.", "NowLoading, ProgressBar, NowLoadingTextColor and the tip images - shared by all maps."},
+    {"Save all changed SHN", "Schreibt alle geänderten SHN-Tabellen (Client und Server) auf die Platte.", "Writes all modified SHN tables (client and server) to disk."},
     {"Ersetzen...", "Ersetzt das Bild durch eine beliebige Datei (PNG/JPG/BMP/TGA/DDS); sie wird auf Format und Größe des Originals umgerechnet und als Projektkopie gespeichert.", "Replaces the image with any file (PNG/JPG/BMP/TGA/DDS); it is converted to the original's format and size and stored as a project copy."},
     {"Replace...", "Ersetzt das Bild durch eine beliebige Datei (PNG/JPG/BMP/TGA/DDS); sie wird auf Format und Größe des Originals umgerechnet und als Projektkopie gespeichert.", "Replaces the image with any file (PNG/JPG/BMP/TGA/DDS); it is converted to the original's format and size and stored as a project copy."},
     {"Als PNG exportieren", "Speichert das Bild als PNG unter <Projekt>/Export/resmenu/... (zum Bearbeiten in einem Bildprogramm).", "Saves the image as PNG below <Project>/Export/resmenu/... (for editing in an image editor)."},
@@ -1178,6 +1215,8 @@ const ColumnDoc kColumns[] = {
     {"ActiveSkillView", "uiDemandLv", true, "Charakterlevel, ab dem der Skill lernbar ist (Anzeige).", "Character level from which the skill can be learned (display)."},
     {"ActiveSkillView", "HideHandItem", true, "1 = Waffe in der Hand während der Animation ausblenden.", "1 = hide the hand weapon during the animation."},
     {"ActiveSkillView", "CancelCasting", false, "Verhalten beim Abbrechen des Zauberns (vermutet).", "Behaviour when casting is cancelled (assumed)."},
+    {"MapViewInfo", "Loading", true, "Ladebild der Karte: Name ohne Endung unter resmenu/loading (.png, sonst .tga); mehrere Karten dürfen dasselbe Bild nutzen.", "Loading image of the map: name without extension below resmenu/loading (.png, otherwise .tga); several maps may share an image."},
+    {"MapViewInfo", "LoadLocation", false, "0 oder 1 (29 von 138 Karten haben 1); Bedeutung nicht belegt.", "0 or 1 (29 of 138 maps use 1); meaning not proven."},
     {"ActiveSkillView", "TargetChange", false, "1 = Ziel darf während des Einsatzes gewechselt werden (vermutet).", "1 = target may change during use (assumed)."},
 };
 

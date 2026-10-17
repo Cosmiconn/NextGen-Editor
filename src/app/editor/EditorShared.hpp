@@ -1040,10 +1040,29 @@ struct EditorState {
         std::string originalError;
         float previewW = 0, previewH = 0, originalW = 0, originalH = 0;
         bool applied = false;      // im letzten Frame übernommen (für Aufrufer)
+        // Weitere Dateien desselben Bildes (z. B. loading/Eld.tga neben Eld.png): werden aus derselben
+        // Quelle im jeweils eigenen Format geschrieben. onApply läuft in derselben Undo-Transaktion
+        // (z. B. MapViewInfo.Loading auf den neuen Namen setzen).
+        std::vector<std::string> extraTargets;
+        std::function<void(EditorState&)> onApply;
     } imageReplace;
     std::size_t resmenuRevision = 0; // erhöht bei jeder Änderung einer resmenu-Projektkopie
     std::string interfaceRoot;
     std::string interfacePendingAsset; // Automation: nach dem Scan diese Datei auswählen
+    int interfaceMode = 0;             // 0 Dateien, 1 Ladebildschirme
+    // Ladebildschirm-Editor (LoadingScreens.cpp): gewählte Karte (MapViewInfo-ID), Filter, Auswahl.
+    long long loadingSelectedId = -1;
+    char loadingFilter[64] = "";
+    char loadingPickFilter[64] = "";
+    std::string loadingPickChoice;
+    char loadingNewName[64] = "";
+    long long loadingNewNameFor = -1;    // Karte, für die loadingNewName vorgeschlagen wurde
+    std::string loadingNewNameSuggested; // letzter eigener Vorschlag
+    bool loadingScrollToSelected = false;
+    bool loadingSharedOpenRequest = false; // Automation: "Gemeinsame Ladebild-Dateien" aufklappen
+    bool loadingSharedOpen = false;        // aufgeklappt: Vorschau kleiner
+    bool loadingAutomationAssign = false; // Automation "loadingassign": loadingPickChoice zuweisen
+    std::string loadingAutomationOwnSource; // Automation "loadingown": Quelle für "Eigenes Bild"
     std::vector<std::string> interfaceAssets;
     bool interfaceAssetsScanned = false;
     int interfaceSelectedAsset = -1;
@@ -1718,6 +1737,11 @@ void DrawCustomCreatureEditor(EditorState& state);
 void DrawSkillEditor(EditorState& state);
 void DrawAiWorkspace(EditorState& state);
 void DrawInterfaceWorkspace(EditorState& state);
+void DrawLoadingScreenEditor(EditorState& state);
+// MapViewInfo.Loading der Karte (ID) in Client und Server setzen - ein Undo-Schritt.
+bool SetMapViewLoading(EditorState& state, long long mapId, const std::string& image);
+// Vorhandene Dateien eines Ladebilds (Projekt und Client, Groß/Klein egal): "loading/X.png", dann .tga ...
+std::vector<std::string> LoadingImageFiles(EditorState& state, const std::string& stem);
 // --- Bild ersetzen mit Konvertierung (ImageReplace.cpp) ---
 // resmenu-Ordner des Clients (Original) und die Datei, die der Client tatsächlich lädt (Projekt vor Original).
 std::filesystem::path ResmenuSourceRoot(EditorState& state);
@@ -1732,6 +1756,8 @@ bool RemoveResmenuOverride(EditorState& state, const std::string& rel);
 void OpenImageReplaceDialog(EditorState& state, const std::string& targetRel, const std::string& title,
                             const std::string& templateRel = {});
 void DrawImageReplaceDialog(EditorState& state);
+// Übernimmt das Ergebnis des Dialogs (Ziel, weitere Dateien, onApply) als ein Undo-Schritt.
+bool ApplyImageReplacement(EditorState& state);
 // Exportiert die geladene Datei als PNG nach <Projekt>/Export/resmenu/<rel>.png (zum Bearbeiten in
 // einem Bildprogramm); Rückgabe: Zielpfad oder leer.
 std::filesystem::path ExportResmenuAsPng(EditorState& state, const std::string& rel);
