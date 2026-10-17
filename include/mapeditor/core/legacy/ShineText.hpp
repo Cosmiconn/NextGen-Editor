@@ -39,6 +39,11 @@ struct ShineRecord {
     // Datei (Kommentare, unbekannte Direktiven, auch nicht-ASCII/koreanische Textteile) bleibt
     // byte-identisch erhalten.
     std::size_t sourceLine = 0;
+    // Nur für neue Records (sourceLine == 0): Quellzeile einer Musterzeile derselben Tabelle, deren
+    // Form der neue Record übernimmt (führende Tabs, Direktive, Leerzeichen hinter Zahlen,
+    // Auffüll-Tabs) - z. B. die Vorlagenzeile, aus der er geklont wurde. 0 = letzte vorhandene
+    // Zeile der Tabelle als Muster.
+    std::size_t styleLine = 0;
 };
 
 struct ShineTable {
@@ -91,8 +96,9 @@ std::expected<ShineTextFile, std::string> LoadShineTextFile(const std::filesyste
 // Minimal-invasiv: ersetzt nur die Zeilen bereits vorhandener (per sourceLine referenzierter)
 // Records, die sich gegenüber dem Original unterscheiden, und hängt neue Records (sourceLine
 // == 0 und nicht in den Originalzeilen enthalten) direkt nach der jeweiligen Tabelle an - der
-// Rest der Datei bleibt byte-identisch. Neue Records werden Tab-getrennt geschrieben, mit
-// derselben Spaltenzahl wie die übrigen Records dieser Tabelle (aufgefüllt mit "-").
+// Rest der Datei bleibt byte-identisch. Neue Records übernehmen die Form einer Musterzeile
+// derselben Tabelle (ShineRecord::styleLine, sonst ihre letzte Zeile): führende Tabs, "#Record"
+// bzw. "#recordin <Tabelle>", Leerzeichen hinter Zahlen und Auffüll-Tabs.
 std::expected<void, std::string> SaveShineTextFile(const ShineTextFile& file, const std::filesystem::path& path);
 
 // Neue, noch tabellenlose Datei mit denselben Kopfzeilen (#ignore/#exchange/Kommentare vor der

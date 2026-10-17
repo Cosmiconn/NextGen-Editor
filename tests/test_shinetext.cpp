@@ -7,7 +7,76 @@
 
 using namespace theseed::mapeditor::core::legacy;
 
+// Neue Records übernehmen die Form einer Musterzeile (führende Tabs, "#Record"/"#recordin",
+// Leerzeichen hinter Zahlen, Auffüll-Tabs) - wie World/Field.txt und World/NPC.txt in NA2016.
+static void NewRecordStyle() {
+    const auto path = std::filesystem::temp_directory_path() / "nextgen_shinetext_style.txt";
+    const std::string original =
+        "#Table\tFieldList\t\t\t\n"
+        "#ColumnType\tString[13]\tDWRD\tDWRD\t\t\n"
+        "#ColumnName\tMapIDClient\tSerial\tRegenX\t\t\n"
+        "#Record\tRou\t0 \t4134\t\t\n"
+        "#Record\tEld\t1 \t5000\t\t\n"
+        ";\tKommentar\n"
+        "#Table\tLinkTable\n"
+        "#ColumnType\tString[32]\tDWRD\n"
+        "#ColumnName\tArgument\tX\n"
+        "\t#recordin\tLinkTable\tGateRou1\t6477\t\t\t\n";
+    { std::ofstream(path, std::ios::binary) << original; }
+    auto file = LoadShineTextFile(path);
+    assert(file);
+    auto* field = file->FindTable("FieldList");
+    auto* links = file->FindTable("LinkTable");
+    assert(field && links && field->records.size() == 2 && links->records.size() == 1);
+    // Klon der Vorlagenzeile "Eld" mit neuen Werten.
+    ShineRecord clone = field->records[1];
+    clone.styleLine = clone.sourceLine;
+    clone.sourceLine = 0;
+    clone.values = {"TestLand", "155", "6400"};
+    field->records.push_back(clone);
+    // Neuer Record ohne Musterzeile: Form der letzten Zeile seiner Tabelle.
+    links->records.push_back(ShineRecord{{"GateTestLand1", "5000"}, 0});
+    assert(SaveShineTextFile(*file, path));
+    std::ifstream in(path, std::ios::binary);
+    const std::string saved((std::istreambuf_iterator<char>(in)), {});
+    const std::string expected =
+        "#Table\tFieldList\t\t\t\n"
+        "#ColumnType\tString[13]\tDWRD\tDWRD\t\t\n"
+        "#ColumnName\tMapIDClient\tSerial\tRegenX\t\t\n"
+        "#Record\tRou\t0 \t4134\t\t\n"
+        "#Record\tEld\t1 \t5000\t\t\n"
+        "#Record\tTestLand\t155 \t6400\t\t\n" // "#Record", "155 " wie "1 ", "6400" wie "5000", Auffüllung
+        ";\tKommentar\n"
+        "#Table\tLinkTable\n"
+        "#ColumnType\tString[32]\tDWRD\n"
+        "#ColumnName\tArgument\tX\n"
+        "\t#recordin\tLinkTable\tGateRou1\t6477\t\t\t\n"
+        "\t#recordin\tLinkTable\tGateTestLand1\t5000\t\t\t\n"; // führendes Tab, #recordin, Auffüllung
+    assert(saved == expected && "neue Records muessen die Form der Musterzeile haben");
+
+    // Musterzeile "#Record", Einfügestelle aber hinter einem anderen #Table: "#record" würde dort zur
+    // falschen Tabelle gehören - also "#recordin <Tabelle>" (Rest der Form bleibt).
+    const std::string mixed =
+        "#Table\tA\n#ColumnType\tDWRD\tDWRD\n#ColumnName\tX\tY\n"
+        "#Record\t1 \t2\t\n"
+        "#Table\tB\n#ColumnType\tDWRD\n#ColumnName\tZ\n"
+        "#recordin\tA\t3 \t4\t\n";
+    { std::ofstream(path, std::ios::binary) << mixed; }
+    auto m = LoadShineTextFile(path);
+    assert(m && m->FindTable("A") && m->FindTable("A")->records.size() == 2);
+    ShineRecord r{{"5", "6"}, 0};
+    r.styleLine = m->FindTable("A")->records[0].sourceLine;
+    m->FindTable("A")->records.push_back(r);
+    assert(SaveShineTextFile(*m, path));
+    std::ifstream in2(path, std::ios::binary);
+    const std::string saved2((std::istreambuf_iterator<char>(in2)), {});
+    assert(saved2 == mixed + "#recordin\tA\t5 \t6\t\n" && "hinter fremdem #Table muss #recordin geschrieben werden");
+    std::filesystem::remove(path);
+    std::cout << "Neue Records im Stil der Musterzeile: ok\n";
+}
+
 int main(int argc, char** argv) {
+    NewRecordStyle();
     if (argc < 2) { std::cerr << "usage: test_shinetext file.txt (z.B. World/NPC.txt oder MobRegen/<Karte>.txt)\n"; return 2; }
     auto src = std::filesystem::path(argv[1]);
     auto loaded = LoadShineTextFile(src);

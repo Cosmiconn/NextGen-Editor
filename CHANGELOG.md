@@ -1,3 +1,16 @@
+## New map wizard — exact text files, own loading image
+- Fixed: new records in Shine text files did not look like the originals. The wizard (and every other editor that adds records) wrote `#recordin\t<table>\t…` without padding.
+  - New records now copy the form of a pattern line of the same table: leading tabs, the directive as written (`#Record`, or `#recordin <table>` when `#Record` would bind to another table at the insert position), the space after numbers, and the same number of padding tabs.
+  - When cloning, the template line is the pattern (`ShineRecord::styleLine`); otherwise the table's last line.
+  - Checked against NA2016 with a new map from template Rou plus a gate from Eld:
+    - `World/Field.txt` gains exactly one line in the form of all 153 originals (`#Record`, 80 fields, `155 ` like `0 `);
+    - `World/NPC.txt` gains four lines in the form of their table (leading tab, `#recordin`, 29 fields);
+    - every original line stays byte-identical and in order.
+- Fixed: the wizard wrote the new map twice into `MapInfo.shn` and `MapViewInfo.shn`. The client copy is saved first and, since client and server are byte-identical, mirrored to the server; the wizard then cloned the row on the server side again. It now detects the mirrored row.
+- New maps get their own loading image: the template's image variants (PNG/TGA/DDS) are copied unchanged to `resmenu/loading/<map>.*`, and `MapViewInfo.Loading` points to it on client and server. Replace it in the loading screen editor without touching other maps.
+- The wizard report names the reason when an SHN cannot be saved.
+- Tests: `test_shinetext` covers new records in the form of the pattern line, and `#recordin` when another table was declared last; the round trip over all NA2016 text files is unchanged.
+
 ## Interface — window layouts
 - New **Windows** switch in the interface tab: the 310 interface NIFs of NA2016 shown as a 2D view.
   - Every element is a textured NiTriShape in the X/Z plane (screen pixels, Z pointing down). It is drawn with its texture, UVs, vertex colours and material alpha.
