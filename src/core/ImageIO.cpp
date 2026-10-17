@@ -394,4 +394,37 @@ void PasteImage(RgbaImage& target, const RgbaImage& piece, std::uint32_t x, std:
                     piece.rgba.data() + std::size_t{row} * piece.width * 4, std::size_t{w} * 4);
 }
 
+std::expected<std::vector<std::uint8_t>, std::string> SpliceDdsRegion(std::span<const std::uint8_t> original,
+                                                                     std::span<const std::uint8_t> updated, std::uint32_t x,
+                                                                     std::uint32_t y, std::uint32_t width, std::uint32_t height) {
+    if (!IsDds(original) || !IsDds(updated)) return std::unexpected("DDS erwartet");
+    const auto o = InspectImageBytes(original), u = InspectImageBytes(updated);
+    if (!o || !u) return std::unexpected(!o ? o.error() : u.error());
+    const std::uint32_t mips = std::max<std::uint32_t>(1, Le32(&original[28]));
+    if (o->width != u->width || o->height != u->height || o->dds != u->dds || mips != std::max<std::uint32_t>(1, Le32(&updated[28])) ||
+        original.size() != updated.size())
+        return std::unexpected("DDS: Format, Größe oder Mipmaps weichen ab");
+    const bool block = o->dds != DdsFormat::Bgra32;
+    const std::size_t unitBytes = o->dds == DdsFormat::Dxt1 ? 8 : block ? 16 : std::max<std::uint32_t>(1, Le32(&original[88]) / 8);
+    std::vector<std::uint8_t> out(original.begin(), original.end());
+    std::size_t offset = 128;
+    for (std::uint32_t level = 0; level < mips; ++level) {
+        const std::uint32_t lw = std::max<std::uint32_t>(1, o->width >> level), lh = std::max<std::uint32_t>(1, o->height >> level);
+        const std::uint32_t unitsX = block ? (lw + 3) / 4 : lw, unitsY = block ? (lh + 3) / 4 : lh;
+        // Rechteck dieser Stufe, nach außen auf ganze Blöcke gerundet.
+        const std::uint32_t scale = 1u << level, unit = block ? 4u : 1u;
+        const std::uint32_t x0 = (x / scale) / unit, y0 = (y / scale) / unit;
+        const std::uint32_t x1 = std::min(unitsX, ((x + width + scale - 1) / scale + unit - 1) / unit);
+        const std::uint32_t y1 = std::min(unitsY, ((y + height + scale - 1) / scale + unit - 1) / unit);
+        const std::size_t levelBytes = std::size_t{unitsX} * unitsY * unitBytes;
+        if (offset + levelBytes > out.size()) return std::unexpected("DDS: Datei zu kurz");
+        for (std::uint32_t row = y0; row < y1; ++row) {
+            const std::size_t at = offset + (std::size_t{row} * unitsX + x0) * unitBytes;
+            if (x1 > x0) std::memcpy(out.data() + at, updated.data() + at, std::size_t{x1 - x0} * unitBytes);
+        }
+        offset += levelBytes;
+    }
+    return out;
+}
+
 } // namespace theseed::mapeditor::core

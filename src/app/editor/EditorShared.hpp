@@ -1045,11 +1045,15 @@ struct EditorState {
         // (z. B. MapViewInfo.Loading auf den neuen Namen setzen).
         std::vector<std::string> extraTargets;
         std::function<void(EditorState&)> onApply;
+        // Zellen-Modus (Icon-Atlanten): nur dieses Rechteck des Ziels wird ersetzt, der Rest bleibt;
+        // die Quelle wird auf die Zellgröße gebracht, der Atlas im Originalformat neu geschrieben.
+        bool cellMode = false;
+        std::uint32_t cellX = 0, cellY = 0, cellW = 0, cellH = 0;
     } imageReplace;
     std::size_t resmenuRevision = 0; // erhöht bei jeder Änderung einer resmenu-Projektkopie
     std::string interfaceRoot;
     std::string interfacePendingAsset; // Automation: nach dem Scan diese Datei auswählen
-    int interfaceMode = 0;             // 0 Dateien, 1 Ladebildschirme
+    int interfaceMode = 0;             // 0 Dateien, 1 Ladebildschirme, 2 Icons, 3 Porträts
     // Ladebildschirm-Editor (LoadingScreens.cpp): gewählte Karte (MapViewInfo-ID), Filter, Auswahl.
     long long loadingSelectedId = -1;
     char loadingFilter[64] = "";
@@ -1061,6 +1065,22 @@ struct EditorState {
     bool loadingScrollToSelected = false;
     bool loadingSharedOpenRequest = false; // Automation: "Gemeinsame Ladebild-Dateien" aufklappen
     bool loadingSharedOpen = false;        // aufgeklappt: Vorschau kleiner
+    // Icon-Atlas-Editor (IconAtlasEditor.cpp): gewählter Atlas (resmenu-relativ) und Zelle.
+    std::string iconEditorAtlas;
+    int iconEditorCell = -1;
+    bool iconEditorScrollToSelected = false;
+    char iconEditorFilter[64] = "";
+    char iconEditorNewName[64] = "";
+    std::string iconEditorNewNameFor;
+    std::string iconAutomationReplaceSource; // Automation "iconreplace"
+    // Porträts (Portraits.cpp): 0 Mob-Porträts (MobViewInfo.MobPortrait), 1 NPC-Gesichter (NpcDialogData.FaceCutFile).
+    int portraitKind = 0;
+    std::string portraitSelected; // Name ohne Endung
+    char portraitFilter[64] = "";
+    char portraitNewName[64] = "";
+    char portraitAssignTo[64] = "";
+    bool portraitScrollToSelected = false;
+    bool portraitMissingOnly = false;
     bool loadingAutomationAssign = false; // Automation "loadingassign": loadingPickChoice zuweisen
     std::string loadingAutomationOwnSource; // Automation "loadingown": Quelle für "Eigenes Bild"
     std::vector<std::string> interfaceAssets;
@@ -1738,6 +1758,20 @@ void DrawSkillEditor(EditorState& state);
 void DrawAiWorkspace(EditorState& state);
 void DrawInterfaceWorkspace(EditorState& state);
 void DrawLoadingScreenEditor(EditorState& state);
+void DrawIconAtlasEditor(EditorState& state);
+// Springt in den Icon-Atlas-Editor (Atlas = IconFile ohne Endung, Zelle = IconIndex).
+void OpenIconInAtlasEditor(EditorState& state, const std::string& iconFile, int index);
+// Wer eine Atlaszelle benutzt ("Item LeatherHelmet", "Zustand StaX" ...) - aus ItemViewInfo (Icon, SubIcon,
+// PeriodIcon), ActiveSkillView, PassiveSkillView und AbStateView (Client).
+std::vector<std::string> IconAtlasUsers(EditorState& state, const std::string& iconFile, int index);
+void DrawPortraitEditor(EditorState& state);
+// Springt in den Porträt-Bereich (kind 0 Mob-Porträt, 1 NPC-Gesicht) mit diesem Namen.
+void OpenPortraitEditor(EditorState& state, int kind, const std::string& name);
+// Porträt-Spalte (MobViewInfo.MobPortrait in Client und Server bzw. NpcDialogData.FaceCutFile) der
+// Zeilen mit diesem InxName/MobIDX setzen - ein Undo-Schritt; Rückgabe: geschriebene Zellen.
+int AssignPortraitName(EditorState& state, int kind, const std::string& key, const std::string& name);
+// Schlüssel (InxName/MobIDX) aller Zeilen, die dieses Porträt verwenden.
+std::vector<std::string> PortraitUsers(EditorState& state, int kind, const std::string& name);
 // MapViewInfo.Loading der Karte (ID) in Client und Server setzen - ein Undo-Schritt.
 bool SetMapViewLoading(EditorState& state, long long mapId, const std::string& image);
 // Vorhandene Dateien eines Ladebilds (Projekt und Client, Groß/Klein egal): "loading/X.png", dann .tga ...

@@ -139,6 +139,45 @@ void Resizing() {
           "Einsetzen nur im Zielrechteck");
 }
 
+// Atlaszelle in einem DXT5-Atlas mit Mipmaps ersetzen: nur die Blöcke der Zelle ändern sich.
+void AtlasCellSplice() {
+    RgbaImage atlas = Gradient(64, 64);
+    ImageFormat f;
+    f.container = ImageContainer::Dds;
+    f.dds = DdsFormat::Dxt5;
+    f.mipmaps = true;
+    f.width = f.height = 64;
+    const auto original = EncodeImage(atlas, f);
+    RgbaImage white;
+    white.width = white.height = 16;
+    white.rgba.assign(16 * 16 * 4, 255);
+    RgbaImage changed = atlas;
+    PasteImage(changed, white, 16, 32);
+    const auto updated = EncodeImage(changed, f);
+    auto spliced = SpliceDdsRegion(*original, *updated, 16, 32, 16, 16);
+    Check(spliced.has_value() && spliced->size() == original->size(), "DDS-Zelle eingesetzt (gleiche Dateigröße)");
+    if (!spliced) return;
+    // Oberste Stufe: 16x16 Blöcke à 16 Bytes; Zelle = Blockspalten 4-7, Blockzeilen 8-11.
+    bool outsideSame = true, insideNew = true;
+    for (std::uint32_t by = 0; by < 16; ++by)
+        for (std::uint32_t bx = 0; bx < 16; ++bx) {
+            const std::size_t at = 128 + (std::size_t{by} * 16 + bx) * 16;
+            const bool inside = bx >= 4 && bx < 8 && by >= 8 && by < 12;
+            const bool same = std::equal(spliced->begin() + static_cast<std::ptrdiff_t>(at), spliced->begin() + static_cast<std::ptrdiff_t>(at + 16),
+                                         original->begin() + static_cast<std::ptrdiff_t>(at));
+            const bool fromUpdated = std::equal(spliced->begin() + static_cast<std::ptrdiff_t>(at), spliced->begin() + static_cast<std::ptrdiff_t>(at + 16),
+                                                updated->begin() + static_cast<std::ptrdiff_t>(at));
+            if (!inside && !same) outsideSame = false;
+            if (inside && !fromUpdated) insideNew = false;
+        }
+    Check(outsideSame, "Blöcke außerhalb der Zelle bitgleich zum Original");
+    Check(insideNew, "Blöcke der Zelle aus der neuen Kodierung");
+    auto back = DecodeImage(*spliced);
+    Check(back && back->rgba[(std::size_t{40} * 64 + 24) * 4] > 240, "neue Zelle sichtbar (weiß)");
+    Check(!SpliceDdsRegion(*original, *EncodeImage(Gradient(32, 32), [&] { auto g = f; g.width = g.height = 32; return g; }()), 0, 0, 8, 8),
+          "abweichende Größe wird abgelehnt");
+}
+
 void RealResmenu(const std::filesystem::path& root) {
     std::map<std::string, int> ok, failed;
     std::string firstFailure;
@@ -165,6 +204,7 @@ int main(int argc, char** argv) {
     RoundTrips();
     Tga16Opaque();
     Resizing();
+    AtlasCellSplice();
     if (argc > 1 && argv[1][0] != '\0') RealResmenu(argv[1]);
     if (g_failures) { std::fprintf(stderr, "%d Fehler\n", g_failures); return 1; }
     std::printf("Alle Bild-Tests bestanden.\n");

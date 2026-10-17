@@ -122,7 +122,7 @@ bool DrawIconAtlasPicker(EditorState& state, const std::string& iconFile, int& i
         return false;
     }
     const int capacity = core::legacy::IconAtlasCapacity(a.width, a.height);
-    const int cols = static_cast<int>(a.width / 32);
+    const int cols = 8; // alle Atlanten sind 8x8 (auch die 128er mit 16-px-Zellen)
     bool picked = false;
     for (int i = 0; i < capacity; ++i) {
         const auto cell = core::legacy::IconAtlasCell(a.width, a.height, i);

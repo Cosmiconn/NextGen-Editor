@@ -268,6 +268,21 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         state.loadingPickChoice = image;
         state.loadingAutomationAssign = true;
     }
+    else if (cmd == "iconeditor") {
+        // iconeditor <IconFile> [Index]: öffnet den Icon-Atlas-Editor mit dieser Zelle.
+        std::string atlas; int index = -1; in >> atlas >> index;
+        OpenIconInAtlasEditor(state, atlas, index);
+    }
+    else if (cmd == "iconreplace") {
+        // iconreplace <Quelldatei>: "Zelle ersetzen" für die gewählte Zelle mit dieser Quelle.
+        std::string source; std::getline(in >> std::ws, source);
+        state.iconAutomationReplaceSource = source;
+    }
+    else if (cmd == "portrait") {
+        // portrait <mob|npc> <Name>: öffnet den Porträt-Bereich mit diesem Porträt.
+        std::string kind, name; in >> kind >> name;
+        OpenPortraitEditor(state, kind == "npc" ? 1 : 0, name);
+    }
     else if (cmd == "loadingown") {
         // loadingown <Quelldatei>: "Eigenes Bild für diese Karte" mit dieser Quelle (Dialog öffnet sich).
         std::string source; std::getline(in >> std::ws, source);

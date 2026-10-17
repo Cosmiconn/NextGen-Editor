@@ -163,6 +163,10 @@ void DrawAbStateHeader(EditorState& state, const dataform::Docs& docs, long long
     ImGui::BeginGroup();
     const std::string sort = TrimAscii(FormCellRead(state, docs, 1, "IconSort", id));
     ImGui::Text("%s  %s #%d", sort.c_str(), iconFile.c_str(), icon);
+    if (!iconFile.empty() && iconFile != "-") {
+        ImGui::SameLine();
+        if (UI::SmallButton(L("Im Atlas-Editor##state", "In atlas editor##state"))) OpenIconInAtlasEditor(state, iconFile, icon);
+    }
     const std::string desc = FormCellRead(state, docs, 1, "Descript", id);
     if (!desc.empty()) ImGui::TextColored(kDim, "%s", desc.c_str());
     // Verwendet von: aktive Skills (StaNameA-D).
@@ -220,6 +224,10 @@ void DrawPassiveHeader(EditorState& state, const dataform::Docs& docs, long long
     ImGui::SameLine();
     ImGui::BeginGroup();
     ImGui::Text("%s #%d", iconFile.c_str(), icon);
+    if (!iconFile.empty() && iconFile != "-") {
+        ImGui::SameLine();
+        if (UI::SmallButton(L("Im Atlas-Editor##passive", "In atlas editor##passive"))) OpenIconInAtlasEditor(state, iconFile, icon);
+    }
     const std::string desc = FormCellRead(state, docs, 1, "Descript", id);
     if (!desc.empty()) ImGui::TextColored(kDim, "%s", desc.c_str());
     const std::string demand = TrimAscii(FormCellRead(state, docs, 0, "DemandSk", id));

@@ -595,6 +595,33 @@ The percentage editors change ALL rows of the column - check first, then save.)M
 - LoadLocation (0/1) is shown and written to both sides; its meaning is not proven.
 - 'Shared loading files': NowLoading.tga (1920x1080), ProgressBar.tga, NowLoadingTextColor.tga and the tip images loading/Tips - each replaceable. Where the client places them is not proven; the preview shows them one by one.)MAN",
      "ladebild loading screen ladebildschirm mapviewinfo karte map nowloading progressbar tipps tips abspalten split"},
+    {"shn.icons", "shn",
+     "Icon-Atlanten und Porträts", "Icon atlases and portraits",
+     R"MAN(Interface-Tab, Umschalter 'Icons' und 'Porträts'.
+# Icons
+Alle Atlanten unter resmenu/Icon. Jeder ist ein 8x8-Raster (Zelle = Atlasbreite / 8: 32 px bei 256er, 16 px bei den Zustands-Atlanten AbState00-04). Die Liste zeigt, wie viele der 64 Zellen benutzt werden.
+- Benutzt heißt: eine Zeile in ItemViewInfo (IconFile/IconIndex, SubIcon, PeriodIcon), ActiveSkillView, PassiveSkillView oder AbStateView zeigt auf die Zelle. Eine grüne Ecke markiert freie Zellen; der Tooltip sagt, ob sie leer (ganz transparent) ist. Andere Stellen des Clients können Atlanten ebenfalls nutzen - frei heißt nur 'in keiner dieser Tabellen'.
+- Klick auf eine Zelle: Vorschau, wer sie benutzt (Klick springt in den Item-, Skill-, Passiv- oder Zustands-Editor) und 'Zelle ersetzen...'. Die Quelle wird auf die Zellgröße gebracht (Standard: Einpassen), der Atlas im Originalformat geschrieben. Bei DDS ändern sich dabei nur die Blöcke der Zelle in jeder Mipmap-Stufe - alle anderen Icons bleiben bitgleich.
+- 'Atlas ersetzen...', 'Als PNG exportieren' und 'Neuer leerer Atlas' (transparent, im Format und in der Größe des gewählten Atlas; der Name zählt die Nummer hoch). Den neuen Atlas trägst Du danach im Item-/Skill-Editor als Icon-Datei ein.
+- Aus dem Item-, Skill-, Passiv- und Zustands-Editor führt 'Im Atlas-Editor' direkt zur Zelle des Icons.
+# Porträts
+Mob-Porträts: resmenu/game/MobPortrait/<MobViewInfo.MobPortrait>.png; NPC-Gesichter im Dialog: resmenu/game/NPCFaceCut/<NpcDialogData.FaceCutFile>.png.
+- Die Liste vereint Dateien und Verweise: 'fehlt' = Verweis ohne Datei (NA2016: 126 Mob-Zeilen, 64 NPC-Dialoge), 'unbenutzt' = Datei ohne Verweis, 'x3' = drei Einträge nutzen das Porträt. 'Nur fehlende Dateien' filtert.
+- 'Ersetzen...' schreibt alle vorhandenen Varianten (PNG/TGA) aus derselben Quelle; 'Datei anlegen...' erzeugt eine fehlende Datei im Format der vorhandenen Porträts.
+- 'Neues Porträt': Dateiname und optional ein Mob (InxName) bzw. NPC (MobIDX). 'Anlegen...' erzeugt die Datei und setzt die Porträt-Spalte dieses Eintrags (MobViewInfo in Client und Server) - ein Undo-Schritt. Danach 'Alle geänderten SHN speichern'.)MAN",
+     R"MAN(Interface tab, switches 'Icons' and 'Portraits'.
+# Icons
+Every atlas below resmenu/Icon. Each is an 8x8 grid (cell = atlas width / 8: 32 px for 256 atlases, 16 px for the state atlases AbState00-04). The list shows how many of the 64 cells are used.
+- Used means: a row in ItemViewInfo (IconFile/IconIndex, SubIcon, PeriodIcon), ActiveSkillView, PassiveSkillView or AbStateView points to the cell. A green corner marks free cells; the tooltip says whether it is empty (fully transparent). Other parts of the client may use atlases too - free only means 'in none of these tables'.
+- Click a cell: preview, who uses it (a click jumps into the item, skill, passive or state editor) and 'Replace cell...'. The source is brought to the cell size (default: fit) and the atlas is written in its original format. For DDS only the cell's blocks change in every mipmap level - all other icons stay bit-identical.
+- 'Replace atlas...', 'Export as PNG' and 'New empty atlas' (transparent, in the format and size of the selected atlas; the name counts the number up). Enter the new atlas as icon file in the item/skill editor afterwards.
+- From the item, skill, passive and state editors, 'In atlas editor' leads straight to the icon's cell.
+# Portraits
+Mob portraits: resmenu/game/MobPortrait/<MobViewInfo.MobPortrait>.png; NPC faces in dialogs: resmenu/game/NPCFaceCut/<NpcDialogData.FaceCutFile>.png.
+- The list combines files and references: 'missing' = reference without file (NA2016: 126 mob rows, 64 NPC dialogs), 'unused' = file without reference, 'x3' = three entries use the portrait. 'Missing files only' filters.
+- 'Replace...' writes every existing variant (PNG/TGA) from the same source; 'Create file...' creates a missing file in the format of the existing portraits.
+- 'New portrait': file name and optionally a mob (InxName) or NPC (MobIDX). 'Create...' creates the file and sets that entry's portrait column (MobViewInfo on client and server) - one undo step. Then 'Save all changed SHN'.)MAN",
+     "icon atlas zelle cell frei free porträt portrait mobportrait npcfacecut gesicht face dds mipmap"},
     {"creators.npcmob", "creators",
      "Custom NPC / Mob erstellen", "Creating a custom NPC / mob",
      R"MAN(Tab 'Custom NPC/Mob' im SHN-Editor. Der Assistent klont eine Vorlage in alle Tabellen (MobInfo, MobInfoServer, MobViewInfo, MobSpecies, QuestSpecies, MobWeapon) mit einer überall freien ID.
@@ -702,6 +729,32 @@ World X = east, world Z = north, Y = height. In NPC.txt Coord-X / Coord-Y are wo
 
 struct TipRow { const char* key; const char* de; const char* en; };
 const TipRow kTips[] = {
+    {"Icons", "Icon-Atlanten unter resmenu/Icon: Belegung, freie Zellen, Zelle ersetzen, neuer Atlas.", "Icon atlases below resmenu/Icon: usage, free cells, replace a cell, new atlas."},
+    {"Porträts", "Mob-Porträts und NPC-Gesichter: Verwendung, fehlende Dateien, ersetzen, neu anlegen.", "Mob portraits and NPC faces: usage, missing files, replace, create."},
+    {"Portraits", "Mob-Porträts und NPC-Gesichter: Verwendung, fehlende Dateien, ersetzen, neu anlegen.", "Mob portraits and NPC faces: usage, missing files, replace, create."},
+    {"Atlas ersetzen...", "Ersetzt den ganzen Atlas (umgerechnet auf Format und Größe des Originals).", "Replaces the whole atlas (converted to the original's format and size)."},
+    {"Replace atlas...", "Ersetzt den ganzen Atlas (umgerechnet auf Format und Größe des Originals).", "Replaces the whole atlas (converted to the original's format and size)."},
+    {"Neuer leerer Atlas", "Legt einen transparenten Atlas mit dem eingetragenen Namen an - Format und Größe wie der gewählte.", "Creates a transparent atlas with the entered name - format and size like the selected one."},
+    {"New empty atlas", "Legt einen transparenten Atlas mit dem eingetragenen Namen an - Format und Größe wie der gewählte.", "Creates a transparent atlas with the entered name - format and size like the selected one."},
+    {"Zelle ersetzen...", "Ersetzt nur diese Zelle; bei DDS bleiben alle anderen Icons bitgleich.", "Replaces only this cell; for DDS all other icons stay bit-identical."},
+    {"Replace cell...", "Ersetzt nur diese Zelle; bei DDS bleiben alle anderen Icons bitgleich.", "Replaces only this cell; for DDS all other icons stay bit-identical."},
+    {"Im Atlas-Editor", "Öffnet den Icon-Atlas-Editor bei dieser Zelle.", "Opens the icon atlas editor at this cell."},
+    {"In atlas editor", "Öffnet den Icon-Atlas-Editor bei dieser Zelle.", "Opens the icon atlas editor at this cell."},
+    {"InputText:##iconAtlasFilter", "Atlanten nach Namen filtern.", "Filter atlases by name."},
+    {"InputText:##iconAtlasNewName", "Name des neuen Atlas (Buchstaben, Ziffern, _).", "Name of the new atlas (letters, digits, _)."},
+    {"Mob-Porträts", "Porträts aus MobViewInfo.MobPortrait (game/MobPortrait).", "Portraits from MobViewInfo.MobPortrait (game/MobPortrait)."},
+    {"Mob portraits", "Porträts aus MobViewInfo.MobPortrait (game/MobPortrait).", "Portraits from MobViewInfo.MobPortrait (game/MobPortrait)."},
+    {"NPC-Gesichter (Dialog)", "Gesichter aus NpcDialogData.FaceCutFile (game/NPCFaceCut).", "Faces from NpcDialogData.FaceCutFile (game/NPCFaceCut)."},
+    {"NPC faces (dialog)", "Gesichter aus NpcDialogData.FaceCutFile (game/NPCFaceCut).", "Faces from NpcDialogData.FaceCutFile (game/NPCFaceCut)."},
+    {"Nur fehlende Dateien", "Zeigt nur Porträts, auf die verwiesen wird, deren Datei aber fehlt.", "Shows only referenced portraits whose file is missing."},
+    {"Missing files only", "Zeigt nur Porträts, auf die verwiesen wird, deren Datei aber fehlt.", "Shows only referenced portraits whose file is missing."},
+    {"Datei anlegen...", "Erzeugt die fehlende Porträt-Datei aus einer Quelle (Format der vorhandenen Porträts).", "Creates the missing portrait file from a source (format of the existing portraits)."},
+    {"Create file...", "Erzeugt die fehlende Porträt-Datei aus einer Quelle (Format der vorhandenen Porträts).", "Creates the missing portrait file from a source (format of the existing portraits)."},
+    {"Anlegen...", "Erzeugt das neue Porträt und weist es optional dem eingetragenen Mob/NPC zu (ein Undo-Schritt).", "Creates the new portrait and optionally assigns it to the entered mob/NPC (one undo step)."},
+    {"Create...", "Erzeugt das neue Porträt und weist es optional dem eingetragenen Mob/NPC zu (ein Undo-Schritt).", "Creates the new portrait and optionally assigns it to the entered mob/NPC (one undo step)."},
+    {"InputText:##portraitFilter", "Porträts nach Name oder nach Mob/NPC filtern.", "Filter portraits by name or by mob/NPC."},
+    {"InputText:##portraitNewName", "Dateiname des neuen Porträts ohne Endung.", "File name of the new portrait without extension."},
+    {"InputText:##portraitAssignTo", "Optional: InxName des Mobs bzw. MobIDX des NPCs, der das neue Porträt bekommt.", "Optional: InxName of the mob or MobIDX of the NPC that gets the new portrait."},
     {"Dateien", "Alle Dateien unter Client/resmenu (Bilder und Fenster-NIFs).", "All files below Client/resmenu (images and window NIFs)."},
     {"Files", "Alle Dateien unter Client/resmenu (Bilder und Fenster-NIFs).", "All files below Client/resmenu (images and window NIFs)."},
     {"Ladebildschirme", "Ladebilder der Karten (MapViewInfo.Loading) zuweisen, ersetzen und abspalten.", "Assign, replace and split the maps' loading images (MapViewInfo.Loading)."},

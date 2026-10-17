@@ -576,6 +576,69 @@ int main() {
         Check(DataRedo(st) && std::filesystem::exists(projectLoading / "A.tga"), "Redo legt sie wieder an");
     }
 
+    std::printf("\n== Icon-Atlanten und Porträts ==\n");
+    {
+        // ItemViewInfo (Icon + SubIcon) und AbStateView mit kleinem "iconFile"; MobViewInfo Client+Server.
+        core::legacy::ShnFile iv;
+        iv.encrypted = false;
+        iv.columns = {UIntColumn("ID"), StringColumn("InxName", 32), UIntColumn("IconIndex"), StringColumn("IconFile", 32),
+                      UIntColumn("SubIconIndex"), StringColumn("SubIconFile", 32), UIntColumn("PeriodIconIndex"), StringColumn("PeriodIconFile", 32)};
+        for (std::uint32_t i = 0; i < 2; ++i) {
+            core::legacy::ShnRow r;
+            r.values = {i, std::string(i == 0 ? "Helm" : "Boots"), i, std::string("AtlasA"), 7u, std::string(i == 0 ? "AtlasB" : "-"), 0u, std::string("-")};
+            iv.rows.push_back(std::move(r));
+        }
+        (void)core::legacy::SaveShnFile(iv, ressystem / "ItemViewInfo.shn");
+        core::legacy::ShnFile asv;
+        asv.encrypted = false;
+        asv.columns = {UIntColumn("ID"), StringColumn("inxName", 32), UIntColumn("icon"), StringColumn("iconFile", 32)};
+        core::legacy::ShnRow sr;
+        sr.values = {1u, std::string("StaHaste"), 1u, std::string("atlasa")};
+        asv.rows.push_back(std::move(sr));
+        (void)core::legacy::SaveShnFile(asv, ressystem / "AbStateView.shn");
+
+        // Frühere Abschnitte haben diese Tabellen schon geladen (und ggf. ins Projekt gespeichert):
+        // Projektkopien entfernen und die Dokumente aus den neuen Dateien neu laden.
+        const auto reloadFixture = [&](const char* file, EditorState::ShnSource source) {
+            const int doc = SharedShnDoc(st, file, source);
+            if (doc < 0) return;
+            auto& d = st.shnFiles[static_cast<std::size_t>(doc)];
+            const auto sourcePath = d.sourcePath.empty() ? d.file.path : d.sourcePath;
+            const auto projectCopy = PreferProjectOverride(st.project, source == EditorState::ShnSource::Client ? core::ProjectOutputSide::Client
+                                                                                                                : core::ProjectOutputSide::Server,
+                                                           sourcePath);
+            if (projectCopy != sourcePath) std::filesystem::remove(projectCopy, ec);
+            ReloadShnDocument(st, doc);
+        };
+        reloadFixture("ItemViewInfo.shn", EditorState::ShnSource::Client);
+        reloadFixture("AbStateView.shn", EditorState::ShnSource::Client);
+        const auto helm = IconAtlasUsers(st, "AtlasA", 0);
+        Check(helm.size() == 1 && helm[0].find("Helm") != std::string::npos, "Atlaszelle AtlasA #0: Item Helm");
+        const auto cell1 = IconAtlasUsers(st, "ATLASA", 1);
+        Check(cell1.size() == 2, "AtlasA #1: Item Boots und Zustand StaHaste (Atlasname Groß/Klein egal)");
+        Check(IconAtlasUsers(st, "AtlasB", 7).size() == 1 && IconAtlasUsers(st, "AtlasA", 5).empty(),
+              "SubIcon zählt mit, unbenutzte Zelle ist frei");
+
+        core::legacy::ShnFile mob;
+        mob.encrypted = false;
+        mob.columns = {UIntColumn("ID"), StringColumn("InxName", 32), StringColumn("MobPortrait", 32)};
+        for (std::uint32_t i = 0; i < 2; ++i) {
+            core::legacy::ShnRow r;
+            r.values = {i, std::string(i == 0 ? "Slime" : "KingSlime"), std::string("SlimeFace")};
+            mob.rows.push_back(std::move(r));
+        }
+        (void)core::legacy::SaveShnFile(mob, ressystem / "MobViewInfo.shn");
+        (void)core::legacy::SaveShnFile(mob, shine / "View" / "MobViewInfo.shn");
+        reloadFixture("MobViewInfo.shn", EditorState::ShnSource::Client);
+        reloadFixture("MobViewInfo.shn", EditorState::ShnSource::Server);
+        Check(PortraitUsers(st, 0, "slimeface").size() == 2, "Porträt SlimeFace: zwei Mobs");
+        st.dataHistory.Clear();
+        Check(AssignPortraitName(st, 0, "KingSlime", "KingFace") == 2, "eigenes Porträt für KingSlime in Client und Server gesetzt");
+        Check(PortraitUsers(st, 0, "SlimeFace").size() == 1 && PortraitUsers(st, 0, "KingFace").size() == 1, "Verwendungen neu gezählt");
+        Check(st.dataHistory.UndoCount() == 1 && DataUndo(st) && PortraitUsers(st, 0, "SlimeFace").size() == 2,
+              "ein Undo stellt beide Seiten wieder her");
+    }
+
     std::filesystem::remove_all(base, ec);
     if (g_failures) std::fprintf(stderr, "%d Fehler\n", g_failures);
     return g_failures == 0 ? 0 : 1;

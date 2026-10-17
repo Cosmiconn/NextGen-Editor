@@ -93,6 +93,10 @@ void DrawItemHeader(EditorState& state, const dataform::Docs& docs, long long id
         ImGui::TextColored(ImVec4(1.0f, 0.68f, 0.25f, 1.0f), "%s", L("Icon nicht im Atlas gefunden (resmenu/Icon)", "Icon not found in the atlas (resmenu/Icon)"));
     if (UI::SmallButton(form.iconPickerOpen ? L("Icon-Auswahl schließen", "Close icon picker") : L("Icon wählen...", "Choose icon...")))
         form.iconPickerOpen = !form.iconPickerOpen;
+    if (!iconFile.empty() && iconFile != "-") {
+        ImGui::SameLine();
+        if (UI::SmallButton(L("Im Atlas-Editor##item", "In atlas editor##item"))) OpenIconInAtlasEditor(state, iconFile, iconIndex);
+    }
     ImGui::EndGroup();
     if (form.iconPickerOpen && !iconFile.empty() && DrawIconAtlasPicker(state, iconFile, iconIndex))
         FormCellWrite(state, docs, 2, "IconIndex", id, std::to_string(iconIndex), "Item #" + std::to_string(id) + " · IconIndex");
