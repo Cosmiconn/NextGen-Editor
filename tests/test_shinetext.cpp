@@ -1,11 +1,32 @@
 #include "mapeditor/core/legacy/ShineText.hpp"
 #include <cassert>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <string>
 #include <vector>
 
 using namespace theseed::mapeditor::core::legacy;
+
+// Prüfung unabhängig von NDEBUG (die CI baut Release, dort entfällt assert samt Inhalt).
+static void Require(bool ok, const char* what) {
+    if (ok) return;
+    std::cerr << "[FEHLER] " << what << "\n";
+    std::exit(1);
+}
+
+// Ganze Datei lesen; der Stream ist danach geschlossen (unter Windows lässt sich eine offene Datei
+// nicht löschen).
+static std::string ReadAll(const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    return std::string((std::istreambuf_iterator<char>(in)), {});
+}
+
+static void WriteAll(const std::filesystem::path& path, const std::string& text) {
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    out << text;
+}
 
 // Neue Records übernehmen die Form einer Musterzeile (führende Tabs, "#Record"/"#recordin",
 // Leerzeichen hinter Zahlen, Auffüll-Tabs) - wie World/Field.txt und World/NPC.txt in NA2016.
@@ -22,12 +43,12 @@ static void NewRecordStyle() {
         "#ColumnType\tString[32]\tDWRD\n"
         "#ColumnName\tArgument\tX\n"
         "\t#recordin\tLinkTable\tGateRou1\t6477\t\t\t\n";
-    { std::ofstream(path, std::ios::binary) << original; }
+    WriteAll(path, original);
     auto file = LoadShineTextFile(path);
-    assert(file);
+    Require(file.has_value(), "Musterdatei laden");
     auto* field = file->FindTable("FieldList");
     auto* links = file->FindTable("LinkTable");
-    assert(field && links && field->records.size() == 2 && links->records.size() == 1);
+    Require(field && links && field->records.size() == 2 && links->records.size() == 1, "Tabellen der Musterdatei erkannt");
     // Klon der Vorlagenzeile "Eld" mit neuen Werten.
     ShineRecord clone = field->records[1];
     clone.styleLine = clone.sourceLine;
@@ -36,9 +57,8 @@ static void NewRecordStyle() {
     field->records.push_back(clone);
     // Neuer Record ohne Musterzeile: Form der letzten Zeile seiner Tabelle.
     links->records.push_back(ShineRecord{{"GateTestLand1", "5000"}, 0});
-    assert(SaveShineTextFile(*file, path));
-    std::ifstream in(path, std::ios::binary);
-    const std::string saved((std::istreambuf_iterator<char>(in)), {});
+    const bool saved1 = SaveShineTextFile(*file, path).has_value();
+    Require(saved1, "Musterdatei speichern");
     const std::string expected =
         "#Table\tFieldList\t\t\t\n"
         "#ColumnType\tString[13]\tDWRD\tDWRD\t\t\n"
@@ -52,7 +72,7 @@ static void NewRecordStyle() {
         "#ColumnName\tArgument\tX\n"
         "\t#recordin\tLinkTable\tGateRou1\t6477\t\t\t\n"
         "\t#recordin\tLinkTable\tGateTestLand1\t5000\t\t\t\n"; // führendes Tab, #recordin, Auffüllung
-    assert(saved == expected && "neue Records muessen die Form der Musterzeile haben");
+    Require(ReadAll(path) == expected, "neue Records muessen die Form der Musterzeile haben");
 
     // Musterzeile "#Record", Einfügestelle aber hinter einem anderen #Table: "#record" würde dort zur
     // falschen Tabelle gehören - also "#recordin <Tabelle>" (Rest der Form bleibt).
@@ -61,17 +81,17 @@ static void NewRecordStyle() {
         "#Record\t1 \t2\t\n"
         "#Table\tB\n#ColumnType\tDWRD\n#ColumnName\tZ\n"
         "#recordin\tA\t3 \t4\t\n";
-    { std::ofstream(path, std::ios::binary) << mixed; }
+    WriteAll(path, mixed);
     auto m = LoadShineTextFile(path);
-    assert(m && m->FindTable("A") && m->FindTable("A")->records.size() == 2);
+    Require(m.has_value() && m->FindTable("A") && m->FindTable("A")->records.size() == 2, "gemischte Datei laden");
     ShineRecord r{{"5", "6"}, 0};
     r.styleLine = m->FindTable("A")->records[0].sourceLine;
     m->FindTable("A")->records.push_back(r);
-    assert(SaveShineTextFile(*m, path));
-    std::ifstream in2(path, std::ios::binary);
-    const std::string saved2((std::istreambuf_iterator<char>(in2)), {});
-    assert(saved2 == mixed + "#recordin\tA\t5 \t6\t\n" && "hinter fremdem #Table muss #recordin geschrieben werden");
-    std::filesystem::remove(path);
+    const bool saved2 = SaveShineTextFile(*m, path).has_value();
+    Require(saved2, "gemischte Datei speichern");
+    Require(ReadAll(path) == mixed + "#recordin\tA\t5 \t6\t\n", "hinter fremdem #Table muss #recordin geschrieben werden");
+    std::error_code ec;
+    std::filesystem::remove(path, ec);
     std::cout << "Neue Records im Stil der Musterzeile: ok\n";
 }
 
