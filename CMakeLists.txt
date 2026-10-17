@@ -75,6 +75,7 @@ add_library(mapeditor_core
     src/core/legacy/LegacyIdmAid.cpp
     src/core/legacy/LegacyPathResolve.cpp
     src/core/legacy/ShnFile.cpp
+    src/core/legacy/ShnPatchCheck.cpp
     src/core/legacy/ShineText.cpp
     src/core/legacy/QuestData.cpp
     src/core/legacy/ItemDropGroups.cpp
@@ -86,6 +87,7 @@ add_library(mapeditor_core
     src/core/LevelEditorTools.cpp
     src/core/MapCheck.cpp
     src/core/Autosave.cpp
+    src/core/DataHistory.cpp
     src/core/WalkGenerate.cpp
     src/core/HeightmapExchange.cpp
     src/core/TextureRules.cpp
@@ -217,6 +219,7 @@ set(NEXTGEN_EDITOR_MODULES
     src/app/editor/Automation.cpp
     src/app/editor/MinimapTools.cpp
     src/app/editor/IconTools.cpp
+    src/app/editor/DataEditing.cpp
 )
 
 add_executable(map_editor
@@ -372,6 +375,10 @@ add_test(NAME icon_atlas COMMAND test_icon_atlas "${NEXTGEN_NA2016_DATA}")
 add_executable(test_view_culling tests/test_view_culling.cpp)
 target_link_libraries(test_view_culling PRIVATE mapeditor_core)
 add_test(NAME view_culling COMMAND test_view_culling)
+
+add_executable(test_data_history tests/test_data_history.cpp)
+target_link_libraries(test_data_history PRIVATE mapeditor_core)
+add_test(NAME data_history COMMAND test_data_history)
 
 add_executable(test_nif_client_render_state tests/test_nif_client_render_state.cpp)
 target_link_libraries(test_nif_client_render_state PRIVATE mapeditor_core)

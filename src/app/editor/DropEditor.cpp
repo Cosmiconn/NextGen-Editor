@@ -107,8 +107,12 @@ void DrawDropTableEditor(EditorState& state) {
         state.dropTableFile = core::legacy::ShineTextFile{};
         state.dropTableLoadError.clear();
         state.dropTableSelectedRecord = -1;
+        state.dropTableTracker = {};
+        state.dataHistory.Clear(); // Zeilenindizes im Verlauf gelten nach dem Verwerfen nicht mehr
         EnsureDropTableLoaded(state);
     }
+    ImGui::SameLine();
+    DrawDataHistoryButtons(state, "dropHistory");
     ImGui::Separator();
 
     if (!state.dropTableLoadError.empty()) {
@@ -126,6 +130,61 @@ void DrawDropTableEditor(EditorState& state) {
     if (!table) {
         ImGui::TextDisabled("ItemGroup-Tabelle fehlt.");
         return;
+    }
+    EditorState* statePtr = &state;
+    const ShineTableAccess dropAccess = [statePtr]() { return statePtr->dropTableFile.FindTable("ItemGroup"); };
+    TrackShineRecordEdits(state, state.dropTableTracker, dropAccess, state.dropTableSelectedRecord,
+                          &state.dropTableDirty, L("Drop-Zeile", "Drop row"));
+    // Zeilen anlegen (Kopie der gewählten oder leere Zeile) und löschen - beides mit Undo.
+    if (UI::SmallButton(L("+ Drop-Zeile","+ Drop row"))) {
+        core::legacy::ShineRecord rec;
+        const bool fromSelected = state.dropTableSelectedRecord >= 0 &&
+                                  state.dropTableSelectedRecord < static_cast<int>(table->records.size());
+        if (fromSelected) rec = table->records[static_cast<std::size_t>(state.dropTableSelectedRecord)];
+        else rec.values.assign(table->columns.size(), "-");
+        rec.sourceLine = 0; // neue Zeile (wird beim Speichern hinter der Tabelle angefügt)
+        const int at = InsertShineRecordWithHistory(state, dropAccess, static_cast<int>(table->records.size()), rec,
+                                                    &state.dropTableDirty,
+                                                    fromSelected ? L("Drop-Zeile kopiert","Drop row copied") : L("Drop-Zeile angelegt","Drop row added"));
+        if (at >= 0) state.dropTableSelectedRecord = at;
+        table = state.dropTableFile.FindTable("ItemGroup");
+    }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+        ImGui::SetTooltip("%s", L("Neue Zeile am Ende der Tabelle: Kopie der gewählten Zeile (oder leer). MobId und Slots danach anpassen.",
+                                  "New row at the end of the table: copy of the selected row (or empty). Then adjust MobId and slots."));
+    ImGui::SameLine();
+    ImGui::BeginDisabled(state.dropTableSelectedRecord < 0 || state.dropTableSelectedRecord >= static_cast<int>(table->records.size()));
+    if (UI::SmallButton(L("Drop-Zeile löschen","Delete drop row"))) {
+        state.dropTableDeleteRecord = state.dropTableSelectedRecord;
+        state.dropTableDeleteOpen = true;
+    }
+    ImGui::EndDisabled();
+    if (state.dropTableDeleteOpen) {
+        const char* title = L("Drop-Zeile löschen###dropDelete","Delete drop row###dropDelete");
+        ImGui::OpenPopup(title);
+        if (ImGui::BeginPopupModal(title, &state.dropTableDeleteOpen, ImGuiWindowFlags_AlwaysAutoResize)) {
+            const bool valid = state.dropTableDeleteRecord >= 0 && state.dropTableDeleteRecord < static_cast<int>(table->records.size());
+            if (valid) {
+                const int cMobId = FindShineColumn(*table, "MobId");
+                ImGui::Text(L("Drop-Zeile für %s löschen?","Delete drop row for %s?"),
+                            ShineRecordValue(table->records[static_cast<std::size_t>(state.dropTableDeleteRecord)], cMobId).c_str());
+                ImGui::TextDisabled("%s", L("Der Mob droppt danach nichts mehr aus dieser Zeile. Strg+Z macht es rückgängig.",
+                                            "The mob then no longer drops anything from this row. Ctrl+Z undoes it."));
+            }
+            if (UI::Button(L("Löschen","Delete")) && valid) {
+                DeleteShineRecordWithHistory(state, dropAccess, state.dropTableDeleteRecord, &state.dropTableDirty,
+                                             L("Drop-Zeile gelöscht","Drop row deleted"));
+                state.dropTableSelectedRecord = -1;
+                state.dropTableTracker = {};
+                state.dropTableDeleteOpen = false;
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (UI::Button(L("Abbrechen","Cancel"))) { state.dropTableDeleteOpen = false; ImGui::CloseCurrentPopup(); }
+            ImGui::EndPopup();
+        }
+        table = state.dropTableFile.FindTable("ItemGroup");
+        if (!table) return;
     }
 
     const int cMap = FindShineColumn(*table, "MapArea");

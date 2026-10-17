@@ -588,7 +588,12 @@ void DrawCustomCreatureEditor(EditorState& state) {
         if (w.placeOnMap) ImGui::Text(L("X %d · Y %d · Richtung %d", "X %d · Y %d · direction %d"), w.placeX, w.placeY, w.placeDir);
     }
     ImGui::Separator();
-    if (UI::Button(L("Anlegen", "Create"), ImVec2(160.0f, 0.0f))) RunCreateCreature(state);
+    if (UI::Button(L("Anlegen", "Create"), ImVec2(160.0f, 0.0f))) {
+        // Alle angelegten Zeilen (MobInfo, MobInfoServer, ViewInfo, Dialog) sind ein Verlaufseintrag.
+        DataHistoryBegin(state, L("Kreatur angelegt", "Creature created"));
+        RunCreateCreature(state);
+        DataHistoryCommit(state);
+    }
     ImGui::SameLine();
     if (UI::Button(L("Alle geänderten SHN speichern", "Save all changed SHN"))) {
         const auto [shnSaved, shnFailed] = SaveAllDirtyShnDocuments(state);
