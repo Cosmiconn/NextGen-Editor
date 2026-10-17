@@ -140,7 +140,10 @@ std::expected<KfmFile,std::string> LoadKfmFile(const std::filesystem::path& path
         if(size<0 || static_cast<std::uint64_t>(size)>maxFileBytes)return std::unexpected("Invalid KFM size (limit 64 MiB)");
         std::vector<std::uint8_t> bytes(static_cast<std::size_t>(size));in.seekg(0);
         if(!in.read(reinterpret_cast<char*>(bytes.data()),static_cast<std::streamsize>(bytes.size())))return std::unexpected("Cannot read KFM");
-        return DecodeKfm(bytes);
+        auto decoded=DecodeKfm(bytes);
+        if(!decoded)return decoded;
+        decoded->loadedPath=path;
+        return decoded;
     } catch(const std::exception& e) { return std::unexpected(e.what()); }
 }
 std::expected<void,std::string> SaveKfmFile(const KfmFile& file,const std::filesystem::path& path) {
@@ -152,7 +155,7 @@ std::expected<void,std::string> SaveKfmFile(const KfmFile& file,const std::files
     return {};
 }
 KfmReferences InspectKfmReferences(const KfmFile& file,const std::filesystem::path& source) {
-    return InspectKfmReferences(file, source, source);
+    return InspectKfmReferences(file, source, file.loadedPath.empty()?source:file.loadedPath);
 }
 KfmReferences InspectKfmReferences(const KfmFile& file,
                                    const std::filesystem::path& source,
