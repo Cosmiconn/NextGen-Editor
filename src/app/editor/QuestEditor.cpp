@@ -151,17 +151,17 @@ void EnsureQuestDialogLoaded(EditorState& state) {
     if (state.questDialogLoaded) return;
     EnsureNpcDialogRoot(state);
     if (state.npcDialogRessystemRoot.empty()) return;
-    const auto sourcePath = std::filesystem::path(state.npcDialogRessystemRoot) / "QuestDialog.shn";
-    const auto path = PreferProjectOverride(state.project, core::ProjectOutputSide::Client, sourcePath);
-    auto result = core::legacy::LoadShnFile(path);
-    if (result) { state.questDialogShn = std::move(*result); state.questDialogLoaded = true; }
+    state.questDialogDoc = SharedShnDoc(state, "QuestDialog.shn", EditorState::ShnSource::Client,
+                                        state.npcDialogRessystemRoot);
+    state.questDialogLoaded = state.questDialogDoc >= 0;
+    state.questTextMapBuilt = false;
 }
 // Löst eine Text-ID über QuestDialog.shn auf (Spalte 0 = ID, Spalte 1 = Dialog) - byte-exakt
 // gegen echte Daten geprüft, siehe CHANGELOG [0.44.19] (z.B. ID 200 = Quest-1-Titel "Baby
 // Steps", ID 202 = die zugehörige NPC-Begrüßungszeile mit [BUTTON]=[...]-Markup).
 std::string ResolveQuestText(EditorState& state, int textId) {
     if (!state.questDialogLoaded) return {};
-    for (auto& row : state.questDialogShn.rows) {
+    for (auto& row : ShnDocFile(state, state.questDialogDoc).rows) {
         if (row.values.empty()) continue;
         long long id = 0;
         if (!ShnValueAsInt(row.values[0], id)) continue;
@@ -176,12 +176,8 @@ void EnsureItemInfoLoadedForQuests(EditorState& state) {
     for (auto src : {EditorState::ShnSource::Server, EditorState::ShnSource::Client}) {
         const std::string& root = src == EditorState::ShnSource::Client ? state.shnClientRoot : state.shnServerRoot;
         if (root.empty()) continue;
-        const auto sourcePath = std::filesystem::path(root) / "ItemInfo.shn";
-        const auto side = src == EditorState::ShnSource::Client
-            ? core::ProjectOutputSide::Client : core::ProjectOutputSide::Server;
-        const auto path = PreferProjectOverride(state.project, side, sourcePath);
-        auto result = core::legacy::LoadShnFile(path);
-        if (result) { state.itemInfoShn = std::move(*result); state.itemInfoLoaded = true; return; }
+        state.itemInfoDoc = SharedShnDoc(state, "ItemInfo.shn", src, root);
+        if (state.itemInfoDoc >= 0) { state.itemInfoLoaded = true; return; }
     }
 }
 // Liefert "<InxName> (#<ID>)" wenn gefunden, sonst "?? ID <id> nicht gefunden" (rot markiert
@@ -192,7 +188,7 @@ std::pair<std::string, bool> ResolveItemNameForQuest(EditorState& state, int id)
     if (id == 0) return {"-", true};
     EnsureItemInfoLoadedForQuests(state);
     if (state.itemInfoLoaded) {
-        for (auto& row : state.itemInfoShn.rows) {
+        for (auto& row : ShnDocFile(state, state.itemInfoDoc).rows) {
             if (row.values.empty()) continue;
             long long rid = 0;
             if (ShnValueAsInt(row.values[0], rid) && rid == id) {
@@ -209,7 +205,7 @@ std::pair<std::string, bool> ResolveMobNameForQuest(EditorState& state, int id) 
     if (id == 0) return {"-", true};
     EnsureMobViewInfoLoaded(state);
     if (state.mobViewInfoLoaded) {
-        for (auto& row : state.mobViewInfoShn.rows) {
+        for (auto& row : ShnDocFile(state, state.mobViewInfoDoc).rows) {
             if (row.values.empty()) continue;
             long long rid = 0;
             if (ShnValueAsInt(row.values[0], rid) && rid == id) {
@@ -230,10 +226,11 @@ void DrawResolvedIdLabel(const std::pair<std::string, bool>& resolved) {
 // Text zu einer Quest-Text-ID; leer, wenn unbekannt oder nur ein Platzhalter aus Strichen ("-----").
 std::string QuestTextOf(EditorState& state, int textId) {
     if (!state.questDialogLoaded) return {};
-    if (!state.questTextMapBuilt) {
+    if (!state.questTextMapBuilt || state.questTextMapRevision != state.shnEditCounter) {
         state.questTextMapBuilt = true;
+        state.questTextMapRevision = state.shnEditCounter;
         state.questTextMap.clear();
-        for (const auto& row : state.questDialogShn.rows) {
+        for (const auto& row : ShnDocFile(state, state.questDialogDoc).rows) {
             if (row.values.size() < 2) continue;
             long long id = 0;
             if (!ShnValueAsInt(row.values[0], id)) continue;
@@ -834,14 +831,14 @@ void DrawQuestEditor(EditorState& state) {
             EnsureMobViewInfoLoaded(state);
             EnsureItemInfoLoadedForQuests(state);
             if (state.mobViewInfoLoaded) {
-                for (const auto& row : state.mobViewInfoShn.rows) {
+                for (const auto& row : ShnDocFile(state, state.mobViewInfoDoc).rows) {
                     if (row.values.empty()) continue;
                     long long id = 0;
                     if (ShnValueAsInt(row.values[0], id)) knownMobs.insert(static_cast<int>(id));
                 }
             }
             if (state.itemInfoLoaded) {
-                for (const auto& row : state.itemInfoShn.rows) {
+                for (const auto& row : ShnDocFile(state, state.itemInfoDoc).rows) {
                     if (row.values.empty()) continue;
                     long long id = 0;
                     if (ShnValueAsInt(row.values[0], id)) knownItems.insert(static_cast<int>(id));

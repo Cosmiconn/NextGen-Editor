@@ -1784,6 +1784,68 @@ int FindOrLoadShnDoc(EditorState& state, const std::string& fileName, EditorStat
     }
     return -1;
 }
+namespace {
+bool PathIsUnder(const std::filesystem::path& path, const std::string& root) {
+    if (root.empty()) return true;
+    const std::string p = LowerAscii(path.lexically_normal().generic_string());
+    std::string r = LowerAscii(std::filesystem::path(root).lexically_normal().generic_string());
+    if (!r.empty() && r.back() != '/') r += '/';
+    return p.rfind(r, 0) == 0;
+}
+} // namespace
+int SharedShnDoc(EditorState& state, const std::string& fileName, EditorState::ShnSource source,
+                 const std::filesystem::path& fallbackDir) {
+    const std::string& root = source == EditorState::ShnSource::Client ? state.shnClientRoot : state.shnServerRoot;
+    const std::string fallbackRoot = fallbackDir.empty() ? std::string() : fallbackDir.string();
+    // Bereits geladen: nur Dokumente aus dem aktuellen Projekt (Wurzel- oder Rückfallordner), damit
+    // nach einem Projektwechsel keine alte Kopie weiterverwendet wird.
+    for (std::size_t i = 0; i < state.shnFiles.size(); ++i) {
+        const auto& d = state.shnFiles[i];
+        if (d.source != source || LowerAscii(d.file.FileName()) != LowerAscii(fileName)) continue;
+        const auto& src = d.sourcePath.empty() ? d.file.path : d.sourcePath;
+        if ((!root.empty() && PathIsUnder(src, root)) || (!fallbackRoot.empty() && PathIsUnder(src, fallbackRoot)) ||
+            (root.empty() && fallbackRoot.empty()))
+            return static_cast<int>(i);
+    }
+    if (!root.empty() && std::filesystem::exists(root)) {
+        const int found = FindOrLoadShnDoc(state, fileName, source);
+        if (found >= 0) return found;
+    }
+    if (fallbackDir.empty()) return -1;
+    std::error_code ec;
+    std::filesystem::path sourcePath = fallbackDir / fileName;
+    if (!std::filesystem::is_regular_file(sourcePath, ec)) {
+        // Groß-/Kleinschreibung der Datei im Ordner tolerieren.
+        sourcePath.clear();
+        for (std::filesystem::directory_iterator it(fallbackDir, ec), end; !ec && it != end; it.increment(ec))
+            if (LowerAscii(it->path().filename().string()) == LowerAscii(fileName)) { sourcePath = it->path(); break; }
+        if (sourcePath.empty()) return -1;
+    }
+    auto result = core::legacy::LoadShnFile(ShnWorkingPath(state, sourcePath, source));
+    if (!result) return -1;
+    EditorState::ShnDocument doc;
+    doc.file = std::move(*result);
+    doc.sourcePath = sourcePath;
+    doc.source = source;
+    state.shnFiles.push_back(std::move(doc));
+    return static_cast<int>(state.shnFiles.size()) - 1;
+}
+core::legacy::ShnFile& ShnDocFile(EditorState& state, int document) {
+    return state.shnFiles.at(static_cast<std::size_t>(document)).file;
+}
+void MarkShnChangesSince(EditorState::ShnDocument& doc, const core::legacy::ShnFile& baseline) {
+    EnsureCellStatusSize(doc);
+    bool any = false;
+    for (std::size_t r = 0; r < doc.file.rows.size(); ++r) {
+        const auto& row = doc.file.rows[r];
+        for (std::size_t c = 0; c < row.values.size() && c < doc.cellDirty[r].size(); ++c) {
+            const bool changed = r >= baseline.rows.size() || c >= baseline.rows[r].values.size() ||
+                                 !(baseline.rows[r].values[c] == row.values[c]);
+            if (changed) { doc.cellDirty[r][c] = 1; any = true; }
+        }
+    }
+    if (any) doc.dirty = true;
+}
 bool OpenShnRecordById(EditorState& state, const std::vector<std::string>& fileNames,
                        EditorState::ShnSource preferredSource, long long id) {
     const std::array<EditorState::ShnSource,2> sources = {

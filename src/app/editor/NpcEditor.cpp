@@ -61,12 +61,14 @@ bool FocusCurrentSceneSelection(EditorState& state) {
     return false;
 }
 void EnsureNpcDialogLoaded(EditorState& state) {
-    if (state.npcDialogLoaded || state.npcDialogRessystemRoot.empty()) return;
-    const auto sourcePath = std::filesystem::path(state.npcDialogRessystemRoot) / "NpcDialogData.shn";
-    const auto path = PreferProjectOverride(state.project, core::ProjectOutputSide::Client, sourcePath);
-    auto result = core::legacy::LoadShnFile(path);
-    if (result) { state.npcDialogShn = std::move(*result); state.npcDialogLoaded = true; }
-    else state.statusMessage = "NpcDialogData.shn: " + result.error();
+    if (state.npcDialogLoaded) return;
+    if (state.npcDialogRessystemRoot.empty() && state.shnClientRoot.empty()) return;
+    // Gemeinsames Dokument statt privater Kopie: der Kreaturen-Assistent legt seine Dialogzeile im
+    // selben Dokument an, das der Dialog-Editor und der SHN-Editor bearbeiten.
+    state.npcDialogDoc = SharedShnDoc(state, "NpcDialogData.shn", EditorState::ShnSource::Client,
+                                      state.npcDialogRessystemRoot);
+    state.npcDialogLoaded = state.npcDialogDoc >= 0;
+    if (!state.npcDialogLoaded) state.statusMessage = L("NpcDialogData.shn nicht gefunden.", "NpcDialogData.shn not found.");
 }
 bool LoadAiScriptFile(EditorState& state, const std::filesystem::path& path,
                       const std::string& displayName, bool openPopup, bool discardDirty) {
@@ -422,20 +424,48 @@ void DrawAiWorkspace(EditorState& state) {
     ImGui::EndChild();
 }
 int FindDialogRowForNpc(EditorState& state, const std::string& npcName) {
-    for (std::size_t i = 0; i < state.npcDialogShn.rows.size(); ++i) {
-        if (state.npcDialogShn.rows[i].values.empty()) continue;
-        if (core::legacy::ShnValueToString(state.npcDialogShn.rows[i].values[0]) == npcName) return static_cast<int>(i);
+    if (state.npcDialogDoc < 0) return -1;
+    const auto& f = ShnDocFile(state, state.npcDialogDoc);
+    for (std::size_t i = 0; i < f.rows.size(); ++i) {
+        if (f.rows[i].values.empty()) continue;
+        if (core::legacy::ShnValueToString(f.rows[i].values[0]) == npcName) return static_cast<int>(i);
     }
     return -1;
+}
+// Legt für einen NPC ohne Eintrag eine Dialogzeile an: Struktur der ersten Zeile, MobIDX = NPC-Name,
+// FaceCutFile der Vorlage, leerer Dialog. Die Zeile ist ganz als geändert markiert (wie neue Zeilen
+// im SHN-Editor) und wird mit dem Dokument gespeichert.
+int CreateNpcDialogRow(EditorState& state, const std::string& npcName) {
+    if (state.npcDialogDoc < 0 || npcName.empty()) return -1;
+    auto& doc = state.shnFiles[static_cast<std::size_t>(state.npcDialogDoc)];
+    auto& f = doc.file;
+    if (f.columns.size() < 3) return -1;
+    core::legacy::ShnRow row;
+    if (!f.rows.empty()) row = f.rows.front();
+    else for (const auto& c : f.columns) {
+        auto v = core::legacy::ParseShnValue(c, DefaultShnValueText(c));
+        row.values.push_back(v ? *v : core::legacy::ShnValue{});
+    }
+    f.rows.push_back(std::move(row));
+    const std::size_t r = f.rows.size() - 1;
+    SetShnCellText(f, r, "MobIDX", npcName);
+    if (FindShnColumnByName(f, "MobIDX") < 0) {
+        if (auto v = core::legacy::ParseShnValue(f.columns[0], npcName)) f.rows[r].values[0] = std::move(*v);
+    }
+    if (auto v = core::legacy::ParseShnValue(f.columns[2], "")) f.rows[r].values[2] = std::move(*v);
+    EnsureCellStatusSize(doc);
+    std::fill(doc.cellDirty[r].begin(), doc.cellDirty[r].end(), static_cast<std::uint8_t>(1));
+    doc.dirty = true;
+    ++state.shnEditCounter;
+    return static_cast<int>(r);
 }
 // Öffnet den Dialog-Editor für den übergebenen NPC-Namen - lädt Root/Datei bei Bedarf nach,
 // sucht die passende Zeile per MobIDX und befüllt die Bearbeitungs-Buffer.
 void EnsureMobViewInfoLoaded(EditorState& state) {
     if (state.mobViewInfoLoaded || state.npcDialogRessystemRoot.empty()) return;
-    const auto sourcePath = std::filesystem::path(state.npcDialogRessystemRoot) / "MobViewInfo.shn";
-    const auto path = PreferProjectOverride(state.project, core::ProjectOutputSide::Client, sourcePath);
-    auto result = core::legacy::LoadShnFile(path);
-    if (result) { state.mobViewInfoShn = std::move(*result); state.mobViewInfoLoaded = true; }
+    state.mobViewInfoDoc = SharedShnDoc(state, "MobViewInfo.shn", EditorState::ShnSource::Client,
+                                        state.npcDialogRessystemRoot);
+    state.mobViewInfoLoaded = state.mobViewInfoDoc >= 0;
 }
 // Löst den Dateinamen (ohne Endung) des 3D-Modells für einen NPC auf, per InxName-Suche in
 // MobViewInfo.shn (Spalte 2 = FileName). Gibt leer zurück, wenn nicht gefunden ODER wenn
@@ -446,7 +476,7 @@ void EnsureMobViewInfoLoaded(EditorState& state) {
 // Modell mit demselben Namen wie der NPC selbst.
 std::string ResolveMobViewFileName(EditorState& state, const std::string& inxName) {
     if (!state.mobViewInfoLoaded) return {};
-    for (auto& row : state.mobViewInfoShn.rows) {
+    for (auto& row : ShnDocFile(state, state.mobViewInfoDoc).rows) {
         if (row.values.size() < 10) continue;
         if (core::legacy::ShnValueToString(row.values[1]) != inxName) continue;
         long long npcViewIdx = 0;
@@ -643,7 +673,7 @@ NpcRenderData CollectNpcRenderData(EditorState& state) {
         // MobViewInfo-Zeile des NPCs (InxName = NPC.txt-Name)
         std::string fileName;
         long long npcViewIdx = 0;
-        for (auto& row : state.mobViewInfoShn.rows) {
+        for (auto& row : ShnDocFile(state, state.mobViewInfoDoc).rows) {
             if (row.values.size() < 10) continue;
             if (core::legacy::ShnValueToString(row.values[1]) != rec.values[0]) continue;
             ShnValueAsInt(row.values[9], npcViewIdx);
@@ -702,11 +732,12 @@ void EnsureNpcModelsLoaded(EditorState& state) {
     state.npcRenderSetForMap = state.legacySaveStem;
 }
 void OpenNpcDialogEditor(EditorState& state, const std::string& npcName) {
+    state.dialogEditorNpc = npcName;
     EnsureNpcDialogRoot(state);
     EnsureNpcDialogLoaded(state);
     state.dialogEditorRowIdx = state.npcDialogLoaded ? FindDialogRowForNpc(state, npcName) : -1;
-    if (state.dialogEditorRowIdx >= 0 && state.npcDialogShn.columns.size() > 2) {
-        auto& row = state.npcDialogShn.rows[static_cast<std::size_t>(state.dialogEditorRowIdx)];
+    if (state.dialogEditorRowIdx >= 0 && ShnDocFile(state, state.npcDialogDoc).columns.size() > 2) {
+        auto& row = ShnDocFile(state, state.npcDialogDoc).rows[static_cast<std::size_t>(state.dialogEditorRowIdx)];
         if (row.values.size() > 2) {
             auto parsed = ParseNpcDialogText(core::legacy::ShnValueToString(row.values[2]));
             state.dialogGreetingBuf = parsed.greeting;
@@ -734,6 +765,7 @@ void DrawDialogEditorPopup(EditorState& state) {
             ImGui::SetNextItemWidth(-1.0f);
             if (UI::InputText("##ressystemroot", rootBuf.data(), rootBuf.size())) {
                 state.npcDialogRessystemRoot.assign(rootBuf.data()); state.npcDialogLoaded = false;
+                if (state.shnClientRoot.empty()) state.shnClientRoot = state.npcDialogRessystemRoot;
             }
 #ifdef _WIN32
             if (UI::Button(L("Ordner wählen...##ressystem","Choose folder...##ressystem"))) {
@@ -741,6 +773,7 @@ void DrawDialogEditorPopup(EditorState& state) {
                         L("ressystem-Ordner wählen","Choose ressystem folder"))) {
                     state.npcDialogRessystemRoot = *p;
                     state.npcDialogLoaded = false;
+                    if (state.shnClientRoot.empty()) state.shnClientRoot = state.npcDialogRessystemRoot;
                 }
             }
 #endif
@@ -748,6 +781,12 @@ void DrawDialogEditorPopup(EditorState& state) {
             ImGui::TextWrapped("%s",L(
                 "Kein Dialog-Eintrag für diesen NPC in NpcDialogData.shn gefunden (oder Datei konnte nicht geladen werden).",
                 "No dialog entry for this NPC was found in NpcDialogData.shn (or the file could not be loaded)."));
+            if (state.npcDialogLoaded && !state.dialogEditorNpc.empty() &&
+                UI::Button(L("Dialog anlegen","Create dialog"))) {
+                state.dialogEditorRowIdx = CreateNpcDialogRow(state, state.dialogEditorNpc);
+                state.dialogGreetingBuf.clear();
+                state.dialogButtonsBuf.clear();
+            }
         } else {
             ImGui::TextDisabled("%s",L(
                 "Begrüßungstext ([NAME] wird durch den Spielernamen ersetzt):",
@@ -786,25 +825,15 @@ void DrawDialogEditorPopup(EditorState& state) {
             if (UI::Button(L("Speichern","Save"))) {
                 ParsedNpcDialog d; d.greeting = state.dialogGreetingBuf; d.buttons = state.dialogButtonsBuf;
                 const auto text = SerializeNpcDialogText(d);
-                auto& row = state.npcDialogShn.rows[static_cast<std::size_t>(state.dialogEditorRowIdx)];
-                auto parsedVal = core::legacy::ParseShnValue(state.npcDialogShn.columns[2], text);
-                if (parsedVal) {
-                    row.values[2] = std::move(*parsedVal);
-                    std::filesystem::path path;
-                    std::string pathError;
-                    const bool targetReady = PrepareProjectOutput(
-                        ProjectClientRessystemPath(state.project, "NpcDialogData.shn"),
-                        path, &pathError);
-                    auto saved = targetReady
-                        ? core::legacy::SaveShnFile(state.npcDialogShn, path)
-                        : std::expected<void,std::string>(std::unexpected(pathError));
-                    state.statusMessage = saved
-                        ? L("NpcDialogData.shn als Projekt-Override gespeichert.","NpcDialogData.shn saved as project override.")
-                        : L("Fehler: ","Error: ") + saved.error();
-                    if (saved) { state.dialogEditorOpen = false; ImGui::CloseCurrentPopup(); }
-                } else {
-                    state.statusMessage = L("Fehler: ","Error: ") + parsedVal.error();
-                }
+                // Über das gemeinsame Dokument: markiert die Zelle (Undo, Prüfung beim Speichern) und
+                // speichert zusammen mit allen anderen Änderungen an NpcDialogData.shn (z. B. aus dem
+                // Kreaturen-Assistenten), statt sie mit einer privaten Kopie zu überschreiben.
+                const bool applied = ApplyShnCellText(state, state.npcDialogDoc, state.dialogEditorRowIdx, 2, text);
+                const bool saved = applied && SaveShnDocument(state, state.npcDialogDoc);
+                state.statusMessage = saved
+                    ? L("NpcDialogData.shn als Projekt-Override gespeichert.","NpcDialogData.shn saved as project override.")
+                    : L("Fehler: ","Error: ") + state.shnStatus;
+                if (saved) { state.dialogEditorOpen = false; ImGui::CloseCurrentPopup(); }
             }
         }
         ImGui::SameLine();
@@ -817,11 +846,16 @@ void DrawDialogEditorPopup(EditorState& state) {
 }
 // Baut die Item-Auswahlliste aus ItemInfo.shn (Server bevorzugt, sonst Client).
 void EnsureItemLookup(EditorState& state) {
-    if (state.itemLookupTried) return;
+    // Neu aufbauen, wenn ein Editor eine SHN-Zelle geändert hat (z. B. neues Item im SHN-Editor).
+    if (state.itemLookupTried && state.itemLookupRevision == state.shnEditCounter) return;
     state.itemLookupTried = true;
+    state.itemLookupRevision = state.shnEditCounter;
+    state.itemEntries.clear();
+    state.itemByInx.clear();
+    state.itemInxById.clear();
     EnsureItemInfoLoadedForQuests(state);
     if (!state.itemInfoLoaded) return;
-    const auto& f = state.itemInfoShn;
+    const auto& f = ShnDocFile(state, state.itemInfoDoc);
     int cId = -1, cInx = -1, cName = -1;
     for (std::size_t i = 0; i < f.columns.size(); ++i) {
         if (f.columns[i].name == "ID") cId = static_cast<int>(i);

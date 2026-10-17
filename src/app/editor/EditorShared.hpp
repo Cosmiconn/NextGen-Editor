@@ -749,16 +749,19 @@ struct EditorState {
     // resmap/nif(s) (siehe CHANGELOG [0.44.18], vom Nutzer per Screenshot bestätigt). Für die
     // NPC-3D-Auflösung genutzt statt state.availableNifFiles (das deckt nur resmap/nif(s) ab).
     std::string rescharRoot;
-    core::legacy::ShnFile npcDialogShn;
+    // NpcDialogData.shn als gemeinsames SHN-Dokument (Index in shnFiles): Dialog-Editor, Kreaturen-
+    // Assistent und SHN-Editor bearbeiten dieselben Daten, keiner überschreibt beim Speichern den anderen.
+    int npcDialogDoc = -1;
     bool npcDialogLoaded = false;
     bool dialogEditorOpen = false;
-    int dialogEditorRowIdx = -1; // Index in npcDialogShn.rows
+    int dialogEditorRowIdx = -1; // Zeile im Dokument npcDialogDoc
+    std::string dialogEditorNpc;  // NPC (MobIDX), für den der Dialog-Editor offen ist
     std::string dialogGreetingBuf;
     std::vector<std::pair<std::string, std::string>> dialogButtonsBuf; // Label, Aktion
 
     // MobViewInfo.shn (Client, ressystem/) - InxName->FileName-Auflösung für die 3D-Darstellung
     // von NPCs, siehe CHANGELOG [0.44.17]. Nutzt denselben ressystem-Root wie NpcDialogData.shn.
-    core::legacy::ShnFile mobViewInfoShn;
+    int mobViewInfoDoc = -1; // gemeinsames SHN-Dokument
     bool mobViewInfoLoaded = false;
 
     // Quest-Editor (QuestData.shn, Server-seitig + QuestDialog.shn zur Textauflösung,
@@ -767,7 +770,7 @@ struct EditorState {
     // Referenzparser.
     core::legacy::QuestDataFile questDataFile;
     bool questDataLoaded = false;
-    core::legacy::ShnFile questDialogShn;
+    int questDialogDoc = -1; // gemeinsames SHN-Dokument (QuestDialog.shn, Client)
     bool questDialogLoaded = false;
     int selectedQuestIdx = -1;
     // NPC-Auswahl im Quest-Editor (Start-NPC, Ziel "NPC aufsuchen"): MobInfo + Platzierungen aus NPC.txt.
@@ -810,6 +813,8 @@ struct EditorState {
     // Frame (CHANGELOG [0.44.29]).
     std::unordered_map<int, std::string> questTextMap;
     bool questTextMapBuilt = false;
+    std::uint64_t questTextMapRevision = 0; // shnEditCounter beim Aufbau (Änderungen in QuestDialog)
+    std::uint64_t itemLookupRevision = 0;   // shnEditCounter beim Aufbau der Item-Liste
     std::vector<std::string> questLabels;
     std::string questListKey;
     std::vector<std::size_t> questVisible;
@@ -821,17 +826,20 @@ struct EditorState {
 
     // Für Item-/Mob-Namensauflösung im Quest-Editor (dient zugleich als einfache Validierung -
     // leerer Name = ID existiert nicht, siehe CHANGELOG [0.44.21]).
-    core::legacy::ShnFile itemInfoShn;
+    int itemInfoDoc = -1; // gemeinsames SHN-Dokument
     bool itemInfoLoaded = false;
 
     // Portal-Editor (TownPortal.shn + RecallCoord.txt) - siehe CHANGELOG [0.44.20].
-    core::legacy::ShnFile townPortalShn;
+    int townPortalDoc = -1; // gemeinsames SHN-Dokument (Client, sonst Server)
+    // Stand bei Laden/Speichern: Änderungen des Portal-Editors werden dagegen als geänderte Zellen
+    // markiert, damit auch ein Speichern aus dem SHN-Editor die Prüfung besteht.
+    core::legacy::ShnFile townPortalBaseline;
     bool townPortalLoaded = false;
     bool townPortalDirty = false;
 
     // Portale-Tab im Map-Editor (EditMode::Portals), siehe CHANGELOG [0.44.25]: MapInfo.shn nur
     // als Referenz (RegenX/RegenY), Auswahl-/Klick-Zustand fuer TownPortal- und Schriftrollen-Ziele.
-    core::legacy::ShnFile mapInfoShn;
+    int mapInfoDoc = -1; // gemeinsames SHN-Dokument
     bool mapInfoLoaded = false;
     std::string portalDataSig;       // Ordner-Kombination, fuer die zuletzt geladen wurde
     int selectedPortalKind = 0;      // 0 = nichts, 1 = TownPortal, 2 = Schriftrolle (RecallCoord)
@@ -1543,6 +1551,15 @@ void AddRowWithPropagation(EditorState& state, int docIndex);
 void DrawShnSourceList(EditorState& state, EditorState::ShnSource source, const char* id);
 void DrawShnMultiProfiles(EditorState& state);
 int FindOrLoadShnDoc(EditorState& state, const std::string& fileName, EditorState::ShnSource source);
+// Gemeinsames Dokument einer bekannten Datei: bereits geladen (Datei + Seite, unter dem aktuellen
+// Wurzelordner), sonst aus dem Wurzelordner der Seite, sonst direkt aus fallbackDir. Lädt, ohne die
+// SHN-Ansicht umzuschalten. -1, wenn nicht auffindbar.
+int SharedShnDoc(EditorState& state, const std::string& fileName, EditorState::ShnSource source,
+                 const std::filesystem::path& fallbackDir = {});
+// Datei eines geladenen Dokuments (Index aus SharedShnDoc/FindOrLoadShnDoc, muss gültig sein).
+core::legacy::ShnFile& ShnDocFile(EditorState& state, int document);
+// Markiert alle Zellen als geändert, die sich gegenüber baseline unterscheiden (neue Zeilen ganz).
+void MarkShnChangesSince(EditorState::ShnDocument& doc, const core::legacy::ShnFile& baseline);
 bool OpenShnRecordById(EditorState& state, const std::vector<std::string>& fileNames,
                        EditorState::ShnSource preferredSource, long long id);
 void DrawScalableFieldEditor(EditorState& state, int docIndex, const std::vector<std::string>& scaleCols,
@@ -1647,6 +1664,7 @@ int DrawQuestNpcPickerPopup(EditorState& state);
 void DrawQuestEditor(EditorState& state);
 std::string PortalServerRoot(const EditorState& state);
 void EnsureTownPortalLoaded(EditorState& state);
+void SyncTownPortalMarks(EditorState& state);
 void EnsureRecallCoordLoaded(EditorState& state);
 void SaveTownPortalFiles(EditorState& state);
 bool SaveRecallCoordFile(EditorState& state);
@@ -1728,6 +1746,7 @@ void DrawPatrolRouteEditorPopup(EditorState& state);
 void DrawAiScriptEditorPopup(EditorState& state);
 void DrawAiWorkspace(EditorState& state);
 int FindDialogRowForNpc(EditorState& state, const std::string& npcName);
+int CreateNpcDialogRow(EditorState& state, const std::string& npcName);
 void EnsureMobViewInfoLoaded(EditorState& state);
 std::string ResolveMobViewFileName(EditorState& state, const std::string& inxName);
 void EnsureRescharRoot(EditorState& state);

@@ -142,7 +142,7 @@ void DrawDropTableEditor(EditorState& state) {
     EnsureMobViewInfoLoaded(state);
     std::unordered_set<std::string> knownMobs;
     if (state.mobViewInfoLoaded) {
-        for (const auto& row : state.mobViewInfoShn.rows) {
+        for (const auto& row : ShnDocFile(state, state.mobViewInfoDoc).rows) {
             if (row.values.size() <= 1) continue;
             const std::string name = core::legacy::ShnValueToString(row.values[1]);
             if (!name.empty()) knownMobs.insert(name);

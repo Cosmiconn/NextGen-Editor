@@ -810,6 +810,7 @@ std::optional<std::filesystem::path> FindServerShineRoot(const std::filesystem::
 // Projekt-Ordner geaendert haben. Manuell gesetzte Ordner werden bei einem Wechsel der
 // Projekt-Ordner ueberschrieben, sonst nicht angefasst.
 void SyncProjectRoots(EditorState& state) {
+    SyncTownPortalMarks(state);
     const std::string key = std::string(state.project.clientFolder) + "|" + state.project.serverFolder;
     if (key == state.projectRootsKey) return;
     state.projectRootsKey = key;
@@ -837,6 +838,8 @@ void SyncProjectRoots(EditorState& state) {
     }
     // Alles, was aus diesen Ordnern geladen wurde, neu laden.
     state.npcDialogLoaded = false;
+    state.npcDialogDoc = state.mobViewInfoDoc = state.questDialogDoc = -1;
+    state.itemInfoDoc = state.townPortalDoc = state.mapInfoDoc = -1;
     state.npcTextLoaded = false;
     state.mobRegenTextLoaded = false;
     state.shopTextLoaded = false;

@@ -507,6 +507,31 @@ if (WIN32)
 endif()
 add_test(NAME npc_orientation COMMAND test_npc_orientation)
 
+# Gemeinsame Datenschicht der Daten-Editoren (eine Kopie je SHN-Datei, Speichern ohne Überschreiben).
+add_executable(test_data_editors
+    tests/test_data_editors.cpp
+    ${NEXTGEN_EDITOR_MODULES}
+    src/app/KfmPanel.cpp
+    src/app/Camera.cpp
+    src/app/Renderer.cpp
+    src/app/ObjectMarkerRenderer.cpp
+    src/app/NifMeshRenderer.cpp
+    src/app/UiIconAssets.cpp
+)
+target_include_directories(test_data_editors PRIVATE src/app)
+target_link_libraries(test_data_editors PRIVATE
+    mapeditor_core
+    glfw
+    imgui::imgui
+    imguizmo::imguizmo
+    glad::glad
+    OpenGL::GL
+)
+if (WIN32)
+    target_link_libraries(test_data_editors PRIVATE Shell32 Ole32 Windowscodecs)
+endif()
+add_test(NAME data_editors COMMAND test_data_editors)
+
 add_executable(test_kfm_opengl tests/test_kfm_opengl.cpp src/app/KfmPanel.cpp)
 target_include_directories(test_kfm_opengl PRIVATE src/app)
 target_link_libraries(test_kfm_opengl PRIVATE mapeditor_core glfw imgui::imgui glad::glad OpenGL::GL)
