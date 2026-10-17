@@ -1053,7 +1053,7 @@ struct EditorState {
     std::size_t resmenuRevision = 0; // erhöht bei jeder Änderung einer resmenu-Projektkopie
     std::string interfaceRoot;
     std::string interfacePendingAsset; // Automation: nach dem Scan diese Datei auswählen
-    int interfaceMode = 0;             // 0 Dateien, 1 Ladebildschirme, 2 Icons, 3 Porträts
+    int interfaceMode = 0;             // 0 Dateien, 1 Ladebildschirme, 2 Icons, 3 Porträts, 4 Fenster
     // Ladebildschirm-Editor (LoadingScreens.cpp): gewählte Karte (MapViewInfo-ID), Filter, Auswahl.
     long long loadingSelectedId = -1;
     char loadingFilter[64] = "";
@@ -1081,6 +1081,14 @@ struct EditorState {
     char portraitAssignTo[64] = "";
     bool portraitScrollToSelected = false;
     bool portraitMissingOnly = false;
+    // Fenster-Layouts (WindowLayouts.cpp): gewähltes Interface-NIF und Element.
+    std::string layoutSelected;
+    int layoutPart = -1;
+    char layoutFilter[64] = "";
+    bool layoutShowPlaceholders = true;
+    bool layoutShowOutlines = false;
+    bool layoutScrollToSelected = false;
+    std::string layoutAutomationReplaceSource; // Automation "layoutreplace"
     bool loadingAutomationAssign = false; // Automation "loadingassign": loadingPickChoice zuweisen
     std::string loadingAutomationOwnSource; // Automation "loadingown": Quelle für "Eigenes Bild"
     std::vector<std::string> interfaceAssets;
@@ -1765,6 +1773,10 @@ void OpenIconInAtlasEditor(EditorState& state, const std::string& iconFile, int 
 // PeriodIcon), ActiveSkillView, PassiveSkillView und AbStateView (Client).
 std::vector<std::string> IconAtlasUsers(EditorState& state, const std::string& iconFile, int index);
 void DrawPortraitEditor(EditorState& state);
+void DrawWindowLayoutViewer(EditorState& state);
+// UV-Rechteck eines Fensterelements in Pixeln der Textur (auf 0..1 geklemmt, nach außen gerundet).
+bool NifPartUvRect(const core::NifMeshPart& part, std::uint32_t texW, std::uint32_t texH, std::uint32_t& x, std::uint32_t& y,
+                   std::uint32_t& w, std::uint32_t& h);
 // Springt in den Porträt-Bereich (kind 0 Mob-Porträt, 1 NPC-Gesicht) mit diesem Namen.
 void OpenPortraitEditor(EditorState& state, int kind, const std::string& name);
 // Porträt-Spalte (MobViewInfo.MobPortrait in Client und Server bzw. NpcDialogData.FaceCutFile) der

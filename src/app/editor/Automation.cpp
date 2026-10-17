@@ -278,6 +278,21 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         std::string source; std::getline(in >> std::ws, source);
         state.iconAutomationReplaceSource = source;
     }
+    else if (cmd == "uilayout") {
+        // uilayout <resmenu-NIF> [Element]: öffnet die Fenster-Ansicht mit diesem NIF (und Element).
+        std::string rel; int part = -1; in >> rel >> part;
+        state.screen = AppScreen::ShnEditor;
+        state.shnSubTab = 9;
+        state.interfaceMode = 4;
+        state.layoutSelected = rel;
+        state.layoutPart = part;
+        state.layoutScrollToSelected = true;
+    }
+    else if (cmd == "uilayoutreplace") {
+        // uilayoutreplace <Quelldatei>: "Ausschnitt ersetzen" für das gewählte Element mit dieser Quelle.
+        std::string source; std::getline(in >> std::ws, source);
+        state.layoutAutomationReplaceSource = source;
+    }
     else if (cmd == "portrait") {
         // portrait <mob|npc> <Name>: öffnet den Porträt-Bereich mit diesem Porträt.
         std::string kind, name; in >> kind >> name;

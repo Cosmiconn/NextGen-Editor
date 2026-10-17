@@ -639,6 +639,20 @@ int main() {
               "ein Undo stellt beide Seiten wieder her");
     }
 
+    std::printf("\n== Fenster-Layouts: UV-Ausschnitt eines Elements ==\n");
+    {
+        core::NifMeshPart part;
+        part.uvs = {{0.947f, 0.002f}, {0.998f, 0.002f}, {0.947f, 0.053f}, {0.998f, 0.053f}}; // AttendWin #2 (Schließen)
+        std::uint32_t x = 0, y = 0, w = 0, h = 0;
+        Check(NifPartUvRect(part, 512, 512, x, y, w, h) && x == 484 && y == 1 && w == 27 && h == 27,
+              "UV-Ausschnitt in Pixeln, nach außen gerundet (484,1 27x27)");
+        core::NifMeshPart outside;
+        outside.uvs = {{-0.5f, -0.5f}, {1.5f, 1.5f}};
+        Check(NifPartUvRect(outside, 64, 32, x, y, w, h) && x == 0 && y == 0 && w == 64 && h == 32, "UVs außerhalb 0..1 werden auf die Textur geklemmt");
+        core::NifMeshPart none;
+        Check(!NifPartUvRect(none, 64, 64, x, y, w, h), "ohne UVs kein Ausschnitt");
+    }
+
     std::filesystem::remove_all(base, ec);
     if (g_failures) std::fprintf(stderr, "%d Fehler\n", g_failures);
     return g_failures == 0 ? 0 : 1;

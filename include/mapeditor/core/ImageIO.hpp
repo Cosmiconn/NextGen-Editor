@@ -87,6 +87,13 @@ struct ReplaceResult {
 [[nodiscard]] RgbaImage CropImage(const RgbaImage& image, std::uint32_t x, std::uint32_t y, std::uint32_t width, std::uint32_t height);
 void PasteImage(RgbaImage& target, const RgbaImage& piece, std::uint32_t x, std::uint32_t y);
 
+// Unkomprimierte TGA: nur die Pixel des Rechtecks aus "updated" übernehmen; Kopf, Bild-ID, Footer
+// ("TRUEVISION-XFILE") und alle übrigen Pixel bleiben die Bytes des Originals.
+[[nodiscard]] std::expected<std::vector<std::uint8_t>, std::string> SpliceTgaRegion(std::span<const std::uint8_t> original,
+                                                                                   std::span<const std::uint8_t> updated,
+                                                                                   std::uint32_t x, std::uint32_t y,
+                                                                                   std::uint32_t width, std::uint32_t height);
+
 // Übernimmt aus "updated" nur die Blöcke, die das Rechteck (Pixel der obersten Stufe) berühren - in
 // jeder Mipmap-Stufe; alle anderen Bytes bleiben die von "original". So bleiben beim Ersetzen einer
 // Atlaszelle die übrigen Icons bitgleich (DXT neu zu kodieren wäre verlustbehaftet). Beide Dateien

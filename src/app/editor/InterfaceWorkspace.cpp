@@ -203,6 +203,8 @@ void DrawInterfaceWorkspace(EditorState& state) {
     if (UI::RadioButton(L("Icons##interfaceMode", "Icons##interfaceMode"), state.interfaceMode == 2)) state.interfaceMode = 2;
     ImGui::SameLine();
     if (UI::RadioButton(L("Porträts##interfaceMode", "Portraits##interfaceMode"), state.interfaceMode == 3)) state.interfaceMode = 3;
+    ImGui::SameLine();
+    if (UI::RadioButton(L("Fenster##interfaceMode", "Windows##interfaceMode"), state.interfaceMode == 4)) state.interfaceMode = 4;
     if (state.interfaceMode == 1) {
         DrawLoadingScreenEditor(state);
         return;
@@ -213,6 +215,10 @@ void DrawInterfaceWorkspace(EditorState& state) {
     }
     if (state.interfaceMode == 3) {
         DrawPortraitEditor(state);
+        return;
+    }
+    if (state.interfaceMode == 4) {
+        DrawWindowLayoutViewer(state);
         return;
     }
 

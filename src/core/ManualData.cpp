@@ -622,6 +622,21 @@ Mob portraits: resmenu/game/MobPortrait/<MobViewInfo.MobPortrait>.png; NPC faces
 - 'Replace...' writes every existing variant (PNG/TGA) from the same source; 'Create file...' creates a missing file in the format of the existing portraits.
 - 'New portrait': file name and optionally a mob (InxName) or NPC (MobIDX). 'Create...' creates the file and sets that entry's portrait column (MobViewInfo on client and server) - one undo step. Then 'Save all changed SHN'.)MAN",
      "icon atlas zelle cell frei free porträt portrait mobportrait npcfacecut gesicht face dds mipmap"},
+    {"shn.windows", "shn",
+     "Fenster-Layouts", "Window layouts",
+     R"MAN(Interface-Tab, Umschalter 'Fenster'. Die Fenster des Clients sind NIF-Dateien unter resmenu (NA2016: 310). Jedes Element ist eine texturierte Fläche in Bildschirmpixeln; die Ansicht zeichnet sie wie im Spiel übereinander.
+- Liste links: alle Interface-NIFs. In der Mitte das Fenster; Maus darüber zeigt das Element, Klick wählt es. 'Platzhalter zeigen' macht Flächen ohne Textur sichtbar - dort zeichnet der Client selbst (Text, Item-Slots). 'Umrisse' rahmt alle Elemente.
+- Rechts: die Texturen des Fensters mit 'Ersetzen...' und die Elementliste (Größe, Textur). Beim gewählten Element: Position, Größe, sein Ausschnitt in der Textur (Pixel) und 'Ausschnitt ersetzen...'.
+- 'Ausschnitt ersetzen...' ersetzt nur die Grafik dieses Elements in der gemeinsamen Textur (Quelle wird auf die Ausschnittgröße gestreckt). Bei TGA bleiben Kopf, Footer und alle übrigen Pixel byte-gleich, bei DDS alle anderen Blöcke. Dieselbe Textur nutzen oft mehrere Fenster (z. B. Maininterface.TGA) - die Änderung gilt dann überall.
+- Elemente an derselben Stelle (z. B. die Zustände eines Knopfs: normal, Maus darüber, gedrückt) liegen übereinander; das gewählte Element wird obenauf gezeichnet, die Elementliste wählt jedes einzeln.
+- Positionen und Größen der Elemente werden NICHT geschrieben: dafür gibt es noch keinen geprüften NIF-Writer. Geändert werden nur Texturen, als Projektkopie mit Strg+Z.)MAN",
+     R"MAN(Interface tab, switch 'Windows'. The client's windows are NIF files below resmenu (NA2016: 310). Every element is a textured area in screen pixels; the view draws them on top of each other like the game.
+- List on the left: every interface NIF. In the middle the window; hovering shows the element, a click selects it. 'Show placeholders' makes untextured areas visible - the client draws there itself (text, item slots). 'Outlines' frames every element.
+- On the right: the window's textures with 'Replace...' and the element list (size, texture). For the selected element: position, size, its region in the texture (pixels) and 'Replace region...'.
+- 'Replace region...' replaces only this element's graphic in the shared texture (the source is stretched to the region size). For TGA the header, footer and all other pixels stay byte-identical, for DDS all other blocks. Several windows often share a texture (e.g. Maininterface.TGA) - the change then applies everywhere.
+- Elements at the same place (e.g. the states of a button: normal, hovered, pressed) lie on top of each other; the selected element is drawn on top, and the element list selects each one.
+- Element positions and sizes are NOT written: there is no verified NIF writer yet. Only textures change, as a project copy with Ctrl+Z.)MAN",
+     "fenster window layout nif interface element textur texture ausschnitt region maininterface"},
     {"creators.npcmob", "creators",
      "Custom NPC / Mob erstellen", "Creating a custom NPC / mob",
      R"MAN(Tab 'Custom NPC/Mob' im SHN-Editor. Der Assistent klont eine Vorlage in alle Tabellen (MobInfo, MobInfoServer, MobViewInfo, MobSpecies, QuestSpecies, MobWeapon) mit einer überall freien ID.
@@ -729,6 +744,15 @@ World X = east, world Z = north, Y = height. In NPC.txt Coord-X / Coord-Y are wo
 
 struct TipRow { const char* key; const char* de; const char* en; };
 const TipRow kTips[] = {
+    {"Fenster", "Fenster-NIFs als 2D-Ansicht: Elemente, Texturen, Ausschnitt eines Elements ersetzen.", "Window NIFs as a 2D view: elements, textures, replace an element's region."},
+    {"Windows", "Fenster-NIFs als 2D-Ansicht: Elemente, Texturen, Ausschnitt eines Elements ersetzen.", "Window NIFs as a 2D view: elements, textures, replace an element's region."},
+    {"Platzhalter zeigen", "Zeigt Flächen ohne Textur (dort zeichnet der Client Text, Slots usw.).", "Shows untextured areas (the client draws text, slots etc. there)."},
+    {"Show placeholders", "Zeigt Flächen ohne Textur (dort zeichnet der Client Text, Slots usw.).", "Shows untextured areas (the client draws text, slots etc. there)."},
+    {"Umrisse", "Rahmt alle texturierten Elemente.", "Frames every textured element."},
+    {"Outlines", "Rahmt alle texturierten Elemente.", "Frames every textured element."},
+    {"Ausschnitt ersetzen...", "Ersetzt nur die Grafik dieses Elements in der Textur; alle übrigen Pixel bleiben byte-gleich.", "Replaces only this element's graphic in the texture; all other pixels stay byte-identical."},
+    {"Replace region...", "Ersetzt nur die Grafik dieses Elements in der Textur; alle übrigen Pixel bleiben byte-gleich.", "Replaces only this element's graphic in the texture; all other pixels stay byte-identical."},
+    {"InputText:##layoutFilter", "Fenster-NIFs nach Namen filtern.", "Filter window NIFs by name."},
     {"Icons", "Icon-Atlanten unter resmenu/Icon: Belegung, freie Zellen, Zelle ersetzen, neuer Atlas.", "Icon atlases below resmenu/Icon: usage, free cells, replace a cell, new atlas."},
     {"Porträts", "Mob-Porträts und NPC-Gesichter: Verwendung, fehlende Dateien, ersetzen, neu anlegen.", "Mob portraits and NPC faces: usage, missing files, replace, create."},
     {"Portraits", "Mob-Porträts und NPC-Gesichter: Verwendung, fehlende Dateien, ersetzen, neu anlegen.", "Mob portraits and NPC faces: usage, missing files, replace, create."},

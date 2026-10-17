@@ -421,11 +421,16 @@ void DrawImageReplaceDialog(EditorState& state) {
                                                            static_cast<core::FitMode>(std::clamp(r.fit, 0, 2))),
                                  r.cellX, r.cellY);
                 auto bytes = core::EncodeImage(*atlas, *r.originalFormat);
-                // DDS: nur die Blöcke der Zelle übernehmen, die übrigen Icons bleiben bitgleich.
-                if (bytes && r.originalFormat->container == core::ImageContainer::Dds)
-                    if (auto original = ReadResmenuBytes(r.originalTexFor))
-                        if (auto spliced = core::SpliceDdsRegion(*original, *bytes, r.cellX, r.cellY, r.cellW, r.cellH))
-                            bytes = std::move(*spliced);
+                // DDS: nur die Blöcke der Zelle übernehmen, die übrigen Icons bleiben bitgleich;
+                // TGA: nur die Pixel des Ausschnitts, Footer und übrige Bytes bleiben erhalten.
+                if (bytes && (r.originalFormat->container == core::ImageContainer::Dds ||
+                              r.originalFormat->container == core::ImageContainer::Tga))
+                    if (auto original = ReadResmenuBytes(r.originalTexFor)) {
+                        auto spliced = r.originalFormat->container == core::ImageContainer::Dds
+                            ? core::SpliceDdsRegion(*original, *bytes, r.cellX, r.cellY, r.cellW, r.cellH)
+                            : core::SpliceTgaRegion(*original, *bytes, r.cellX, r.cellY, r.cellW, r.cellH);
+                        if (spliced) bytes = std::move(*spliced);
+                    }
                 if (bytes) {
                     core::ReplaceResult cell;
                     cell.bytes = std::move(*bytes);
