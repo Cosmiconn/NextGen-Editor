@@ -14,7 +14,8 @@
 
 namespace theseed::mapeditor::core {
 
-enum class DdsFormat : std::uint8_t { Dxt1, Dxt3, Dxt5 };
+// Bgra32: unkomprimiert A8R8G8B8 (Kopf wie Icon/MHEmotion00.dds: Flags 0x81007, PixelFormat 0x41).
+enum class DdsFormat : std::uint8_t { Dxt1, Dxt3, Dxt5, Bgra32 };
 
 // Komprimiert ein Bild (Breite/Höhe beliebig, Ränder werden aufgefüllt) in BC-Blöcke.
 [[nodiscard]] std::vector<std::uint8_t> EncodeBcImage(std::span<const std::uint8_t> rgba, std::uint32_t width,

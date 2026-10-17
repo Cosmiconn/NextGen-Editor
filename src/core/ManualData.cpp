@@ -559,6 +559,23 @@ The percentage editors change ALL rows of the column - check first, then save.)M
 - In the skill editor every state (StaNameA-D) has an 'Open' button that jumps to this tab.
 - Icons: the state atlases AbState00-04 are 128x128 with 16 px cells (8x8); the editor detects this from the atlas size.)MAN",
      "passiv passive zustand state abstate subabstate buff debuff stufe level mastery waffe icon"},
+    {"shn.interface", "shn",
+     "Interface-Bilder ersetzen", "Replacing interface images",
+     R"MAN(Tab 'Interface' im SHN-Editor: alle Dateien unter Client/resmenu (Bilder und Fenster-NIFs). Originale werden nie verändert; jede Änderung ist eine Projektkopie unter <Projekt>/Client/resmenu/... (Markierung OVR* = geändert, OVR= = gleich, NEW = nur im Projekt).
+- 'Ersetzen...' öffnet den Ersetzen-Dialog: Quelle als Pfad eintragen (unter Windows auch 'Durchsuchen...'). Erlaubt sind PNG, JPG, BMP, TGA und DDS in beliebiger Größe.
+- Das Ergebnis bekommt automatisch Format und Größe des Originals: gleicher Dateityp, bei DDS gleiche Kompression (DXT1/DXT3/DXT5/unkomprimiert) und Mipmaps, bei TGA gleiche Farbtiefe (16/24/32 Bit), bei PNG mit oder ohne Alpha. So lädt der Client die Datei genauso wie vorher.
+- Anpassung: 'Strecken' verzerrt auf die Zielgröße, 'Einpassen' zeigt das ganze Bild mit transparentem Rand, 'Füllen' füllt alles und schneidet den Überstand mittig ab. Ohne 'Größe des Originals behalten' bleibt die Größe der Quelle (DDS auf Vielfache von 4 gerundet).
+- Vorher/Nachher zeigt beide Bilder auf einem Schachbrett (transparente Stellen sichtbar). 'Nachher' ist bereits die fertig kodierte Datei - Kompressionsverluste sind also zu sehen. Hat die Quelle schon genau Format und Größe des Originals, wird sie unverändert übernommen.
+- 'Übernehmen' schreibt die Projektkopie; Strg+Z stellt den vorherigen Stand wieder her (auch nach 'Projektkopie entfernen').
+- 'Als PNG exportieren' legt das Bild unter <Projekt>/Export/resmenu/... ab, z. B. als Vorlage für ein Bildprogramm.)MAN",
+     R"MAN('Interface' tab in the SHN editor: every file below Client/resmenu (images and window NIFs). Originals are never changed; every change is a project copy below <Project>/Client/resmenu/... (badge OVR* = changed, OVR= = identical, NEW = project only).
+- 'Replace...' opens the replace dialog: enter the source as a path (on Windows also 'Browse...'). PNG, JPG, BMP, TGA and DDS of any size are accepted.
+- The result automatically gets the format and size of the original: same file type, for DDS the same compression (DXT1/DXT3/DXT5/uncompressed) and mipmaps, for TGA the same colour depth (16/24/32 bit), for PNG with or without alpha. The client therefore loads the file exactly as before.
+- Fitting: 'Stretch' distorts to the target size, 'Fit' shows the whole image with a transparent border, 'Fill' fills everything and crops the overhang in the centre. Without 'Keep original size' the source size is kept (DDS rounded to multiples of 4).
+- Before/after shows both images on a checkerboard (transparent areas visible). 'After' is already the finished encoded file, so compression losses are visible. If the source already has exactly the original's format and size, it is taken over unchanged.
+- 'Apply' writes the project copy; Ctrl+Z restores the previous state (also after 'Remove project copy').
+- 'Export as PNG' stores the image below <Project>/Export/resmenu/..., e.g. as a template for an image editor.)MAN",
+     "interface resmenu bild image textur texture ersetzen replace konvertieren convert dds tga png schachbrett export"},
     {"creators.npcmob", "creators",
      "Custom NPC / Mob erstellen", "Creating a custom NPC / mob",
      R"MAN(Tab 'Custom NPC/Mob' im SHN-Editor. Der Assistent klont eine Vorlage in alle Tabellen (MobInfo, MobInfoServer, MobViewInfo, MobSpecies, QuestSpecies, MobWeapon) mit einer überall freien ID.
@@ -666,6 +683,21 @@ World X = east, world Z = north, Y = height. In NPC.txt Coord-X / Coord-Y are wo
 
 struct TipRow { const char* key; const char* de; const char* en; };
 const TipRow kTips[] = {
+    {"Ersetzen...", "Ersetzt das Bild durch eine beliebige Datei (PNG/JPG/BMP/TGA/DDS); sie wird auf Format und Größe des Originals umgerechnet und als Projektkopie gespeichert.", "Replaces the image with any file (PNG/JPG/BMP/TGA/DDS); it is converted to the original's format and size and stored as a project copy."},
+    {"Replace...", "Ersetzt das Bild durch eine beliebige Datei (PNG/JPG/BMP/TGA/DDS); sie wird auf Format und Größe des Originals umgerechnet und als Projektkopie gespeichert.", "Replaces the image with any file (PNG/JPG/BMP/TGA/DDS); it is converted to the original's format and size and stored as a project copy."},
+    {"Als PNG exportieren", "Speichert das Bild als PNG unter <Projekt>/Export/resmenu/... (zum Bearbeiten in einem Bildprogramm).", "Saves the image as PNG below <Project>/Export/resmenu/... (for editing in an image editor)."},
+    {"Export as PNG", "Speichert das Bild als PNG unter <Projekt>/Export/resmenu/... (zum Bearbeiten in einem Bildprogramm).", "Saves the image as PNG below <Project>/Export/resmenu/... (for editing in an image editor)."},
+    {"Projektkopie entfernen", "Löscht die Projektkopie; danach gilt wieder das Original. Strg+Z stellt sie wieder her.", "Deletes the project copy; the original applies again. Ctrl+Z restores it."},
+    {"Remove project copy", "Löscht die Projektkopie; danach gilt wieder das Original. Strg+Z stellt sie wieder her.", "Deletes the project copy; the original applies again. Ctrl+Z restores it."},
+    {"Durchsuchen...", "Quelldatei im Windows-Dialog wählen.", "Choose the source file in the Windows dialog."},
+    {"Browse...", "Quelldatei im Windows-Dialog wählen.", "Choose the source file in the Windows dialog."},
+    {"InputText:##imageReplaceSource", "Pfad der Quelldatei (PNG, JPG, BMP, TGA oder DDS). Sobald die Datei existiert, wird sie geladen und umgerechnet.", "Path of the source file (PNG, JPG, BMP, TGA or DDS). As soon as the file exists it is loaded and converted."},
+    {"Keep original size", "An: Ergebnis bekommt die Größe des Originals. Aus: Größe der Quelle (DDS auf Vielfache von 4 gerundet).", "On: the result gets the original's size. Off: the source size (DDS rounded to multiples of 4)."},
+    {"Anpassung", "Strecken: auf Zielgröße verzerren. Einpassen: ganzes Bild, Ränder transparent. Füllen: alles füllen, Überstand mittig abschneiden.", "Stretch: distort to the target size. Fit: whole image, transparent borders. Fill: fill everything, crop the overhang in the centre."},
+    {"Fitting", "Strecken: auf Zielgröße verzerren. Einpassen: ganzes Bild, Ränder transparent. Füllen: alles füllen, Überstand mittig abschneiden.", "Stretch: distort to the target size. Fit: whole image, transparent borders. Fill: fill everything, crop the overhang in the centre."},
+    {"Größe des Originals behalten", "An: Ergebnis bekommt die Größe des Originals. Aus: Größe der Quelle (DDS auf Vielfache von 4 gerundet).", "On: the result gets the original's size. Off: the source size (DDS rounded to multiples of 4)."},
+    {"Button:Übernehmen##imageReplace", "Schreibt das Ergebnis als Projektkopie (Strg+Z nimmt es zurück).", "Writes the result as a project copy (Ctrl+Z reverts it)."},
+    {"Button:Apply##imageReplace", "Schreibt das Ergebnis als Projektkopie (Strg+Z nimmt es zurück).", "Writes the result as a project copy (Ctrl+Z reverts it)."},
     {"Asset-Ordner wählen...", "Ordner mit den Modellen und Texturen (Client) wählen, aus dem NIF-Modelle und Texturen geladen werden.", "Choose the folder with the models and textures (client) from which NIF models and textures are loaded."},
     {"Karte-.ini", "Pfad der Karten-.ini (z.B. resmap/field/Rou/Rou.ini). Sie beschreibt Größe, Texturschichten und Dateien der Karte.", "Path of the map .ini (e.g. resmap/field/Rou/Rou.ini). It describes size, texture layers and files of the map."},
     {"Karte öffnen", "Liest die Karte (Höhe, Texturen, Begehbarkeit, Objekte) aus der angegebenen .ini.", "Reads the map (height, textures, walkability, objects) from the given .ini."},

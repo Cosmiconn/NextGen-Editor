@@ -210,6 +210,43 @@ std::vector<std::uint8_t> BuildDdsFile(std::span<const std::uint8_t> rgba, std::
                                        DdsFormat format, bool mipmaps) {
     std::vector<std::uint8_t> file(128, 0);
     std::memcpy(file.data(), "DDS ", 4);
+    if (format == DdsFormat::Bgra32) {
+        // Unkomprimiert: Bytes B,G,R,A je Pixel, Masken R 0xFF0000, G 0xFF00, B 0xFF, A 0xFF000000.
+        std::uint32_t levels = 1;
+        if (mipmaps)
+            for (std::uint32_t w = width, h = height; w > 1 || h > 1; w = std::max<std::uint32_t>(1, w / 2), h = std::max<std::uint32_t>(1, h / 2)) ++levels;
+        Put32(file, 4, 124);
+        Put32(file, 8, mipmaps ? 0xA1007u : 0x81007u);
+        Put32(file, 12, height);
+        Put32(file, 16, width);
+        Put32(file, 20, width * height * 4);
+        Put32(file, 28, mipmaps ? levels : 0);
+        Put32(file, 76, 32);
+        Put32(file, 80, 0x41); // DDPF_RGB | DDPF_ALPHAPIXELS
+        Put32(file, 88, 32);
+        Put32(file, 92, 0x00FF0000u);
+        Put32(file, 96, 0x0000FF00u);
+        Put32(file, 100, 0x000000FFu);
+        Put32(file, 104, 0xFF000000u);
+        Put32(file, 108, mipmaps ? 0x401008u : 0x1000u);
+        std::vector<std::uint8_t> level(rgba.begin(), rgba.end());
+        std::uint32_t w = width, h = height;
+        for (std::uint32_t l = 0; l < levels; ++l) {
+            for (std::size_t i = 0; i + 3 < level.size(); i += 4) {
+                file.push_back(level[i + 2]);
+                file.push_back(level[i + 1]);
+                file.push_back(level[i]);
+                file.push_back(level[i + 3]);
+            }
+            if (l + 1 < levels) {
+                std::uint32_t nw = 0, nh = 0;
+                level = DownsampleRgba(level, w, h, nw, nh);
+                w = nw;
+                h = nh;
+            }
+        }
+        return file;
+    }
     const std::size_t blockSize = format == DdsFormat::Dxt1 ? 8 : 16;
     const std::uint32_t topSize = static_cast<std::uint32_t>(((width + 3) / 4) * ((height + 3) / 4) * blockSize);
     std::uint32_t levels = 1;

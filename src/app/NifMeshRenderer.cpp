@@ -2,6 +2,7 @@
 #include <system_error>
 #include <optional>
 #include <expected>
+#include "mapeditor/core/ImageIO.hpp"
 #include "mapeditor/core/AvatarPreview.hpp"
 
 #include "mapeditor/core/DdsImage.hpp"
@@ -720,8 +721,18 @@ std::expected<core::DdsImage, std::string> LoadPlatformRasterImage(
 #ifdef _WIN32
     return LoadWicImage(file);
 #else
-    (void)file;
-    return std::unexpected("Plattform-Rasterdecoder ist nur unter Windows verfügbar");
+    // Ohne WIC: eigener Decoder (stb). Gleiche Zeilenfolge wie WIC (unterste Zeile zuerst).
+    auto image = core::LoadImageFile(file);
+    if (!image) return std::unexpected(image.error());
+    core::DdsImage out;
+    out.width = image->width;
+    out.height = image->height;
+    out.rgba.resize(image->rgba.size());
+    const std::size_t rowBytes = static_cast<std::size_t>(image->width) * 4u;
+    for (std::uint32_t y = 0; y < image->height; ++y)
+        std::copy_n(image->rgba.data() + static_cast<std::size_t>(y) * rowBytes, rowBytes,
+                    out.rgba.data() + static_cast<std::size_t>(image->height - 1u - y) * rowBytes);
+    return out;
 #endif
 }
 
@@ -906,10 +917,8 @@ std::uint32_t NifMeshRenderer::GetOrLoadTexture(const std::filesystem::path& res
     if (lowerExt == ".tga") imageResult = core::LoadTgaImage(resolvedPath);
     else if (lowerExt == ".dds") imageResult = core::LoadDdsImage(resolvedPath);
     else if (lowerExt == ".bmp") imageResult = core::LoadBmpImage(resolvedPath);
-#ifdef _WIN32
     else if (lowerExt == ".jpg" || lowerExt == ".jpeg" || lowerExt == ".png")
-        imageResult = LoadWicImage(resolvedPath);
-#endif
+        imageResult = LoadPlatformRasterImage(resolvedPath);
     if (imageResult) {
         // Die Loader liefern die OpenGL-Zeilenfolge (unterste Zeile zuerst, wie für das Gelände).
         // NIF-UVs folgen Direct3D (v = 0 oben) und werden mit t = v abgetastet: zurückdrehen, damit

@@ -193,6 +193,7 @@ void DrawInterfaceWorkspace(EditorState& state) {
                     "module.interface",
                     L("Originale nur lesen · Projekt-Overrides aktiv",
                       "sources read-only · project overrides enabled"));
+    DrawImageReplaceDialog(state);
 
     if (state.interfaceRoot.empty()) {
         ImGui::Separator();
@@ -234,6 +235,14 @@ void DrawInterfaceWorkspace(EditorState& state) {
         state.interfaceAssetsScanned = true;
         if (state.interfaceSelectedAsset >= static_cast<int>(state.interfaceAssets.size()))
             state.interfaceSelectedAsset = -1;
+    }
+    static bool scrollToSelected = false;
+    if (!state.interfacePendingAsset.empty()) {
+        const std::string wanted = LowerAscii(state.interfacePendingAsset);
+        for (std::size_t i = 0; i < state.interfaceAssets.size(); ++i)
+            if (LowerAscii(state.interfaceAssets[i]) == wanted) state.interfaceSelectedAsset = static_cast<int>(i);
+        state.interfacePendingAsset.clear();
+        scrollToSelected = true;
     }
 
     ImGui::SameLine();
@@ -320,6 +329,13 @@ void DrawInterfaceWorkspace(EditorState& state) {
     } else {
         ImGuiListClipper clipper;
         clipper.Begin(static_cast<int>(matching.size()));
+        int scrollRow = -1;
+        if (scrollToSelected) {
+            for (std::size_t m = 0; m < matching.size(); ++m)
+                if (static_cast<int>(matching[m]) == state.interfaceSelectedAsset) scrollRow = static_cast<int>(m);
+            if (scrollRow >= 0) clipper.IncludeItemByIndex(scrollRow);
+            scrollToSelected = false;
+        }
         while (clipper.Step()) {
             for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row) {
                 const std::size_t assetIndex = matching[static_cast<std::size_t>(row)];
@@ -365,6 +381,7 @@ void DrawInterfaceWorkspace(EditorState& state) {
                 ImGui::SameLine(0, 6);
 
                 const bool selected = state.interfaceSelectedAsset == static_cast<int>(assetIndex);
+                if (row == scrollRow) ImGui::SetScrollHereY(0.3f);
                 if (UI::Selectable((rel + "##interfaceAsset").c_str(), selected)) {
                     state.interfaceSelectedAsset = static_cast<int>(assetIndex);
                     if (ext == ".nif") {
@@ -432,11 +449,18 @@ void DrawInterfaceWorkspace(EditorState& state) {
         CreateInterfaceProjectOverride(state, sourcePath, rel);
     }
     ImGui::EndDisabled();
-#ifdef _WIN32
+    const bool isImage = ext == ".tga" || ext == ".dds" || ext == ".png" ||
+                         ext == ".jpg" || ext == ".jpeg" || ext == ".bmp";
     ImGui::SameLine();
     ImGui::BeginDisabled(state.project.projectFolder[0] == '\0');
-    if (UI::SmallButton(L("Asset ersetzen...##interfaceOverride",
-                          "Replace asset...##interfaceOverride"))) {
+    if (isImage) {
+        // Beliebiges Bild wählen; es wird auf Größe und Format des Originals umgerechnet.
+        if (UI::SmallButton(L("Ersetzen...##interfaceOverride", "Replace...##interfaceOverride")))
+            OpenImageReplaceDialog(state, rel, rel);
+    }
+#ifdef _WIN32
+    else if (UI::SmallButton(L("Asset ersetzen...##interfaceOverride",
+                               "Replace asset...##interfaceOverride"))) {
         if (auto picked = BrowseForInterfaceAssetWindows(
                 L("Interface-Asset als Projekt-Override wählen",
                   "Choose interface asset for project override"), ext)) {
@@ -450,13 +474,18 @@ void DrawInterfaceWorkspace(EditorState& state) {
             }
         }
     }
-    ImGui::EndDisabled();
 #endif
+    if (isImage) {
+        ImGui::SameLine();
+        if (UI::SmallButton(L("Als PNG exportieren##interface", "Export as PNG##interface")))
+            ExportResmenuAsPng(state, rel);
+    }
+    ImGui::EndDisabled();
     if (hasProjectOverride) {
         ImGui::SameLine();
         if (UI::SmallButton(L("Projektkopie entfernen##interfaceOverride",
                               "Remove project copy##interfaceOverride"))) {
-            RemoveInterfaceProjectOverride(state, sourcePath, rel);
+            RemoveResmenuOverride(state, rel);
         }
     }
     if (state.project.projectFolder[0] == '\0') {
@@ -477,17 +506,18 @@ void DrawInterfaceWorkspace(EditorState& state) {
         // Der Inspector behandelt <Projekt>/Client/resmenu als Overlay: sowohl das NIF selbst
         // als auch externe Textur-/Flipbook-Referenzen bevorzugen vorhandene Projektkopien.
         DrawNifAssetInspector(state, root);
-    } else if (ext == ".tga" || ext == ".dds" || ext == ".png" ||
-               ext == ".jpg" || ext == ".jpeg" || ext == ".bmp") {
-        const auto thumb = GetOrLoadAssetThumbnail(state, path, false);
-        if (thumb.tex) {
-            ImVec2 size = ImGui::GetContentRegionAvail();
-            size.x = std::max(1.0f, size.x - 12.0f);
-            size.y = std::max(1.0f, size.y - 12.0f);
-            const float aspect = thumb.aspect > 0.0f ? thumb.aspect : 1.0f;
+    } else if (isImage) {
+        float aspect = 1.0f;
+        if (const auto tex = ResmenuPreviewTexture(state, rel, &aspect)) {
+            if (auto fmt = core::InspectImageFile(path)) ImGui::TextDisabled("%s", core::DescribeImageFormat(*fmt).c_str());
+            const ImVec2 area(std::max(1.0f, ImGui::GetContentRegionAvail().x - 12.0f),
+                              std::max(1.0f, ImGui::GetContentRegionAvail().y - 12.0f));
+            ImVec2 size = area;
             if (size.x / size.y > aspect) size.x = size.y * aspect;
             else size.y = size.x / aspect;
-            ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(thumb.tex)), size);
+            const ImVec2 origin = ImGui::GetCursorScreenPos();
+            DrawCheckerboard(origin, ImVec2(origin.x + size.x, origin.y + size.y));
+            ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(tex)), size);
         } else {
             ImGui::TextDisabled("%s",L("Bild konnte nicht dekodiert werden.","Image could not be decoded."));
         }
