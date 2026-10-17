@@ -25,12 +25,13 @@ void EnsureTownPortalLoaded(EditorState& state) {
         candidates.emplace_back(std::filesystem::path(srv) / "TownPortal.shn",
                                 core::ProjectOutputSide::Server);
     for (const auto& [sourcePath, side] : candidates) {
-        const auto path = PreferProjectOverride(state.project, side, sourcePath);
-        auto result = core::legacy::LoadShnFile(path);
-        if (result) {
-            state.townPortalShn = std::move(*result);
+        const auto source = side == core::ProjectOutputSide::Client ? EditorState::ShnSource::Client
+                                                                     : EditorState::ShnSource::Server;
+        state.townPortalDoc = SharedShnDoc(state, "TownPortal.shn", source, sourcePath.parent_path());
+        if (state.townPortalDoc >= 0) {
             state.townPortalLoaded = true;
-            state.townPortalDirty = false;
+            state.townPortalBaseline = ShnDocFile(state, state.townPortalDoc);
+            state.townPortalDirty = state.shnFiles[static_cast<std::size_t>(state.townPortalDoc)].dirty;
             return;
         }
     }
@@ -53,9 +54,18 @@ void EnsureRecallCoordLoaded(EditorState& state) {
 // Server-Kopie (Server/9Data/Shine/). Beide Dateien sind im Original byte-identisch (NA2016
 // geprueft); nur eine davon zu aendern wuerde Client und Server auseinanderlaufen lassen.
 // Es wird nie eine NEUE Datei im Server-Baum angelegt, nur eine vorhandene ueberschrieben.
+// Änderungen des Portal-Editors (direkte Zellzugriffe) als geänderte Zellen im gemeinsamen
+// Dokument markieren - so sieht der SHN-Editor sie und kann das Dokument ebenfalls speichern.
+void SyncTownPortalMarks(EditorState& state) {
+    if (!state.townPortalLoaded || !state.townPortalDirty || state.townPortalDoc < 0) return;
+    MarkShnChangesSince(state.shnFiles[static_cast<std::size_t>(state.townPortalDoc)], state.townPortalBaseline);
+}
 void SaveTownPortalFiles(EditorState& state) {
     EnsureNpcDialogRoot(state);
+    if (state.townPortalDoc < 0) { state.statusMessage = "TownPortal.shn ist nicht geladen."; return; }
+    SyncTownPortalMarks(state);
     std::string done, failed;
+    std::filesystem::path clientOutput, serverOutput;
 
     auto saveProjectCopy = [&](const std::filesystem::path& sourcePath,
                                core::ProjectOutputSide side,
@@ -69,8 +79,11 @@ void SaveTownPortalFiles(EditorState& state) {
             failed += std::string(label) + ": " + error + " ";
             return;
         }
-        auto saved = core::legacy::SaveShnFile(state.townPortalShn, output);
-        if (saved) done += std::string(done.empty() ? "" : " + ") + label;
+        auto saved = core::legacy::SaveShnFile(ShnDocFile(state, state.townPortalDoc), output);
+        if (saved) {
+            done += std::string(done.empty() ? "" : " + ") + label;
+            (side == core::ProjectOutputSide::Client ? clientOutput : serverOutput) = output;
+        }
         else failed += std::string(label) + ": " + saved.error() + " ";
     };
 
@@ -86,6 +99,19 @@ void SaveTownPortalFiles(EditorState& state) {
     else {
         state.townPortalDirty = false;
         state.statusMessage = "TownPortal.shn als Projekt-Override gespeichert (" + done + ").";
+        // Gemeinsame Dokumente beider Seiten auf den gespeicherten Stand bringen und als sauber markieren.
+        const auto saved = ShnDocFile(state, state.townPortalDoc);
+        state.townPortalBaseline = saved;
+        for (auto& d : state.shnFiles) {
+            if (LowerAscii(d.file.FileName()) != "townportal.shn") continue;
+            const auto& out = d.source == EditorState::ShnSource::Client ? clientOutput : serverOutput;
+            if (out.empty()) continue;
+            d.file = saved;
+            d.file.path = out;
+            d.dirty = false;
+            ClearShnDirtyCells(d);
+        }
+        ++state.shnEditCounter;
     }
 }
 bool SaveRecallCoordFile(EditorState& state) {
@@ -119,22 +145,22 @@ void DrawPortalEditor(EditorState& state) {
     ImGui::SeparatorText("TownPortal · Skill/Menü");
     if (!state.townPortalLoaded) {
         ImGui::TextWrapped("TownPortal.shn konnte nicht geladen werden (Client-ressystem-Ordner nötig).");
-    } else if (ImGui::BeginTable("##townportal", static_cast<int>(state.townPortalShn.columns.size()),
+    } else if (ImGui::BeginTable("##townportal", static_cast<int>(ShnDocFile(state, state.townPortalDoc).columns.size()),
                                   ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
-        for (auto& c : state.townPortalShn.columns) ImGui::TableSetupColumn(c.name.c_str());
+        for (auto& c : ShnDocFile(state, state.townPortalDoc).columns) ImGui::TableSetupColumn(c.name.c_str());
         ImGui::TableHeadersRow();
-        for (std::size_t ri = 0; ri < state.townPortalShn.rows.size(); ++ri) {
+        for (std::size_t ri = 0; ri < ShnDocFile(state, state.townPortalDoc).rows.size(); ++ri) {
             ImGui::TableNextRow();
-            for (std::size_t ci = 0; ci < state.townPortalShn.columns.size(); ++ci) {
+            for (std::size_t ci = 0; ci < ShnDocFile(state, state.townPortalDoc).columns.size(); ++ci) {
                 ImGui::TableSetColumnIndex(static_cast<int>(ci));
                 ImGui::SetNextItemWidth(-1.0f);
-                std::string cur = ShnShortValue(state.townPortalShn.rows[ri].values[ci]);
+                std::string cur = ShnShortValue(ShnDocFile(state, state.townPortalDoc).rows[ri].values[ci]);
                 std::vector<char> buf(cur.begin(), cur.end());
                 buf.resize(std::max<std::size_t>(buf.size() + 1, 32));
                 if (UI::InputText(("##tp" + std::to_string(ri) + "_" + std::to_string(ci)).c_str(), buf.data(), buf.size())) {
-                    auto parsed = core::legacy::ParseShnValue(state.townPortalShn.columns[ci], buf.data());
+                    auto parsed = core::legacy::ParseShnValue(ShnDocFile(state, state.townPortalDoc).columns[ci], buf.data());
                     if (parsed) {
-                        state.townPortalShn.rows[ri].values[ci] = std::move(*parsed);
+                        ShnDocFile(state, state.townPortalDoc).rows[ri].values[ci] = std::move(*parsed);
                         state.townPortalDirty = true;
                     }
                 }
@@ -223,9 +249,10 @@ void EnsureMapInfoLoaded(EditorState& state) {
         candidates.emplace_back(std::filesystem::path(srv) / "MapInfo.shn",
                                 core::ProjectOutputSide::Server);
     for (const auto& [sourcePath, side] : candidates) {
-        const auto path = PreferProjectOverride(state.project, side, sourcePath);
-        auto result = core::legacy::LoadShnFile(path);
-        if (result) { state.mapInfoShn = std::move(*result); state.mapInfoLoaded = true; return; }
+        const auto source = side == core::ProjectOutputSide::Client ? EditorState::ShnSource::Client
+                                                                     : EditorState::ShnSource::Server;
+        state.mapInfoDoc = SharedShnDoc(state, "MapInfo.shn", source, sourcePath.parent_path());
+        if (state.mapInfoDoc >= 0) { state.mapInfoLoaded = true; return; }
     }
 }
 // Laedt alle Daten des Portale-Tabs - genau einmal pro Ordner-Kombination (sonst wuerde eine
@@ -266,7 +293,7 @@ std::string CurrentMapServerName(EditorState& state) {
     const std::string stem = state.legacySaveStem;
     EnsureMapInfoLoaded(state);
     if (!state.mapInfoLoaded || stem.empty()) return stem;
-    const auto& f = state.mapInfoShn;
+    const auto& f = ShnDocFile(state, state.mapInfoDoc);
     const int cName = FindShnColumnByName(f, "MapName");
     const int cFolder = FindShnColumnByName(f, "MapFolderName");
     if (cName < 0) return stem;
@@ -284,7 +311,7 @@ std::string CurrentMapServerName(EditorState& state) {
 // Wiederbelebungspunkt der offenen Karte (MapInfo.shn: MapName == Kartenname).
 bool FindMapRegen(EditorState& state, float& x, float& y) {
     if (!state.mapInfoLoaded) return false;
-    const auto& f = state.mapInfoShn;
+    const auto& f = ShnDocFile(state, state.mapInfoDoc);
     const int cName = FindShnColumnByName(f, "MapName");
     const int cX = FindShnColumnByName(f, "RegenX");
     const int cY = FindShnColumnByName(f, "RegenY");
@@ -326,7 +353,7 @@ std::vector<PortalMarker> CollectPortalMarkers(EditorState& state) {
     if (state.legacySaveStem[0] == '\0') return out;
     const std::string stem = state.legacySaveStem;
     if (state.townPortalLoaded) {
-        const auto& f = state.townPortalShn;
+        const auto& f = ShnDocFile(state, state.townPortalDoc);
         const int cMap = FindShnColumnByName(f, "MapName");
         const int cX = FindShnColumnByName(f, "X");
         const int cY = FindShnColumnByName(f, "Y");
@@ -495,7 +522,7 @@ void SetSelectedPortalPosition(EditorState& state, long long x, long long y) {
     x = std::max(0LL, x);
     y = std::max(0LL, y);
     if (state.selectedPortalKind == kPortalKindTown && state.selectedPortalIdx >= 0) {
-        auto& f = state.townPortalShn;
+        auto& f = ShnDocFile(state, state.townPortalDoc);
         SetShnCellInt(f, static_cast<std::size_t>(state.selectedPortalIdx), FindShnColumnByName(f, "X"), x);
         SetShnCellInt(f, static_cast<std::size_t>(state.selectedPortalIdx), FindShnColumnByName(f, "Y"), y);
         state.townPortalDirty = true;
@@ -515,14 +542,14 @@ void SetSelectedPortalPosition(EditorState& state, long long x, long long y) {
 // ist NICHT geprueft - siehe CHANGELOG [0.44.25].
 // MapName-Spalte einer TownPortal-Zeile (= Dateiname der Portalbilder).
 std::string TownPortalMapName(EditorState& state, std::size_t row) {
-    const auto& f = state.townPortalShn;
+    const auto& f = ShnDocFile(state, state.townPortalDoc);
     const int cMap = FindShnColumnByName(f, "MapName");
     if (cMap < 0 || row >= f.rows.size() || static_cast<std::size_t>(cMap) >= f.rows[row].values.size()) return CurrentMapServerName(state);
     const std::string name = TrimAscii(core::legacy::ShnValueToString(f.rows[row].values[static_cast<std::size_t>(cMap)]));
     return name.empty() ? CurrentMapServerName(state) : name;
 }
 void AddTownPortalForCurrentMap(EditorState& state) {
-    auto& f = state.townPortalShn;
+    auto& f = ShnDocFile(state, state.townPortalDoc);
     const int cIdx = FindShnColumnByName(f, "Index");
     const int cMap = FindShnColumnByName(f, "MapName");
     const int cX = FindShnColumnByName(f, "X");
@@ -670,7 +697,7 @@ void DrawPortalsToolsPanel(EditorState& state) {
 
         if (m.kind == kPortalKindTown) {
             ImGui::SeparatorText(L("Bedingungen","Conditions"));
-            auto& f = state.townPortalShn;
+            auto& f = ShnDocFile(state, state.townPortalDoc);
             const int cLvl = FindShnColumnByName(f, "MinLevel");
             const int cGrp = FindShnColumnByName(f, "TP_GroupNo");
             if (cLvl >= 0) {

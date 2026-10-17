@@ -15,7 +15,7 @@ namespace nge {
 std::string MapCheckFolderForMapName(EditorState& state, const std::string& mapName) {
     EnsureMapInfoLoaded(state);
     if (!state.mapInfoLoaded) return mapName;
-    const auto& f = state.mapInfoShn;
+    const auto& f = ShnDocFile(state, state.mapInfoDoc);
     const int cName = FindShnColumnByName(f, "MapName");
     const int cFolder = FindShnColumnByName(f, "MapFolderName");
     if (cName < 0 || cFolder < 0) return mapName;

@@ -1,3 +1,9 @@
+## Data editors — one shared copy per table
+- Every SHN table now exists exactly once in memory. The NPC dialog editor used to keep its own copy of `NpcDialogData.shn` while the creature wizard edited the SHN editor's document, so whichever saved last overwrote the other's changes. Both now edit the same document; saving writes all changes together, through the SHN save check, as a project override.
+- The same applies to `TownPortal.shn` (portal editor), `QuestDialog.shn` (quest texts), `ItemInfo.shn` (item names in quests and shops), `MobViewInfo.shn` and `MapInfo.shn`. Changes made in the SHN editor show up immediately in the other editors (for example a new item in the shop picker), and portal edits are marked as changed cells, so the SHN editor can save them too.
+- NPC dialog editor: "Create dialog" adds a dialog entry for an NPC that has none (template structure, MobIDX = NPC name, empty greeting).
+- New regression test `test_data_editors`: NPC dialog edit plus creature row plus save keeps both changes; portal edits pass the SHN save check and land in the client and server project copies.
+
 ## Build — automatic Windows release
 - Every push to `main` now publishes a ready-to-run package under GitHub **Releases → Nightly**: `NextGen-Editor-windows-nightly.zip` with `Editor.exe`, the check tools, UI assets, licences, `LIESMICH.txt`, `README.md`, `CHANGELOG.md` and `docs/`. A tag `v*` publishes a numbered release with the top CHANGELOG section as notes. Building locally is no longer needed.
 - `Editor.exe` in the package uses the static MSVC runtime (vcpkg triplet `x64-windows-static`), so it starts without an installed VC++ redistributable. The package step checks this with `dumpbin /dependents` and fails if a dynamic runtime DLL is still referenced.
