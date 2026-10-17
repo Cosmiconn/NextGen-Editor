@@ -1,3 +1,27 @@
+## Data editors — passive skills and states
+- New **Passive** tab (PassiveSkill client + server, PassiveSkillView) on the shared form editor:
+  - "Requirement" picks from all passive skills (DemandSk names the previous step in 470 of 503 rows);
+  - weapon mastery rate/bonus per weapon kind, value bonuses, icon and description;
+  - checks for duplicate InxName, missing rows and an unknown requirement.
+- New **States** tab (AbState client + server, AbStateView):
+  - the header shows icon, BUFF/DEBUFF, description and the active skills that apply the state (StaNameA-D, 1087 references in NA2016), with a jump into the skill editor;
+  - the **levels** of a state are its SubAbState rows (strength 1..n). They appear as an editable table — strength, type, duration and actions A–D — written to client and server as one undo step;
+  - "+ Level" copies the last level with strength + 1, "x" deletes one;
+  - checks: duplicate InxName, missing rows, an unknown SubAbState, and an AbStateView row naming another state.
+- The skill editor's state list has an "Open" button per state that jumps to the States tab.
+- Form editor:
+  - tables can name their InxName column (AbStateView writes `inxName`);
+  - cloning finds each table's template row by ID;
+  - new reference kind for "InxName of table X", e.g. requirement, SubAbState, party states.
+- Fixed: the small icon atlases were cut wrongly. Item and skill icons are 32 px on 256×256 atlases, but the state atlases `AbState00`–`04` are 128×128 with indices up to 63, i.e. 16-px cells.
+  - All 133 NA2016 atlases are an 8×8 grid, so the cell size is now atlas width / 8.
+  - This was checked against every icon index used in ItemViewInfo, ActiveSkillView, PassiveSkillView and AbStateView.
+- Fixed: the row of tool buttons in the game data screen now wraps instead of running off the right edge.
+- New automation commands `passiveeditor <id>` and `stateeditor <id>`.
+- Tests:
+  - `test_icon_atlas`: 8×8 grid and the 16-px cell of AbState00 #51;
+  - `test_data_editors`: AbState family with `inxName`, clone and undo across all tables, SubAbState level writes on both sides with undo.
+
 ## Data editors — item and mob editor
 - New **Items** and **Mobs** tabs in the game data screen. Both use a new general form editor (`DataFormEditor`): a spec names the tables of an ID family with their client and server copies and the fields in sections.
   - Values are read from the first copy and written to every copy when the field is left, as one undo step.

@@ -453,6 +453,56 @@ int main() {
         Check(SaveShnDocument(st, docs.byTable[0][0]), "MobInfo mit Klon besteht die Speicherprüfung (" + st.shnStatus + ")");
     }
 
+    std::printf("\n== Zustände: AbState + AbStateView (Spalte inxName) + SubAbState-Stufen ==\n");
+    {
+        auto table = [](std::vector<core::legacy::ShnColumn> cols, std::vector<std::vector<core::legacy::ShnValue>> rows) {
+            core::legacy::ShnFile f;
+            f.encrypted = false;
+            f.columns = std::move(cols);
+            for (auto& v : rows) { core::legacy::ShnRow r; r.values = std::move(v); f.rows.push_back(std::move(r)); }
+            return f;
+        };
+        const auto abState = table({UIntColumn("ID"), StringColumn("InxName", 32), StringColumn("SubAbState", 32)},
+                                   {{std::uint32_t{1}, std::string("StaRedSlash"), std::string("SubStaRedSlash")},
+                                    {std::uint32_t{2}, std::string("StaBuckler"), std::string("SubStaBuckler")}});
+        (void)core::legacy::SaveShnFile(abState, ressystem / "AbState.shn");
+        (void)core::legacy::SaveShnFile(abState, shine / "AbState.shn");
+        (void)core::legacy::SaveShnFile(table({UIntColumn("ID"), StringColumn("inxName", 32), UIntColumn("icon")},
+                                              {{std::uint32_t{1}, std::string("StaRedSlash"), std::uint32_t{51}},
+                                               {std::uint32_t{2}, std::string("StaBuckler"), std::uint32_t{7}}}),
+                                        ressystem / "AbStateView.shn");
+        const auto sub = table({UIntColumn("ID"), StringColumn("InxName", 32), UIntColumn("Strength")},
+                               {{std::uint32_t{20}, std::string("SubStaRedSlash"), std::uint32_t{1}},
+                                {std::uint32_t{21}, std::string("SubStaRedSlash"), std::uint32_t{2}},
+                                {std::uint32_t{22}, std::string("SubStaBuckler"), std::uint32_t{1}}});
+        (void)core::legacy::SaveShnFile(sub, ressystem / "SubAbState.shn");
+        (void)core::legacy::SaveShnFile(sub, shine / "SubAbState.shn");
+
+        const auto& spec = AbStateFormSpec();
+        const auto docs = ResolveFormDocs(st, spec);
+        Check(docs.byTable.size() == 2 && docs.byTable[0].size() == 2 && docs.byTable[1].size() == 1, "AbState (Client+Server) und AbStateView aufgelöst");
+        Check(AbStateIdByInx(st, "StaBuckler") == 2 && AbStateIdByInx(st, "gibtsnicht") == -1, "Zustand per InxName gefunden (Sprung aus dem Skill-Editor)");
+        Check(FormCellRead(st, docs, 1, "icon", 1) == "51", "AbStateView-Wert gelesen");
+
+        std::vector<std::string> report;
+        st.dataHistory.Clear();
+        const long long newId = CloneFormRecord(st, spec, docs, 1, "StaRedSlash2", "", report);
+        Check(newId > 2 && FormRowIn(st, docs.byTable[1][0], newId) >= 0 &&
+              ShnCellText(ShnDocFile(st, docs.byTable[1][0]), static_cast<std::size_t>(FormRowIn(st, docs.byTable[1][0], newId)), "inxName") == "StaRedSlash2",
+              "Klon auch in AbStateView (InxName-Spalte 'inxName')");
+        Check(FormCellRead(st, docs, 0, "SubAbState", newId) == "SubStaRedSlash", "Klon übernimmt die Stufen-Referenz");
+        Check(DataUndo(st) && FormRowIn(st, docs.byTable[1][0], newId) < 0, "Undo entfernt den Klon überall");
+
+        // Stufenwerte: SubAbState-Zeilen per ID, Client und Server gemeinsam.
+        dataform::Docs subDocs;
+        subDocs.byTable.push_back({SharedShnDoc(st, "SubAbState.shn", EditorState::ShnSource::Client, st.shnClientRoot),
+                                   SharedShnDoc(st, "SubAbState.shn", EditorState::ShnSource::Server, st.shnServerRoot)});
+        Check(subDocs.byTable[0][0] >= 0 && subDocs.byTable[0][1] >= 0, "SubAbState Client und Server geladen");
+        Check(FormCellWrite(st, subDocs, 0, "Strength", 21, "5", "Stufe") &&
+              ShnCellText(ShnDocFile(st, subDocs.byTable[0][1]), 1, "Strength") == "5", "Stufenwert in beiden Kopien geschrieben");
+        Check(DataUndo(st) && FormCellRead(st, subDocs, 0, "Strength", 21) == "2", "Undo stellt den Stufenwert wieder her");
+    }
+
     std::filesystem::remove_all(base, ec);
     if (g_failures) std::fprintf(stderr, "%d Fehler\n", g_failures);
     return g_failures == 0 ? 0 : 1;

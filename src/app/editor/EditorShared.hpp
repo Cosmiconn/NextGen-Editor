@@ -1045,6 +1045,8 @@ struct EditorState {
     // MobInfoServer/MobViewInfo), siehe DataFormEditor.cpp und ItemMobEditors.cpp.
     DataFormState itemForm;
     DataFormState mobForm;
+    DataFormState passiveForm; // PassiveSkill / PassiveSkillView
+    DataFormState stateForm;   // AbState / AbStateView (+ SubAbState-Stufen)
     // Drop-Gruppen (World/ItemDropGroup.txt): eine Kopie im Speicher, die der Gruppen-Editor bearbeitet
     // und aus der der Katalog für die Drop-Tabelle (dropGroups) aufgebaut wird.
     int dropEditorTab = 0; // 0 Mob-Drop-Tabelle, 1 Drop-Gruppen
@@ -2080,7 +2082,7 @@ static const Section kSections[] = {
 // Schreiben geht in alle Kopien als ein Undo-Schritt. Labels und Tooltips fallen auf den Spalten-
 // namen bzw. die Spaltenreferenz des Handbuchs (core::manual::FindColumn) zurück.
 namespace dataform {
-enum class Kind { Int, Text, Bool, ItemRef, MobRef, SkillRef, StateRef, DropGroupRef, Values, Enum };
+enum class Kind { Int, Text, Bool, ItemRef, MobRef, SkillRef, StateRef, DropGroupRef, Values, Enum, InxRef };
 struct EnumOption { long long value; const char* de; const char* en; };
 struct Field {
     int table = 0;
@@ -2091,6 +2093,8 @@ struct Field {
     const char* tipDe = nullptr;
     const char* tipEn = nullptr;
     std::vector<EnumOption> options; // nur Kind::Enum
+    const char* refFile = nullptr;   // nur Kind::InxRef: Tabelle, deren InxName gewählt wird
+    bool refServer = false;          // ... auf der Server-Seite (sonst Client)
 };
 struct Section {
     const char* titleDe;
@@ -2102,6 +2106,7 @@ struct Table {
     const char* file;
     bool client;
     bool server;
+    const char* inxColumn = "InxName"; // AbStateView schreibt "inxName"
 };
 struct Spec {
     const char* id;                   // Verlaufs- und ID-Präfix, z. B. "Item"
@@ -2135,6 +2140,12 @@ void DrawDataFormEditor(EditorState& state, const dataform::Spec& spec, DataForm
                         const std::function<void(long long, float)>& listIcon = {});
 void DrawItemEditor(EditorState& state);
 void DrawMobEditor(EditorState& state);
+void DrawPassiveSkillEditor(EditorState& state);
+void DrawAbStateEditor(EditorState& state);
+dataform::Spec& PassiveFormSpec();
+dataform::Spec& AbStateFormSpec();
+// ID eines Zustands (AbState.InxName) oder -1 - für Sprünge aus dem Skill-Editor.
+long long AbStateIdByInx(EditorState& state, const std::string& inx);
 dataform::Spec& ItemFormSpec();
 dataform::Spec& MobFormSpec();
 

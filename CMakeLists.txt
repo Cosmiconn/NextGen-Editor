@@ -225,6 +225,7 @@ set(NEXTGEN_EDITOR_MODULES
     src/app/editor/DropGroupEditor.cpp
     src/app/editor/DataFormEditor.cpp
     src/app/editor/ItemMobEditors.cpp
+    src/app/editor/SkillStateEditors.cpp
 )
 
 add_executable(map_editor

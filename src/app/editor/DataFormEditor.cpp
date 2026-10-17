@@ -44,7 +44,7 @@ const PickList& InxPickList(EditorState& state, const char* file, EditorState::S
     const auto& f = ShnDocFile(state, doc);
     for (std::size_t r = 0; r < f.rows.size(); ++r) {
         const std::string inx = TrimAscii(ShnCellText(f, r, "InxName"));
-        if (inx.empty()) continue;
+        if (inx.empty() || (!list.values.empty() && list.values.back() == inx)) continue; // SubAbState: Stufen derselben InxName hintereinander
         const std::string name = ShnCellText(f, r, "Name");
         list.values.push_back(inx);
         list.labels.push_back(inx + (name.empty() ? std::string() : "  ·  " + name) + "  (#" + ShnCellText(f, r, "ID") + ")");
@@ -243,6 +243,15 @@ void DrawFormField(EditorState& state, const dataform::Spec& spec, const datafor
             }
             break;
         }
+        case K::InxRef: {
+            const auto side = fld.refServer ? EditorState::ShnSource::Server : EditorState::ShnSource::Client;
+            if (open && fld.refFile) {
+                const auto& list = InxPickList(state, fld.refFile, side);
+                if (StringPickerPopup("##pick", list.values, form.pickFilter, sizeof(form.pickFilter), chosen, &list.labels)) write(chosen);
+            }
+            if (fld.refFile) display = RefDisplay(state, fld.refFile, side, current, byId);
+            break;
+        }
         case K::Values:
             if (open) {
                 const auto& list = ValuePickList(state, docs, fld.table, fld.col);
@@ -360,7 +369,15 @@ long long CloneFormRecord(EditorState& state, const dataform::Spec& spec, const 
     for (std::size_t t = 0; t < docs.byTable.size(); ++t) {
         for (const int d : docs.byTable[t]) {
             auto& doc = state.shnFiles[static_cast<std::size_t>(d)];
-            const auto created = CloneRowsById(state, spec.tables[t].file, doc.source, "InxName", templateId, templateInx, newId, newInx, report);
+            // Vorlage dieser Tabelle über die ID (der InxName kann je Tabelle abweichen, z. B. AbStateView).
+            const long long tRow = FormRowIn(state, d, templateId);
+            if (tRow < 0) {
+                report.push_back(std::string("- ") + ShnSourceName(doc.source) + " " + spec.tables[t].file + L(": keine Vorlage-Zeile (übersprungen)", ": no template row (skipped)"));
+                continue;
+            }
+            const std::string rowInx = ShnCellText(doc.file, static_cast<std::size_t>(tRow), spec.tables[t].inxColumn);
+            const auto created = CloneRowsById(state, spec.tables[t].file, doc.source, spec.tables[t].inxColumn, templateId,
+                                               rowInx, newId, newInx, report);
             if (created.empty()) continue;
             const int nameColumn = ShnColumnIndexByName(doc.file, "Name");
             if (!newName.empty() && nameColumn >= 0)
@@ -538,6 +555,7 @@ void DrawDataFormEditor(EditorState& state, const dataform::Spec& spec, DataForm
     for (const auto& line : form.report) ImGui::TextWrapped("%s", line.c_str());
 
     std::set<std::string> curated = {"ID", "InxName"};
+    for (std::size_t t = 0; t < spec.tables.size(); ++t) curated.insert(std::to_string(t) + "|" + spec.tables[t].inxColumn);
     for (const auto& sec : spec.sections) {
         for (const auto& f : sec.fields) curated.insert(std::to_string(f.table) + "|" + f.col);
         if (!UI::CollapsingHeader(De() ? sec.titleDe : sec.titleEn, sec.defaultOpen ? ImGuiTreeNodeFlags_DefaultOpen : 0)) continue;

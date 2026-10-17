@@ -4,13 +4,22 @@
 
 namespace theseed::mapeditor::core::legacy {
 
+namespace {
+// 0 = Standard: 8 Spalten (256er-Atlas 32 px, 128er-Atlas 16 px).
+std::uint32_t EffectiveCellSize(std::uint32_t atlasWidth, std::uint32_t cellSize) {
+    return cellSize != 0 ? cellSize : atlasWidth / 8;
+}
+} // namespace
+
 int IconAtlasCapacity(std::uint32_t atlasWidth, std::uint32_t atlasHeight, std::uint32_t cellSize) {
+    cellSize = EffectiveCellSize(atlasWidth, cellSize);
     if (cellSize == 0) return 0;
     return static_cast<int>((atlasWidth / cellSize) * (atlasHeight / cellSize));
 }
 
 IconCell IconAtlasCell(std::uint32_t atlasWidth, std::uint32_t atlasHeight, int index, std::uint32_t cellSize) {
     IconCell c;
+    cellSize = EffectiveCellSize(atlasWidth, cellSize);
     const std::uint32_t cols = cellSize ? atlasWidth / cellSize : 0;
     if (index < 0 || cols == 0 || index >= IconAtlasCapacity(atlasWidth, atlasHeight, cellSize)) return c;
     const auto col = static_cast<std::uint32_t>(index) % cols, row = static_cast<std::uint32_t>(index) / cols;
