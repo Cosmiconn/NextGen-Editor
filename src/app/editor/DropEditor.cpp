@@ -47,28 +47,25 @@ void EnsureDropTableLoaded(EditorState& state) {
     state.dropTableDirty = false;
     state.dropTableSelectedRecord = table->records.empty() ? -1 : 0;
 }
-// Lädt einmalig World/ItemDropGroup.txt, ItemInfoServer.shn (DropGroupA/B) und die ItemInfo-
-// Namen für die Auflösung der DrItem-Gruppen. Fehlt eine Datei, bleibt die Prüfung "unbekannt".
+// Baut einmalig den Katalog für die Auflösung der DrItem-Gruppen auf: Gruppen aus der gemeinsamen
+// Kopie von World/ItemDropGroup.txt (die der Gruppen-Editor bearbeitet), ItemInfoServer.shn
+// (DropGroupA/B) und die ItemInfo-Namen. Fehlt eine Datei, bleibt die Prüfung "unbekannt".
 void EnsureDropGroupCatalog(EditorState& state) {
-    if (state.dropGroupsTried) return;
+    if (state.dropGroupsTried) { SyncDropGroupCatalog(state); return; }
     state.dropGroupsTried = true;
     if (state.shineTextRoot.empty()) return;
-    const auto groupPath = PreferProjectOverride(state.project, core::ProjectOutputSide::Server,
-                                                 std::filesystem::path(state.shineTextRoot) / "World" / "ItemDropGroup.txt");
-    auto groups = core::legacy::LoadShineTextFile(groupPath);
-    const auto* table = groups ? groups->FindTable("ItemDropGroup") : nullptr;
-    if (!table || !state.dropGroups.SetGroups(*table)) {
-        state.dropGroupsStatus = groups ? std::string("ItemDropGroup.txt: Tabelle ItemDropGroup fehlt")
-                                        : "ItemDropGroup.txt: " + groups.error();
+    EnsureDropGroupFileLoaded(state);
+    if (!state.dropGroupLoaded) {
+        state.dropGroupsStatus = "ItemDropGroup.txt: " + state.dropGroupLoadError;
         return;
     }
     const std::string serverRoot = state.shnServerRoot.empty() ? state.shineTextRoot : state.shnServerRoot;
-    const auto serverPath = PreferProjectOverride(state.project, core::ProjectOutputSide::Server,
-                                                  std::filesystem::path(serverRoot) / "ItemInfoServer.shn");
-    if (auto server = core::legacy::LoadShnFile(serverPath)) state.dropGroups.AddItemInfoServer(*server);
-    else state.dropGroupsStatus = "ItemInfoServer.shn: " + server.error();
+    const int server = SharedShnDoc(state, "ItemInfoServer.shn", EditorState::ShnSource::Server, serverRoot);
+    if (server >= 0) state.dropGroups.AddItemInfoServer(ShnDocFile(state, server));
+    else state.dropGroupsStatus = "ItemInfoServer.shn nicht gefunden";
     EnsureItemLookup(state);
     for (const auto& item : state.itemEntries) state.dropGroups.AddItem(item.inx, item.name);
+    SyncDropGroupCatalog(state);
 }
 bool SaveDropTable(EditorState& state) {
     if (!state.dropTableLoaded || state.dropTableFile.path.empty()) return false;
@@ -92,6 +89,24 @@ bool EditDropTableValue(const char* id, std::string& value, float width) {
     return true;
 }
 void DrawDropTableEditor(EditorState& state) {
+    // Zwei Ansichten: Mob-Drop-Tabelle (ItemDropTable.txt) und Drop-Gruppen (ItemDropGroup.txt).
+    const int tabRequest = state.dropEditorTabRequest;
+    state.dropEditorTabRequest = -1;
+    if (ImGui::BeginTabBar("##dropTabs")) {
+        if (ImGui::BeginTabItem(L("Mob-Drops","Mob drops"), nullptr, tabRequest == 0 ? ImGuiTabItemFlags_SetSelected : 0)) {
+            state.dropEditorTab = 0;
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem(L("Drop-Gruppen","Drop groups"), nullptr, tabRequest == 1 ? ImGuiTabItemFlags_SetSelected : 0)) {
+            state.dropEditorTab = 1;
+            ImGui::EndTabItem();
+        }
+        ImGui::EndTabBar();
+    }
+    if (state.dropEditorTab != 0) {
+        DrawDropGroupEditor(state);
+        return;
+    }
     EnsureDropTableLoaded(state);
     DrawPanelHeader("dropTableHeader", "DROP TABLE / ITEMGROUP", DrawIconSpawn,
                     "module.droptable",
@@ -609,6 +624,15 @@ void DrawDropTableEditor(EditorState& state) {
                     ImGui::TextColored(ImVec4(1.0f,0.48f,0.34f,1.0f), "%s",L("fehlt in ItemDropGroup","missing from ItemDropGroup"));
                     break;
                 default: break;
+                }
+                if (state.dropGroups.Group(*itemValue)) {
+                    ImGui::SameLine();
+                    if (UI::SmallButton(L("Öffnen##dropGroupOpen","Open##dropGroupOpen"))) {
+                        state.dropGroupSelected = *itemValue;
+                        state.dropEditorTabRequest = 1;
+                    }
+                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                        ImGui::SetTooltip("%s", L("Diese Gruppe im Drop-Gruppen-Editor öffnen.", "Open this group in the drop group editor."));
                 }
             }
             ImGui::PopID();

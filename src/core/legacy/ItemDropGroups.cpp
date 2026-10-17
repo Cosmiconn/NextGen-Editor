@@ -93,4 +93,94 @@ std::string DropGroupCatalog::DisplayName(const std::string& inxName) const {
     return it == itemNames_.end() || it->second.empty() ? inxName : it->second;
 }
 
+std::vector<std::string> DropGroupCatalog::ItemInfoDropGroupNames() const {
+    std::vector<std::string> names;
+    names.reserve(membersByDropGroup_.size());
+    for (const auto& [name, members] : membersByDropGroup_) names.push_back(name);
+    std::sort(names.begin(), names.end());
+    return names;
+}
+
+DropGroupColumns FindDropGroupColumns(const ShineTable& itemDropGroup) {
+    DropGroupColumns c;
+    c.group = ColumnIndex(itemDropGroup, "ItemGroupIdx");
+    c.item = ColumnIndex(itemDropGroup, "ItemID");
+    c.minQty = ColumnIndex(itemDropGroup, "MinQtty");
+    c.maxQty = ColumnIndex(itemDropGroup, "MaxQtty");
+    c.checksum = ColumnIndex(itemDropGroup, "CheckSum");
+    for (int i = 0; i < 16; ++i) {
+        const std::string name = std::string(i < 10 ? "Upgrade0" : "Upgrade") + std::to_string(i);
+        if (const int col = ColumnIndex(itemDropGroup, name); col >= 0) c.upgrades.push_back(col);
+    }
+    return c;
+}
+
+namespace {
+std::optional<long long> Number(const ShineRecord& record, int column) {
+    const std::string v = Value(record, column);
+    if (v.empty() || v.size() > 12 || !std::all_of(v.begin(), v.end(), [](unsigned char ch) { return ch >= '0' && ch <= '9'; }))
+        return std::nullopt;
+    return std::stoll(v);
+}
+} // namespace
+
+std::optional<long long> DropGroupUpgradeSum(const DropGroupColumns& columns, const ShineRecord& record) {
+    long long sum = 0;
+    for (const int col : columns.upgrades) {
+        const auto n = Number(record, col);
+        if (!n) return std::nullopt;
+        sum += *n;
+    }
+    return sum;
+}
+
+std::optional<long long> DropGroupChecksum(const DropGroupColumns& columns, const ShineRecord& record) {
+    if (columns.minQty < 0 || columns.maxQty < 0 || columns.checksum < 0) return std::nullopt;
+    const auto minQty = Number(record, columns.minQty);
+    const auto maxQty = Number(record, columns.maxQty);
+    const auto upgrades = DropGroupUpgradeSum(columns, record);
+    if (!minQty || !maxQty || !upgrades) return std::nullopt;
+    return *minQty + *maxQty + *upgrades;
+}
+
+bool UpdateDropGroupChecksum(const DropGroupColumns& columns, ShineRecord& record) {
+    const auto sum = DropGroupChecksum(columns, record);
+    if (!sum || static_cast<std::size_t>(columns.checksum) >= record.values.size()) return false;
+    record.values[static_cast<std::size_t>(columns.checksum)] = std::to_string(*sum);
+    return true;
+}
+
+ShineRecord MakeDropGroupRecord(const ShineTable& itemDropGroup, const std::string& group, const std::string& itemId,
+                                int minQty, int maxQty) {
+    const auto columns = FindDropGroupColumns(itemDropGroup);
+    ShineRecord record;
+    record.values.assign(itemDropGroup.columns.size(), "0");
+    auto set = [&](int col, std::string v) {
+        if (col >= 0 && static_cast<std::size_t>(col) < record.values.size()) record.values[static_cast<std::size_t>(col)] = std::move(v);
+    };
+    set(columns.group, group);
+    set(columns.item, itemId);
+    set(columns.minQty, std::to_string(minQty));
+    set(columns.maxQty, std::to_string(maxQty));
+    if (!columns.upgrades.empty()) set(columns.upgrades.front(), "1000");
+    UpdateDropGroupChecksum(columns, record);
+    return record;
+}
+
+std::vector<std::size_t> DropTableRecordsUsingGroup(const ShineTable& itemGroupTable, const std::string& group) {
+    std::vector<int> slotColumns;
+    for (std::size_t i = 0; i < itemGroupTable.columns.size(); ++i) {
+        const std::string& name = itemGroupTable.columns[i].name;
+        if (name.size() > 6 && name.compare(0, 6, "DrItem") == 0 &&
+            std::all_of(name.begin() + 6, name.end(), [](unsigned char ch) { return ch >= '0' && ch <= '9'; }))
+            slotColumns.push_back(static_cast<int>(i));
+    }
+    std::vector<std::size_t> out;
+    if (group.empty()) return out;
+    for (std::size_t r = 0; r < itemGroupTable.records.size(); ++r)
+        for (const int col : slotColumns)
+            if (Value(itemGroupTable.records[r], col) == group) { out.push_back(r); break; }
+    return out;
+}
+
 } // namespace theseed::mapeditor::core::legacy

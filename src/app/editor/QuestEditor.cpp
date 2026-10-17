@@ -3,6 +3,8 @@
 
 #include "EditorShared.hpp"
 
+#include "mapeditor/core/legacy/QuestText.hpp"
+
 namespace nge {
 
 // Werkzeug-Inhalt für den aktuell aktiven Modus (siehe EditMode) - der Moduswechsel selbst
@@ -230,11 +232,15 @@ std::string QuestTextOf(EditorState& state, int textId) {
         state.questTextMapBuilt = true;
         state.questTextMapRevision = state.shnEditCounter;
         state.questTextMap.clear();
-        for (const auto& row : ShnDocFile(state, state.questDialogDoc).rows) {
+        state.questTextRow.clear();
+        const auto& rows = ShnDocFile(state, state.questDialogDoc).rows;
+        for (std::size_t r = 0; r < rows.size(); ++r) {
+            const auto& row = rows[r];
             if (row.values.size() < 2) continue;
             long long id = 0;
             if (!ShnValueAsInt(row.values[0], id)) continue;
             state.questTextMap.emplace(static_cast<int>(id), core::legacy::ShnValueToString(row.values[1]));
+            state.questTextRow.emplace(static_cast<int>(id), static_cast<int>(r));
         }
     }
     const auto it = state.questTextMap.find(textId);
@@ -710,7 +716,14 @@ void DrawQuestEditor(EditorState& state) {
     }
     auto& quests = state.questDataFile.records;
     auto saveQuestData = [&]() {
-        SaveQuestDataProject(state);
+        if (state.questDirty || !QuestDialogDirty(state)) {
+            if (!SaveQuestDataProject(state)) return;
+        }
+        if (QuestDialogDirty(state)) {
+            const std::string questStatus = state.questDirty ? std::string() : state.statusMessage;
+            SaveQuestDialogTexts(state);
+            if (!questStatus.empty()) state.statusMessage = questStatus + " · " + state.statusMessage;
+        }
     };
     auto reloadQuestData = [&]() {
         const auto sourcePath=std::filesystem::path(state.shnServerRoot)/"QuestData.shn";
@@ -726,6 +739,7 @@ void DrawQuestEditor(EditorState& state) {
         state.questDataFile=std::move(*loaded);
         state.questDirty=false;
         state.selectedQuestIdx=-1;
+        if (QuestDialogDirty(state)) ReloadShnDocument(state, state.questDialogDoc); // Textänderungen ebenfalls verwerfen
         state.dataHistory.Clear(); // Indizes im Verlauf gelten nach dem Verwerfen nicht mehr
         if (selectedId>=0) {
             for (std::size_t i=0;i<state.questDataFile.records.size();++i)
@@ -762,37 +776,61 @@ void DrawQuestEditor(EditorState& state) {
         copy.id=static_cast<std::uint16_t>(newId);
         copy.dataLen=0; // wird von SaveQuestData aus dem aktuellen Record neu berechnet
         TrackQuestEdits(state);
+        // Ausdrückliche Option: Texte kopieren und auf einen freien Text-ID-Block umstellen (sonst teilen
+        // sich Vorlage und Klon Titel, Beschreibung und SAY-Texte).
+        std::map<std::uint32_t,std::uint32_t> textRemap;
+        if (state.questCloneNewTexts && state.questDialogLoaded) {
+            QuestTextRow(state, 0); // Text-Index aufbauen
+            std::set<std::uint32_t> usedTextIds;
+            for (const auto& [textId,row] : state.questTextRow) usedTextIds.insert(static_cast<std::uint32_t>(textId));
+            textRemap=core::legacy::AssignNewQuestTextIds(copy, usedTextIds);
+        }
+        DataHistoryBegin(state, std::string(L("Quest geklont #","Quest cloned #"))+std::to_string(newId));
         quests.push_back(std::move(copy));
         state.selectedQuestIdx=static_cast<int>(quests.size()-1);
         state.questDirty=true;
         ++state.questRevision;
         state.questListKey.clear();
         RecordQuestInserted(state, state.selectedQuestIdx);
-        state.statusMessage=std::string(L("Quest geklont · neue ID #","Quest cloned · new ID #"))+
-                            std::to_string(newId)+
-                            L(". Text-/Reward-Referenzen wurden bewusst aus der Vorlage übernommen.",
-                              ". Text/reward references were intentionally copied from the template.");
+        if (!textRemap.empty()) CopyQuestTexts(state, textRemap);
+        DataHistoryCommit(state);
+        if (!textRemap.empty())
+            state.statusMessage=std::string(L("Quest geklont · neue ID #","Quest cloned · new ID #"))+std::to_string(newId)+
+                                L(" · ", " · ")+std::to_string(textRemap.size())+
+                                L(" Texte auf neue Text-IDs ab "," texts copied to new text IDs from ")+
+                                std::to_string(textRemap.begin()->second)+L(" kopiert. Reward-Referenzen aus der Vorlage übernommen.",
+                                                                            ". Reward references were copied from the template.");
+        else
+            state.statusMessage=std::string(L("Quest geklont · neue ID #","Quest cloned · new ID #"))+
+                                std::to_string(newId)+
+                                L(". Text-/Reward-Referenzen wurden bewusst aus der Vorlage übernommen.",
+                                  ". Text/reward references were intentionally copied from the template.");
     };
     const std::string questHeaderMeta = std::to_string(quests.size()) +
         L(" Quests"," quests") +
         (state.questDialogLoaded ? std::string{} : std::string(L(" · QuestDialog fehlt"," · QuestDialog missing")));
     DrawPanelHeader("questEditorHeader", "QUEST EDITOR", DrawIconBook,
                     "module.quest", questHeaderMeta.c_str());
-    if (state.questDirty) {
+    const bool questAnyDirty = state.questDirty || QuestDialogDirty(state);
+    if (questAnyDirty) {
         ImGui::SameLine();
-        ImGui::TextColored(ImVec4(1.0f,0.68f,0.25f,1.0f), "%s", L("* geändert","* modified"));
+        ImGui::TextColored(ImVec4(1.0f,0.68f,0.25f,1.0f), "%s",
+                           state.questDirty ? L("* geändert","* modified") : L("* Texte geändert","* texts modified"));
     }
     const float questSaveW = 190.0f;
     ImGui::SameLine(std::max(ImGui::GetCursorPosX() + 8.0f,
                              ImGui::GetWindowContentRegionMax().x - questSaveW));
-    if (UI::Button(state.questDirty ? L("QuestData speichern *","Save QuestData *")
-                                    : L("QuestData speichern","Save QuestData"),
+    if (UI::Button(questAnyDirty ? L("QuestData speichern *","Save QuestData *")
+                                 : L("QuestData speichern","Save QuestData"),
                    ImVec2(questSaveW,0))) {
         saveQuestData();
     }
-    if (ShortcutPressed(state.shortcutSave) && state.questDirty) saveQuestData();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+        ImGui::SetTooltip("%s", L("Speichert QuestData.shn (Client + Server) und geänderte Texte in QuestDialog.shn als Projekt-Override.",
+                                  "Saves QuestData.shn (client + server) and changed texts in QuestDialog.shn as project override."));
+    if (ShortcutPressed(state.shortcutSave) && questAnyDirty) saveQuestData();
     ImGui::SameLine();
-    ImGui::BeginDisabled(!state.questDirty);
+    ImGui::BeginDisabled(!questAnyDirty);
     if (UI::Button(L("Neu laden / verwerfen","Reload / discard"))) reloadQuestData();
     ImGui::EndDisabled();
     ImGui::SameLine();
@@ -804,6 +842,12 @@ void DrawQuestEditor(EditorState& state) {
         ImGui::SetTooltip("%s",L(
             "Erzeugt eine vollständige Kopie mit freier Quest-ID. Unbekannte Reward-/Raw-Felder bleiben bytegetreu aus der Vorlage erhalten.",
             "Creates a full copy with a free quest ID. Unknown reward/raw fields are preserved from the template."));
+    ImGui::SameLine();
+    UI::Checkbox(L("neue Text-IDs","new text IDs"), &state.questCloneNewTexts);
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+        ImGui::SetTooltip("%s",L(
+            "Beim Klonen Titel, Beschreibung und alle SAY-Texte in QuestDialog.shn kopieren und der neuen Quest einen freien Text-ID-Block geben. Aus: der Klon nutzt die Texte der Vorlage mit.",
+            "When cloning, copy title, description and all SAY texts in QuestDialog.shn and give the new quest a free block of text IDs. Off: the clone shares the template's texts."));
     ImGui::SameLine();
     ImGui::BeginDisabled(state.selectedQuestIdx < 0 ||
                          static_cast<std::size_t>(state.selectedQuestIdx) >= quests.size());
@@ -1031,16 +1075,13 @@ void DrawQuestEditor(EditorState& state) {
     if (UI::CollapsingHeader(L("Allgemein", "General"), ImGuiTreeNodeFlags_DefaultOpen) &&
         beginForm("##qGeneral")) {
         u16Row(L("Quest-ID", "Quest ID"), "##id", q.id);
+        // Text-ID in der Feldspalte, der Text selbst daneben direkt bearbeitbar (QuestDialog.shn).
         u32Row(L("Titel-Text-ID", "Title text ID"), "##title", q.title);
-        {
-            const std::string t = QuestTextOf(state, q.title);
-            infoText(t.empty() ? L("(kein Text)", "(no text)") : t, !t.empty());
-        }
+        ImGui::TableSetColumnIndex(2);
+        DrawQuestTextField(state, "questTitle", q.title, false);
         u32Row(L("Beschreibung-Text-ID", "Description text ID"), "##desc", q.description);
-        {
-            const std::string t = QuestTextOf(state, q.description);
-            infoText(t.empty() ? L("(kein Text)", "(no text)") : t, !t.empty());
-        }
+        ImGui::TableSetColumnIndex(2);
+        DrawQuestTextField(state, "questDescription", q.description, true);
         rowLabel(L("Start-NPC erforderlich","Starting NPC required"));
         { bool need = q.needNpc != 0; if (UI::Checkbox("##needNpc",&need)) { q.needNpc = need ? 1 : 0; markQuestChanged(); } }
         u16Row(L("Start-NPC (Mob-ID)", "Starting NPC (mob ID)"), "##startnpc", q.startingNpc);
@@ -1407,13 +1448,11 @@ void DrawQuestEditor(EditorState& state) {
         }
     }
 
+    if (state.automationQuestSection == 5) { ImGui::SetNextItemOpen(true); ImGui::SetScrollHereY(0.0f); state.automationQuestSection = 0; }
     if (UI::CollapsingHeader(L("Dialoge", "Dialogs"))) {
-        const std::string titleText = QuestTextOf(state, q.title);
-        const std::string descriptionText = QuestTextOf(state, q.description);
-        ImGui::TextDisabled("%s", L("Titel", "Title"));
-        ImGui::TextWrapped("%s", titleText.empty() ? L("(kein Text)", "(no text)") : titleText.c_str());
-        ImGui::TextDisabled("%s", L("Beschreibung", "Description"));
-        ImGui::TextWrapped("%s", descriptionText.empty() ? L("(kein Text)", "(no text)") : descriptionText.c_str());
+        ImGui::TextDisabled("%s", L("Alle Texte der Quest aus QuestDialog.shn - Titel, Beschreibung und jede SAY-Zeile der Skripte.",
+                                    "All texts of the quest from QuestDialog.shn - title, description and every SAY line of the scripts."));
+        DrawQuestTextList(state, q);
         ImGui::Separator();
         static char lookupBuf[16] = "";
         ImGui::SetNextItemWidth(120.0f);

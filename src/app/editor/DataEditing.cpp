@@ -510,6 +510,58 @@ bool DeleteShineRecordWithHistory(EditorState& state, const ShineTableAccess& ta
     return true;
 }
 
+bool ReplaceShineRecordWithHistory(EditorState& state, const ShineTableAccess& table, int index,
+                                   core::legacy::ShineRecord record, bool* dirty, const std::string& label) {
+    auto* t = table();
+    if (!t || index < 0 || static_cast<std::size_t>(index) >= t->records.size()) return false;
+    auto& current = t->records[static_cast<std::size_t>(index)];
+    record.sourceLine = current.sourceLine; // bleibt dieselbe Zeile der Datei
+    if (current.values == record.values) return false;
+    auto before = std::make_shared<core::legacy::ShineRecord>(current);
+    auto after = std::make_shared<core::legacy::ShineRecord>(std::move(record));
+    current = *after;
+    if (dirty) *dirty = true;
+    const auto apply = [table, index, dirty](const std::shared_ptr<core::legacy::ShineRecord>& rec) {
+        if (auto* tt = table(); tt && static_cast<std::size_t>(index) < tt->records.size()) {
+            tt->records[static_cast<std::size_t>(index)] = *rec;
+            if (dirty) *dirty = true;
+        }
+    };
+    state.dataHistory.Record({[apply, after]() { apply(after); }, [apply, before]() { apply(before); }}, label);
+    return true;
+}
+
+namespace {
+ImGuiID g_deferredInputId = 0;
+std::string g_deferredInputBuf;
+} // namespace
+bool DeferredInputText(const char* id, const std::string& current, std::string& result, float width, float multilineHeight) {
+    const ImGuiID widgetId = ImGui::GetID(id);
+    const bool editing = g_deferredInputId == widgetId;
+    const std::string& shown = editing ? g_deferredInputBuf : current;
+    std::vector<char> buf(shown.begin(), shown.end());
+    buf.resize(std::max<std::size_t>(buf.size() + 1024, 256), '\0');
+    if (multilineHeight > 0.0f) {
+        ImGui::InputTextMultiline(id, buf.data(), buf.size(), ImVec2(width, multilineHeight));
+    } else {
+        if (width != 0.0f) ImGui::SetNextItemWidth(width);
+        ImGui::InputText(id, buf.data(), buf.size());
+    }
+    const bool active = ImGui::IsItemActive();
+    const bool commit = ImGui::IsItemDeactivatedAfterEdit();
+    if (active) {
+        g_deferredInputId = widgetId;
+        g_deferredInputBuf = buf.data();
+    }
+    if (commit) {
+        g_deferredInputId = 0;
+        result = buf.data();
+        return result != current;
+    }
+    if (editing && !active) g_deferredInputId = 0;
+    return false;
+}
+
 // ---------------------------------------------------------------- Portale
 namespace {
 bool SameRows(const core::legacy::ShnFile& a, const core::legacy::ShnFile& b) {

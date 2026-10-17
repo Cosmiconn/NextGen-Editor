@@ -56,6 +56,56 @@ void Synthetic() {
     Check(cat.Check("Potion06") == DropSlotStatus::MissingGroup, "unbekannter Gruppenname erkannt");
     Check(cat.Check("-") == DropSlotStatus::Empty && cat.Check("0") == DropSlotStatus::Empty, "'-' und '0' sind leer");
     Check(cat.DisplayName("RingA") == "Ring of A" && cat.DisplayName("RedPotion") == "RedPotion", "Anzeigenamen");
+    Check(cat.ItemInfoDropGroupNames() == std::vector<std::string>{"Potion01"}, "DropGroup-Namen aus ItemInfoServer");
+    std::filesystem::remove(path);
+}
+
+// Bearbeiten einer Gruppe: CheckSum, neue Zeile, Verwendung in der Drop-Tabelle, Round-Trip.
+void Editing() {
+    const auto path = std::filesystem::temp_directory_path() / "nextgen_itemdropgroup_edit.txt";
+    const std::string original =
+        "; Kopf bleibt\r\n"
+        "#TABLE\tItemDropGroup\t;\r\n"
+        "#COLUMNTYPE\tIndex\tString[40]\tWord\tWord\tWord\tWord\tDWORD\t;\r\n"
+        "#COLUMNNAME\tItemGroupIdx\tItemID\tMinQtty\tMaxQtty\tUpgrade00\tUpgrade01\tCheckSum\t;\r\n"
+        "#RECORD\tShoes1\tShoes1\t1\t1\t1000\t0\t1002\t;\r\n"
+        "#RECORD\tGem\tGemA\t2\t5\t900\t100\t1007\t;\r\n";
+    { std::ofstream out(path, std::ios::binary); out << original; }
+    auto file = LoadShineTextFile(path);
+    auto* table = file ? file->FindTable("ItemDropGroup") : nullptr;
+    Check(table && table->records.size() == 2, "Bearbeiten: Datei geladen");
+    if (!table) return;
+    const auto cols = FindDropGroupColumns(*table);
+    Check(cols.Valid() && cols.upgrades.size() == 2 && cols.checksum == 6, "Spalten erkannt (inkl. Upgrade00/01, CheckSum)");
+    Check(DropGroupChecksum(cols, table->records[0]) == 1002 && DropGroupChecksum(cols, table->records[1]) == 1007,
+          "CheckSum = MinQtty + MaxQtty + Upgrades");
+    Check(DropGroupUpgradeSum(cols, table->records[1]) == 1000, "Upgrade-Summe 1000");
+
+    table->records[1].values[static_cast<std::size_t>(cols.maxQty)] = "9";
+    Check(UpdateDropGroupChecksum(cols, table->records[1]) && table->records[1].values[6] == "1011", "CheckSum nachgeführt");
+    table->records[1].values[static_cast<std::size_t>(cols.minQty)] = "x";
+    Check(!DropGroupChecksum(cols, table->records[1]).has_value(), "keine Zahl -> keine CheckSum");
+    table->records[1].values[static_cast<std::size_t>(cols.minQty)] = "2";
+
+    auto added = MakeDropGroupRecord(*table, "NewGroup", "RingA", 1, 3);
+    Check(added.values == std::vector<std::string>{"NewGroup", "RingA", "1", "3", "1000", "0", "1004"},
+          "neue Zeile: Upgrade00 = 1000, CheckSum passend");
+    table->records.push_back(added);
+    table->records.erase(table->records.begin()); // Shoes1 entfernen
+    Check(SaveShineTextFile(*file, path).has_value(), "gespeichert");
+    auto again = LoadShineTextFile(path);
+    const auto* t2 = again ? again->FindTable("ItemDropGroup") : nullptr;
+    Check(t2 && t2->records.size() == 2 && t2->records[0].values[0] == "Gem" && t2->records[0].values[6] == "1011" &&
+          t2->records[1].values[0] == "NewGroup" && t2->records[1].values[6] == "1004",
+          "Round-Trip: geändert, gelöscht, angehängt");
+
+    ShineTable drops;
+    drops.name = "ItemGroup";
+    for (const char* name : {"MobId", "DrItem1", "DrItem1R", "DrItem2"}) drops.columns.push_back({name, "STRING"});
+    drops.records.push_back({{"Slime", "Gem", "100", "-"}, 0});
+    drops.records.push_back({{"Wolf", "-", "Gem", "Other"}, 0});   // Gem nur in der Rate-Spalte
+    drops.records.push_back({{"Bat", "Other", "1", "Gem"}, 0});
+    Check(DropTableRecordsUsingGroup(drops, "Gem") == std::vector<std::size_t>{0, 2}, "Verwendung nur über DrItem-Slots");
     std::filesystem::remove(path);
 }
 
@@ -100,11 +150,23 @@ void RealData(const std::filesystem::path& root) {
           "NA2016: 24159 Slots lösen bis zu Items auf, 4850 nennen leere Gruppen (v. a. EventItem01-08, Choco01)");
     Check(cat.Check("EventItem01") == DropSlotStatus::GroupWithoutItems, "NA2016: EventItem01 ist eine leere Event-Gruppe");
     Check(!cat.ItemsForGroup("Shoes1").empty(), "NA2016: Gruppe Shoes1 hat Items (LeatherBoots u. a.)");
+
+    const auto* groupTable = groups->FindTable("ItemDropGroup");
+    const auto cols = FindDropGroupColumns(*groupTable);
+    std::size_t checksumOk = 0, upgradeThousand = 0;
+    for (const auto& r : groupTable->records) {
+        const auto expected = DropGroupChecksum(cols, r);
+        if (expected && std::to_string(*expected) == r.values[static_cast<std::size_t>(cols.checksum)]) ++checksumOk;
+        if (DropGroupUpgradeSum(cols, r) == 1000) ++upgradeThousand;
+    }
+    Check(cols.upgrades.size() == 16 && checksumOk == 970 && upgradeThousand == 970,
+          "NA2016: alle 970 Zeilen haben CheckSum = Mengen + Upgrades und Upgrade-Summe 1000");
 }
 } // namespace
 
 int main(int argc, char** argv) {
     Synthetic();
+    Editing();
     if (argc > 1 && argv[1][0] != '\0') RealData(argv[1]);
     else std::printf("         (ohne NA2016-Datenordner: nur synthetische Prüfungen)\n");
     if (g_failures) { std::fprintf(stderr, "%d Fehler\n", g_failures); return 1; }
