@@ -1,3 +1,33 @@
+## Interface — move and resize window elements
+- The **Windows** view in the interface tab now writes element positions and sizes back into the interface NIFs. Before, only textures could be changed.
+  - Drag an element to move it; drag the corner handles of the selected element to resize it. Values snap to whole pixels, and Esc cancels.
+  - Arrow keys move by 1 px, or 10 px with Shift.
+  - X, Y, width and height can be typed in on the right and applied with **Apply**.
+  - **Move elements at the same place along** (on by default) moves elements with exactly the same rectangle together, usually the three states of a button (normal, hovered, pressed).
+  - Every change is a project copy with one undo step; Ctrl+Z restores the previous file byte-identically.
+- New core module `core::NifPatch`:
+  - It is not a general NIF writer. `PatchNifPartRect` overwrites only the vertex floats and the bounding sphere of the element's own `NiTriShapeData` block.
+  - Gamebryo 10.x/20.0.0.4 has no block size or offset tables, so the file size and every other byte stay the same.
+  - World positions are mapped back through the inverse transform chain of the element.
+  - Before any bytes are returned, the result is reloaded strictly. The element must sit in the target rectangle, all other elements must be unchanged, and only the expected byte ranges may differ; otherwise nothing is written.
+  - Elements are refused when their geometry is shared, when they use NiTriStrips or skinning, or when the file only loads through recovery heuristics. The reason is shown in the panel.
+- `core::LoadNifByteLayout` records block offsets, NiAVObject transforms and NiTriShapeData vertex/bound offsets during the strict standard parse only. Normal loading is unchanged.
+- Window elements now show their names from the NIF, for example `CloseBtnNor`, `CloseBtnOver` and `CloseBtnClick`; before, only the index was shown.
+- New automation command `uilayoutmove <x> <y> <width> <height>` for the selected element.
+- Checked on all 310 NA2016 interface NIFs:
+  - all load strictly;
+  - 11,806 of 12,548 elements are movable (47 have shared geometry, the rest are NiTriStrips or skinned);
+  - every movable element moves by +7/−3 px and back;
+  - the recomputed bounding sphere matches the originals' convention in 11,803 cases (3 originals carry stale bounds).
+- In-app check: in `game/AttendWin.nif` the close button with all three states was moved and resized, and undo restores the file byte-identically.
+- Not verifiable here: whether the client derives click areas from the vertices the same way as the display. This needs a test in the game.
+- Tests: new `test_nif_patch` on the fixture `rou_ground_w02.nif`:
+  - move, scale, and move back;
+  - same file size, and only vertex/bound bytes changed;
+  - NiTriStrips elements refused;
+  - a truncated file is not patched.
+- Manual "Window layouts", tooltips, README and format status updated.
+
 ## New map wizard — choose your own loading image
 - New field **Loading image** in the new map wizard, below "MapInfo + MapViewInfo". It takes PNG, JPG, BMP, TGA or DDS, with a Browse button on Windows; size and format of the chosen file are shown under the field.
 - The image is converted to the size and format of every variant of the template's loading image. With template Rou that is PNG RGB 1024×768, TGA 16 bit 1024×768 and DDS DXT3 512×512, written as `resmenu/loading/<map>.*` in the project.

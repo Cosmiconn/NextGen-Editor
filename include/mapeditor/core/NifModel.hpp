@@ -656,6 +656,10 @@ struct NifMeshPart {
     // Index in NifModel::nodeAnimation.nodes, wenn ein Knoten der Kette per NiTransformController
     // animiert ist (-1 = statisch).
     std::int32_t animNode = -1;
+    // Herkunft in der Datei: Geometrie-Knoten (NiTriShape/NiTriStrips) und Datenblock
+    // (NiTriShapeData/NiTriStripsData) als Blockindex, -1 = unbekannt.
+    std::int32_t geometryBlock = -1;
+    std::int32_t dataBlock = -1;
 };
 
 // Scene-Graph-Knoten (z.B. Skelett-Knochen "Bip01 Head"). Neben der bisherigen
@@ -715,6 +719,35 @@ struct NifModel {
 // Disable recovery for deterministic corpus validation of the standard parser.
 std::expected<NifModel, std::string> LoadNifMesh(const std::filesystem::path& file,
                                               bool allowRecovery = true);
+
+// Byte-Lage der Felder, die sich ohne Umbau der Datei überschreiben lassen (alles Floats fester
+// Größe; Gamebryo 10.x/20.0.0.4 kennen keine Blockgrößen- oder Offset-Tabellen, die Dateigröße
+// bleibt also gleich). Grundlage für NifPatch (Fenster-Layouts verschieben/skalieren).
+struct NifBlockLayout {
+    std::string type;
+    std::size_t offset = 0;             // Blockanfang
+    // NiAVObject: Translation (3 Floats), direkt danach Rotation (9, zeilenweise) und Skalierung (1).
+    // 0 = kein NiAVObject.
+    std::size_t transformOffset = 0;
+    NifVec3 translation{};              // Dateirahmen (Z oben), wie gelesen
+    std::array<float, 9> rotation{1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f};
+    float scale = 1.0f;
+    std::vector<std::int32_t> children; // NiNode-artige Blöcke
+    std::int32_t parent = -1;
+    // NiTriShapeData: erster Vertex (x, y, z je Float, Dateirahmen) und Bounding-Sphere
+    // (Mittelpunkt xyz, Radius). 0 = kein solcher Block.
+    std::size_t vertexOffset = 0;
+    std::uint32_t vertexCount = 0;
+    std::size_t boundOffset = 0;
+};
+struct NifByteLayout {
+    std::uint32_t version = 0;
+    std::vector<NifBlockLayout> blocks;
+    NifModel model;                     // dasselbe Modell wie LoadNifMesh(file, false)
+};
+// Nur der strikte Standardpfad (ohne Wiederherstellungs-Heuristik): Dateien, die nur über
+// Heuristiken laden, liefern einen Fehler - an ihnen wird nichts geschrieben.
+std::expected<NifByteLayout, std::string> LoadNifByteLayout(const std::vector<std::uint8_t>& bytes);
 
 // Fiesta corpus compatibility: a few NIFs reference a texture that is absent as a standalone
 // file but is embedded in a sibling NIF in the same directory. Some of those authored paths

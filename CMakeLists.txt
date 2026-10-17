@@ -59,6 +59,7 @@ add_library(mapeditor_core
     src/core/ImageIO.cpp
     src/core/StbImpl.cpp
     src/core/NifModel.cpp
+    src/core/NifPatch.cpp
     src/core/KfmFile.cpp
     src/core/KfAnimation.cpp
     src/core/NifNodeAnimation.cpp
@@ -424,6 +425,12 @@ target_link_libraries(test_nif_model PRIVATE mapeditor_core)
 add_test(NAME nif_model COMMAND test_nif_model
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/tree05.nif
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/wagon2.nif
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/ship_post.nif)
+
+add_executable(test_nif_patch tests/test_nif_patch.cpp)
+target_link_libraries(test_nif_patch PRIVATE mapeditor_core)
+add_test(NAME nif_patch COMMAND test_nif_patch
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/rou_ground_w02.nif
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/ship_post.nif)
 
 add_executable(test_nif_named_shader_materials tests/test_nif_named_shader_materials.cpp)

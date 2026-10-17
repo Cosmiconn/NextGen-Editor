@@ -633,14 +633,20 @@ Mob portraits: resmenu/game/MobPortrait/<MobViewInfo.MobPortrait>.png; NPC faces
 - Rechts: die Texturen des Fensters mit 'Ersetzen...' und die Elementliste (Größe, Textur). Beim gewählten Element: Position, Größe, sein Ausschnitt in der Textur (Pixel) und 'Ausschnitt ersetzen...'.
 - 'Ausschnitt ersetzen...' ersetzt nur die Grafik dieses Elements in der gemeinsamen Textur (Quelle wird auf die Ausschnittgröße gestreckt). Bei TGA bleiben Kopf, Footer und alle übrigen Pixel byte-gleich, bei DDS alle anderen Blöcke. Dieselbe Textur nutzen oft mehrere Fenster (z. B. Maininterface.TGA) - die Änderung gilt dann überall.
 - Elemente an derselben Stelle (z. B. die Zustände eines Knopfs: normal, Maus darüber, gedrückt) liegen übereinander; das gewählte Element wird obenauf gezeichnet, die Elementliste wählt jedes einzeln.
-- Positionen und Größen der Elemente werden NICHT geschrieben: dafür gibt es noch keinen geprüften NIF-Writer. Geändert werden nur Texturen, als Projektkopie mit Strg+Z.)MAN",
+- Position und Größe: Element ziehen verschiebt es, die Eck-Griffe des gewählten Elements ändern die Größe (auf ganze Pixel gerundet, Esc bricht ab); Pfeiltasten verschieben um 1 Pixel, mit Umschalt um 10. Rechts stehen X, Y, Breite und Höhe zum Eintippen mit 'Übernehmen'. 'Elemente an derselben Stelle mitnehmen' bewegt Elemente mit genau demselben Rechteck mit - meist die Zustände eines Knopfs (normal, Maus darüber, gedrückt).
+- Geschrieben werden nur die Eckpunkte (Vertex-Floats) und die Bounding-Sphere des Datenblocks dieses Elements; Dateigröße und alle übrigen Bytes bleiben gleich. Vor dem Speichern wird die geänderte Datei streng neu geladen und geprüft (Element im Zielrechteck, alle anderen unverändert) - sonst wird nichts geschrieben. Ergebnis als Projektkopie, Strg+Z stellt die vorherige Datei bytegleich wieder her.
+- Nicht verschiebbar (Hinweis rechts): Elemente, deren Geometrie mit anderen geteilt ist (NA2016: 47), NiTriStrips- und geskinnte Elemente sowie Dateien, die nur über Wiederherstellungs-Heuristiken laden. NA2016: 11.806 von 12.548 Elementen in allen 310 Fenstern sind verschiebbar.
+- Ob der Client Klickflächen genauso aus den Eckpunkten bestimmt wie die Darstellung, ist im Spiel zu prüfen.)MAN",
      R"MAN(Interface tab, switch 'Windows'. The client's windows are NIF files below resmenu (NA2016: 310). Every element is a textured area in screen pixels; the view draws them on top of each other like the game.
 - List on the left: every interface NIF. In the middle the window; hovering shows the element, a click selects it. 'Show placeholders' makes untextured areas visible - the client draws there itself (text, item slots). 'Outlines' frames every element.
 - On the right: the window's textures with 'Replace...' and the element list (size, texture). For the selected element: position, size, its region in the texture (pixels) and 'Replace region...'.
 - 'Replace region...' replaces only this element's graphic in the shared texture (the source is stretched to the region size). For TGA the header, footer and all other pixels stay byte-identical, for DDS all other blocks. Several windows often share a texture (e.g. Maininterface.TGA) - the change then applies everywhere.
 - Elements at the same place (e.g. the states of a button: normal, hovered, pressed) lie on top of each other; the selected element is drawn on top, and the element list selects each one.
-- Element positions and sizes are NOT written: there is no verified NIF writer yet. Only textures change, as a project copy with Ctrl+Z.)MAN",
-     "fenster window layout nif interface element textur texture ausschnitt region maininterface"},
+- Position and size: dragging an element moves it, the corner handles of the selected element resize it (rounded to whole pixels, Esc cancels); arrow keys move by 1 pixel, with Shift by 10. On the right, X, Y, width and height can be typed in and applied with 'Apply'. 'Move elements at the same place along' also moves elements with exactly the same rectangle - usually the states of a button (normal, hovered, pressed).
+- Only the corner points (vertex floats) and the bounding sphere of this element's data block are written; file size and all other bytes stay the same. Before saving, the changed file is reloaded strictly and checked (element in the target rectangle, all others unchanged) - otherwise nothing is written. The result is a project copy; Ctrl+Z restores the previous file byte-identically.
+- Not movable (note on the right): elements whose geometry is shared with others (NA2016: 47), NiTriStrips and skinned elements, and files that only load through recovery heuristics. NA2016: 11,806 of 12,548 elements in all 310 windows are movable.
+- Whether the client derives click areas from the corner points the same way as the display has to be checked in the game.)MAN",
+     "fenster window layout nif interface element textur texture ausschnitt region maininterface verschieben move position groesse size"},
     {"creators.npcmob", "creators",
      "Custom NPC / Mob erstellen", "Creating a custom NPC / mob",
      R"MAN(Tab 'Custom NPC/Mob' im SHN-Editor. Der Assistent klont eine Vorlage in alle Tabellen (MobInfo, MobInfoServer, MobViewInfo, MobSpecies, QuestSpecies, MobWeapon) mit einer überall freien ID.
@@ -767,6 +773,9 @@ const TipRow kTips[] = {
     {"Ausschnitt ersetzen...", "Ersetzt nur die Grafik dieses Elements in der Textur; alle übrigen Pixel bleiben byte-gleich.", "Replaces only this element's graphic in the texture; all other pixels stay byte-identical."},
     {"Replace region...", "Ersetzt nur die Grafik dieses Elements in der Textur; alle übrigen Pixel bleiben byte-gleich.", "Replaces only this element's graphic in the texture; all other pixels stay byte-identical."},
     {"InputText:##layoutFilter", "Fenster-NIFs nach Namen filtern.", "Filter window NIFs by name."},
+    {"InputFloat:##layoutRect", "X, Y, Breite und Höhe des gewählten Elements in Bildschirmpixeln; mit 'Übernehmen' schreiben.", "X, Y, width and height of the selected element in screen pixels; write them with 'Apply'."},
+    {"Button:Übernehmen##layoutRect", "Verschiebt/skaliert das Element auf die eingegebenen Werte (Projektkopie, Strg+Z).", "Moves/resizes the element to the entered values (project copy, Ctrl+Z)."},
+    {"Elemente an derselben Stelle mitnehmen", "Elemente mit genau demselben Rechteck (Zustände eines Knopfs) wandern mit.", "Elements with exactly the same rectangle (states of a button) move along."},
     {"Icons", "Icon-Atlanten unter resmenu/Icon: Belegung, freie Zellen, Zelle ersetzen, neuer Atlas.", "Icon atlases below resmenu/Icon: usage, free cells, replace a cell, new atlas."},
     {"Porträts", "Mob-Porträts und NPC-Gesichter: Verwendung, fehlende Dateien, ersetzen, neu anlegen.", "Mob portraits and NPC faces: usage, missing files, replace, create."},
     {"Portraits", "Mob-Porträts und NPC-Gesichter: Verwendung, fehlende Dateien, ersetzen, neu anlegen.", "Mob portraits and NPC faces: usage, missing files, replace, create."},
@@ -1073,6 +1082,7 @@ const TipRow kTips[] = {
     {"InputText:##projname", "Name des Projekts.", "Name of the project."},
     {"InputText:##newmaplayer", "Name der ersten Texturschicht der neuen Karte.", "Name of the first texture layer of the new map."},
     {"InputText:##newmapname", "Name der neuen Karte.", "Name of the new map."},
+    {"InputText:##newmapdisplay", "Anzeigename der neuen Karte im Spiel (MapInfo.Name); leer = Kartenname.", "Display name of the new map in the game (MapInfo.Name); empty = map name."},
     {"InputText:##newmaploading", "Eigenes Ladebild der neuen Karte (PNG, JPG, BMP, TGA, DDS). Wird auf Größe und Format des Vorlagen-Ladebilds umgerechnet; leer = Kopie des Vorlagen-Ladebilds.", "Own loading image for the new map (PNG, JPG, BMP, TGA, DDS). Converted to the size and format of the template's loading image; empty = copy of the template's image."},
     {"InputText:##filter", "Filtert die Liste nach dem eingegebenen Text.", "Filters the list by the entered text."},
     {"InputText:##itemfilter", "Sucht Items nach Name oder Item-Bezeichnung (InxName).", "Searches items by name or item identifier (InxName)."},
