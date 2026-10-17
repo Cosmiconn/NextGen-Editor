@@ -215,13 +215,30 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         for (std::size_t i = 0; i < state.questDataFile.records.size(); ++i)
             if (state.questDataFile.records[i].id == id) state.selectedQuestIdx = static_cast<int>(i);
         std::string section; in >> section;
-        state.automationQuestSection = section == "drops" ? 1 : section == "rewards" ? 2 : section == "npcpick" ? 3 : section == "objectives" ? 4 : 0;
+        state.automationQuestSection = section == "drops" ? 1 : section == "rewards" ? 2 : section == "npcpick" ? 3 : section == "objectives" ? 4 : section == "dialogs" ? 5 : 0;
         state.questShowFlow = section == "flow";
         if (section == "npcpick") { // quest <id> npcpick [Filter]: öffnet die Start-NPC-Auswahl
             std::string filter; std::getline(in >> std::ws, filter);
             std::snprintf(state.questNpcFilter, sizeof(state.questNpcFilter), "%s", filter.c_str());
         }
     }
+    else if (cmd == "dropgroup") {
+        // dropgroup <Gruppe>: öffnet den Drop-Editor im Reiter Drop-Gruppen mit dieser Gruppe.
+        std::string group; in >> group;
+        state.shnSubTab = 10;
+        state.screen = AppScreen::ShnEditor;
+        state.dropEditorTabRequest = 1;
+        state.dropGroupSelected = group;
+    }
+    else if (cmd == "questtext") {
+        // questtext <Text-ID> <Text...>: setzt einen Quest-Text (wie das Eingabefeld, mit Undo).
+        std::uint32_t id = 0; in >> id;
+        std::string text; std::getline(in >> std::ws, text);
+        EnsureQuestDialogLoaded(state);
+        std::printf("[questtext] %u %s\n", id, SetQuestText(state, id, text) ? "ok" : "FEHLER");
+        std::fflush(stdout);
+    }
+    else if (cmd == "undo") DataUndo(state);
     else if (cmd == "autosave") {
         // autosave now | wait | restore | discard | minutes <n>: automatisches Speichern testen.
         std::string mode; in >> mode;

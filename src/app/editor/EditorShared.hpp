@@ -820,8 +820,13 @@ struct EditorState {
     // sichtbare Eintraege (Filter) - der alte Editor durchsuchte QuestDialog fuer JEDE Quest in JEDEM
     // Frame (CHANGELOG [0.44.29]).
     std::unordered_map<int, std::string> questTextMap;
+    std::unordered_map<int, int> questTextRow; // Text-ID -> Zeile in QuestDialog (mit questTextMap aufgebaut)
     bool questTextMapBuilt = false;
     std::uint64_t questTextMapRevision = 0; // shnEditCounter beim Aufbau (Änderungen in QuestDialog)
+    // Wie viele Quests eine Text-ID nutzen (Titel, Beschreibung, SAY) - Warnung bei geteilten Texten.
+    std::unordered_map<std::uint32_t, int> questTextUsage;
+    std::uint64_t questTextUsageRevision = ~std::uint64_t{0};
+    bool questCloneNewTexts = false; // Klonen: Texte kopieren und neue Text-IDs vergeben
     std::uint64_t itemLookupRevision = 0;   // shnEditCounter beim Aufbau der Item-Liste
     std::vector<std::string> questLabels;
     std::string questListKey;
@@ -1021,6 +1026,23 @@ struct EditorState {
     ShineRecordTracker dropTableTracker;
     int dropTableDeleteRecord = -1;
     bool dropTableDeleteOpen = false;
+    // Drop-Gruppen (World/ItemDropGroup.txt): eine Kopie im Speicher, die der Gruppen-Editor bearbeitet
+    // und aus der der Katalog für die Drop-Tabelle (dropGroups) aufgebaut wird.
+    int dropEditorTab = 0; // 0 Mob-Drop-Tabelle, 1 Drop-Gruppen
+    int dropEditorTabRequest = -1; // Tab programmgesteuert wechseln (z. B. "Gruppe öffnen")
+    core::legacy::ShineTextFile dropGroupFile;
+    bool dropGroupLoaded = false;
+    bool dropGroupDirty = false;
+    std::string dropGroupLoadError;
+    std::uint64_t dropGroupCatalogKey = ~std::uint64_t{0}; // Stand, aus dem der Katalog zuletzt aufgebaut wurde
+    std::uint64_t dropGroupEdits = 0;
+    std::string dropGroupSelected; // ItemGroupIdx
+    char dropGroupFilter[96] = "";
+    bool dropGroupProblemsOnly = false;
+    char dropGroupNewName[64] = "";
+    bool dropGroupDeleteOpen = false;
+    char itemPickerFilter[64] = "";
+    int dropGroupPickerRecord = -1; // Zeile, deren ItemID der Picker setzt
     char dropTableFilter[128] = "";
     bool dropTableOnlyActive = true;
     bool dropTableProblemsOnly = false;
@@ -1593,6 +1615,13 @@ int InsertShineRecordWithHistory(EditorState& state, const ShineTableAccess& tab
                                  core::legacy::ShineRecord record, bool* dirty, const std::string& label);
 bool DeleteShineRecordWithHistory(EditorState& state, const ShineTableAccess& table, int index,
                                   bool* dirty, const std::string& label);
+// Ersetzt einen Eintrag als Ganzes (ein Undo-Schritt); false, wenn sich nichts ändert.
+bool ReplaceShineRecordWithHistory(EditorState& state, const ShineTableAccess& table, int index,
+                                   core::legacy::ShineRecord record, bool* dirty, const std::string& label);
+// Eingabefeld, das erst beim Verlassen (oder Enter) übernimmt - ein Undo-Schritt statt einem je
+// Taste. true, wenn result einen neuen Wert enthält. multilineHeight > 0: mehrzeilig.
+bool DeferredInputText(const char* id, const std::string& current, std::string& result, float width,
+                       float multilineHeight = 0.0f);
 // Portal-Editor: Änderungen an TownPortal.shn und RecallCoord.txt (beide klein) als Ganzes aufzeichnen.
 void TrackPortalEdits(EditorState& state);
 void CopySelectedShnCell(EditorState& state);
@@ -1726,6 +1755,26 @@ void DrawQuestFlowView(EditorState& state,
                        std::size_t currentIndex);
 std::expected<bool, std::string> RegularFileState(const std::filesystem::path& path);
 bool SaveQuestDataProject(EditorState& state);
+// --- Quest-Texte in QuestDialog.shn (QuestTexts.cpp) ---
+// Zeile einer Text-ID in QuestDialog (-1: nicht vorhanden) und ihr Text ohne Platzhalter-Filter.
+int QuestTextRow(EditorState& state, std::uint32_t textId);
+std::string QuestTextRaw(EditorState& state, std::uint32_t textId);
+// Anzahl Quests, die die Text-ID als Titel, Beschreibung oder SAY nutzen.
+int QuestTextUseCount(EditorState& state, std::uint32_t textId);
+// Setzt den Text (legt die Zeile an, wenn die ID noch fehlt) - mit Undo.
+bool SetQuestText(EditorState& state, std::uint32_t textId, const std::string& text);
+// Legt eine neue Textzeile mit freier ID hinter der höchsten an; 0 bei Fehler.
+std::uint32_t CreateQuestText(EditorState& state, const std::string& text);
+// Kopiert die Texte der alten IDs auf die neuen (Klonen mit neuen Text-IDs) - mit Undo.
+void CopyQuestTexts(EditorState& state, const std::map<std::uint32_t, std::uint32_t>& remap);
+// Speichert QuestDialog.shn (Client und - wenn bytegleich - die Server-Kopie gekoppelt).
+bool SaveQuestDialogTexts(EditorState& state);
+bool QuestDialogDirty(const EditorState& state);
+// Eingabefeld für einen Quest-Text; true, wenn eine Änderung übernommen wurde.
+bool DrawQuestTextField(EditorState& state, const char* key, std::uint32_t textId, bool multiline);
+// Abschnitt "Dialoge": alle Texte der Quest (Titel, Beschreibung, SAY) bearbeitbar. Gibt true zurück,
+// wenn die Quest selbst geändert wurde (eigene Text-ID statt geteilter).
+bool DrawQuestTextList(EditorState& state, core::legacy::QuestRecord& quest);
 void EnsureQuestNpcCatalog(EditorState& state);
 const EditorState::QuestNpcEntry* FindQuestNpc(EditorState& state, int id);
 std::string QuestNpcPlacementText(const EditorState::QuestNpcEntry& e);
@@ -2346,6 +2395,16 @@ std::string ShineRecordValue(const core::legacy::ShineRecord& record, int column
 bool IsDropUnsignedInteger(const std::string& value);
 void EnsureDropTableLoaded(EditorState& state);
 void EnsureDropGroupCatalog(EditorState& state);
+// --- Drop-Gruppen (DropGroupEditor.cpp) ---
+void EnsureDropGroupFileLoaded(EditorState& state);
+// Baut die Gruppen im Katalog neu auf, wenn ItemDropGroup.txt seit dem letzten Aufbau geändert wurde.
+void SyncDropGroupCatalog(EditorState& state);
+bool SaveDropGroupFile(EditorState& state);
+void DrawDropGroupEditor(EditorState& state);
+// Item-Auswahl mit Icon, Anzeigename und InxName (Filter über beides); extraNames werden zusätzlich
+// angeboten (z. B. DropGroup-Namen). true, wenn gewählt wurde.
+bool DrawItemPickerPopup(EditorState& state, const char* popupId, std::string& chosen,
+                         const std::vector<std::string>* extraNames = nullptr, const char* extraLabel = nullptr);
 bool SaveDropTable(EditorState& state);
 bool EditDropTableValue(const char* id, std::string& value, float width = 0.0f);
 void DrawDropTableEditor(EditorState& state);

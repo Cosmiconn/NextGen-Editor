@@ -79,6 +79,7 @@ add_library(mapeditor_core
     src/core/legacy/ShineText.cpp
     src/core/legacy/QuestData.cpp
     src/core/legacy/ItemDropGroups.cpp
+    src/core/legacy/QuestText.cpp
     src/core/DataDependency.cpp
     src/core/ProjectOutput.cpp
     src/core/AvatarPreview.cpp
@@ -220,6 +221,8 @@ set(NEXTGEN_EDITOR_MODULES
     src/app/editor/MinimapTools.cpp
     src/app/editor/IconTools.cpp
     src/app/editor/DataEditing.cpp
+    src/app/editor/QuestTexts.cpp
+    src/app/editor/DropGroupEditor.cpp
 )
 
 add_executable(map_editor
@@ -337,6 +340,9 @@ target_link_libraries(test_item_drop_groups PRIVATE mapeditor_core)
 set(NEXTGEN_NA2016_DATA "" CACHE PATH "Folder with NA2016 Client/ and Shine/ for extra real-data tests")
 add_test(NAME item_drop_groups COMMAND test_item_drop_groups "${NEXTGEN_NA2016_DATA}")
 add_test(NAME quest_layout COMMAND test_quest_layout ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/data/QuestData.shn "${NEXTGEN_NA2016_DATA}")
+add_executable(test_quest_text tests/test_quest_text.cpp)
+target_link_libraries(test_quest_text PRIVATE mapeditor_core)
+add_test(NAME quest_text COMMAND test_quest_text ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/data/QuestData.shn)
 
 add_executable(test_data_dependency tests/test_data_dependency.cpp)
 target_link_libraries(test_data_dependency PRIVATE mapeditor_core)

@@ -480,22 +480,43 @@ The percentage editors change ALL rows of the column - check first, then save.)M
     {"shn.quest", "shn",
      "Quest-Editor", "Quest editor",
      R"MAN(Links die Liste (Titel oder Beschreibung, Suche nach ID oder Text), rechts die Details:
-- Quest-ID, Titel-Text-ID und Beschreibung-Text-ID (Texte aus QuestDialog.shn werden daneben aufgelöst), Mindest-/Maximal-Level, Start-NPC (Mob-ID), Aktiviert, Tägliche Quest, benötigtes Item, Vorgänger-Quest.
+- Quest-ID, Titel-Text-ID und Beschreibung-Text-ID; Titel und Beschreibung stehen daneben als Eingabefeld und lassen sich direkt ändern (QuestDialog.shn, übernommen beim Verlassen des Felds, Strg+Z macht es rückgängig). Mindest-/Maximal-Level, Start-NPC (Mob-ID), Aktiviert, Tägliche Quest, benötigtes Item, Vorgänger-Quest.
 - Start-NPC: 'Auswählen...' öffnet eine Liste aller NPCs aus MobInfo.shn mit ihrer Platzierung aus World/NPC.txt (Karte, Position, Rolle); Suche nach Name, InxName oder ID. Die Auswahl setzt die ID und schaltet 'Start-NPC erforderlich' ein. Steht der NPC auf keiner Karte, wird das rot angezeigt - die Quest kann dann im Spiel nicht angenommen werden.
 - Monster-/NPC-Ziele (5 Plätze, Art 'NPC aufsuchen' oder 'Monster besiegen'), Item-Ziele (10 Plätze): aktiv, ID, Anzahl; der Name wird aufgelöst (rot = nicht gefunden). 'Auswählen...' wählt auch hier aus der Liste; 'NPC aufsuchen' hat im Original Anzahl 0.
 - Drops (bis 10): Mob, Item, Menge, Rate, Min?/Max? (vermutlich Mindest-/Höchstanzahl, nicht belegt).
 - Skripte Start / Action / Finish: die Quest-Skriptsprache (SAY, IF, GOTO, ACCEPT, CREATE_ITEM ...). 'SAY-Text-ID nachschlagen' zeigt den Text zu einer ID.
+- Dialoge: alle Texte der Quest in einer Liste - Titel, Beschreibung und jede SAY-Zeile (mit Skript und Sprecher NPC/ME), jeweils bearbeitbar. Fehlt eine Text-ID in QuestDialog, wird die Zeile beim Bearbeiten angelegt. Nutzen mehrere Quests denselben Text (z. B. die Anfänger-Quest 1 und ihre Kopien 944-946), steht die Anzahl daneben; 'Eigene ID' kopiert den Text auf eine freie ID und stellt nur diese Quest um.
+- Klonen: 'Aus Auswahl klonen' übernimmt die Text-IDs der Vorlage (Klon und Vorlage teilen dann ihre Texte). Mit 'neue Text-IDs' werden alle Texte kopiert und die Quest bekommt einen freien Text-ID-Block hinter der höchsten belegten ID; Titel, Beschreibung und alle SAY-Verweise werden umgestellt.
 - Belohnungen (12 Einträge): Verwendung (fest/Auswahl), Typ (EXP, Geld, Item, Typ 4) und Wert bzw. Item-ID × Anzahl. Die Struktur ist an allen 2304 NA2016-Quests belegt; mit * markierte Bedeutungen sind aus den Wertebereichen abgeleitet.
-- 'QuestData.shn speichern'.)MAN",
+- 'QuestData speichern' schreibt QuestData.shn (Client und Server) und geänderte Texte in QuestDialog.shn; die bytegleiche Server-Kopie von QuestDialog wird mitgeschrieben.)MAN",
      R"MAN(On the left the list (title or description, search by ID or text), on the right the details:
-- Quest ID, title text ID and description text ID (texts from QuestDialog.shn are resolved next to them), minimum/maximum level, start NPC (mob ID), enabled, daily quest, required item, predecessor quest.
+- Quest ID, title text ID and description text ID; title and description are shown next to them as input fields and can be changed directly (QuestDialog.shn, applied when leaving the field, Ctrl+Z undoes it). Minimum/maximum level, start NPC (mob ID), enabled, daily quest, required item, predecessor quest.
 - Start NPC: 'Choose...' opens a list of all NPCs from MobInfo.shn with their placement from World/NPC.txt (map, position, role); search by name, InxName or ID. Choosing one sets the ID and turns on 'Starting NPC required'. An NPC that stands on no map is shown in red - the quest cannot be accepted in the game then.
 - Monster/NPC targets (5 slots, kind 'visit NPC' or 'defeat monster'), item targets (10 slots): active, ID, count; the name is resolved (red = not found). 'Choose...' picks from the list here too; 'visit NPC' has count 0 in the original.
 - Drops (up to 10): mob, item, amount, rate, Min?/Max? (probably minimum/maximum count, unproven).
 - Scripts Start / Action / Finish: the quest script language (SAY, IF, GOTO, ACCEPT, CREATE_ITEM ...). 'Look up SAY text ID' shows the text for an ID.
+- Dialogs: all texts of the quest in one list - title, description and every SAY line (with script and speaker NPC/ME), each editable. If a text ID is missing in QuestDialog, the row is created when you edit it. If several quests use the same text (e.g. beginner quest 1 and its copies 944-946), the count is shown; 'Own ID' copies the text to a free ID and switches only this quest to it.
+- Cloning: 'Clone selected' keeps the template's text IDs (clone and template then share their texts). With 'new text IDs' all texts are copied and the quest gets a free block of text IDs after the highest used ID; title, description and all SAY references are switched over.
 - Rewards (12 entries): usage (fixed/choice), type (EXP, money, item, type 4) and value or item ID × count. The structure is verified on all 2304 NA2016 quests; meanings marked with * are inferred from value ranges.
-- 'Save QuestData.shn'.)MAN",
-     "quest questdata skript say if goto belohnung reward drop exp start npc auswählen choose platzierung"},
+- 'Save QuestData' writes QuestData.shn (client and server) and changed texts in QuestDialog.shn; the byte-identical server copy of QuestDialog is written along.)MAN",
+     "quest questdata skript say if goto belohnung reward drop exp start npc auswählen choose platzierung text dialog questdialog klonen clone"},
+    {"shn.drops", "shn",
+     "Drop-Tabelle und Drop-Gruppen", "Drop table and drop groups",
+     R"MAN(Der Drops-Tab hat zwei Reiter.
+- Mob-Drops (World/ItemDropTable.txt): je Mob bis zu 45 Slots. Ein Slot nennt keine Items, sondern eine Drop-Gruppe; daneben stehen die Items, auf die sie auflöst. 'Öffnen' springt in den Gruppen-Editor. '+ Drop-Zeile' / 'Drop-Zeile löschen' mit Undo.
+- Drop-Gruppen (World/ItemDropGroup.txt): links alle Gruppen (Suche nach Gruppe, ItemID oder Item; 'Nur Probleme'), rechts die Zeilen der gewählten Gruppe. Jede Zeile nennt per ItemID entweder einen DropGroup-Namen aus ItemInfoServer (eine Menge von Items) oder direkt einen InxName; 'Wählen...' öffnet die Item-Auswahl mit Icons. Menge (Min-Max) und die Verbesserungsstufe (Promille je +0 bis +15, zusammen 1000) sind bearbeitbar.
+- CheckSum wird automatisch nachgeführt: MinQtty + MaxQtty + alle Upgrade-Werte (an allen 970 NA2016-Zeilen belegt).
+- '+ Gruppe' legt eine Gruppe an, '+ Zeile' eine weitere Zeile, 'x' löscht eine Zeile, 'Gruppe löschen' die ganze Gruppe (mit Hinweis, welche Mobs sie noch nennen). Umbenennen im Namensfeld ändert auch die DrItem-Slots der Mob-Drop-Tabelle - als ein Schritt.
+- 'Verwendet von' listet die Mobs, die die Gruppe droppen; ein Klick öffnet ihre Zeile in der Drop-Tabelle.
+- Beide Dateien werden getrennt gespeichert (Projekt-Override im Server-Ordner). Alles lässt sich mit Strg+Z rückgängig machen.)MAN",
+     R"MAN(The Drops tab has two sub-tabs.
+- Mob drops (World/ItemDropTable.txt): up to 45 slots per mob. A slot names a drop group, not items; the items it resolves to are shown next to it. 'Open' jumps to the group editor. '+ Drop row' / 'Delete drop row' with undo.
+- Drop groups (World/ItemDropGroup.txt): all groups on the left (search by group, ItemID or item; 'Problems only'), the rows of the selected group on the right. Each row names via ItemID either a DropGroup name from ItemInfoServer (a set of items) or an InxName directly; 'Pick...' opens the item picker with icons. Quantity (min-max) and the upgrade level (per mille for +0 to +15, 1000 in total) are editable.
+- CheckSum is kept up to date automatically: MinQtty + MaxQtty + all upgrade values (verified on all 970 NA2016 rows).
+- '+ Group' creates a group, '+ Row' another row, 'x' deletes a row, 'Delete group' the whole group (with a note which mobs still name it). Renaming in the name field also changes the DrItem slots of the mob drop table - as one step.
+- 'Used by' lists the mobs that drop the group; a click opens their row in the drop table.
+- Both files are saved separately (project override in the server folder). Everything can be undone with Ctrl+Z.)MAN",
+     "drop droptable itemdroptable itemdropgroup gruppe group checksum upgrade menge quantity mob item"},
     {"creators.npcmob", "creators",
      "Custom NPC / Mob erstellen", "Creating a custom NPC / mob",
      R"MAN(Tab 'Custom NPC/Mob' im SHN-Editor. Der Assistent klont eine Vorlage in alle Tabellen (MobInfo, MobInfoServer, MobViewInfo, MobSpecies, QuestSpecies, MobWeapon) mit einer überall freien ID.

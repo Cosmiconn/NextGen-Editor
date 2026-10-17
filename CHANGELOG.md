@@ -1,3 +1,20 @@
+## Data editors — quest texts and drop groups
+- **Quest texts are editable.** Title and description sit next to their text IDs as input fields; the new "Dialogs" list shows every text of the quest (title, description, each SAY line with script and speaker) and lets you change it. Changes go into the shared `QuestDialog.shn` document, are applied when leaving the field and can be undone with Ctrl+Z. A missing text ID gets its row when edited. Texts used by several quests show the count (quest 1 and its copies 944–946 share theirs); "Own ID" copies the text to a free ID for this quest only.
+- **Cloning with new text IDs** is an explicit option ("new text IDs" next to "Clone selected"): all texts are copied to a free block after the highest text ID, and title, description and every SAY reference are switched over — quest, texts and references in one undo step. Without the option the clone keeps sharing the template's texts, as before.
+- "Save QuestData" also writes changed texts; the byte-identical server copy `9Data/Shine/QuestDialog.shn` is saved along.
+- New core module `core::legacy::QuestText`: SAY references (`SAY <id> <NPC|ME>`, also the comma form `SAY 1502, NPC` found in quest 15), replacing IDs without touching the rest of the script, free text ID blocks. Checked on the 2304 quests of the fixture: 19924 SAY references, an identity mapping leaves every script byte-identical.
+- **Drop group editor** (Drops tab → "Drop groups", `World/ItemDropGroup.txt`):
+  - list of all groups with search and "Problems only";
+  - rows with ItemID (item picker with icons, also DropGroup names from ItemInfoServer), quantity, and the upgrade distribution (+0 to +15 in per mille);
+  - add and delete groups and rows; renaming a group also renames the DrItem slots in the mob drop table;
+  - "Used by" lists the mobs that drop the group, with a jump to their row.
+- `CheckSum` is recalculated on every change. Verified on all 970 NA2016 rows: MinQtty + MaxQtty + Upgrade00..15, with the upgrades adding up to 1000.
+- The mob drop table and the group editor share one copy of `ItemDropGroup.txt`, so slot checks follow group edits immediately. Each resolved slot has an "Open" link into the group editor.
+- New automation commands `quest <id> dialogs`, `questtext <id> <text>`, `dropgroup <name>`, `undo`.
+- Tests: `test_quest_text` (new), plus additions to `test_item_drop_groups` and `test_data_editors`.
+  - Quest texts: edit, create and clone with undo/redo; the save writes client and server.
+  - Drop groups: the catalog follows edits and undo, and the project override is written correctly.
+
 ## Data editors — delete and undo everywhere
 - One shared undo/redo history for all data editors (`core::DataHistory`): SHN grid, quest editor, skill editor, drop table, portals, creature wizard and NPC dialogs. Ctrl+Z / Ctrl+Y (also Ctrl+Shift+Z) work anywhere on the game data screen, and every editor has Undo/Redo buttons whose tooltip names the next step. One user action is one entry: a skill value written to client and server, creating a skill with all its rows, scaling a whole skill series, creating a creature.
 - Deleting is now possible:

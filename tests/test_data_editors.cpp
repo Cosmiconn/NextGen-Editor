@@ -11,7 +11,10 @@
 #include "../src/app/main.cpp"
 #undef main
 
+#include "mapeditor/core/legacy/QuestText.hpp"
+
 #include <cstdio>
+#include <fstream>
 
 using namespace theseed::mapeditor;
 
@@ -247,6 +250,142 @@ int main() {
         Check(DataUndo(st) && table.records.size() == 3 && table.records.front().values[1] == "MobA", "Undo stellt die gelöschte Zeile wieder her");
         Check(DataUndo(st) && table.records.size() == 2, "Undo entfernt die angelegte Zeile");
         Check(DataRedo(st) && table.records.size() == 3 && table.records[2].values[1] == "MobC", "Redo legt sie wieder an");
+    }
+
+    std::printf("\n== Quest-Texte in QuestDialog.shn: bearbeiten, anlegen, Klonen mit neuen Text-IDs ==\n");
+    {
+        core::legacy::ShnFile dialog;
+        dialog.encrypted = false;
+        dialog.columns = {UIntColumn("ID"), StringColumn("Dialog", 256)};
+        for (const auto& [id, text] : std::vector<std::pair<std::uint32_t, const char*>>{
+                 {200, "Baby Steps"}, {201, "Erste Schritte"}, {202, "Hallo [NAME]."}, {300, "Fremder Text"}}) {
+            core::legacy::ShnRow r;
+            r.values = {id, std::string(text)};
+            dialog.rows.push_back(std::move(r));
+        }
+        (void)core::legacy::SaveShnFile(dialog, ressystem / "QuestDialog.shn");
+        (void)core::legacy::SaveShnFile(dialog, shine / "QuestDialog.shn");
+        EnsureQuestDialogLoaded(st);
+        Check(st.questDialogLoaded && st.questDialogDoc >= 0, "QuestDialog.shn als gemeinsames Dokument geladen");
+
+        st.questDataFile.records.clear();
+        core::legacy::QuestRecord q1;
+        q1.id = 1; q1.title = 200; q1.description = 201;
+        q1.start.text = "SAY 202 NPC\nACCEPT\nEND";
+        core::legacy::QuestRecord q2 = q1;
+        q2.id = 2; q2.description = 0; q2.start.text = "END";
+        st.questDataFile.records = {q1, q2};
+        st.selectedQuestIdx = 0;
+        ++st.questRevision;
+        ResyncQuestTracking(st);
+        st.dataHistory.Clear();
+        Check(QuestTextUseCount(st, 200) == 2 && QuestTextUseCount(st, 202) == 1, "Nutzung: Titel 200 von zwei Quests, SAY 202 von einer");
+
+        Check(SetQuestText(st, 202, "Hallo, Abenteurer!") && QuestTextRaw(st, 202) == "Hallo, Abenteurer!", "SAY-Text geändert");
+        Check(DataUndo(st) && QuestTextRaw(st, 202) == "Hallo [NAME].", "Undo stellt den SAY-Text wieder her");
+        Check(SetQuestText(st, 250, "Neu") && QuestTextRow(st, 250) >= 0, "fehlende Text-ID: Zeile wird angelegt");
+        Check(DataUndo(st) && QuestTextRow(st, 250) < 0, "Undo entfernt die angelegte Textzeile");
+        Check(CreateQuestText(st, "Eigener Text") == 301 && QuestTextRaw(st, 301) == "Eigener Text", "neue Text-ID hinter der höchsten (301)");
+        Check(DataUndo(st) && QuestTextRow(st, 301) < 0, "Undo entfernt sie wieder");
+
+        // Klonen mit neuen Text-IDs: Kopie der Texte, Verweise umgestellt, ein Undo-Schritt.
+        core::legacy::QuestRecord clone = st.questDataFile.records[0];
+        clone.id = 3;
+        std::set<std::uint32_t> used;
+        for (const auto& [id, row] : st.questTextRow) used.insert(static_cast<std::uint32_t>(id));
+        const auto remap = core::legacy::AssignNewQuestTextIds(clone, used);
+        DataHistoryBegin(st, "Klonen");
+        st.questDataFile.records.push_back(clone);
+        RecordQuestInserted(st, 2);
+        CopyQuestTexts(st, remap);
+        DataHistoryCommit(st);
+        Check(remap.size() == 3 && clone.title == 301 && clone.description == 302 && clone.start.text == "SAY 303 NPC\nACCEPT\nEND",
+              "Klon verweist auf neue Text-IDs 301-303");
+        Check(QuestTextRaw(st, 301) == "Baby Steps" && QuestTextRaw(st, 303) == "Hallo [NAME].", "Texte der Vorlage kopiert");
+        Check(st.dataHistory.UndoCount() == 1 && DataUndo(st) && st.questDataFile.records.size() == 2 && QuestTextRow(st, 301) < 0,
+              "ein Undo nimmt Quest und Texte zurück");
+        Check(DataRedo(st) && QuestTextRaw(st, 302) == "Erste Schritte", "Redo stellt beides wieder her");
+
+        Check(SetQuestText(st, 200, "Kleine Schritte") && QuestDialogDirty(st), "Titeltext geändert, Dokument geändert");
+        Check(SaveQuestDialogTexts(st), "QuestDialog gespeichert (" + st.statusMessage + ")");
+        const auto savedClient = core::legacy::LoadShnFile(base / "Project" / "Client" / "ressystem" / "QuestDialog.shn");
+        Check(savedClient && RowOf(*savedClient, "300") >= 0 && savedClient->rows.size() == 7,
+              "Client-Kopie im Projekt mit den neuen Zeilen");
+        std::filesystem::path serverCopy;
+        for (const auto& e : std::filesystem::recursive_directory_iterator(base / "Project" / "Server"))
+            if (e.path().filename() == "QuestDialog.shn") serverCopy = e.path();
+        const auto savedServer = serverCopy.empty() ? std::expected<core::legacy::ShnFile, std::string>(std::unexpected("fehlt"))
+                                                    : core::legacy::LoadShnFile(serverCopy);
+        Check(savedServer && savedServer->rows.size() == 7 &&
+              core::legacy::ShnValueToString(savedServer->rows[static_cast<std::size_t>(RowOf(*savedServer, "200"))].values[1]) == "Kleine Schritte",
+              "bytegleiche Server-Kopie gekoppelt mitgespeichert");
+    }
+
+    std::printf("\n== Drop-Gruppen: Katalog folgt den Änderungen, Undo, Speichern ==\n");
+    {
+        std::filesystem::create_directories(shine / "World");
+        {
+            std::ofstream out(shine / "World" / "ItemDropGroup.txt", std::ios::binary);
+            out << "#TABLE\tItemDropGroup\t;\r\n"
+                   "#COLUMNTYPE\tIndex\tString[40]\tWord\tWord\tWord\tWord\tDWORD\t;\r\n"
+                   "#COLUMNNAME\tItemGroupIdx\tItemID\tMinQtty\tMaxQtty\tUpgrade00\tUpgrade01\tCheckSum\t;\r\n"
+                   "#RECORD\tGem\tSword01\t1\t1\t1000\t0\t1002\t;\r\n"
+                   "#RECORD\tEvent01\tNoSuchItem\t1\t1\t1000\t0\t1002\t;\r\n";
+        }
+        {
+            std::ofstream out(shine / "World" / "ItemDropTable.txt", std::ios::binary);
+            std::string types = "#COLUMNTYPE\tString[32]\tString[32]", names = "#COLUMNNAME\tMapArea\tMobId";
+            std::string rowA = "#RECORD\t-\tSlime", rowB = "#RECORD\t-\tWolf";
+            for (int i = 1; i <= 210; ++i) {
+                types += "\tString[32]";
+                names += "\tDrItem" + std::to_string(i);
+                rowA += i == 1 ? "\tGem" : "\t-";
+                rowB += i == 7 ? "\tGem" : "\t-";
+            }
+            out << "#TABLE\tItemGroup\r\n" << types << "\r\n" << names << "\r\n" << rowA << "\r\n" << rowB << "\r\n";
+        }
+        st.dataHistory.Clear();
+        EnsureDropGroupCatalog(st);
+        Check(st.dropGroupLoaded && st.dropGroups.HasGroups(), "ItemDropGroup.txt geladen, Katalog aufgebaut");
+        Check(st.dropGroups.Check("Gem") == core::legacy::DropSlotStatus::Resolved &&
+              st.dropGroups.Check("Event01") == core::legacy::DropSlotStatus::GroupWithoutItems, "Gem löst auf, Event01 ohne Item");
+
+        auto* t = st.dropGroupFile.FindTable("ItemDropGroup");
+        const ShineTableAccess access = [&st]() { return st.dropGroupFile.FindTable("ItemDropGroup"); };
+        const auto cols = core::legacy::FindDropGroupColumns(*t);
+        auto edited = t->records[1];
+        edited.values[static_cast<std::size_t>(cols.item)] = "Sword03";
+        edited.values[static_cast<std::size_t>(cols.maxQty)] = "4";
+        core::legacy::UpdateDropGroupChecksum(cols, edited);
+        Check(ReplaceShineRecordWithHistory(st, access, 1, edited, &st.dropGroupDirty, "Event01") && st.dropGroupDirty,
+              "Gruppenzeile ersetzt");
+        SyncDropGroupCatalog(st);
+        Check(st.dropGroups.Check("Event01") == core::legacy::DropSlotStatus::Resolved, "Katalog sieht die neue ItemID sofort");
+        Check(DataUndo(st), "Undo");
+        SyncDropGroupCatalog(st);
+        Check(st.dropGroups.Check("Event01") == core::legacy::DropSlotStatus::GroupWithoutItems &&
+              st.dropGroupFile.FindTable("ItemDropGroup")->records[1].values[6] == "1002", "Undo stellt Zeile und Katalog wieder her");
+        Check(DataRedo(st) && st.dropGroupFile.FindTable("ItemDropGroup")->records[1].values[6] == "1005", "Redo mit nachgeführter CheckSum");
+
+        Check(InsertShineRecordWithHistory(st, access, 2, core::legacy::MakeDropGroupRecord(*access(), "Neu01", "Sword01", 2, 3),
+                                           &st.dropGroupDirty, "neu") == 2, "neue Gruppe angelegt");
+        SyncDropGroupCatalog(st);
+        Check(st.dropGroups.Check("Neu01") == core::legacy::DropSlotStatus::Resolved, "neue Gruppe im Katalog");
+
+        EnsureDropTableLoaded(st);
+        const auto* dropTable = st.dropTableFile.FindTable("ItemGroup");
+        Check(dropTable && core::legacy::DropTableRecordsUsingGroup(*dropTable, "Gem") == std::vector<std::size_t>{0, 1},
+              "Gem wird von Slime (DrItem1) und Wolf (DrItem7) genutzt");
+
+        Check(SaveDropGroupFile(st) && !st.dropGroupDirty, "Drop-Gruppen gespeichert (" + st.statusMessage + ")");
+        std::filesystem::path savedPath;
+        for (const auto& e : std::filesystem::recursive_directory_iterator(base / "Project" / "Server"))
+            if (e.path().filename() == "ItemDropGroup.txt") savedPath = e.path();
+        const auto saved = savedPath.empty() ? std::expected<core::legacy::ShineTextFile, std::string>(std::unexpected("fehlt"))
+                                             : core::legacy::LoadShineTextFile(savedPath);
+        const auto* st2 = saved ? saved->FindTable("ItemDropGroup") : nullptr;
+        Check(st2 && st2->records.size() == 3 && st2->records[1].values[1] == "Sword03" && st2->records[2].values[0] == "Neu01" &&
+              st2->records[2].values[6] == "1005", "Projekt-Override enthält Änderung und neue Gruppe (CheckSum 2+3+1000)");
     }
 
     std::filesystem::remove_all(base, ec);

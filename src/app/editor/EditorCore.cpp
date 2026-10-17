@@ -885,6 +885,12 @@ void SyncProjectRoots(EditorState& state) {
     state.dropGroups = core::legacy::DropGroupCatalog{};
     state.dropGroupsTried = false;
     state.dropGroupsStatus.clear();
+    state.dropGroupFile = core::legacy::ShineTextFile{};
+    state.dropGroupLoaded = false;
+    state.dropGroupDirty = false;
+    state.dropGroupLoadError.clear();
+    state.dropGroupCatalogKey = ~std::uint64_t{0};
+    state.dropGroupSelected.clear();
 }
 
 } // namespace nge
