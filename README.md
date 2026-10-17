@@ -8,6 +8,15 @@ Der Emulator ist ein separates Projekt und wurde in diesem Editor-Release nicht 
 [v13: NIF- und Fiesta-Gesamtprüfung](docs/V13_VALIDATION.md) ·
 [v12-Referenzstand](docs/V12_VALIDATION.md)
 
+## Fertige Version herunterladen
+
+Jeder Stand von `main` wird automatisch gebaut und unter **Releases → Nightly** als
+`NextGen-Editor-windows-nightly.zip` veröffentlicht (fester Link:
+`https://github.com/Cosmiconn/NextGen-Editor/releases/download/nightly/NextGen-Editor-windows-nightly.zip`).
+Ein Tag `v*` erzeugt zusätzlich eine nummerierte Version. Die ZIP enthält `Editor.exe` mit
+eingebauter VC++-Laufzeit, die Prüfwerkzeuge, `LIESMICH.txt`, CHANGELOG und `docs/`. Entpacken und
+`Editor.exe` starten; die Build-Kennung steht im Fenstertitel.
+
 ## Bauen
 
 GUI-freier Kern und Prüfwerkzeuge, ohne externe Bibliotheken:

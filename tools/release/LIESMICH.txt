@@ -1,0 +1,33 @@
+NextGen-Editor – Fiesta Online Karten- und Daten-Editor
+=====================================================
+
+Starten
+-------
+1. ZIP-Datei vollständig in einen eigenen Ordner entpacken (nicht direkt aus der ZIP starten).
+2. Editor.exe doppelklicken. Es wird keine zusätzliche Installation benötigt
+   (die Visual-C++-Laufzeit ist in die EXE eingebaut).
+3. Im Startbildschirm ein Projekt anlegen und den Client-Ordner (mit resmap/ressystem/resmenu)
+   sowie optional den Server-Ordner (9Data/Shine) auswählen.
+
+Wichtig: Der Editor verändert die Originaldateien nicht. Alle Änderungen landen im
+Projektordner (Unterordner Client/ und Server/) und werden von dort ins Spiel kopiert.
+
+Wo liegt was?
+-------------
+- Einstellungen und zuletzt geöffnete Projekte: %APPDATA%\NextGen-Editor
+- Automatische Sicherung der offenen Karte: <Projektordner>\Autosave
+- Handbuch: im Editor über Hilfe (F1); jedes Bedienelement hat einen Tooltip.
+- Änderungen je Version: CHANGELOG.md; technische Details: docs\
+
+Enthaltene Werkzeuge
+--------------------
+- Editor.exe                 der Editor
+- fiesta_audit.exe           prüft einen entpackten Client/Server auf lesbare Dateien
+- nif_material_inventory.exe, nif_visual_matrix.exe, test_nif_opengl.exe,
+  nif_probe.exe, nif_benchmark.exe, *.ps1   Prüfwerkzeuge für NIF-Modelle
+
+Version
+-------
+Die genaue Version steht im Fenstertitel (Datum und Commit bzw. Versionsnummer).
+Neue Versionen: GitHub-Seite des Projekts -> Releases -> "nightly" (immer der neueste Stand)
+oder die neueste nummerierte Version.

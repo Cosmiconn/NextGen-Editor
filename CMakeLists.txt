@@ -37,6 +37,14 @@ if (MSVC)
     add_compile_options(/utf-8)
 endif()
 
+# Release-Pakete (CI) laufen ohne installierte VC++-Laufzeit: statische CRT, passend zum
+# vcpkg-Triplet x64-windows-static. Lokale Builds bleiben beim dynamischen Standard, weil das
+# Standard-Triplet x64-windows dynamisch linkt und gemischte Laufzeiten nicht binden.
+option(NEXTGEN_EDITOR_STATIC_RUNTIME "Link the MSVC runtime statically (use with x64-windows-static)" OFF)
+if (MSVC AND NEXTGEN_EDITOR_STATIC_RUNTIME)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
 # -----------------------------------------------------------------------------
 # Core-Bibliothek: bewusst frei von GUI-/GL-Abhängigkeiten. Wird von der App und
 # von den Tests genutzt - Tests laufen dadurch auch headless (CI-fähig).
@@ -227,6 +235,9 @@ if (WIN32)
     target_sources(map_editor PRIVATE src/app/resources/nextgen.rc)
 endif()
 target_include_directories(map_editor PRIVATE src/app)
+# Build-Kennung für den Fenstertitel; die CI setzt Datum und Commit (z. B. "2026-10-16 a50a8a0").
+set(NEXTGEN_EDITOR_BUILD_ID "dev" CACHE STRING "Build identifier shown in the window title")
+target_compile_definitions(map_editor PRIVATE NEXTGEN_EDITOR_BUILD_ID="${NEXTGEN_EDITOR_BUILD_ID}")
 
 # Ship the approved runtime UI assets next to Editor.exe. The directory is allowed to
 # contain only the currently migrated subset; missing icons keep their DrawList fallback.

@@ -531,9 +531,21 @@ jobs:
       - name: Smoke-test ResMap visual runner logic
         shell: pwsh
         run: ./tests/test_resmap_visual_runner.ps1
-      - name: Configure full GUI using Windows defaults
+      - name: Configure full GUI (static runtime, build id in the window title)
         shell: pwsh
-        run: cmake -S . -B build
+        run: |
+          $sha = '${{ github.sha }}'.Substring(0, 7)
+          if ('${{ github.ref_type }}' -eq 'tag') {
+            $buildId = '${{ github.ref_name }}'
+          } else {
+            $buildId = "$(Get-Date -Format yyyy-MM-dd) $sha"
+            if ('${{ github.ref_name }}' -ne 'main') { $buildId = "$buildId ${{ github.head_ref || github.ref_name }}" }
+          }
+          Write-Host "Build id: $buildId"
+          cmake -S . -B build `
+            -DVCPKG_TARGET_TRIPLET=x64-windows-static `
+            -DNEXTGEN_EDITOR_STATIC_RUNTIME=ON `
+            "-DNEXTGEN_EDITOR_BUILD_ID=$buildId"
       - run: cmake --build build --config Release --parallel 2
       - name: Audit NIF material renderer coverage
         if: runner.os == 'Linux'
@@ -579,6 +591,22 @@ jobs:
             throw 'Runtime UI assets were not copied next to Editor.exe.'
           }
           Copy-Item docs/third-party artifact/licenses -Recurse
+          Copy-Item tools/release/LIESMICH.txt,README.md,CHANGELOG.md artifact/
+          Copy-Item docs artifact/docs -Recurse
+          Remove-Item artifact/docs/third-party -Recurse -ErrorAction SilentlyContinue
+
+          # Die EXE muss ohne installierte VC++-Laufzeit starten (statische CRT, statisches vcpkg-Triplet).
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $dumpbin = & $vswhere -latest -products * -find 'VC\Tools\MSVC\**\bin\Hostx64\x64\dumpbin.exe' | Select-Object -First 1
+          if (-not $dumpbin) { throw 'dumpbin.exe not found; cannot verify runtime dependencies.' }
+          $deps = & $dumpbin /nologo /dependents artifact/Editor.exe | Out-String
+          Write-Host $deps
+          if ($deps -match '(?i)vcruntime|msvcp|ucrtbase|api-ms-win-crt') {
+            throw 'Editor.exe still depends on the dynamic MSVC runtime.'
+          }
+          foreach ($required in @('LIESMICH.txt', 'CHANGELOG.md', 'README.md', 'docs/RENDERER.md')) {
+            if (-not (Test-Path "artifact/$required" -PathType Leaf)) { throw "$required is missing from the package." }
+          }
 
           if (-not (Test-Path artifact/Editor.exe -PathType Leaf)) {
             throw 'Editor.exe is missing from the packaged artifact.'
@@ -605,3 +633,52 @@ jobs:
           name: NextGen-Editor-windows
           path: artifact/
           if-no-files-found: error
+
+  # Fertiges Windows-Paket als GitHub-Release: "nightly" für jeden Stand von main, eine
+  # nummerierte Version für jeden Tag v*. Eigener Job mit Schreibrecht, damit Pull-Request-Läufe
+  # nie ein Token mit Schreibrecht sehen; eigene Concurrency-Gruppe, damit ein laufender
+  # Upload nicht abgebrochen wird.
+  release:
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    needs: [core, windows-gui]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    concurrency:
+      group: release-${{ github.ref_name }}
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Download the Windows package of this run
+        run: gh run download ${{ github.run_id }} -n NextGen-Editor-windows -D package
+      - name: Zip and publish the release
+        run: |
+          set -euo pipefail
+          test -f package/Editor.exe
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG="${{ github.ref_name }}"
+            ZIP="NextGen-Editor-windows-${TAG}.zip"
+          else
+            TAG="nightly"
+            ZIP="NextGen-Editor-windows-nightly.zip"
+          fi
+          (cd package && zip -qr "../${ZIP}" .)
+          SHA7="$(git rev-parse --short=7 HEAD)"
+          # Release-Notizen: oberster Abschnitt des CHANGELOG (bis zur nächsten "## "-Überschrift).
+          awk 'BEGIN{n=0} /^## /{n++; if(n==2) exit} {print}' CHANGELOG.md > notes.md
+          if [ "$TAG" = "nightly" ]; then
+            { echo "Automatischer Stand von main: $(date -u +%Y-%m-%d), Commit ${SHA7}."
+              echo
+              echo "Herunterladen: ${ZIP} entpacken und Editor.exe starten (siehe LIESMICH.txt)."
+              echo
+              cat notes.md; } > release-notes.md
+            gh release delete nightly --cleanup-tag -y || true
+            gh release create nightly "${ZIP}" --prerelease --target "${GITHUB_SHA}" \
+              --title "Nightly ($(date -u +%Y-%m-%d), ${SHA7})" --notes-file release-notes.md
+          else
+            gh release create "${TAG}" "${ZIP}" --title "NextGen-Editor ${TAG}" --notes-file notes.md
+          fi
