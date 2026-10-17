@@ -307,6 +307,13 @@ void HandleGlobalShortcuts(EditorState& state) {
     }
 
     if (state.playtestActive && state.screen != AppScreen::MapEditorWorkspace) StopPlaytest(state);
+    // Daten-Editoren (SHN, Quest, Skill, Drops ...): ein gemeinsamer Verlauf für Strg+Z/Strg+Y.
+    if (!io.WantTextInput && state.screen == AppScreen::ShnEditor &&
+        !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId)) {
+        if (io.KeyCtrl && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z, false)) DataUndo(state);
+        else if (io.KeyCtrl && (ImGui::IsKeyPressed(ImGuiKey_Y, false) ||
+                                (io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z, false)))) DataRedo(state);
+    }
     if (io.WantTextInput || state.screen != AppScreen::MapEditorWorkspace) return;
 
     // Spieltest: Esc oder Alt+P beendet; währenddessen keine Editor-Kürzel.

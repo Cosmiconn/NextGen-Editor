@@ -389,51 +389,8 @@ std::expected<void, std::string> ValidateShnPatch(EditorState::ShnDocument& doc)
 
     auto baseline = core::legacy::LoadShnFile(doc.file.path);
     if (!baseline) return std::unexpected("SHN-Baseline konnte nicht geladen werden: " + baseline.error());
-
-    if (baseline->version != doc.file.version ||
-        baseline->defaultRecordLength != doc.file.defaultRecordLength ||
-        baseline->encrypted != doc.file.encrypted ||
-        baseline->cryptoHeader != doc.file.cryptoHeader ||
-        baseline->columns.size() != doc.file.columns.size()) {
-        return std::unexpected("SHN-Struktur wurde ausserhalb einer erlaubten Zell-/Zeilenaenderung veraendert.");
-    }
-    for (std::size_t ci = 0; ci < baseline->columns.size(); ++ci) {
-        const auto& a = baseline->columns[ci];
-        const auto& b = doc.file.columns[ci];
-        if (a.name != b.name || a.type != b.type || a.length != b.length ||
-            a.kind != b.kind || a.synthesizedName != b.synthesizedName) {
-            return std::unexpected("SHN-Spaltenschema wurde veraendert: " + b.name);
-        }
-    }
-    if (doc.file.rows.size() < baseline->rows.size())
-        return std::unexpected("SHN-Zeilen wurden geloescht/umgeordnet; dieser Save-Pfad erlaubt nur Zell-Patches und angehaengte neue Zeilen.");
-
-    for (std::size_t ri = 0; ri < baseline->rows.size(); ++ri) {
-        if (doc.file.rows[ri].values.size() != baseline->rows[ri].values.size())
-            return std::unexpected("SHN-Zellenstruktur wurde in Zeile " + std::to_string(ri) + " veraendert.");
-        for (std::size_t ci = 0; ci < baseline->rows[ri].values.size(); ++ci) {
-            if (doc.file.rows[ri].values[ci] == baseline->rows[ri].values[ci]) continue;
-            const bool marked = ri < doc.cellDirty.size() &&
-                ci < doc.cellDirty[ri].size() && doc.cellDirty[ri][ci] != 0;
-            if (!marked) {
-                return std::unexpected(
-                    "SHN-Sicherheitscheck: nicht markierte Zelle wurde veraendert (Zeile " +
-                    std::to_string(ri) + ", Spalte " + std::to_string(ci) + ").");
-            }
-        }
-    }
-
-    // New records are allowed only as an append operation. This keeps every existing
-    // record in its original logical position and prevents hidden table rebuilds.
-    for (std::size_t ri = baseline->rows.size(); ri < doc.file.rows.size(); ++ri) {
-        const bool markedNew = ri < doc.cellDirty.size() &&
-            doc.cellDirty[ri].size() == doc.file.columns.size() &&
-            std::all_of(doc.cellDirty[ri].begin(), doc.cellDirty[ri].end(),
-                        [](std::uint8_t value) { return value != 0; });
-        if (!markedNew)
-            return std::unexpected("Neue SHN-Zeile ist nicht vollstaendig als explizite Aenderung markiert.");
-    }
-    return {};
+    // Zell-Patches, angehängte und gelöschte Zeilen; die Zuordnung zur Platte über rowOrigin.
+    return core::legacy::CheckShnPatch(*baseline, doc.file, doc.cellDirty, doc.rowOrigin);
 }
 std::vector<char> ReadFileBytes(const std::filesystem::path& path) {
     std::ifstream in(path, std::ios::binary);
@@ -484,6 +441,7 @@ bool SaveShnDocument(EditorState& state,int document) {
     if (result) {
         doc.file.path=target;
         doc.dirty=false;
+        doc.rowOrigin.clear(); // gespeicherter Stand ist die neue Grundlage
         ClearShnDirtyCells(doc);
         ++state.shnEditCounter;
         state.shnStatus=std::string(ShnSourceName(doc.source))+" Projekt-Override gespeichert: "+target.string();
@@ -495,7 +453,10 @@ bool SaveShnDocument(EditorState& state,int document) {
                 if (auto mirrored = core::legacy::SaveShnFile(doc.file, otherTarget)) {
                     other.file = doc.file;
                     other.file.path = otherTarget;
-                    ClearShnDirtyCells(other);
+                    other.rowOrigin.clear();
+                    other.cellStatus.clear();
+                    other.cellDirty.clear();
+                    EnsureCellStatusSize(other);
                     state.shnStatus += " · " + std::string(ShnSourceName(other.source)) + "-Kopie gekoppelt mitgespeichert";
                 } else {
                     state.shnStatus += " · " + std::string(ShnSourceName(other.source)) + "-Kopie FEHLER: " + mirrored.error();
@@ -540,9 +501,10 @@ bool ReloadShnDocument(EditorState& state,int document) {
     doc.dirty=false;
     doc.cellStatus.clear();
     doc.cellDirty.clear();
+    doc.rowOrigin.clear();
     EnsureCellStatusSize(doc);
-    state.shnUndo.clear();
-    state.shnRedo.clear();
+    // Der Verlauf enthält Zeilen-/Zellindizes dieses Dokuments, die nach dem Neuladen nicht mehr gelten.
+    state.dataHistory.Clear();
     state.shnSelectedRow=-1;
     state.shnSelectedColumn=-1;
     state.shnInlineEditActive=false;
@@ -569,13 +531,9 @@ bool ApplyShnCellText(EditorState& state, int document, int row, int column,
     auto& value = file.rows[static_cast<std::size_t>(row)].values[static_cast<std::size_t>(column)];
     if (value == *parsed) return true;
 
-    if (recordUndo) {
-        state.shnUndo.push_back({document, row, column, value, *parsed});
-        if (state.shnUndo.size() > 512) state.shnUndo.erase(state.shnUndo.begin());
-        state.shnRedo.clear();
-    }
-
+    core::legacy::ShnValue before = value;
     value = std::move(*parsed);
+    if (recordUndo) RecordShnCellChange(state, document, row, column, std::move(before), value);
     doc.dirty = true;
     EnsureCellStatusSize(doc);
     doc.cellStatus[static_cast<std::size_t>(row)][static_cast<std::size_t>(column)] = kShnCellNormal;
@@ -585,46 +543,8 @@ bool ApplyShnCellText(EditorState& state, int document, int row, int column,
     state.shnStatus = std::string(ShnSourceName(doc.source)) + ": Zelle geändert (noch nicht gespeichert).";
     return true;
 }
-void UndoShnCellEdit(EditorState& state) {
-    if (state.shnUndo.empty()) return;
-    const auto edit = state.shnUndo.back();
-    state.shnUndo.pop_back();
-    if (edit.document < 0 || edit.document >= static_cast<int>(state.shnFiles.size())) return;
-    auto& doc = state.shnFiles[static_cast<std::size_t>(edit.document)];
-    if (edit.row < 0 || edit.row >= static_cast<int>(doc.file.rows.size()) ||
-        edit.column < 0 || edit.column >= static_cast<int>(doc.file.columns.size())) return;
-    doc.file.rows[static_cast<std::size_t>(edit.row)].values[static_cast<std::size_t>(edit.column)] = edit.before;
-    doc.dirty = true;
-    EnsureCellStatusSize(doc);
-    doc.cellDirty[static_cast<std::size_t>(edit.row)][static_cast<std::size_t>(edit.column)] = 1;
-    state.shnRedo.push_back(edit);
-    ++state.shnEditCounter;
-    state.shnVisibleKey.clear();
-    state.shnSelectedFile = edit.document;
-    state.shnSelectedRow = edit.row;
-    state.shnSelectedColumn = edit.column;
-    state.shnStatus = "SHN-Zelländerung rückgängig gemacht.";
-}
-void RedoShnCellEdit(EditorState& state) {
-    if (state.shnRedo.empty()) return;
-    const auto edit = state.shnRedo.back();
-    state.shnRedo.pop_back();
-    if (edit.document < 0 || edit.document >= static_cast<int>(state.shnFiles.size())) return;
-    auto& doc = state.shnFiles[static_cast<std::size_t>(edit.document)];
-    if (edit.row < 0 || edit.row >= static_cast<int>(doc.file.rows.size()) ||
-        edit.column < 0 || edit.column >= static_cast<int>(doc.file.columns.size())) return;
-    doc.file.rows[static_cast<std::size_t>(edit.row)].values[static_cast<std::size_t>(edit.column)] = edit.after;
-    doc.dirty = true;
-    EnsureCellStatusSize(doc);
-    doc.cellDirty[static_cast<std::size_t>(edit.row)][static_cast<std::size_t>(edit.column)] = 1;
-    state.shnUndo.push_back(edit);
-    ++state.shnEditCounter;
-    state.shnVisibleKey.clear();
-    state.shnSelectedFile = edit.document;
-    state.shnSelectedRow = edit.row;
-    state.shnSelectedColumn = edit.column;
-    state.shnStatus = "SHN-Zelländerung wiederhergestellt.";
-}
+void UndoShnCellEdit(EditorState& state) { DataUndo(state); }
+void RedoShnCellEdit(EditorState& state) { DataRedo(state); }
 void CopySelectedShnCell(EditorState& state) {
     if (state.shnSelectedFile < 0 || state.shnSelectedFile >= static_cast<int>(state.shnFiles.size())) return;
     const auto& file = state.shnFiles[static_cast<std::size_t>(state.shnSelectedFile)].file;
@@ -735,6 +655,9 @@ void EnsureCellStatusSize(EditorState::ShnDocument& doc) {
         doc.cellStatus[i].resize(doc.file.columns.size(), kShnCellNormal);
         doc.cellDirty[i].resize(doc.file.columns.size(), 0);
     }
+    // Außerhalb des Verlaufs angehängte Zeilen (z. B. Familien-Propagation) sind neu.
+    if (!doc.rowOrigin.empty() && doc.rowOrigin.size() < doc.file.rows.size())
+        doc.rowOrigin.resize(doc.file.rows.size(), -1);
 }
 // Liefert einen sinnvollen Default-Text für ParseShnValue, passend zum Spaltentyp - für neu
 // angelegte Zeilen (siehe AddRowWithPropagation). Raw braucht exakt column.length Hex-Bytes.
@@ -806,17 +729,26 @@ void DrawShnGrid(EditorState& state) {
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Legt eine neue Zeile an. Automatische Propagation erfolgt ausschließlich in verifizierte Item/Mob/ActiveSkill-ID-Familien; heuristische Abhängigkeiten werden nur angezeigt.");
     ImGui::SameLine();
+    ImGui::BeginDisabled(state.shnSelectedRow < 0);
+    if (UI::Button(L("Zeile löschen","Delete row"))) RequestShnRowDelete(state, state.shnSelectedFile, state.shnSelectedRow);
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip("%s", L("Löscht die gewählte Zeile (Entf). Bei Item/Mob/ActiveSkill dieselbe ID in allen geladenen "
+                                  "Familien-Tabellen beider Seiten. Zeigt vorher Verweise aus geladenen Tabellen; Strg+Z macht es rückgängig.",
+                                  "Deletes the selected row (Del). For Item/Mob/ActiveSkill also the same ID in every loaded "
+                                  "family table on both sides. Shows references from loaded tables first; Ctrl+Z undoes it."));
+    ImGui::SameLine();
     ImGui::BeginDisabled(state.shnSelectedRow < 0 || state.shnSelectedColumn < 0);
     if (UI::Button("Kopieren")) CopySelectedShnCell(state);
     ImGui::SameLine();
     if (UI::Button("Einfügen")) PasteSelectedShnCell(state);
     ImGui::EndDisabled();
     ImGui::SameLine();
-    ImGui::BeginDisabled(state.shnUndo.empty());
+    ImGui::BeginDisabled(!state.dataHistory.CanUndo());
     if (UI::Button("Undo")) UndoShnCellEdit(state);
     ImGui::EndDisabled();
     ImGui::SameLine();
-    ImGui::BeginDisabled(state.shnRedo.empty());
+    ImGui::BeginDisabled(!state.dataHistory.CanRedo());
     if (UI::Button("Redo")) RedoShnCellEdit(state);
     ImGui::EndDisabled();
     ImGui::SameLine();
@@ -861,8 +793,9 @@ void DrawShnGrid(EditorState& state) {
         if (ShortcutPressed(state.shortcutSave) && doc.dirty) SaveShnDocument(state,state.shnSelectedFile);
         if (ctrl && ImGui::IsKeyPressed(ImGuiKey_C, false)) CopySelectedShnCell(state);
         if (ctrl && ImGui::IsKeyPressed(ImGuiKey_V, false)) PasteSelectedShnCell(state);
-        if (ctrl && ImGui::IsKeyPressed(ImGuiKey_Z, false)) UndoShnCellEdit(state);
-        if (ctrl && ImGui::IsKeyPressed(ImGuiKey_Y, false)) RedoShnCellEdit(state);
+        // Strg+Z/Strg+Y übernimmt HandleGlobalShortcuts (gemeinsamer Daten-Verlauf).
+        if (!ctrl && ImGui::IsKeyPressed(ImGuiKey_Delete, false) && state.shnSelectedRow >= 0)
+            RequestShnRowDelete(state, state.shnSelectedFile, state.shnSelectedRow);
         if ((ImGui::IsKeyPressed(ImGuiKey_F2, false) || ImGui::IsKeyPressed(ImGuiKey_Enter, false)) &&
             state.shnSelectedRow >= 0 && state.shnSelectedColumn >= 0) {
             const auto kind = file.columns[static_cast<std::size_t>(state.shnSelectedColumn)].kind;
@@ -1349,6 +1282,7 @@ void AddRowWithPropagation(EditorState& state, int docIndex) {
     std::fill(srcDoc.cellDirty.back().begin(),srcDoc.cellDirty.back().end(),1);
     if (idCol >= 0 && newId >= 0) srcDoc.cellStatus.back()[static_cast<std::size_t>(idCol)] = kShnCellAutoFilled;
     int propagated = 0;
+    std::vector<std::pair<int, int>> insertedRows = {{docIndex, static_cast<int>(newRowIdx)}};
     for (int p : peers) {
         auto& peerDoc = state.shnFiles[static_cast<std::size_t>(p)];
         core::legacy::ShnRow peerRow;
@@ -1376,8 +1310,11 @@ void AddRowWithPropagation(EditorState& state, int docIndex) {
         EnsureCellStatusSize(peerDoc);
         peerDoc.cellStatus.back() = peerRowStatus;
         std::fill(peerDoc.cellDirty.back().begin(),peerDoc.cellDirty.back().end(),1);
+        insertedRows.emplace_back(p, static_cast<int>(peerDoc.file.rows.size()) - 1);
         ++propagated;
     }
+    RecordRowsInserted(state, "Neue Zeile: " + srcDoc.file.FileName() +
+                       (newId >= 0 ? " #" + std::to_string(newId) : std::string()), insertedRows);
 
     ++state.shnEditCounter;
     state.shnSelectedFile = docIndex;
@@ -1983,6 +1920,7 @@ void DrawShnEditor(EditorState& state) {
         }
     }
     DrawTopNav(state, L("Spieldaten","Game data"));
+    DrawShnDeleteConfirm(state);
     ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
     ImGui::BeginChild("##shnEditor", ImVec2(0,0), false);
     DrawPanelHeader("gameDataWorkspaceHeader", L("SPIELDATEN","GAME DATA"), DrawIconTable,

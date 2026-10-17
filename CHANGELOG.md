@@ -1,3 +1,16 @@
+## Data editors — delete and undo everywhere
+- One shared undo/redo history for all data editors (`core::DataHistory`): SHN grid, quest editor, skill editor, drop table, portals, creature wizard and NPC dialogs. Ctrl+Z / Ctrl+Y (also Ctrl+Shift+Z) work anywhere on the game data screen, and every editor has Undo/Redo buttons whose tooltip names the next step. One user action is one entry: a skill value written to client and server, creating a skill with all its rows, scaling a whole skill series, creating a creature.
+- Deleting is now possible:
+  - **SHN rows:** "Delete row" button or the Del key. For the verified ID families (Item, Mob, ActiveSkill) the same ID is deleted in every loaded family table on both sides. A confirmation first lists references from the loaded tables: InxName as text, or the ID in columns named after the family.
+  - **Quests:** "Delete quest", with a warning about follow-up quests that require it as predecessor.
+  - **Skills:** "Delete skill" removes it from every loaded ActiveSkill table.
+  - **Drop table:** rows can be added (copy of the selected row or empty) and deleted.
+  - **TownPortal destinations and recall points:** can be deleted; recall points can also be added.
+- Saving checks deleted rows safely. Each row remembers its row in the file on disk; the new `core::legacy::CheckShnPatch` only accepts deletions with that mapping, plus marked cell changes and fully marked new rows. Header and column schema must stay unchanged.
+- New tests:
+  - `test_data_history`: grouping, nesting, abort, limit, the SHN check with deleted and inserted rows.
+  - `test_data_editors` additions: family-wide delete with references, undo, redo and save; cell and row undo; quest delete and clone; drop rows.
+
 ## Data editors — one shared copy per table
 - Every SHN table now exists exactly once in memory. The NPC dialog editor used to keep its own copy of `NpcDialogData.shn` while the creature wizard edited the SHN editor's document, so whichever saved last overwrote the other's changes. Both now edit the same document; saving writes all changes together, through the SHN save check, as a project override.
 - The same applies to `TownPortal.shn` (portal editor), `QuestDialog.shn` (quest texts), `ItemInfo.shn` (item names in quests and shops), `MobViewInfo.shn` and `MapInfo.shn`. Changes made in the SHN editor show up immediately in the other editors (for example a new item in the shop picker), and portal edits are marked as changed cells, so the SHN editor can save them too.

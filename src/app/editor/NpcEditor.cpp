@@ -457,6 +457,7 @@ int CreateNpcDialogRow(EditorState& state, const std::string& npcName) {
     std::fill(doc.cellDirty[r].begin(), doc.cellDirty[r].end(), static_cast<std::uint8_t>(1));
     doc.dirty = true;
     ++state.shnEditCounter;
+    RecordRowsInserted(state, L("NPC-Dialog angelegt: ", "NPC dialog created: ") + npcName, {{state.npcDialogDoc, static_cast<int>(r)}});
     return static_cast<int>(r);
 }
 // Öffnet den Dialog-Editor für den übergebenen NPC-Namen - lädt Root/Datei bei Bedarf nach,
@@ -1229,6 +1230,9 @@ std::vector<std::size_t> CloneRowsById(EditorState& state, const char* fileName,
                 std::fill(doc.cellDirty[nr].begin(),doc.cellDirty[nr].end(),1);
         }
         ++state.shnEditCounter;
+        std::vector<std::pair<int, int>> inserted;
+        for (const std::size_t nr : created) inserted.emplace_back(di, static_cast<int>(nr));
+        RecordRowsInserted(state, label + ": " + newInx + " angelegt", inserted);
         report.push_back("+ " + label + ": " + std::to_string(created.size()) + " Zeile(n) angelegt");
     } else {
         report.push_back("- " + label + ": keine Vorlage-Zeile gefunden (übersprungen)");

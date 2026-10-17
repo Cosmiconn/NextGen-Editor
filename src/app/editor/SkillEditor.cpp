@@ -91,6 +91,8 @@ bool SkillCellCopiesDiffer(EditorState& state,const SkillDocs& d,skilled::Doc ki
 // Schreibt in ALLE Kopien (Client und Server) der Zeile.
 bool SkillCellWrite(EditorState& state, const SkillDocs& d, skilled::Doc kind, const char* col, long long skillId, const std::string& text) {
     bool any = false;
+    // Client und Server zusammen als ein Verlaufseintrag (Strg+Z nimmt beide Kopien zurück).
+    DataHistoryBegin(state, "Skill #" + std::to_string(skillId) + " · " + col);
     for (const int di : SkillDocsOf(d, kind)) {
         const long long row = SkillRowIn(state, di, skillId);
         if (row < 0) continue;
@@ -101,13 +103,16 @@ bool SkillCellWrite(EditorState& state, const SkillDocs& d, skilled::Doc kind, c
         const std::size_t ci = static_cast<std::size_t>(column);
         if (r >= doc.file.rows.size() || ci >= doc.file.rows[r].values.size()) continue;
         if (core::legacy::ShnValueToString(doc.file.rows[r].values[ci]) == text) continue;
+        const core::legacy::ShnValue before = doc.file.rows[r].values[ci];
         if (SetShnCellText(doc.file,r,col,text)) {
             doc.dirty = true;
             EnsureCellStatusSize(doc);
             doc.cellDirty[r][ci] = 1;
+            RecordShnCellChange(state, di, static_cast<int>(r), column, before, doc.file.rows[r].values[ci]);
             any = true;
         }
     }
+    DataHistoryCommit(state);
     if (any) ++state.shnEditCounter;
     return any;
 }
@@ -401,7 +406,8 @@ void DrawSkillField(EditorState& state, const SkillDocs& d, const skilled::Field
     (void)dim;
 }
 // Klont die Zeile(n) der Vorlage-ID in allen betroffenen Tabellen (Skill + optional Skillbuch).
-void CreateSkillFrom(EditorState& state, const SkillDocs& d, long long templateId, const std::string& newInx, const std::string& newName, bool makeBook) {
+namespace {
+void CreateSkillFromImpl(EditorState& state, const SkillDocs& d, long long templateId, const std::string& newInx, const std::string& newName, bool makeBook) {
     auto& ed = state.skill;
     ed.report.clear();
     using S = EditorState::ShnSource;
@@ -474,9 +480,17 @@ void CreateSkillFrom(EditorState& state, const SkillDocs& d, long long templateI
     }
     ed.report.push_back(L("Fertig - noch NICHT gespeichert (oben 'Alle geänderten SHN speichern').", "Done - NOT saved yet (use 'Save all changed SHN' above)."));
 }
+} // namespace
+// Alle angelegten Zeilen (Skill, Ansicht, Server, Buch) sind ein Verlaufseintrag.
+void CreateSkillFrom(EditorState& state, const SkillDocs& d, long long templateId, const std::string& newInx, const std::string& newName, bool makeBook) {
+    DataHistoryBegin(state, "Skill " + newInx + " angelegt");
+    CreateSkillFromImpl(state, d, templateId, newInx, newName, makeBook);
+    DataHistoryCommit(state);
+}
 // Skalierung einer ganzen Reihe (gleicher InxName ohne Endziffern) in ActiveSkill (Client + Server).
 int ScaleSkillSeries(EditorState& state, const SkillDocs& d, const std::string& seriesKey, int percent, const std::vector<const char*>& columns) {
     int changed = 0;
+    DataHistoryBegin(state, "Skill-Serie " + seriesKey + " · " + std::to_string(percent) + "%");
     for (const int di : {d.skillC, d.skillS}) {
         if (di < 0) continue;
         auto& doc = state.shnFiles[static_cast<std::size_t>(di)];
@@ -493,13 +507,16 @@ int ScaleSkillSeries(EditorState& state, const SkillDocs& d, const std::string& 
                 if (cur.empty()) continue;
                 const long long v = std::atoll(cur.c_str());
                 const long long nv = static_cast<long long>(std::llround(static_cast<double>(v) * percent / 100.0));
+                const core::legacy::ShnValue before = f.rows[r].values[static_cast<std::size_t>(ci)];
                 if (nv == v || !SetShnCellText(f, r, col, std::to_string(nv))) continue;
                 doc.dirty = true;
                 doc.cellDirty[r][static_cast<std::size_t>(ci)] = 1;
+                RecordShnCellChange(state, di, static_cast<int>(r), ci, before, f.rows[r].values[static_cast<std::size_t>(ci)]);
                 ++changed;
             }
         }
     }
+    DataHistoryCommit(state);
     if (changed) ++state.shnEditCounter;
     return changed;
 }
@@ -715,6 +732,14 @@ void DrawSkillEditor(EditorState& state) {
         ImGui::Text("%s  #%lld  %s", inx.c_str(), sel, ShnCellText(asf, static_cast<std::size_t>(selRow), "Name").c_str());
         ImGui::TextDisabled("%s", L("Der InxName eines vorhandenen Skills ist fest (Verweise anderer Tabellen). Für einen neuen Namen: unten 'Neuen Skill anlegen'.",
                                     "The InxName of an existing skill is fixed (other tables refer to it). For a new name use 'Create new skill' below."));
+        if (UI::Button(L("Skill löschen", "Delete skill"))) RequestShnRowDelete(state, d.skillC, static_cast<int>(selRow));
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+            ImGui::SetTooltip("%s", L("Löscht den Skill in allen geladenen ActiveSkill-Tabellen (Werte, Server, Darstellung) beider Seiten. "
+                                      "Zeigt vorher Verweise, z. B. Skillbücher und Voraussetzungen. Strg+Z macht es rückgängig.",
+                                      "Deletes the skill in every loaded ActiveSkill table (values, server, presentation) on both sides. "
+                                      "Shows references first, e.g. skill books and requirements. Ctrl+Z undoes it."));
+        ImGui::SameLine();
+        DrawDataHistoryButtons(state, "skillHistory");
         ImGui::Separator();
 
         // --- Neu anlegen / Stufe / Serie
@@ -738,12 +763,14 @@ void DrawSkillEditor(EditorState& state) {
                 std::string nm = ShnCellText(asf, static_cast<std::size_t>(selRow), "Name");
                 const std::string oldTag = "[" + std::to_string(step) + "]";
                 if (const auto p = nm.find(oldTag); p != std::string::npos) nm.replace(p, oldTag.size(), "[" + std::to_string(step + 1) + "]");
+                DataHistoryBegin(state, "Skill " + nextInx + " (Stufe " + std::to_string(step + 1) + ") angelegt");
                 CreateSkillFrom(state, d, sel, nextInx, nm, ed.makeBook);
                 if (ed.selectedId != sel) {
                     SkillCellWrite(state, d, skilled::Doc::Skill, "Step", ed.selectedId, std::to_string(step + 1));
                     SkillCellWrite(state, d, skilled::Doc::Skill, "DemandSk", ed.selectedId, inx);
                     ed.report.push_back(L("Stufe gesetzt, Voraussetzung = Vorstufe.", "Step set, requirement = previous step."));
                 }
+                DataHistoryCommit(state);
             }
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) ImGui::SetTooltip("%s", L("Legt <Reihe><Stufe+1> an: Stufe +1, Voraussetzungs-Skill = dieser Skill.", "Creates <series><step+1>: step +1, required skill = this skill."));
         }

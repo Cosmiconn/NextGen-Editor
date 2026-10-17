@@ -726,6 +726,7 @@ void DrawQuestEditor(EditorState& state) {
         state.questDataFile=std::move(*loaded);
         state.questDirty=false;
         state.selectedQuestIdx=-1;
+        state.dataHistory.Clear(); // Indizes im Verlauf gelten nach dem Verwerfen nicht mehr
         if (selectedId>=0) {
             for (std::size_t i=0;i<state.questDataFile.records.size();++i)
                 if (state.questDataFile.records[i].id==selectedId) {
@@ -760,11 +761,13 @@ void DrawQuestEditor(EditorState& state) {
         auto copy=quests[static_cast<std::size_t>(state.selectedQuestIdx)];
         copy.id=static_cast<std::uint16_t>(newId);
         copy.dataLen=0; // wird von SaveQuestData aus dem aktuellen Record neu berechnet
+        TrackQuestEdits(state);
         quests.push_back(std::move(copy));
         state.selectedQuestIdx=static_cast<int>(quests.size()-1);
         state.questDirty=true;
         ++state.questRevision;
         state.questListKey.clear();
+        RecordQuestInserted(state, state.selectedQuestIdx);
         state.statusMessage=std::string(L("Quest geklont · neue ID #","Quest cloned · new ID #"))+
                             std::to_string(newId)+
                             L(". Text-/Reward-Referenzen wurden bewusst aus der Vorlage übernommen.",
@@ -801,6 +804,50 @@ void DrawQuestEditor(EditorState& state) {
         ImGui::SetTooltip("%s",L(
             "Erzeugt eine vollständige Kopie mit freier Quest-ID. Unbekannte Reward-/Raw-Felder bleiben bytegetreu aus der Vorlage erhalten.",
             "Creates a full copy with a free quest ID. Unknown reward/raw fields are preserved from the template."));
+    ImGui::SameLine();
+    ImGui::BeginDisabled(state.selectedQuestIdx < 0 ||
+                         static_cast<std::size_t>(state.selectedQuestIdx) >= quests.size());
+    if (UI::Button(L("Quest löschen","Delete quest"))) {
+        state.questDeleteIdx = state.selectedQuestIdx;
+        state.questDeleteOpen = true;
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    DrawDataHistoryButtons(state, "questHistory");
+    if (state.questDeleteOpen) {
+        const char* title = L("Quest löschen###questDelete","Delete quest###questDelete");
+        ImGui::OpenPopup(title);
+        if (ImGui::BeginPopupModal(title, &state.questDeleteOpen, ImGuiWindowFlags_AlwaysAutoResize)) {
+            const bool valid = state.questDeleteIdx >= 0 && static_cast<std::size_t>(state.questDeleteIdx) < quests.size();
+            if (valid) {
+                const auto& q = quests[static_cast<std::size_t>(state.questDeleteIdx)];
+                ImGui::Text(L("Quest #%u \"%s\" löschen?","Delete quest #%u \"%s\"?"), q.id, QuestTextOf(state, static_cast<int>(q.title)).c_str());
+                // Folgequests, die diese Quest als Vorgänger verlangen, verlören ihre Bedingung.
+                std::vector<std::uint16_t> followers;
+                for (const auto& other : quests)
+                    if (other.needPred && other.predecessor == q.id && other.id != q.id) followers.push_back(other.id);
+                if (followers.empty()) {
+                    ImGui::TextColored(ImVec4(0.5f,0.9f,0.5f,1.0f), "%s", L("Keine Quest verlangt diese als Vorgänger.","No quest requires this one as predecessor."));
+                } else {
+                    ImGui::TextColored(ImVec4(1.0f,0.75f,0.3f,1.0f), "%s", L("Diese Quests verlangen sie als Vorgänger:","These quests require it as predecessor:"));
+                    std::string list;
+                    for (const auto id : followers) list += (list.empty() ? "#" : ", #") + std::to_string(id);
+                    ImGui::TextWrapped("%s", list.c_str());
+                }
+                ImGui::TextDisabled("%s", L("Texte in QuestDialog.shn bleiben erhalten. Strg+Z macht das Löschen rückgängig.",
+                                            "Texts in QuestDialog.shn are kept. Ctrl+Z undoes the deletion."));
+            }
+            if (UI::Button(L("Löschen","Delete")) && valid) {
+                DeleteQuestWithHistory(state, state.questDeleteIdx);
+                state.statusMessage = L("Quest gelöscht (noch nicht gespeichert).","Quest deleted (not saved yet).");
+                state.questDeleteOpen = false;
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (UI::Button(L("Abbrechen","Cancel"))) { state.questDeleteOpen = false; ImGui::CloseCurrentPopup(); }
+            ImGui::EndPopup();
+        }
+    }
     ImGui::Separator();
     DrawSearchInput("questSearch",
                     L("Quest-ID oder Titeltext suchen...", "Search quest ID or title text..."),
@@ -1394,6 +1441,7 @@ void DrawQuestEditor(EditorState& state) {
         scriptEditor(L("Finish", "Finish"), q.finish);
     }
     ImGui::EndChild();
+    TrackQuestEdits(state);
 }
 
 } // namespace nge

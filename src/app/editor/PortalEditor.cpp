@@ -31,6 +31,7 @@ void EnsureTownPortalLoaded(EditorState& state) {
         if (state.townPortalDoc >= 0) {
             state.townPortalLoaded = true;
             state.townPortalBaseline = ShnDocFile(state, state.townPortalDoc);
+            state.townPortalUndoSnapshot.reset();
             state.townPortalDirty = state.shnFiles[static_cast<std::size_t>(state.townPortalDoc)].dirty;
             return;
         }
@@ -47,6 +48,7 @@ void EnsureRecallCoordLoaded(EditorState& state) {
     if (result) {
         state.recallCoordFile = std::move(*result);
         state.recallCoordLoaded = true;
+        state.recallUndoSnapshot.reset();
         state.recallCoordDirty = false;
     }
 }
@@ -139,18 +141,25 @@ bool SaveRecallCoordFile(EditorState& state) {
 void DrawPortalEditor(EditorState& state) {
     EnsureTownPortalLoaded(state);
     EnsureRecallCoordLoaded(state);
+    TrackPortalEdits(state);
+    DrawDataHistoryButtons(state, "portalHistory");
 
     DrawPanelHeader("portalDataHeader", L("PORTAL-DATEN","PORTAL DATA"), DrawIconPortal,
                     nullptr, L("Client- und Server-Ziele","Client and server destinations"));
     ImGui::SeparatorText("TownPortal · Skill/Menü");
     if (!state.townPortalLoaded) {
         ImGui::TextWrapped("TownPortal.shn konnte nicht geladen werden (Client-ressystem-Ordner nötig).");
-    } else if (ImGui::BeginTable("##townportal", static_cast<int>(ShnDocFile(state, state.townPortalDoc).columns.size()),
+    } else if (ImGui::BeginTable("##townportal", static_cast<int>(ShnDocFile(state, state.townPortalDoc).columns.size()) + 1,
                                   ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
         for (auto& c : ShnDocFile(state, state.townPortalDoc).columns) ImGui::TableSetupColumn(c.name.c_str());
+        ImGui::TableSetupColumn("##tpDel", ImGuiTableColumnFlags_WidthFixed, 28.0f);
         ImGui::TableHeadersRow();
+        int deleteTownRow = -1;
         for (std::size_t ri = 0; ri < ShnDocFile(state, state.townPortalDoc).rows.size(); ++ri) {
             ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(static_cast<int>(ShnDocFile(state, state.townPortalDoc).columns.size()));
+            if (UI::SmallButton(("x##tpDel" + std::to_string(ri)).c_str())) deleteTownRow = static_cast<int>(ri);
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", L("Ziel löschen (Strg+Z macht es rückgängig)", "Delete destination (Ctrl+Z undoes it)"));
             for (std::size_t ci = 0; ci < ShnDocFile(state, state.townPortalDoc).columns.size(); ++ci) {
                 ImGui::TableSetColumnIndex(static_cast<int>(ci));
                 ImGui::SetNextItemWidth(-1.0f);
@@ -167,6 +176,12 @@ void DrawPortalEditor(EditorState& state) {
             }
         }
         ImGui::EndTable();
+        if (deleteTownRow >= 0) {
+            auto& rows = ShnDocFile(state, state.townPortalDoc).rows;
+            rows.erase(rows.begin() + deleteTownRow);
+            state.townPortalDirty = true;
+            if (state.selectedPortalKind == kPortalKindTown) state.selectedPortalIdx = -1;
+        }
     }
     ImGui::BeginDisabled(!state.townPortalDirty);
     if (UI::Button(state.townPortalDirty ? L("TownPortal.shn speichern *","Save TownPortal.shn *")
@@ -182,11 +197,16 @@ void DrawPortalEditor(EditorState& state) {
     }
     auto* table = state.recallCoordFile.FindTable("RecallPoint");
     if (!table) { ImGui::TextDisabled("Keine 'RecallPoint'-Tabelle gefunden."); return; }
-    if (ImGui::BeginTable("##recallcoord", static_cast<int>(table->columns.size()), ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+    int deleteRecall = -1;
+    if (ImGui::BeginTable("##recallcoord", static_cast<int>(table->columns.size()) + 1, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
         for (auto& c : table->columns) ImGui::TableSetupColumn(c.name.c_str());
+        ImGui::TableSetupColumn("##rcDel", ImGuiTableColumnFlags_WidthFixed, 28.0f);
         ImGui::TableHeadersRow();
         for (std::size_t ri = 0; ri < table->records.size(); ++ri) {
             ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(static_cast<int>(table->columns.size()));
+            if (UI::SmallButton(("x##rcDel" + std::to_string(ri)).c_str())) deleteRecall = static_cast<int>(ri);
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", L("Rückkehrpunkt löschen (Strg+Z macht es rückgängig)", "Delete recall point (Ctrl+Z undoes it)"));
             for (std::size_t ci = 0; ci < table->records[ri].values.size(); ++ci) {
                 ImGui::TableSetColumnIndex(static_cast<int>(ci));
                 ImGui::SetNextItemWidth(-1.0f);
@@ -201,6 +221,19 @@ void DrawPortalEditor(EditorState& state) {
         }
         ImGui::EndTable();
     }
+    if (deleteRecall >= 0) {
+        table->records.erase(table->records.begin() + deleteRecall);
+        state.recallCoordDirty = true;
+    }
+    if (UI::Button(L("+ Rückkehrpunkt","+ Recall point")) && !table->records.empty()) {
+        core::legacy::ShineRecord rec = table->records.back();
+        rec.sourceLine = 0; // neu: wird beim Speichern hinter der Tabelle angefügt
+        table->records.push_back(std::move(rec));
+        state.recallCoordDirty = true;
+    }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", L("Kopie des letzten Eintrags anlegen; danach Item, Karte und Position anpassen.",
+                                                        "Adds a copy of the last entry; then adjust item, map and position."));
+    ImGui::SameLine();
     ImGui::BeginDisabled(!state.recallCoordDirty);
     if (UI::Button(state.recallCoordDirty ? L("RecallCoord.txt speichern *","Save RecallCoord.txt *")
                                           : L("RecallCoord.txt speichern","Save RecallCoord.txt"))) {

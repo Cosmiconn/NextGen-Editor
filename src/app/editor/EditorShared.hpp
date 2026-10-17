@@ -42,6 +42,8 @@
 #include "mapeditor/core/AvatarPreview.hpp"
 #include "mapeditor/core/DdsImage.hpp"
 #include "mapeditor/core/DataDependency.hpp"
+#include "mapeditor/core/DataHistory.hpp"
+#include "mapeditor/core/legacy/ShnPatchCheck.hpp"
 #include "mapeditor/core/Manual.hpp"
 #include "mapeditor/core/EditOps.hpp"
 #include "mapeditor/core/Heightmap.hpp"
@@ -207,6 +209,12 @@ enum class AppScreen { ProjectHub, NewProjectConfig, MapEditorLauncher, MapEdito
 // Workflows müssen über den zentralen Projekt-Output-Layer nach <Projekt>/Client bzw.
 // <Projekt>/Server gehen. Die Client-Ordner-Angabe bleibt zusätzlich Suchwurzel für
 // "Map Öffnen" und read-only Asset-Quellen.
+// Undo für Shine-TXT-Einträge (Drop-Tabelle, RecallCoord ...): Stand des gewählten Eintrags vor der
+// laufenden Bearbeitung; aufgezeichnet wird, sobald kein Eingabefeld mehr aktiv ist.
+struct ShineRecordTracker {
+    int index = -1;
+    std::shared_ptr<theseed::mapeditor::core::legacy::ShineRecord> snapshot;
+};
 struct ProjectConfig {
     char name[256] = "";
     char projectFolder[512] = "";
@@ -819,6 +827,13 @@ struct EditorState {
     std::string questListKey;
     std::vector<std::size_t> questVisible;
     std::uint64_t questRevision = 0;
+    // Undo im Quest-Editor: Stand der ausgewählten Quest vor der laufenden Bearbeitung. Änderungen
+    // werden als ein Verlaufseintrag aufgezeichnet, sobald kein Eingabefeld mehr aktiv ist.
+    int questTrackIdx = -1;
+    std::uint64_t questTrackRevision = 0;
+    std::shared_ptr<core::legacy::QuestRecord> questTrackSnapshot;
+    int questDeleteIdx = -1;
+    bool questDeleteOpen = false;
     bool questDirty = false;
     int questQuickFilter = 0; // 0 alle, 1 aktiv, 2 täglich, 3 Referenzprobleme
     bool questShowFlow = false; // read-only relationship view; no script semantics are inferred
@@ -834,6 +849,8 @@ struct EditorState {
     // Stand bei Laden/Speichern: Änderungen des Portal-Editors werden dagegen als geänderte Zellen
     // markiert, damit auch ein Speichern aus dem SHN-Editor die Prüfung besteht.
     core::legacy::ShnFile townPortalBaseline;
+    std::shared_ptr<core::legacy::ShnFile> townPortalUndoSnapshot;               // Undo im Portal-Editor
+    std::shared_ptr<std::vector<core::legacy::ShineRecord>> recallUndoSnapshot;  // dito RecallCoord
     bool townPortalLoaded = false;
     bool townPortalDirty = false;
 
@@ -932,6 +949,9 @@ struct EditorState {
         // Manuell geänderte Zellen bekommen im Grid einen eigenen Dirty-Indikator.
         // Wie cellStatus ist das reiner Editor-Sitzungszustand und wird nicht ins SHN geschrieben.
         std::vector<std::vector<std::uint8_t>> cellDirty;
+        // Herkunft jeder Zeile im zuletzt geladenen/gespeicherten Stand (-1 = neu). Leer = Zeilen
+        // unverändert in Reihenfolge; wird beim ersten Löschen angelegt (siehe CheckShnPatch).
+        std::vector<int> rowOrigin;
     };
     struct ShnCellEdit {
         int document = -1;
@@ -940,8 +960,13 @@ struct EditorState {
         core::legacy::ShnValue before;
         core::legacy::ShnValue after;
     };
-    std::vector<ShnCellEdit> shnUndo;
-    std::vector<ShnCellEdit> shnRedo;
+    // Gemeinsamer Undo/Redo-Verlauf aller Daten-Editoren (SHN-Zellen und -Zeilen, Quests, Shine-
+    // TXT, Portale ...). Strg+Z/Strg+Y wirken außerhalb der Karte auf diesen Verlauf.
+    core::DataHistory dataHistory{256};
+    int shnDeleteDoc = -1;
+    int shnDeleteRow = -1;
+    bool shnDeleteOpen = false;
+    std::vector<std::string> shnDeleteRefs;
     std::vector<ShnDocument> shnFiles;
     std::string shnClientRoot;
     std::string shnServerRoot;
@@ -993,6 +1018,9 @@ struct EditorState {
     bool dropTableDirty = false;
     std::string dropTableLoadError;
     int dropTableSelectedRecord = -1;
+    ShineRecordTracker dropTableTracker;
+    int dropTableDeleteRecord = -1;
+    bool dropTableDeleteOpen = false;
     char dropTableFilter[128] = "";
     bool dropTableOnlyActive = true;
     bool dropTableProblemsOnly = false;
@@ -1526,6 +1554,47 @@ bool ApplyShnCellText(EditorState& state, int document, int row, int column,
                       const std::string& text, bool recordUndo = true);
 void UndoShnCellEdit(EditorState& state);
 void RedoShnCellEdit(EditorState& state);
+// --- Daten-Verlauf und Zeilenoperationen (DataEditing.cpp) ---
+void DataHistoryBegin(EditorState& state, const std::string& label);
+void DataHistoryCommit(EditorState& state);
+bool DataUndo(EditorState& state);
+bool DataRedo(EditorState& state);
+// Zelländerung ist bereits passiert: im Verlauf aufzeichnen (Undo setzt before zurück).
+void RecordShnCellChange(EditorState& state, int document, int row, int column,
+                         core::legacy::ShnValue before, core::legacy::ShnValue after);
+// Fügt eine Zeile ein (ganz als neu markiert) bzw. löscht eine - beides mit Undo.
+int InsertShnRowWithHistory(EditorState& state, int document, int index, core::legacy::ShnRow row);
+// Bereits eingefügte Zeilen (Dokument, Zeilenindex) im Verlauf aufzeichnen, als eine Operation.
+void RecordRowsInserted(EditorState& state, const std::string& label, const std::vector<std::pair<int, int>>& rows);
+bool DeleteShnRowWithHistory(EditorState& state, int document, int row);
+// Löscht die Zeile und - bei bekannten ID-Familien (Item/Mob/ActiveSkill) - dieselbe ID in allen
+// geladenen Familien-Tabellen beider Seiten, als eine Transaktion. Rückgabe: Anzahl gelöschter Zeilen.
+int DeleteShnRecordEverywhere(EditorState& state, int document, int row);
+// Verweise auf eine Zeile (InxName als Text, ID in Spalten mit passendem Namen) in allen geladenen
+// SHN-Tabellen außerhalb der eigenen Familie - Warnung vor dem Löschen.
+std::vector<std::string> FindShnRowReferences(EditorState& state, int document, int row, std::size_t limit = 20);
+// Bestätigungsdialog "Zeile löschen" mit Verweisliste; einmal pro Frame zeichnen.
+void RequestShnRowDelete(EditorState& state, int document, int row);
+void DrawShnDeleteConfirm(EditorState& state);
+// Undo/Redo-Knöpfe mit Beschreibung der nächsten Aktion (für die Kopfzeilen der Daten-Editoren).
+void DrawDataHistoryButtons(EditorState& state, const char* id);
+// Quest-Verlauf: Bearbeitungen der gewählten Quest aufzeichnen (einmal pro Frame am Ende des
+// Quest-Editors), Klonen und Löschen mit Undo.
+void TrackQuestEdits(EditorState& state);
+void ResyncQuestTracking(EditorState& state);
+void RecordQuestInserted(EditorState& state, int index);
+bool DeleteQuestWithHistory(EditorState& state, int index);
+// Shine-TXT-Tabellen (Drop-Tabelle, RecallCoord ...): der Zugriff auf die Tabelle geht über eine
+// Funktion, weil die Datei neu geladen werden kann; dirty zeigt auf das Geändert-Flag des Editors.
+using ShineTableAccess = std::function<core::legacy::ShineTable*()>;
+void TrackShineRecordEdits(EditorState& state, ShineRecordTracker& tracker, const ShineTableAccess& table,
+                           int selected, bool* dirty, const std::string& what);
+int InsertShineRecordWithHistory(EditorState& state, const ShineTableAccess& table, int index,
+                                 core::legacy::ShineRecord record, bool* dirty, const std::string& label);
+bool DeleteShineRecordWithHistory(EditorState& state, const ShineTableAccess& table, int index,
+                                  bool* dirty, const std::string& label);
+// Portal-Editor: Änderungen an TownPortal.shn und RecallCoord.txt (beide klein) als Ganzes aufzeichnen.
+void TrackPortalEdits(EditorState& state);
 void CopySelectedShnCell(EditorState& state);
 void PasteSelectedShnCell(EditorState& state);
 void StartShnInlineEdit(EditorState& state, int row, int column);

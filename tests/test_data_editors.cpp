@@ -150,6 +150,105 @@ int main() {
         Check(!st.shnFiles[static_cast<std::size_t>(st.townPortalDoc)].dirty, "Dokument danach sauber");
     }
 
+    std::printf("\n== Löschen über die ID-Familie, Verweise, Undo/Redo, Speichern ==\n");
+    {
+        // Item-Familie: ItemInfo (Client), ItemViewInfo (Client), ItemInfoServer (Server); dazu eine
+        // fremde Tabelle, die das Item per InxName nennt.
+        auto makeItems = [](bool view) {
+            core::legacy::ShnFile f;
+            f.encrypted = false;
+            f.columns = {UIntColumn("ID"), StringColumn("InxName", 32)};
+            if (view) f.columns.push_back(StringColumn("IconFile", 32));
+            for (std::uint32_t i = 1; i <= 3; ++i) {
+                core::legacy::ShnRow r;
+                r.values = {i, std::string("Sword0") + std::to_string(i)};
+                if (view) r.values.push_back(std::string("ItemEqu000"));
+                f.rows.push_back(r);
+            }
+            return f;
+        };
+        (void)core::legacy::SaveShnFile(makeItems(false), ressystem / "ItemInfo.shn");
+        (void)core::legacy::SaveShnFile(makeItems(true), ressystem / "ItemViewInfo.shn");
+        (void)core::legacy::SaveShnFile(makeItems(false), shine / "ItemInfoServer.shn");
+        core::legacy::ShnFile refs;
+        refs.encrypted = false;
+        refs.columns = {UIntColumn("ID"), StringColumn("RewardItem", 32)};
+        refs.rows.push_back({0, {std::uint32_t{7}, std::string("Sword02")}});
+        (void)core::legacy::SaveShnFile(refs, ressystem / "RewardList.shn");
+
+        const int info = FindOrLoadShnDoc(st, "ItemInfo.shn", EditorState::ShnSource::Client);
+        const int view = FindOrLoadShnDoc(st, "ItemViewInfo.shn", EditorState::ShnSource::Client);
+        const int server = FindOrLoadShnDoc(st, "ItemInfoServer.shn", EditorState::ShnSource::Server);
+        const int ref = FindOrLoadShnDoc(st, "RewardList.shn", EditorState::ShnSource::Client);
+        Check(info >= 0 && view >= 0 && server >= 0 && ref >= 0, "Item-Familie und Verweistabelle geladen");
+
+        const auto refsFound = FindShnRowReferences(st, info, 1);
+        Check(refsFound.size() == 1 && refsFound[0].find("RewardList.shn") != std::string::npos,
+              "Verweis auf Sword02 in RewardList gefunden");
+        st.dataHistory.Clear();
+        const int deleted = DeleteShnRecordEverywhere(st, info, 1);
+        Check(deleted == 3, "ID 2 in allen drei Familien-Tabellen gelöscht (" + std::to_string(deleted) + ")");
+        Check(ShnDocFile(st, view).rows.size() == 2 && ShnDocFile(st, server).rows.size() == 2, "Ansicht und Server ohne ID 2");
+        Check(st.dataHistory.UndoCount() == 1, "ein einziger Verlaufseintrag für das Löschen");
+
+        Check(DataUndo(st), "Strg+Z ausgeführt");
+        Check(ShnDocFile(st, info).rows.size() == 3 && ShnDocFile(st, view).rows.size() == 3 &&
+              ShnDocFile(st, server).rows.size() == 3 && RowOf(ShnDocFile(st, view), "2") == 1,
+              "Undo stellt ID 2 in allen Tabellen an derselben Stelle wieder her");
+        Check(DataRedo(st) && ShnDocFile(st, info).rows.size() == 2, "Redo löscht erneut");
+
+        Check(SaveShnDocument(st, info), "ItemInfo mit gelöschter Zeile besteht die Speicherprüfung (" + st.shnStatus + ")");
+        const auto saved = core::legacy::LoadShnFile(ShnDocFile(st, info).path);
+        Check(saved && saved->rows.size() == 2 && RowOf(*saved, "2") < 0 && RowOf(*saved, "3") == 1,
+              "gespeicherte Datei ohne ID 2, übrige Zeilen in Reihenfolge");
+        Check(st.shnFiles[static_cast<std::size_t>(info)].rowOrigin.empty(), "nach dem Speichern ist der gespeicherte Stand die neue Grundlage");
+
+        // Zelländerung mit Undo.
+        Check(ApplyShnCellText(st, view, 0, 2, "ItemEqu001") && DataUndo(st) &&
+              core::legacy::ShnValueToString(ShnDocFile(st, view).rows[0].values[2]) == "ItemEqu000",
+              "Zelländerung lässt sich rückgängig machen");
+        // Neue Zeile mit Undo.
+        const auto before = ShnDocFile(st, view).rows.size();
+        AddRowWithPropagation(st, view);
+        Check(ShnDocFile(st, view).rows.size() == before + 1 && DataUndo(st) && ShnDocFile(st, view).rows.size() == before,
+              "neue Zeile lässt sich rückgängig machen");
+    }
+
+    std::printf("\n== Quest löschen und klonen mit Undo ==\n");
+    {
+        st.questDataLoaded = true;
+        st.questDataFile.records.clear();
+        for (std::uint16_t id : {10, 11, 12}) { core::legacy::QuestRecord q; q.id = id; st.questDataFile.records.push_back(q); }
+        st.selectedQuestIdx = 1;
+        st.dataHistory.Clear();
+        Check(DeleteQuestWithHistory(st, 1) && st.questDataFile.records.size() == 2 && st.questDataFile.records[1].id == 12,
+              "Quest 11 gelöscht");
+        Check(DataUndo(st) && st.questDataFile.records.size() == 3 && st.questDataFile.records[1].id == 11,
+              "Undo stellt Quest 11 an ihrer Stelle wieder her");
+        st.questDataFile.records.push_back(st.questDataFile.records[0]);
+        st.questDataFile.records.back().id = 13;
+        RecordQuestInserted(st, 3);
+        Check(DataUndo(st) && st.questDataFile.records.size() == 3, "Klonen lässt sich rückgängig machen");
+    }
+
+    std::printf("\n== Shine-TXT-Einträge (Drop-Tabelle) mit Undo ==\n");
+    {
+        core::legacy::ShineTable table;
+        table.name = "ItemGroup";
+        for (const char* mob : {"MobA", "MobB"}) { core::legacy::ShineRecord r; r.values = {"-", mob}; table.records.push_back(r); }
+        bool dirty = false;
+        const ShineTableAccess access = [&table]() { return &table; };
+        st.dataHistory.Clear();
+        core::legacy::ShineRecord added; added.values = {"-", "MobC"};
+        Check(InsertShineRecordWithHistory(st, access, 2, added, &dirty, "neu") == 2 && table.records.size() == 3 && dirty,
+              "Drop-Zeile angelegt");
+        Check(DeleteShineRecordWithHistory(st, access, 0, &dirty, "weg") && table.records.front().values[1] == "MobB",
+              "Drop-Zeile gelöscht");
+        Check(DataUndo(st) && table.records.size() == 3 && table.records.front().values[1] == "MobA", "Undo stellt die gelöschte Zeile wieder her");
+        Check(DataUndo(st) && table.records.size() == 2, "Undo entfernt die angelegte Zeile");
+        Check(DataRedo(st) && table.records.size() == 3 && table.records[2].values[1] == "MobC", "Redo legt sie wieder an");
+    }
+
     std::filesystem::remove_all(base, ec);
     if (g_failures) std::fprintf(stderr, "%d Fehler\n", g_failures);
     return g_failures == 0 ? 0 : 1;
