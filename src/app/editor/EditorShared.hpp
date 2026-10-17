@@ -1199,6 +1199,7 @@ struct EditorState {
     float newMapBaseHeight = 0.0f;
     bool newMapWriteMapInfo = true;
     bool newMapWriteField = true;
+    char newMapLoadingSource[1024] = ""; // eigenes Ladebild (leer = Kopie des Vorlagen-Ladebilds)
     bool newMapGate = false;
     char newMapGateFrom[32] = "";
     int newMapGateX = 0, newMapGateY = 0;

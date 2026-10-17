@@ -1,3 +1,17 @@
+## New map wizard — choose your own loading image
+- New field **Loading image** in the new map wizard, below "MapInfo + MapViewInfo". It takes PNG, JPG, BMP, TGA or DDS, with a Browse button on Windows; size and format of the chosen file are shown under the field.
+- The image is converted to the size and format of every variant of the template's loading image. With template Rou that is PNG RGB 1024×768, TGA 16 bit 1024×768 and DDS DXT3 512×512, written as `resmenu/loading/<map>.*` in the project.
+  - It fills the frame, and the overhang is cut off centred.
+  - A source that already has exactly the template's format and size is taken over unchanged.
+- An empty field keeps the previous behaviour: an unchanged copy of the template's image.
+- If the image cannot be read or converted, the report names the reason and the template is copied instead.
+- New automation command `newmaploading <path>`: sets the image for the next `newmap` and shows the wizard.
+- Manual (`map.newmap`, loading screens) and tooltip updated.
+- Checked on NA2016 with `newmaploading <1920×1080 16-bit PNG>; newmap TestLand2 Rou 257`:
+  - the three files have the format and size of `Rou.*` and show the new image;
+  - the TGA keeps the originals' convention (alpha bit 0, opaque);
+  - `MapViewInfo.Loading = TestLand2`.
+
 ## Shine text files — all 680 NA2016 files modelled correctly
 - Background: in the round trip over the NA2016 server text files, 29 of 680 files failed. Unchanged saves were already byte-identical everywhere; the failures were gaps in how lines were read, which made editing these files unsafe.
 - Comments in the middle of a line: `;` now ends the data part of header and record lines (`#ColumnName\tScriptName\t; *.ps`, `#Record\t…\tKarenWingAtk\t; comment`).

@@ -38,6 +38,14 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         std::string path; std::getline(in >> std::ws, path);
         if (OpenMapPathIntoState(state, std::filesystem::path(path), true)) state.screen = AppScreen::MapEditorWorkspace;
     }
+    else if (cmd == "newmaploading") {
+        // newmaploading <Pfad>: eigenes Ladebild für den nächsten "newmap" (leer = Kopie der Vorlage);
+        // zeigt dazu den Assistenten "Neue Karte".
+        std::string path; std::getline(in >> std::ws, path);
+        std::snprintf(state.newMapLoadingSource, sizeof(state.newMapLoadingSource), "%s", path.c_str());
+        state.screen = AppScreen::MapEditorLauncher;
+        state.mapLauncherView = EditorState::MapLauncherView::NewMap;
+    }
     else if (cmd == "newmap") {
         // newmap <Name> <Vorlage> <129|257|513> [Gate-Karte X Y]: Assistent "Neue Karte" ausführen.
         std::string name, templ, from; int size = 257; in >> name >> templ >> size;
