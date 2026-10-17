@@ -23,6 +23,18 @@ static std::string ReadAll(const std::filesystem::path& path) {
     return std::string((std::istreambuf_iterator<char>(in)), {});
 }
 
+// Wie Require, zeigt bei Abweichung aber beide Texte (Tabs/Zeilenumbrüche sichtbar).
+static void RequireText(const std::string& actual, const std::string& expected, const char* what) {
+    if (actual == expected) return;
+    auto show = [](const std::string& s) {
+        std::string o;
+        for (char c : s) o += c == '\t' ? std::string("\\t") : c == '\n' ? std::string("\\n\n") : std::string(1, c);
+        return o;
+    };
+    std::cerr << "[FEHLER] " << what << "\n--- erwartet:\n" << show(expected) << "--- erhalten:\n" << show(actual) << "\n";
+    std::exit(1);
+}
+
 static void WriteAll(const std::filesystem::path& path, const std::string& text) {
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
     out << text;
@@ -72,7 +84,7 @@ static void NewRecordStyle() {
         "#ColumnName\tArgument\tX\n"
         "\t#recordin\tLinkTable\tGateRou1\t6477\t\t\t\n"
         "\t#recordin\tLinkTable\tGateTestLand1\t5000\t\t\t\n"; // führendes Tab, #recordin, Auffüllung
-    Require(ReadAll(path) == expected, "neue Records muessen die Form der Musterzeile haben");
+    RequireText(ReadAll(path), expected, "neue Records muessen die Form der Musterzeile haben");
 
     // Musterzeile "#Record", Einfügestelle aber hinter einem anderen #Table: "#record" würde dort zur
     // falschen Tabelle gehören - also "#recordin <Tabelle>" (Rest der Form bleibt).
@@ -89,46 +101,165 @@ static void NewRecordStyle() {
     m->FindTable("A")->records.push_back(r);
     const bool saved2 = SaveShineTextFile(*m, path).has_value();
     Require(saved2, "gemischte Datei speichern");
-    Require(ReadAll(path) == mixed + "#recordin\tA\t5 \t6\t\n", "hinter fremdem #Table muss #recordin geschrieben werden");
+    RequireText(ReadAll(path), mixed + "#recordin\tA\t5 \t6\t\n", "hinter fremdem #Table muss #recordin geschrieben werden");
     std::error_code ec;
     std::filesystem::remove(path, ec);
     std::cout << "Neue Records im Stil der Musterzeile: ok\n";
 }
 
+// Konstrukte aus echten NA2016-Dateien, die früher falsch gelesen wurden: Kommentare mitten in der
+// Zeile (Kopf und Record), Werte jenseits der Spaltenzahl, mehrzeilige Texte, leerzeichengetrennte
+// Records unter "#delimiter \x20" und Records ohne Werte.
+static void SpecialLines() {
+    const auto path = std::filesystem::temp_directory_path() / "nextgen_shinetext_special.txt";
+    const std::string original =
+        "\t#delimiter\t\\x20\t\t; Space is delimiter\n"
+        "#Table\tSkill\t\t; Kommentar zur Tabelle\n"
+        "#ColumnType\tString[32]\tString[32]\t\t\n"
+        "#ColumnName\tName\tEffect\t; *.ps\t\n"                         // Kommentar im Kopf
+        "#Record\tAtk\tKarenWingAtk\t; \xb1\xe2\xbc\xfa \xbc\xb3\xb8\xed\t\t\n" // Kommentar im Record (EUC-KR)
+        "#Record\tDef\t-\t\t\t\n"
+        "#Record\t\t\t\n"                                               // Record ohne Werte
+        "#Table\tScript\n"
+        "#ColumnType\tINDEX\n"
+        "#ColumnName\tScrIndex\n"
+        "#Record\tKQ60\tText jenseits der Spalten\n"                    // Daten breiter als der Kopf
+        "#Table\tScenario\n"
+        "#ColumnType\tINDEX\tSTRING[128]\n"
+        "#ColumnName\tScrIndex\tScrString\n"
+        "#Record\tShort\tEine Zeile\t;\t1\n"
+        "#Record\tLong\tErste Zeile\n"
+        "\t\tzweite Zeile\n"                                            // Folgezeile eines Texts
+        "\t\tdritte Zeile\t;\t7\n"
+        "#Table\tShineNPC\n"
+        "#ColumnType\tSTRING[33]\tSTRING[20]\tDWRD\n"
+        "#ColumnName\tMobName\tMap\tX\n"
+        "\t#recordin\tShineNPC\tAlpha\tRou\t100\t\t\n"
+        "    #recordin    ShineNPC    Xiaoming        Eld    11683\t\t\n"; // Leerzeichen statt Tabs
+    WriteAll(path, original);
+    auto file = LoadShineTextFile(path);
+    Require(file.has_value(), "Sonderzeilen-Datei laden");
+    Require(file->spaceDelimiter, "#delimiter \\x20 erkannt");
+    auto* skill = file->FindTable("Skill");
+    auto* script = file->FindTable("Script");
+    auto* scenario = file->FindTable("Scenario");
+    auto* npc = file->FindTable("ShineNPC");
+    Require(skill && script && scenario && npc, "alle vier Tabellen erkannt");
+    Require(skill->columns.size() == 2, "Kommentar im Kopf ist keine Spalte");
+    Require(skill->records.size() == 3, "drei Skill-Records");
+    Require(skill->records[0].values == std::vector<std::string>{"Atk", "KarenWingAtk"}, "Kommentar im Record ist kein Wert");
+    Require(skill->records[2].values.empty(), "Record ohne Werte");
+    Require(script->columns.size() == 1 && script->records.size() == 1, "Script-Tabelle");
+    Require(script->records[0].values == std::vector<std::string>{"KQ60"}, "Werte jenseits der Spaltenzahl gehören nicht zu den Werten");
+    Require(scenario->records.size() == 2, "Scenario-Tabelle");
+    Require(scenario->records[0].values == std::vector<std::string>{"Short", "Eine Zeile"}, "Kommentar hinter einem Text");
+    Require(scenario->records[1].continuationLines == 2, "zwei Folgezeilen erkannt");
+    Require(scenario->records[1].values == std::vector<std::string>{"Long", "Erste Zeile\n\t\tzweite Zeile\n\t\tdritte Zeile"},
+            "mehrzeiliger Text steht vollständig im letzten Wert");
+    Require(npc->records.size() == 2, "leerzeichengetrennter Record wird gelesen");
+    Require(npc->records[1].values == std::vector<std::string>{"Xiaoming", "Eld", "11683"}, "Werte der leerzeichengetrennten Zeile");
+
+    // Unverändert speichern: byte-identisch.
+    Require(SaveShineTextFile(*file, path).has_value(), "Sonderzeilen unverändert speichern");
+    RequireText(ReadAll(path), original, "unverändert gespeicherte Sonderzeilen bleiben byte-identisch");
+
+    // Bearbeiten: Kommentar, Überzähliges, Auffüllung und Leerzeichen-Trenner bleiben stehen.
+    skill->records[0].values[1] = "KarenWingAtk2";
+    skill->records[2].values = {"Neu", "X"};
+    script->records[0].values[0] = "KQ61";
+    npc->records[1].values[2] = "12000";
+    Require(SaveShineTextFile(*file, path).has_value(), "Sonderzeilen bearbeitet speichern");
+    std::string expected = original;
+    auto replace = [&](const std::string& from, const std::string& to) {
+        const auto pos = expected.find(from);
+        Require(pos != std::string::npos, "Testvorlage enthält die Zeile");
+        expected.replace(pos, from.size(), to);
+    };
+    replace("#Record\tAtk\tKarenWingAtk\t;", "#Record\tAtk\tKarenWingAtk2\t;");
+    replace("#Record\t\t\t\n", "#Record\tNeu\tX\t\t\t\n"); // Auffüllung bleibt stehen
+    replace("#Record\tKQ60\tText", "#Record\tKQ61\tText");
+    replace("Eld    11683\t\t\n", "Eld    12000\t\t\n");
+    RequireText(ReadAll(path), expected, "bearbeitete Sonderzeilen behalten Kommentar, Überzähliges, Auffüllung und Trenner");
+
+    // Ein Record ohne Werte bleibt beim Speichern exakt (früher kam ein Tab hinzu).
+    auto again = LoadShineTextFile(path);
+    Require(again.has_value(), "bearbeitete Datei neu laden");
+    again->FindTable("Skill")->records[2].values.clear();
+    again->FindTable("Skill")->records[1].values = {"Def", "-"}; // unverändert
+    Require(SaveShineTextFile(*again, path).has_value(), "Record ohne Werte speichern");
+    std::string cleared = expected;
+    const std::string filled = "#Record\tNeu\tX\t\t\t\n";
+    cleared.replace(cleared.find(filled), filled.size(), "#Record\t\t\t\n");
+    RequireText(ReadAll(path), cleared, "geleerter Record behält seine Auffüllung ohne zusätzliches Tab");
+
+    // Mehrzeiliger Text: nur unverändert speicherbar, Bearbeiten wird abgelehnt.
+    auto multi = LoadShineTextFile(path);
+    Require(multi.has_value(), "Datei für mehrzeiligen Test laden");
+    multi->FindTable("Scenario")->records[1].values[0] = "Changed";
+    Require(!SaveShineTextFile(*multi, path).has_value(), "Bearbeiten eines mehrzeiligen Texts wird abgelehnt");
+    RequireText(ReadAll(path), cleared, "abgelehntes Speichern lässt die Datei unverändert");
+
+    // Löschen eines mehrzeiligen Records nimmt seine Folgezeilen mit.
+    auto del = LoadShineTextFile(path);
+    Require(del.has_value(), "Datei für Löschtest laden");
+    auto& scenarioRecords = del->FindTable("Scenario")->records;
+    scenarioRecords.erase(scenarioRecords.begin() + 1);
+    Require(SaveShineTextFile(*del, path).has_value(), "mehrzeiligen Record löschen");
+    std::string withoutLong = cleared;
+    const std::string longBlock = "#Record\tLong\tErste Zeile\n\t\tzweite Zeile\n\t\tdritte Zeile\t;\t7\n";
+    withoutLong.erase(withoutLong.find(longBlock), longBlock.size());
+    RequireText(ReadAll(path), withoutLong, "Folgezeilen verschwinden mit ihrem Record");
+
+    // Neuer ShineNPC-Record nimmt die tab-getrennte Zeile als Muster, nicht die leerzeichengetrennte,
+    // und kommt hinter die letzte Zeile der Tabelle.
+    auto add = LoadShineTextFile(path);
+    Require(add.has_value(), "Datei für neuen NPC laden");
+    add->FindTable("ShineNPC")->records.push_back(ShineRecord{{"Beta", "Eld", "200"}, 0});
+    Require(SaveShineTextFile(*add, path).has_value(), "neuen NPC speichern");
+    RequireText(ReadAll(path), withoutLong + "\t#recordin\tShineNPC\tBeta\tEld\t200\t\t\n", "neuer NPC in Form der tab-getrennten Musterzeile");
+
+    std::error_code ec;
+    std::filesystem::remove(path, ec);
+    std::cout << "Kommentare, Ueberzaehliges, mehrzeilige Texte, Leerzeichen-Trenner: ok\n";
+}
+
 int main(int argc, char** argv) {
     NewRecordStyle();
+    SpecialLines();
     if (argc < 2) { std::cerr << "usage: test_shinetext file.txt (z.B. World/NPC.txt oder MobRegen/<Karte>.txt)\n"; return 2; }
     auto src = std::filesystem::path(argv[1]);
     auto loaded = LoadShineTextFile(src);
-    assert(loaded);
+    Require(loaded.has_value(), "Datei laden");
     auto& f = *loaded;
-    assert(!f.tables.empty() && "mindestens eine #Table erwartet");
+
+    // Unverändert speichern muss byte-identisch zum Original sein (reines Round-Trip, siehe
+    // ShnFile-Pendant test_shn_file.cpp), auch bei gemischten Zeilenenden. Seit [0.44.25] gegen alle
+    // Textdateien aus Server/9Data/Shine der NA2016-Daten geprueft (inzwischen 680).
+    auto out = std::filesystem::temp_directory_path() / "nextgen_shinetext_roundtrip_test.txt";
+    Require(SaveShineTextFile(f, out).has_value(), "unverändert speichern");
+    Require(ReadAll(src) == ReadAll(out), "unveraendert gespeicherte ShineText-Datei muss byte-identisch bleiben");
+
+    // Skript-Dateien ohne Tabelle (DefaultCharacterData.txt, World/QuestParser.txt) sind kein
+    // Tabellenformat - sie bleiben nur unverändert erhalten.
+    if (f.tables.empty()) {
+        std::error_code ec;
+        std::filesystem::remove(out, ec);
+        std::cout << "keine #Table - Datei bleibt unveraendert erhalten: ok\n";
+        return 0;
+    }
     for (auto& t : f.tables) {
-        assert(t.columns.size() > 0);
+        Require(t.columns.size() > 0, "jede Tabelle hat Spalten");
         for (auto& r : t.records) {
-            assert(r.values.size() == t.columns.size() &&
-                   "Werteanzahl muss nach der Leer-Tab-Normalisierung zur Spaltenzahl passen");
+            // Fehlende Werte am Ende sind leer (z. B. "#Record\t\t\t;" in Script/Scenario.txt); mehr
+            // Werte als Spalten darf es nach dem Abtrennen von Kommentaren nicht geben.
+            Require(r.values.size() <= t.columns.size(), "nicht mehr Werte als Spalten (Kommentare abgetrennt)");
         }
     }
     // Hinweis: manche echten Dateien haben ALLE Records auskommentiert (z.B. Event-Karten
-    // ohne aktive Mob-Spawns) - 0 Records ist dann korrekt, kein Parserfehler. Deshalb hier
-    // keine "mindestens ein Record"-Pflicht mehr, nur dass die Struktur (Tabellen/Spalten)
-    // grundsätzlich erkannt wurde.
-
-    // Unverändert speichern muss byte-identisch zum Original sein (reines Round-Trip, siehe
-    // ShnFile-Pendant test_shn_file.cpp) - abgesehen von Zeilenende-Normalisierung auf CRLF,
-    // die hier bewusst NICHT geprüft wird, da Quelldateien mit gemischten Zeilenenden vorkommen.
-    auto out = std::filesystem::temp_directory_path() / "nextgen_shinetext_roundtrip_test.txt";
-    auto saved = SaveShineTextFile(f, out);
-    assert(saved);
-    {
-        // Seit [0.44.25]: unveraendert gespeicherte Datei ist BYTE-IDENTISCH zum Original
-        // (Zeilenenden je Zeile + Auffuell-Tabs bleiben erhalten). Gegen alle 677 Textdateien
-        // aus Server/9Data/Shine der NA2016-Daten geprueft.
-        std::ifstream a(src, std::ios::binary), b(out, std::ios::binary);
-        std::vector<char> av((std::istreambuf_iterator<char>(a)), {}), bv((std::istreambuf_iterator<char>(b)), {});
-        assert(av == bv && "unveraendert gespeicherte ShineText-Datei muss byte-identisch bleiben");
-    }
+    // ohne aktive Mob-Spawns) - 0 Records ist dann korrekt, kein Parserfehler. Die Bearbeitungs-
+    // pruefungen unten laufen nur, wenn es Records gibt.
+    bool anyRecords = false;
+    for (const auto& t : f.tables) anyRecords = anyRecords || !t.records.empty();
     auto reloadedUnchanged = LoadShineTextFile(out);
     assert(reloadedUnchanged);
     assert(reloadedUnchanged->tables.size() == f.tables.size());
@@ -209,23 +340,39 @@ int main(int argc, char** argv) {
         std::filesystem::remove(wideEdited);
     }
 
+    if (!anyRecords) {
+        std::error_code ec;
+        std::filesystem::remove(out, ec);
+        std::cout << "alle Records auskommentiert - nur Round-Trip geprueft: ok\n";
+        return 0;
+    }
+
     // Bestehenden Record bearbeiten, speichern, neu laden, Änderung muss ankommen - Rest der
-    // Datei (andere Records, Kommentare) darf sich nicht verändern.
+    // Datei (andere Records, Kommentare) darf sich nicht verändern. Genommen wird der erste
+    // einzeilige Record mit Werten (mehrzeilige Texte sind nur unverändert speicherbar).
+    std::size_t editTable = f.tables.size(), editRecord = 0;
+    for (std::size_t ti = 0; ti < f.tables.size() && editTable == f.tables.size(); ++ti)
+        for (std::size_t ri = 0; ri < f.tables[ti].records.size(); ++ri)
+            if (f.tables[ti].records[ri].continuationLines == 0 && !f.tables[ti].records[ri].values.empty()) {
+                editTable = ti;
+                editRecord = ri;
+                break;
+            }
+    Require(editTable < f.tables.size(), "ein bearbeitbarer Record vorhanden");
     auto edited = f;
-    assert(!edited.tables.front().records.empty());
-    auto& firstRecord = edited.tables.front().records.front();
-    assert(!firstRecord.values.empty());
+    auto& firstRecord = edited.tables[editTable].records[editRecord];
     firstRecord.values.front() += "_test";
     auto editedPath = std::filesystem::temp_directory_path() / "nextgen_shinetext_edit_test.txt";
-    auto editedSave = SaveShineTextFile(edited, editedPath);
-    assert(editedSave);
+    Require(SaveShineTextFile(edited, editedPath).has_value(), "bearbeitet speichern");
     auto reloaded = LoadShineTextFile(editedPath);
-    assert(reloaded);
-    assert(reloaded->tables.front().records.front().values.front() ==
-           firstRecord.values.front());
-    if (reloaded->tables.front().records.size() > 1) {
-        assert(reloaded->tables.front().records[1].values == f.tables.front().records[1].values &&
-               "andere Records duerfen beim minimal-invasiven Speichern unveraendert bleiben");
+    Require(reloaded.has_value(), "bearbeitete Datei neu laden");
+    Require(reloaded->tables[editTable].records[editRecord].values == firstRecord.values, "Aenderung kommt an");
+    for (std::size_t ti = 0; ti < f.tables.size(); ++ti) {
+        Require(reloaded->tables[ti].records.size() == f.tables[ti].records.size(), "Recordzahl bleibt beim Bearbeiten gleich");
+        for (std::size_t ri = 0; ri < f.tables[ti].records.size(); ++ri)
+            if (ti != editTable || ri != editRecord)
+                Require(reloaded->tables[ti].records[ri].values == f.tables[ti].records[ri].values,
+                        "andere Records duerfen beim minimal-invasiven Speichern unveraendert bleiben");
     }
 
     // Loeschen (seit [0.44.27]): ein aus ShineTable::records entfernter Record verschwindet auch
@@ -251,7 +398,7 @@ int main(int argc, char** argv) {
         // verschieben (mehrtabellige Dateien wie MobRegen/<Karte>.txt).
         std::size_t last = ti;
         for (std::size_t i = 0; i < f.tables.size(); ++i) if (!f.tables[i].records.empty()) last = i;
-        if (last != ti) {
+        if (last != ti && !f.tables[last].records.front().values.empty() && f.tables[last].records.front().continuationLines == 0) {
             auto both = f;
             auto extra = both.tables[ti].records.front();
             extra.sourceLine = 0;

@@ -14,8 +14,9 @@ namespace theseed::mapeditor::core::legacy {
 // (Mob-Spawns, zwei verknüpfte Tabellen pro Datei) und Server/9Data/Shine/NPCItemList/
 // <NPC>.txt (Händler-Inventar, mehrere Tabs pro Datei). Byte-exakt gegen die echten NA2016-
 // Dateien verifiziert: die Datei behauptet in ihrem eigenen Kopf "#delimiter\x20;" (Leerzeichen)
-// - das TATSÄCHLICHE Trennzeichen ist aber durchgängig TAB (\t), nicht Leerzeichen. Diesem Fund
-// folgt der Parser, nicht der (falschen) Selbstbeschreibung der Datei.
+// - das TATSÄCHLICHE Trennzeichen ist aber fast durchgängig TAB (\t), nicht Leerzeichen. Diesem Fund
+// folgt der Parser; nur Record-Zeilen ganz ohne Tab-Trennung werden dann an Leerzeichen getrennt
+// (siehe ShineTextFile::spaceDelimiter).
 //
 // Eine Datei kann MEHRERE Tabellen enthalten (z.B. MobRegen/<Karte>.txt: erst
 // "MobRegenGroup", dann "MobRegen"). Records werden entweder mit "#record" (gehört zur zuletzt
@@ -26,6 +27,12 @@ namespace theseed::mapeditor::core::legacy {
 // Werte werden bewusst als reine Strings gehalten (nicht in int/float konvertiert) - die realen
 // Spaltentypen (INDEX/STRING[n]/DWRD/BYTE/WORD) sind Hinweise, keine strikte Kodierung, und
 // einige Datensätze (Kommentarzeilen mit ";" am Anfang) werden ohnehin übersprungen.
+//
+// ";" leitet auch MITTEN in einer Zeile einen Kommentar ein (Kopf- wie Record-Zeilen, z. B.
+// "#Record\tOutOfRange\t-\t-\tKarenWingAtk\t; Kommentar"): ab dem ersten Token, das mit ";" beginnt,
+// gehört der Rest nicht mehr zu den Werten bzw. Spalten. Er bleibt beim Speichern unverändert
+// stehen, auch wenn der Record bearbeitet wird. Werte jenseits der Spaltenzahl (belegt an
+// Script/Honeying.txt) werden genauso unverändert mitgeführt, aber nicht als Werte gelesen.
 
 struct ShineColumn {
     std::string name;
@@ -44,6 +51,10 @@ struct ShineRecord {
     // Auffüll-Tabs) - z. B. die Vorlagenzeile, aus der er geklont wurde. 0 = letzte vorhandene
     // Zeile der Tabelle als Muster.
     std::size_t styleLine = 0;
+    // Nur zur Information (vom Loader gesetzt): Anzahl der Folgezeilen eines Texts, der über mehrere
+    // Zeilen läuft (belegt an Script/Scenario.txt). Der letzte Wert enthält dann den ganzen Text samt
+    // Zeilenumbrüchen. Solche Records lassen sich nur unverändert speichern.
+    std::size_t continuationLines = 0;
 };
 
 struct ShineTable {
@@ -86,6 +97,10 @@ struct ShineTextFile {
     std::vector<std::pair<std::size_t, std::size_t>> loadedTableHeaders;
     std::vector<std::string> rawLineEndings;
     std::string defaultLineEnding = "\r\n";
+    // Die Datei deklariert "#delimiter \x20" (nicht auskommentiert). Dann werden Record-Zeilen, die
+    // statt Tabs Leerzeichen als Trenner nutzen (belegt an World/NPC.txt: drei ShineNPC-Zeilen), an
+    // Leerzeichenläufen getrennt - sonst bleiben sie mit Tabs getrennt wie alle anderen.
+    bool spaceDelimiter = false;
 
     ShineTable* FindTable(const std::string& name);
     const ShineTable* FindTable(const std::string& name) const;

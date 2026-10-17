@@ -1,3 +1,19 @@
+## Shine text files — all 680 NA2016 files modelled correctly
+- Background: in the round trip over the NA2016 server text files, 29 of 680 files failed. Unchanged saves were already byte-identical everywhere; the failures were gaps in how lines were read, which made editing these files unsafe.
+- Comments in the middle of a line: `;` now ends the data part of header and record lines (`#ColumnName\tScriptName\t; *.ps`, `#Record\t…\tKarenWingAtk\t; comment`).
+  - Comment text is no longer read as values or columns. This fixed 21 files, among them MobAttackSequence/*, World/NPCAction, ChrCommon, ItemUseFunction, MiscDataTable, PineScript, SubLayerInteract and RandomOptionTable.
+  - When a record is edited, its comment, the `;` sentinel and the padding tabs stay exactly in place.
+- Values beyond the column count (Script/Honeying.txt: one column, two values) are kept unchanged but are not read as values.
+- `#delimiter \x20`: record lines without tabs are split at spaces. This adds three NPCs in World/NPC.txt that were silently missing from the NPC editor (Xiaoming, Oluming and Toryming in Eld). They are written back with their spaces when edited. New ShineNPC records still copy a tab-separated line.
+- Texts spanning several lines (Script/Scenario.txt, 6 records) are read in full. They can only be saved unchanged, and changing one reports an error instead of breaking the file. Deleting such a record removes its continuation lines too.
+- Fixed: emptying every value of a record added an extra tab.
+- Saving an edited record now replaces only its value tokens. All other parts of the line keep their original bytes: directive, separators, comment, sentinel and padding.
+- Tests:
+  - `test_shinetext` gains synthetic cases for comments, extra values, multi-line texts, space separators and empty records.
+  - The real-data checks accept files without `#Table` and files whose records are all commented out.
+  - The round trip over all 680 NA2016 server text files passes 680/680 (before: 651).
+  - Comparing old and new parser output record by record shows changes only in the files listed above.
+
 ## New map wizard — exact text files, own loading image
 - Fixed: new records in Shine text files did not look like the originals. The wizard (and every other editor that adds records) wrote `#recordin\t<table>\t…` without padding.
   - New records now copy the form of a pattern line of the same table: leading tabs, the directive as written (`#Record`, or `#recordin <table>` when `#Record` would bind to another table at the insert position), the space after numbers, and the same number of padding tabs.
