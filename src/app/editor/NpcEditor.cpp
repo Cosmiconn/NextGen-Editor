@@ -361,7 +361,7 @@ void DrawAiWorkspace(EditorState& state) {
             DrawInlineIcon("type",lua?DrawIconCode:DrawIconRoute,
                            lua?IM_COL32(95,195,255,245):IM_COL32(195,135,255,245),
                            lua?"Lua AIScript":"PineScript",ImVec2(18,18),
-                           lua?"module.ai":nullptr);
+                           lua?"module.ai":"gameplay.path");
             ImGui::SameLine(0,4);
             const bool selected=state.aiWorkspaceSelected==static_cast<int>(idx) ||
                                 (!state.aiScriptEditorPath.empty() &&

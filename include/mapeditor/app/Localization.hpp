@@ -40,8 +40,8 @@ inline const std::unordered_map<std::string, std::pair<const char*, const char*>
     static const std::unordered_map<std::string, std::pair<const char*, const char*>> table = {
         // Obere Navigationsleiste (Projekt-Hub)
         {"nav.project", {"Projekt", "Project"}},
-        {"nav.map", {"Karte", "Map"}},
-        {"nav.data", {"Spieldaten", "Game Data"}},
+        {"nav.map", {"Map Editor", "Map Editor"}},
+        {"nav.data", {"Datei Editor", "File Editor"}},
         {"nav.animations", {"Animationen", "Animations"}},
         {"nav.new", {"Neu", "New"}},
         {"nav.open", {"Öffnen", "Open"}},
