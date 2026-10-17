@@ -215,6 +215,21 @@ struct ShineRecordTracker {
     int index = -1;
     std::shared_ptr<theseed::mapeditor::core::legacy::ShineRecord> snapshot;
 };
+// Zustand eines Formular-Editors (Item, Mob ...): Auswahl, Liste, Anlegen-Felder, Bericht.
+struct DataFormState {
+    long long selectedId = -1;
+    char filter[96] = "";
+    int quickFilter = 0; // 0 alle, 1 geändert, 2 Client/Server-Abweichung, 3 Prüfungsprobleme
+    std::string listKey;
+    std::vector<std::size_t> visible;
+    char newInx[64] = "";
+    char newName[96] = "";
+    std::vector<std::string> report;
+    char pickFilter[64] = "";
+    bool iconPickerOpen = false;
+    std::string usageKey;                 // für welche ID/Revision usageLines gilt
+    std::vector<std::string> usageLines;  // "verwendet in" (auf Knopfdruck gesucht)
+};
 struct ProjectConfig {
     char name[256] = "";
     char projectFolder[512] = "";
@@ -1026,6 +1041,12 @@ struct EditorState {
     ShineRecordTracker dropTableTracker;
     int dropTableDeleteRecord = -1;
     bool dropTableDeleteOpen = false;
+    // Formular-Editoren für Items (ItemInfo/ItemInfoServer/ItemViewInfo) und Mobs (MobInfo/
+    // MobInfoServer/MobViewInfo), siehe DataFormEditor.cpp und ItemMobEditors.cpp.
+    DataFormState itemForm;
+    DataFormState mobForm;
+    DataFormState passiveForm; // PassiveSkill / PassiveSkillView
+    DataFormState stateForm;   // AbState / AbStateView (+ SubAbState-Stufen)
     // Drop-Gruppen (World/ItemDropGroup.txt): eine Kopie im Speicher, die der Gruppen-Editor bearbeitet
     // und aus der der Katalog für die Drop-Tabelle (dropGroups) aufgebaut wird.
     int dropEditorTab = 0; // 0 Mob-Drop-Tabelle, 1 Drop-Gruppen
@@ -2054,6 +2075,79 @@ static const Section kSections[] = {
 };
 }
  // namespace skilled
+
+// ---------------------------------------------------------------------------------------------
+// Formular-Editor für ID-Familien (DataFormEditor.cpp): eine Spec beschreibt die Tabellen (je
+// Client/Server-Kopie), die Felder in Abschnitten und ihre Art. Lesen zeigt die erste Kopie,
+// Schreiben geht in alle Kopien als ein Undo-Schritt. Labels und Tooltips fallen auf den Spalten-
+// namen bzw. die Spaltenreferenz des Handbuchs (core::manual::FindColumn) zurück.
+namespace dataform {
+enum class Kind { Int, Text, Bool, ItemRef, MobRef, SkillRef, StateRef, DropGroupRef, Values, Enum, InxRef };
+struct EnumOption { long long value; const char* de; const char* en; };
+struct Field {
+    int table = 0;
+    const char* col = "";
+    Kind kind = Kind::Int;
+    const char* labelDe = nullptr;
+    const char* labelEn = nullptr;
+    const char* tipDe = nullptr;
+    const char* tipEn = nullptr;
+    std::vector<EnumOption> options; // nur Kind::Enum
+    const char* refFile = nullptr;   // nur Kind::InxRef: Tabelle, deren InxName gewählt wird
+    bool refServer = false;          // ... auf der Server-Seite (sonst Client)
+};
+struct Section {
+    const char* titleDe;
+    const char* titleEn;
+    std::vector<Field> fields;
+    bool defaultOpen = false;
+};
+struct Table {
+    const char* file;
+    bool client;
+    bool server;
+    const char* inxColumn = "InxName"; // AbStateView schreibt "inxName"
+};
+struct Spec {
+    const char* id;                   // Verlaufs- und ID-Präfix, z. B. "Item"
+    std::vector<Table> tables;        // tables[0] = Haupttabelle (Liste, InxName, Name)
+    std::vector<Section> sections;
+};
+struct Docs {
+    std::vector<std::vector<int>> byTable; // geladene Kopien je Tabelle (Client zuerst)
+    [[nodiscard]] int Main() const { return byTable.empty() || byTable[0].empty() ? -1 : byTable[0][0]; }
+};
+} // namespace dataform
+dataform::Docs ResolveFormDocs(EditorState& state, const dataform::Spec& spec);
+long long FormRowIn(EditorState& state, int document, long long id);
+std::string FormCellRead(EditorState& state, const dataform::Docs& docs, int table, const char* col, long long id);
+// Schreibt in alle Kopien der Tabelle (ein Undo-Schritt); false, wenn sich nichts geändert hat.
+bool FormCellWrite(EditorState& state, const dataform::Docs& docs, int table, const char* col, long long id,
+                   const std::string& text, const std::string& label);
+bool FormCopiesDiffer(EditorState& state, const dataform::Docs& docs, int table, const char* col, long long id,
+                      std::string* details = nullptr);
+// Klont alle Zeilen der Vorlage (jede Tabelle, jede Kopie) unter freier ID und neuem InxName; setzt
+// "Name", wo vorhanden. Ein Undo-Schritt. Rückgabe: neue ID oder -1 (Grund im Bericht).
+long long CloneFormRecord(EditorState& state, const dataform::Spec& spec, const dataform::Docs& docs,
+                          long long templateId, const std::string& newInx, const std::string& newName,
+                          std::vector<std::string>& report);
+// Ganzer Editor: Liste links (Suche, Filter), rechts Kopf (header-Callback: Vorschau, Prüfungen),
+// Anlegen/Löschen, Formular und alle übrigen Spalten. problems liefert Prüfungsmeldungen je ID.
+void DrawDataFormEditor(EditorState& state, const dataform::Spec& spec, DataFormState& form,
+                        const char* title, IconDrawFn icon, const char* semanticIcon,
+                        const std::function<void(const dataform::Docs&, long long)>& header,
+                        const std::function<std::vector<std::string>(const dataform::Docs&, long long)>& problems,
+                        const std::function<void(long long, float)>& listIcon = {});
+void DrawItemEditor(EditorState& state);
+void DrawMobEditor(EditorState& state);
+void DrawPassiveSkillEditor(EditorState& state);
+void DrawAbStateEditor(EditorState& state);
+dataform::Spec& PassiveFormSpec();
+dataform::Spec& AbStateFormSpec();
+// ID eines Zustands (AbState.InxName) oder -1 - für Sprünge aus dem Skill-Editor.
+long long AbStateIdByInx(EditorState& state, const std::string& inx);
+dataform::Spec& ItemFormSpec();
+dataform::Spec& MobFormSpec();
 
 struct SkillDocs { int skillC = -1, skillS = -1, server = -1, viewC = -1, viewS = -1; };
 SkillDocs ResolveSkillDocs(EditorState& state);

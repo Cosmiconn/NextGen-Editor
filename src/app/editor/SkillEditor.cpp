@@ -857,6 +857,16 @@ void DrawSkillEditor(EditorState& state) {
                         std::string chosen;
                         if (StringPickerPopup("##pickstate", ed.pickerOptions["StateRef"], ed.pickFilter, sizeof(ed.pickFilter), chosen, &ed.pickerLabels["StateRef"]))
                             SkillCellWrite(state, d, skilled::Doc::Skill, nameCol.c_str(), sel, chosen);
+                        if (const long long stateId = AbStateIdByInx(state, TrimAscii(cur)); stateId >= 0) {
+                            ImGui::SameLine();
+                            if (ImGui::SmallButton(L("Öffnen##state", "Open##state"))) {
+                                state.stateForm.selectedId = stateId;
+                                state.shnSubTab = 14;
+                            }
+                            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                                ImGui::SetTooltip("%s", L("Diesen Zustand im Zustands-Editor öffnen (Werte je Stufe, Darstellung).",
+                                                          "Open this state in the state editor (values per level, presentation)."));
+                        }
                     }
                     for (int c = 0; c < 2; ++c) {
                         ImGui::TableSetColumnIndex(2 + c);

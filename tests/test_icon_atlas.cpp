@@ -35,7 +35,12 @@ int main(int argc, char** argv) {
     const auto c63 = IconAtlasCell(256, 256, 63);
     Check(c63.valid && Near(c63.u1, 1) && Near(c63.v1, 1), "Index 63 = letzte Zelle");
     Check(!IconAtlasCell(256, 256, 64).valid && !IconAtlasCell(256, 256, -1).valid, "Außerhalb des Atlas ungültig");
-    Check(IconAtlasCapacity(256, 256) == 64 && IconAtlasCapacity(128, 128) == 16, "Kapazität");
+    Check(IconAtlasCapacity(256, 256) == 64 && IconAtlasCapacity(128, 128) == 64 && IconAtlasCapacity(256, 256, 32) == 64 && IconAtlasCapacity(128, 128, 32) == 16,
+          "Kapazität: immer 8x8 (128er-Atlas wie AbState00 mit 16-px-Zellen), feste Zellgröße weiter möglich");
+    {
+        const auto c51 = IconAtlasCell(128, 128, 51); // AbState00 #51 (StaRedSlash): Zeile 6, Spalte 3
+        Check(c51.valid && c51.u0 == 48.0f / 128.0f && c51.v0 == 96.0f / 128.0f && c51.u1 == 64.0f / 128.0f, "128er-Atlas: 16-px-Zellen");
+    }
     Check(IconAtlasRelativePath("ItemEqu000") == "Icon/ItemEqu000.dds" && IconAtlasRelativePath("-").empty(), "Pfad relativ zu resmenu");
 
     const auto tmp = std::filesystem::temp_directory_path() / "nextgen_icon_atlas_test.dds";

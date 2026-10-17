@@ -239,6 +239,13 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         std::fflush(stdout);
     }
     else if (cmd == "undo") DataUndo(state);
+    else if (cmd == "itemeditor" || cmd == "mobeditor" || cmd == "passiveeditor" || cmd == "stateeditor") {
+        // itemeditor/mobeditor/passiveeditor/stateeditor <ID>: öffnet den Formular-Editor mit diesem Eintrag.
+        long long id = -1; in >> id;
+        state.screen = AppScreen::ShnEditor;
+        state.shnSubTab = cmd == "itemeditor" ? 11 : cmd == "mobeditor" ? 12 : cmd == "passiveeditor" ? 13 : 14;
+        (cmd == "itemeditor" ? state.itemForm : cmd == "mobeditor" ? state.mobForm : cmd == "passiveeditor" ? state.passiveForm : state.stateForm).selectedId = id;
+    }
     else if (cmd == "autosave") {
         // autosave now | wait | restore | discard | minutes <n>: automatisches Speichern testen.
         std::string mode; in >> mode;

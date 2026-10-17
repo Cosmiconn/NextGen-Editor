@@ -466,6 +466,9 @@ Relations between tables use ID and InxName (text key). An InxName is referenced
 - Portale: TownPortal-Ziele (auch im Map-Editor).
 - Custom NPC/Mob: NPCs und Monster aus Vorlagen erzeugen.
 - Skill Editor: Skills ändern und neue erstellen.
+- Drops: Mob-Drop-Tabelle und Drop-Gruppen.
+- Items / Mobs: Formular-Editoren für Items (ItemInfo, ItemInfoServer, ItemViewInfo) und Mobs (MobInfo, MobInfoServer, MobViewInfo).
+- Passiv / Zustände: Passiv-Skills (PassiveSkill, PassiveSkillView) und Zustände (AbState, AbStateView, SubAbState).
 Die Prozent-Editoren ändern ALLE Zeilen der Spalte - vorher prüfen, dann speichern.)MAN",
      R"MAN(- Single SHN Editor: edit any table as a grid.
 - Multi SHN Editor: choose a task (new item, new NPC, new mob, new skill, shop/price, new quest, XP/rate); the editor marks the relevant tables in CLIENT and SERVER yellow as candidates. This is an orientation aid, not a proven dependency.
@@ -475,6 +478,9 @@ Die Prozent-Editoren ändern ALLE Zeilen der Spalte - vorher prüfen, dann speic
 - Portals: TownPortal targets (also in the map editor).
 - Custom NPC/Mob: create NPCs and monsters from templates.
 - Skill Editor: modify skills and create new ones.
+- Drops: mob drop table and drop groups.
+- Items / Mobs: form editors for items (ItemInfo, ItemInfoServer, ItemViewInfo) and mobs (MobInfo, MobInfoServer, MobViewInfo).
+- Passive / States: passive skills (PassiveSkill, PassiveSkillView) and states (AbState, AbStateView, SubAbState).
 The percentage editors change ALL rows of the column - check first, then save.)MAN",
      "tabs multi xp rate buy sell quest single"},
     {"shn.quest", "shn",
@@ -517,6 +523,42 @@ The percentage editors change ALL rows of the column - check first, then save.)M
 - 'Used by' lists the mobs that drop the group; a click opens their row in the drop table.
 - Both files are saved separately (project override in the server folder). Everything can be undone with Ctrl+Z.)MAN",
      "drop droptable itemdroptable itemdropgroup gruppe group checksum upgrade menge quantity mob item"},
+    {"shn.itemmob", "shn",
+     "Item- und Mob-Editor", "Item and mob editor",
+     R"MAN(Beide Editoren zeigen links alle Einträge (Suche nach Name, InxName oder ID; Filter Alle / Geändert / Client/Server / Probleme) und rechts ein Formular über alle Tabellen der Familie.
+- Item: ItemInfo (Client und Server), ItemInfoServer, ItemViewInfo. Mob: MobInfo (Client und Server), MobInfoServer, MobViewInfo.
+- Eingaben werden beim Verlassen des Felds in ALLE Kopien geschrieben (Client und Server) - ein Schritt für Strg+Z. Ein orangefarbenes Label mit '!' heißt: Client und Server haben verschiedene Werte (Tooltip zeigt beide).
+- 'Wählen...' bei Verweisfeldern: Items mit Icon, Mobs, Skills, Zustände oder die in der Spalte schon verwendeten Werte. Drop-Gruppe A/B zeigt, in wie vielen Drop-Gruppen-Zeilen der Name vorkommt, 'Öffnen' springt in den Drop-Gruppen-Editor.
+- Item-Kopf: Icon mit Atlas-Auswahl, Modell einer Waffe/eines Schilds (resitem), 'Verwendung suchen' (Verweise in allen geladenen Tabellen und in den Drop-Gruppen).
+- Mob-Kopf: Modell-Vorschau (reschar), Drop-Zeilen mit Sprung in den Drop-Editor, Platzierung aus World/NPC.txt, Gespräch, 'Spawns suchen' (alle MobRegen-Dateien).
+- Prüfung: doppelter InxName, fehlende Zeile in einer Tabelle, Verkaufspreis über Kaufpreis, Min-Schaden über Max-Schaden, Mob-Modell nicht gefunden.
+- 'Neu aus diesem anlegen': klont alle Zeilen unter einer freien ID mit neuem InxName (und Namen) - ein Schritt. 'Löschen' entfernt den Eintrag in allen Tabellen der Familie, nach einer Verweisliste.
+- 'Alle übrigen Spalten (roh)' zeigt jede Spalte ohne eigenes Feld. Labels mit '(vermutet)' im Tooltip sind aus Namen und Wertebereichen abgeleitet, nicht belegt.)MAN",
+     R"MAN(Both editors list all entries on the left (search by name, InxName or ID; filters All / Modified / Client/server / Problems) and show a form across all tables of the family on the right.
+- Item: ItemInfo (client and server), ItemInfoServer, ItemViewInfo. Mob: MobInfo (client and server), MobInfoServer, MobViewInfo.
+- Input is written to ALL copies (client and server) when you leave the field - one step for Ctrl+Z. An orange label with '!' means client and server have different values (the tooltip shows both).
+- 'Pick...' on reference fields: items with icons, mobs, skills, states or the values already used in the column. Drop group A/B shows in how many drop group rows the name occurs; 'Open' jumps to the drop group editor.
+- Item header: icon with atlas picker, model of a weapon/shield (resitem), 'Find usage' (references in all loaded tables and in the drop groups).
+- Mob header: model preview (reschar), drop rows with a jump to the drop editor, placement from World/NPC.txt, conversation, 'Find spawns' (all MobRegen files).
+- Checks: duplicate InxName, row missing in a table, sell price above buy price, minimum damage above maximum, mob model not found.
+- 'Create new from this one': clones every row under a free ID with a new InxName (and name) - one step. 'Delete' removes the entry from every table of the family, after a list of references.
+- 'All remaining columns (raw)' shows every column without its own field. Labels marked '(assumed)' in the tooltip are derived from names and value ranges, not proven.)MAN",
+     "item mob editor iteminfo mobinfo formular form klonen clone icon modell model drop spawn prüfung check"},
+    {"shn.states", "shn",
+     "Passiv-Skills und Zustände", "Passive skills and states",
+     R"MAN(Beide Tabs nutzen denselben Formular-Editor wie Items und Mobs (Liste, Filter, Klonen, Löschen, Strg+Z, Client und Server gemeinsam).
+- Passiv: PassiveSkill (Client und Server) und PassiveSkillView. 'Voraussetzung' (DemandSk) ist die Vorstufe; 'Wählen...' listet alle Passiv-Skills. Der Abschnitt Waffenbeherrschung zeigt Rate (MstRt) und Bonus (MstPl) je Waffenart.
+- Zustände: AbState (Client und Server) und AbStateView. Der Kopf zeigt Icon, BUFF/DEBUFF, Beschreibung und die aktiven Skills, die den Zustand auslösen (Klick öffnet den Skill).
+- Stufen: die SubAbState-Zeilen des Zustands (Stärke 1..n) als Tabelle - Stärke, Typ, Dauer (KeepTime in ms, 4000000000 = dauerhaft) und die Aktionen A-D. Jede Zelle wird in Client und Server geschrieben; '+ Stufe' kopiert die letzte Stufe mit Stärke + 1, 'x' löscht eine Stufe.
+- Im Skill-Editor steht bei jedem Zustand (StaNameA-D) ein 'Öffnen'-Knopf, der in diesen Tab springt.
+- Icons: die Zustands-Atlanten AbState00-04 sind 128x128 mit 16-px-Zellen (8x8); der Editor erkennt das an der Atlasgröße.)MAN",
+     R"MAN(Both tabs use the same form editor as items and mobs (list, filters, clone, delete, Ctrl+Z, client and server together).
+- Passive: PassiveSkill (client and server) and PassiveSkillView. 'Requirement' (DemandSk) is the previous step; 'Pick...' lists all passive skills. The weapon mastery section shows the rate (MstRt) and bonus (MstPl) per weapon kind.
+- States: AbState (client and server) and AbStateView. The header shows icon, BUFF/DEBUFF, description and the active skills that apply the state (a click opens the skill).
+- Levels: the SubAbState rows of the state (strength 1..n) as a table - strength, type, duration (KeepTime in ms, 4000000000 = permanent) and the actions A-D. Each cell is written to client and server; '+ Level' copies the last level with strength + 1, 'x' deletes a level.
+- In the skill editor every state (StaNameA-D) has an 'Open' button that jumps to this tab.
+- Icons: the state atlases AbState00-04 are 128x128 with 16 px cells (8x8); the editor detects this from the atlas size.)MAN",
+     "passiv passive zustand state abstate subabstate buff debuff stufe level mastery waffe icon"},
     {"creators.npcmob", "creators",
      "Custom NPC / Mob erstellen", "Creating a custom NPC / mob",
      R"MAN(Tab 'Custom NPC/Mob' im SHN-Editor. Der Assistent klont eine Vorlage in alle Tabellen (MobInfo, MobInfoServer, MobViewInfo, MobSpecies, QuestSpecies, MobWeapon) mit einer überall freien ID.
@@ -974,7 +1016,16 @@ const ColumnDoc kColumns[] = {
     {"ItemInfo", "MaxLot", false, "Maximale Stapelgröße.", "Maximum stack size."},
     {"ItemInfo", "Equip", false, "Ausrüstungs-Slot (Aufzählung).", "Equipment slot (enum)."},
     {"ItemInfo", "UseClass", false, "Klassen, die das Item nutzen dürfen (Bitmaske).", "Classes allowed to use the item (bitmask)."},
-    {"ItemInfo", "MarketIndex", false, "Markt-Kategorie; 'Skill' kennzeichnet Skillbücher.", "Market category; 'Skill' marks skill books."},
+    {"PassiveSkill", "DemandSk", true, "Passiv-Skill (InxName), der vorher gelernt sein muss - in 470 von 503 Zeilen die Vorstufe, sonst '-'.", "Passive skill (InxName) that must be learned first - the previous step in 470 of 503 rows, otherwise '-'."},
+    {"AbState", "SubAbState", true, "InxName der SubAbState-Zeilen mit den Werten je Stärkestufe (775 von 777 Zeilen lösen auf).", "InxName of the SubAbState rows with the values per strength level (775 of 777 rows resolve)."},
+    {"AbStateView", "IconSort", true, "BUFF oder DEBUFF.", "BUFF or DEBUFF."},
+    {"AbStateView", "iconFile", true, "Icon-Atlas (resmenu/Icon, AbState00-04: 128x128, 16-px-Zellen).", "Icon atlas (resmenu/Icon, AbState00-04: 128x128, 16 px cells)."},
+    {"AbStateView", "icon", true, "Position im Icon-Atlas (zeilenweise, 8 Spalten).", "Position in the icon atlas (row by row, 8 columns)."},
+    {"SubAbState", "Strength", true, "Stärkestufe dieser Zeile (1..n innerhalb desselben InxName).", "Strength level of this row (1..n within the same InxName)."},
+    {"SubAbState", "KeepTime", false, "Dauer in ms; 4000000000 = dauerhaft.", "Duration in ms; 4000000000 = permanent."},
+    {"ItemInfoServer", "MarketIndex", true, "Markt-Kategorie: 'Skill' = Skillbuch (2259 Items), 'Weapon', 'Item', 'WeaponTitle', leer.", "Market category: 'Skill' = skill book (2259 items), 'Weapon', 'Item', 'WeaponTitle', empty."},
+    {"ItemInfoServer", "DropGroupA", true, "Name einer Item-Menge; ItemDropGroup-Zeilen mit diesem Namen als ItemID droppen eines dieser Items.", "Name of an item set; ItemDropGroup rows with this name as ItemID drop one of these items."},
+    {"ItemInfoServer", "DropGroupB", true, "Zweite Item-Menge (wie DropGroupA).", "Second item set (like DropGroupA)."},
     {"ItemInfo", "AtkSpeed", false, "Angriffsgeschwindigkeit der Waffe.", "Attack speed of the weapon."},
     {"ItemInfo", "TwoHand", false, "1 = Zweihandwaffe.", "1 = two-handed weapon."},
     {"ItemViewInfo", "IconFile", true, "Icon-Bilddatei des Items.", "Icon image file of the item."},

@@ -1964,6 +1964,10 @@ void DrawShnEditor(EditorState& state) {
         {"ai","AI Scripts",DrawIconCode,"module.ai",8,-1},
         {"interface","Interface",DrawIconMonitorEye,"module.interface",9,-1},
         {"drops","Drops",DrawIconSpawn,"module.droptable",10,-1},
+        {"items","Items",DrawIconTable,"module.prices",11,-1},
+        {"mobs","Mobs",DrawIconSpawn,"module.custom_mob",12,-1},
+        {"passive",L("Passiv","Passive"),DrawIconBolt,"module.skill",13,-1},
+        {"states",L("Zustände","States"),DrawIconBolt,"module.skill",14,-1},
     };
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(5.0f, 5.0f));
     for (int i = 0; i < static_cast<int>(std::size(dataTools)); ++i) {
@@ -1980,8 +1984,11 @@ void DrawShnEditor(EditorState& state) {
                 if (!state.wiz.isNpc && state.wiz.lookMode == 2) state.wiz.lookMode = 0;
             }
         }
+        // Nach einem Element steht der Cursor schon in der nächsten Zeile - deshalb an der rechten
+        // Kante des letzten Knopfs messen, ob der nächste noch daneben passt.
+        const float nextRight = ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x + 96.0f;
         if (i + 1 < static_cast<int>(std::size(dataTools)) &&
-            ImGui::GetContentRegionAvail().x > 104.0f) {
+            nextRight <= ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x) {
             ImGui::SameLine();
         }
     }
@@ -2090,7 +2097,11 @@ void DrawShnEditor(EditorState& state) {
     else if(state.shnSubTab==7) { DrawSkillEditor(state); }
     else if(state.shnSubTab==8) { DrawAiWorkspace(state); }
     else if(state.shnSubTab==9) { DrawInterfaceWorkspace(state); }
-    else { DrawDropTableEditor(state); }
+    else if(state.shnSubTab==10) { DrawDropTableEditor(state); }
+    else if(state.shnSubTab==11) { DrawItemEditor(state); }
+    else if(state.shnSubTab==12) { DrawMobEditor(state); }
+    else if(state.shnSubTab==13) { DrawPassiveSkillEditor(state); }
+    else { DrawAbStateEditor(state); }
     ImGui::EndChild(); ImGui::EndChild(); ImGui::PopStyleColor();
 }
 

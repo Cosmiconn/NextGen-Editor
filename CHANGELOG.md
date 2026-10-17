@@ -1,3 +1,54 @@
+## Data editors — passive skills and states
+- New **Passive** tab (PassiveSkill client + server, PassiveSkillView) on the shared form editor:
+  - "Requirement" picks from all passive skills (DemandSk names the previous step in 470 of 503 rows);
+  - weapon mastery rate/bonus per weapon kind, value bonuses, icon and description;
+  - checks for duplicate InxName, missing rows and an unknown requirement.
+- New **States** tab (AbState client + server, AbStateView):
+  - the header shows icon, BUFF/DEBUFF, description and the active skills that apply the state (StaNameA-D, 1087 references in NA2016), with a jump into the skill editor;
+  - the **levels** of a state are its SubAbState rows (strength 1..n). They appear as an editable table — strength, type, duration and actions A–D — written to client and server as one undo step;
+  - "+ Level" copies the last level with strength + 1, "x" deletes one;
+  - checks: duplicate InxName, missing rows, an unknown SubAbState, and an AbStateView row naming another state.
+- The skill editor's state list has an "Open" button per state that jumps to the States tab.
+- Form editor:
+  - tables can name their InxName column (AbStateView writes `inxName`);
+  - cloning finds each table's template row by ID;
+  - new reference kind for "InxName of table X", e.g. requirement, SubAbState, party states.
+- Fixed: the small icon atlases were cut wrongly. Item and skill icons are 32 px on 256×256 atlases, but the state atlases `AbState00`–`04` are 128×128 with indices up to 63, i.e. 16-px cells.
+  - All 133 NA2016 atlases are an 8×8 grid, so the cell size is now atlas width / 8.
+  - This was checked against every icon index used in ItemViewInfo, ActiveSkillView, PassiveSkillView and AbStateView.
+- Fixed: the row of tool buttons in the game data screen now wraps instead of running off the right edge.
+- New automation commands `passiveeditor <id>` and `stateeditor <id>`.
+- Tests:
+  - `test_icon_atlas`: 8×8 grid and the 16-px cell of AbState00 #51;
+  - `test_data_editors`: AbState family with `inxName`, clone and undo across all tables, SubAbState level writes on both sides with undo.
+
+## Data editors — item and mob editor
+- New **Items** and **Mobs** tabs in the game data screen. Both use a new general form editor (`DataFormEditor`): a spec names the tables of an ID family with their client and server copies and the fields in sections.
+  - Values are read from the first copy and written to every copy when the field is left, as one undo step.
+  - Labels and tooltips fall back to the column reference of the manual; meanings derived only from names and value ranges are marked "(assumed)".
+  - An orange "!" marks fields whose client and server values differ.
+- Item editor (ItemInfo client + server, ItemInfoServer, ItemViewInfo):
+  - sections general, trade, combat values, enhancement, drops and presentation;
+  - icon with atlas picker and the weapon/shield model preview (`resitem`);
+  - drop groups A/B show in how many drop group rows the name occurs, with a jump to the group editor;
+  - "Find usage" searches every loaded table and the drop groups;
+  - checks: duplicate InxName, missing rows, sell price above buy price (26 such items exist in NA2016), min above max damage.
+- Mob editor (MobInfo client + server, MobInfoServer, MobViewInfo):
+  - stats, combat, behaviour, recovery/resistances and presentation;
+  - model preview (`reschar`), drop rows with a jump into the drop editor, placement from `World/NPC.txt`, the NPC conversation;
+  - "Find spawns" searches all `MobRegen` files;
+  - missing models are only reported when the client has a `reschar` folder.
+- Common actions:
+  - list with search and the filters all / modified / client-server differences / problems;
+  - "Create new from this one" clones every row of the family under a free ID with a new InxName and name, as one undo step;
+  - delete across the family with a reference list;
+  - open the row in the SHN grid;
+  - all remaining columns as raw fields.
+- Pickers: item picker with icons, mob, skill and state InxName lists, and "values used in this column" with counts.
+- Column reference: `MarketIndex`, `DropGroupA` and `DropGroupB` are documented under ItemInfoServer, where they actually are.
+- New automation commands `itemeditor <id>` and `mobeditor <id>`.
+- `test_data_editors` additions: two-sided writes with undo, client/server difference detection, cloning across all four mob tables with undo/redo and the save check.
+
 ## Data editors — quest texts and drop groups
 - **Quest texts are editable.** Title and description sit next to their text IDs as input fields; the new "Dialogs" list shows every text of the quest (title, description, each SAY line with script and speaker) and lets you change it. Changes go into the shared `QuestDialog.shn` document, are applied when leaving the field and can be undone with Ctrl+Z. A missing text ID gets its row when edited. Texts used by several quests show the count (quest 1 and its copies 944–946 share theirs); "Own ID" copies the text to a free ID for this quest only.
 - **Cloning with new text IDs** is an explicit option ("new text IDs" next to "Clone selected"): all texts are copied to a free block after the highest text ID, and title, description and every SAY reference are switched over — quest, texts and references in one undo step. Without the option the clone keeps sharing the template's texts, as before.
