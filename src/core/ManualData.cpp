@@ -396,6 +396,8 @@ A TownPortal target is at most 205 units away from the associated Gate_Town NPC.
 - Größe 129, 257 (12800 x 12800 Einheiten wie Roumen) oder 513 Höhenpunkte; Grundhöhe.
 - Spieldaten: MapInfo.shn und MapViewInfo.shn (Client und Server, ID = nächste freie unter 1000, Wiederbelebung in der Kartenmitte), World/Field.txt (Serial = CheckSum = nächste freie Nummer, wie bei allen 153 Originaleinträgen), Server-Begehbarkeit 9Data/Shine/BlockInfo/<Karte>.shbd/.aid.
 - Optional ein Gate von einer vorhandenen Karte (Servername und Position) mit Rückweg: zwei ShineNPC-Gates und zwei LinkTable-Einträge in World/NPC.txt; Ankunft je 150 Einheiten neben dem Gate.
+- Textdateien (Field.txt, NPC.txt): alle vorhandenen Zeilen bleiben byte-gleich. Neue Zeilen haben genau die Form der Originalzeilen ihrer Tabelle - in Field.txt '#Record' mit Leerzeichen hinter den Zahlen wie in der Vorlagenzeile, in NPC.txt das führende Tab und '#recordin <Tabelle>', jeweils mit derselben Zahl an Auffüll-Tabs.
+- Ladebild: Die Karte bekommt ein eigenes Ladebild resmenu/loading/<Karte>.png (bzw. .tga) als unveränderte Kopie des Vorlagen-Ladebilds; MapViewInfo.Loading zeigt darauf. Ersetzen im Interface-Tab unter 'Ladebildschirme' - andere Karten bleiben unberührt.
 Die Liste unter dem Knopf zeigt jede geschriebene Datei. Danach mit der Kartenprüfung kontrollieren.
 Minimap: Nach dem Laden der neuen Karte erzeugt der Editor resmenu\minimap\<Karte>.dds (512x512 DXT1, Draufsicht im Stil der Originale) und schaltet MinimapView ein.
 Minimap-Panel: zeigt die Spiel-Minimap der offenen Karte (Projekt vor Client) mit ihrem MapViewInfo-Ausschnitt oder die Editor-Vorschau. 'Minimap erzeugen' rendert die Karte von oben (wahlweise mit Objekten und im Stil der Originale: dunkle Konturen an der Grenze begehbar/blockiert, Pergament-Rand), schreibt sie ins Projekt und setzt in MapViewInfo MinimapView 1 und den Ausschnitt 0,0-511,511 (ganze Karte). Die Kartenprüfung warnt, wenn MinimapView gesetzt ist, aber das Bild fehlt.)MAN",
@@ -405,6 +407,8 @@ Minimap-Panel: zeigt die Spiel-Minimap der offenen Karte (Projekt vor Client) mi
 - Size 129, 257 (12800 x 12800 units like Roumen) or 513 height points; base height.
 - Game data: MapInfo.shn and MapViewInfo.shn (client and server, ID = next free one below 1000, respawn in the map centre), World/Field.txt (Serial = CheckSum = next free number, as in all 153 original entries), server walkability 9Data/Shine/BlockInfo/<map>.shbd/.aid.
 - Optionally a gate from an existing map (server name and position) with a way back: two ShineNPC gates and two LinkTable entries in World/NPC.txt; arrival 150 units next to each gate.
+- Text files (Field.txt, NPC.txt): every existing line stays byte-identical. New lines have exactly the form of the original lines of their table - in Field.txt '#Record' with spaces after the numbers as in the template line, in NPC.txt the leading tab and '#recordin <table>', each with the same number of padding tabs.
+- Loading image: the map gets its own loading image resmenu/loading/<map>.png (or .tga) as an unchanged copy of the template's loading image; MapViewInfo.Loading points to it. Replace it in the interface tab under 'Loading screens' - other maps stay untouched.
 The list under the button shows every written file. Check the result with the map check afterwards.
 Minimap: once the new map is loaded the editor generates resmenu\minimap\<map>.dds (512x512 DXT1, top-down view in the style of the originals) and turns MinimapView on.
 Minimap panel: shows the open map's game minimap (project before client) with its MapViewInfo crop, or the editor preview. 'Generate minimap' renders the map from above (optionally with objects and in the style of the originals: dark outlines along the walkable border, parchment frame), writes it to the project and sets MinimapView 1 and the crop 0,0-511,511 (whole map) in MapViewInfo. The map check warns when MinimapView is set but the image is missing.)MAN",
@@ -583,7 +587,7 @@ The percentage editors change ALL rows of the column - check first, then save.)M
 - 'Anderes Bild zuweisen...': vorhandenes Ladebild mit Vorschau wählen; MapViewInfo.Loading wird in Client und Server gesetzt (ein Undo-Schritt). Speichern mit 'Alle geänderten SHN speichern'.
 - 'Bild ersetzen...': ersetzt das Bild für ALLE Karten, die es nutzen (Hinweis 'betrifft N Karten'). Gibt es das Bild als PNG und TGA, werden beide aus derselben Quelle geschrieben, jeweils in ihrem Format.
 - 'Eigenes Bild für diese Karte...': legt loading/<Name>.png als Projektkopie an (Format der bisherigen PNG, meist 1024x768) und setzt Loading dieser Karte auf den neuen Namen - so wird ein geteiltes Bild nur für diese Karte abgespalten. Ein Strg+Z nimmt Datei und Zuweisung zurück.
-- Neue Karten aus dem Assistenten übernehmen das Ladebild der Vorlage; hier lässt es sich abspalten.
+- Neue Karten aus dem Assistenten bekommen ein eigenes Ladebild (Kopie der Vorlage); hier lässt es sich ersetzen.
 - LoadLocation (0/1) wird angezeigt und in beide Seiten geschrieben; die Bedeutung ist nicht belegt.
 - 'Gemeinsame Ladebild-Dateien': NowLoading.tga (1920x1080), ProgressBar.tga, NowLoadingTextColor.tga und die Tipp-Bilder loading/Tips - jeweils ersetzbar. Wo der Client sie platziert, ist nicht belegt; die Vorschau zeigt sie einzeln.)MAN",
      R"MAN(Interface tab, switch 'Loading screens'. When entering a map the client shows resmenu/loading/<name>.png (or .tga); <name> is MapViewInfo.Loading. Several maps often share one image (NA2016: 138 maps, 129 images, BFGate01 four times).
@@ -591,7 +595,7 @@ The percentage editors change ALL rows of the column - check first, then save.)M
 - 'Assign other image...': choose an existing loading image with preview; MapViewInfo.Loading is set on client and server (one undo step). Save with 'Save all changed SHN'.
 - 'Replace image...': replaces the image for ALL maps using it (note 'affects N maps'). If the image exists as PNG and TGA, both are written from the same source, each in its own format.
 - 'Own image for this map...': creates loading/<name>.png as a project copy (format of the previous PNG, usually 1024x768) and points this map's Loading to the new name - this splits a shared image off for this map only. One Ctrl+Z reverts file and assignment.
-- New maps from the wizard take over the template's loading image; split it off here.
+- New maps from the wizard get their own loading image (a copy of the template's); replace it here.
 - LoadLocation (0/1) is shown and written to both sides; its meaning is not proven.
 - 'Shared loading files': NowLoading.tga (1920x1080), ProgressBar.tga, NowLoadingTextColor.tga and the tip images loading/Tips - each replaceable. Where the client places them is not proven; the preview shows them one by one.)MAN",
      "ladebild loading screen ladebildschirm mapviewinfo karte map nowloading progressbar tipps tips abspalten split"},

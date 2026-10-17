@@ -17,14 +17,31 @@ void AddMapShnRows(EditorState& state, const char* fileName, long long templateI
                    long long newId, const std::string& newName,
                    const std::vector<std::pair<const char*, std::string>>& cells, std::vector<std::string>& report) {
     for (const auto src : {EditorState::ShnSource::Client, EditorState::ShnSource::Server}) {
+        // Bytegleiche Client/Server-Dateien spiegelt SaveShnDocument auf die Gegenseite: steht die neue
+        // ID dort schon, ist diese Seite bereits geschrieben - nicht ein zweites Mal klonen.
+        if (const int existing = FindOrLoadShnDoc(state, fileName, src); existing >= 0) {
+            const auto& f = state.shnFiles[static_cast<std::size_t>(existing)].file;
+            const int cId = ShnColumnIndexByName(f, "ID");
+            bool present = false;
+            for (const auto& row : f.rows) {
+                long long v = 0;
+                if (cId >= 0 && ShnValueAsInt(row.values[static_cast<std::size_t>(cId)], v) && v == newId) present = true;
+            }
+            if (present) {
+                report.push_back(std::string("+ ") + ShnSourceName(src) + " " + fileName + ": " + newName + " (ID " + std::to_string(newId) +
+                                 L(") - gekoppelt mit der anderen Seite gespeichert", ") - saved together with the other side"));
+                continue;
+            }
+        }
         const auto rows = CloneRowsById(state, fileName, src, "MapName", templateId, templateName, newId, newName, report);
         const int di = FindOrLoadShnDoc(state, fileName, src);
         if (rows.empty() || di < 0) continue;
         auto& f = state.shnFiles[static_cast<std::size_t>(di)].file;
         for (const auto r : rows)
             for (const auto& [col, value] : cells) SetShnCellText(f, r, col, value);
-        report.push_back(std::string(SaveShnDocument(state, di) ? "+ " : "- FEHLER ") + ShnSourceName(src) + " " + fileName +
-                         ": " + newName + " (ID " + std::to_string(newId) + ")");
+        const bool saved = SaveShnDocument(state, di);
+        report.push_back(std::string(saved ? "+ " : "- FEHLER ") + ShnSourceName(src) + " " + fileName + ": " + newName + " (ID " +
+                         std::to_string(newId) + ")" + (saved ? std::string() : " - " + state.shnStatus));
     }
 }
 
@@ -142,6 +159,41 @@ bool CreateNewMapFromWizard(EditorState& state) {
         }
     }
     const long long newId = std::max(MaxShnId(state, "MapInfo.shn"), MaxShnId(state, "MapViewInfo.shn")) + 1;
+
+    // Eigenes Ladebild: alle Varianten (PNG/TGA) des Vorlagen-Ladebilds unverändert als
+    // loading/<Name>.<ext> ins Projekt kopieren; MapViewInfo.Loading zeigt dann auf <Name>. Ersetzen
+    // lässt es sich danach im Ladebildschirm-Editor, ohne andere Karten zu berühren.
+    std::string ownLoading;
+    if (state.newMapWriteMapInfo && tmplId >= 0) {
+        std::string tmplLoading;
+        if (const int di = FindOrLoadShnDoc(state, "MapViewInfo.shn", EditorState::ShnSource::Client); di >= 0) {
+            const auto& f = state.shnFiles[static_cast<std::size_t>(di)].file;
+            for (std::size_t r = 0; r < f.rows.size(); ++r)
+                if (std::atoll(TrimAscii(ShnCellText(f, r, "ID")).c_str()) == tmplId) tmplLoading = TrimAscii(ShnCellText(f, r, "Loading"));
+        }
+        const auto variants = tmplLoading.empty() ? std::vector<std::string>{} : LoadingImageFiles(state, tmplLoading);
+        int copied = 0;
+        for (const auto& rel : variants) {
+            std::ifstream in(ResmenuEffectivePath(state, rel), std::ios::binary);
+            const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            const std::string target = "loading/" + name + std::filesystem::path(rel).extension().string();
+            const auto projectPath = InterfaceProjectOverridePath(state, target);
+            std::error_code ec;
+            std::filesystem::create_directories(projectPath.parent_path(), ec);
+            std::ofstream out(projectPath, std::ios::binary);
+            out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+            if (in && !bytes.empty() && out) ++copied;
+        }
+        if (copied > 0 && copied == static_cast<int>(variants.size())) {
+            ownLoading = name;
+            ++state.resmenuRevision;
+            rep.push_back("+ Client resmenu/loading/" + name + L(": eigenes Ladebild (Kopie von ", ": own loading image (copy of ") +
+                          tmplLoading + ", " + std::to_string(copied) + L(" Datei(en))", " file(s))"));
+        } else {
+            rep.push_back(std::string(L("- Ladebild: keine Datei der Vorlage gefunden, Karte nutzt ", "- Loading image: no template file found, map uses ")) +
+                          (tmplLoading.empty() ? std::string("-") : tmplLoading));
+        }
+    }
     const std::string display = state.newMapDisplayName[0] ? state.newMapDisplayName : name;
     if (state.newMapWriteMapInfo) {
         if (tmplId < 0) {
@@ -151,8 +203,9 @@ bool CreateNewMapFromWizard(EditorState& state) {
                           {{"Name", display}, {"MapFolderName", name}, {"RegenX", std::to_string(centerX)},
                            {"RegenY", std::to_string(centerY)}, {"IsWMLink", "0"}, {"KingdomMap", "0"}, {"InSide", "0"}}, rep);
             // MinimapView 0, bis die Minimap erzeugt ist (GenerateMinimap setzt 1 und den Ausschnitt).
-            AddMapShnRows(state, "MapViewInfo.shn", tmplId, tmplName, newId, name,
-                          {{"MapFolderName", name}, {"MinimapView", "0"}, {"WorldMapView", "0"}}, rep);
+            std::vector<std::pair<const char*, std::string>> viewCells = {{"MapFolderName", name}, {"MinimapView", "0"}, {"WorldMapView", "0"}};
+            if (!ownLoading.empty()) viewCells.emplace_back("Loading", ownLoading);
+            AddMapShnRows(state, "MapViewInfo.shn", tmplId, tmplName, newId, name, viewCells, rep);
         }
     }
 
@@ -178,6 +231,7 @@ bool CreateNewMapFromWizard(EditorState& state) {
         } else {
             core::legacy::ShineRecord rec = *tmplRec;
             rec.sourceLine = 0;
+            rec.styleLine = tmplRec->sourceLine; // Form der Vorlagenzeile (Leerzeichen hinter Zahlen, Auffüllung)
             const std::string serial = std::to_string(maxSerial + 1);
             const std::string blocks = std::to_string(points - 1);
             SetShineValue(rec, *table, "MapIDClient", name);

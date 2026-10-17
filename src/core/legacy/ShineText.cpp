@@ -200,6 +200,77 @@ std::expected<ShineTextFile, std::string> LoadShineTextFile(const std::filesyste
     return file;
 }
 
+namespace {
+bool IsNumberToken(const std::string& s) {
+    std::size_t i = 0;
+    if (i < s.size() && (s[i] == '-' || s[i] == '+')) ++i;
+    bool digits = false, dot = false;
+    for (; i < s.size(); ++i) {
+        if (std::isdigit(static_cast<unsigned char>(s[i]))) digits = true;
+        else if (s[i] == '.' && !dot) dot = true;
+        else return false;
+    }
+    return digits;
+}
+
+// Neuer Record in der Form einer vorhandenen Zeile derselben Tabelle (siehe ShineRecord::styleLine).
+// recordDirectiveSafe: "#record" ohne Tabellenname würde beim Einlesen an der Einfügestelle zu
+// genau dieser Tabelle gehören (sie ist dort die zuletzt per "#Table" deklarierte).
+std::string FormatLikeStyleLine(const std::string& styleRaw, const ShineTable& table, const std::vector<std::string>& values,
+                                bool recordDirectiveSafe) {
+    const auto tokens = SplitTab(styleRaw);
+    std::size_t dIdx = 0;
+    while (dIdx < tokens.size() && TrimAscii(tokens[dIdx]).empty()) ++dIdx;
+    const std::string directive = dIdx < tokens.size() ? tokens[dIdx] : std::string("#recordin");
+    const std::string directiveLower = LowerAsciiCopy(TrimAscii(directive));
+    std::size_t lastNonEmpty = tokens.size();
+    for (std::size_t ti = tokens.size(); ti-- > 0;)
+        if (!TrimAscii(tokens[ti]).empty()) { lastNonEmpty = ti; break; }
+    const bool styleSemicolon = table.trailingSemicolonSentinel && lastNonEmpty < tokens.size() &&
+                                TrimAscii(tokens[lastNonEmpty]) == ";";
+    const std::size_t logicalLast = styleSemicolon && lastNonEmpty > 0 ? lastNonEmpty - 1 : lastNonEmpty;
+
+    std::string line(dIdx, '\t');
+    std::size_t valueStart = dIdx + 1; // Index des ersten Werts in der Musterzeile
+    if (directiveLower == "#recordin") {
+        line += directive + "\t" + (dIdx + 1 < tokens.size() ? tokens[dIdx + 1] : table.name);
+        valueStart = dIdx + 2;
+    } else if (recordDirectiveSafe) {
+        line += directive;
+        // "#record\t\t<werte>": zusätzliches Leer-Tab wie in der Musterzeile.
+        if (dIdx + 1 < tokens.size() && TrimAscii(tokens[dIdx + 1]).empty() && logicalLast < tokens.size() && logicalLast > dIdx &&
+            (logicalLast - dIdx) == table.columns.size() + 1) {
+            line += "\t" + tokens[dIdx + 1];
+            ++valueStart;
+        }
+    } else {
+        line += "#recordin\t" + table.name;
+    }
+    std::size_t written = 0;
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        std::string v = values[i];
+        const std::size_t si = valueStart + i;
+        if (si < tokens.size() && !v.empty() && v.back() != ' ') {
+            const std::string& st = tokens[si];
+            const std::string trimmed = TrimAscii(st);
+            std::size_t end = st.size();
+            while (end > 0 && st[end - 1] == ' ') --end;
+            if (end < st.size() && IsNumberToken(trimmed) && IsNumberToken(v)) v += st.substr(end);
+        }
+        line += "\t" + v;
+        ++written;
+    }
+    std::size_t tokenCount = valueStart + written;
+    if (table.trailingSemicolonSentinel) {
+        line += "\t;";
+        ++tokenCount;
+    }
+    // Auffüllen auf die Feldzahl der Musterzeile (echte Dateien füllen jede Zeile mit Tabs auf).
+    for (; tokenCount < tokens.size(); ++tokenCount) line += "\t";
+    return line;
+}
+} // namespace
+
 std::expected<void, std::string> SaveShineTextFile(const ShineTextFile& file, const std::filesystem::path& path) {
     std::vector<std::string> outLines = file.rawLines;
     std::vector<std::string> outEndings = file.rawLineEndings;
@@ -310,8 +381,32 @@ std::expected<void, std::string> SaveShineTextFile(const ShineTextFile& file, co
                 // GANZ am Ende der Datei, weit hinter der letzten "#Table"-Zeile, die "Link-
                 // Table" deklariert) - "#recordin" adressiert die Zieltabelle dagegen immer
                 // eindeutig per Name.
-                std::string line = "#recordin\t" + table.name + "\t" + joined;
-                if (table.trailingSemicolonSentinel) line += "\t;";
+                // Musterzeile: styleLine, sonst die letzte vorhandene Zeile dieser Tabelle.
+                std::size_t style = rec.styleLine;
+                if (style == 0 || style >= file.rawLines.size()) {
+                    style = 0;
+                    for (const auto& other : table.records)
+                        if (other.sourceLine > 0 && other.sourceLine < file.rawLines.size()) style = std::max(style, other.sourceLine);
+                }
+                std::string line;
+                if (style > 0) {
+                    // "#record" ist nur sicher, wenn vor der Einfügestelle zuletzt diese Tabelle deklariert wurde.
+                    std::size_t lastHeader = 0;
+                    bool found = false;
+                    bool safe = false;
+                    for (const auto& t : file.tables) {
+                        if (t.headerFirstLine == static_cast<std::size_t>(-1) || t.headerFirstLine > insertAfter) continue;
+                        if (!found || t.headerFirstLine >= lastHeader) {
+                            lastHeader = t.headerFirstLine;
+                            found = true;
+                            safe = LowerAsciiCopy(t.name) == LowerAsciiCopy(table.name);
+                        }
+                    }
+                    line = FormatLikeStyleLine(file.rawLines[style], table, rec.values, safe);
+                } else {
+                    line = "#recordin\t" + table.name + "\t" + joined;
+                    if (table.trailingSemicolonSentinel) line += "\t;";
+                }
                 inserts.emplace_back(insertAfter, std::move(line));
             }
         }
