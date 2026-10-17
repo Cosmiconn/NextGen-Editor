@@ -1,3 +1,9 @@
+## Build — automatic Windows release
+- Every push to `main` now publishes a ready-to-run package under GitHub **Releases → Nightly**: `NextGen-Editor-windows-nightly.zip` with `Editor.exe`, the check tools, UI assets, licences, `LIESMICH.txt`, `README.md`, `CHANGELOG.md` and `docs/`. A tag `v*` publishes a numbered release with the top CHANGELOG section as notes. Building locally is no longer needed.
+- `Editor.exe` in the package uses the static MSVC runtime (vcpkg triplet `x64-windows-static`), so it starts without an installed VC++ redistributable. The package step checks this with `dumpbin /dependents` and fails if a dynamic runtime DLL is still referenced.
+- The window title shows the build id: date and commit for nightly builds, the tag for numbered releases, "dev" for local builds (`-DNEXTGEN_EDITOR_BUILD_ID=...`).
+- The release runs in its own job with write permission; pull request runs never get a writable token.
+
 ## Renderer — client comparison with the full NA2016 resmap
 - Compared against the user's game screenshots (Roumen town, RouN harbour), the original town portal images (`Rou`, `Bera`) and the complete `resmap` folder (used locally only, not committed). Each change below was kept only because it brings the picture measurably closer; details and numbers in `docs/RENDERER.md` §5.
 - Embedded NIF textures were drawn upside down: `NiPixelData` is stored top-down and NIF UVs follow Direct3D, but the parser flipped them a second time. Fixed; external DDS/TGA/BMP files used by NIFs are turned the same way. The magic circle at the Roumen fountain is now a ring like in the portal image, and signs stand upright.

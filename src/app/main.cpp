@@ -21,7 +21,12 @@ int main() {
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
 
-    GLFWwindow* window = glfwCreateWindow(1600, 900, "NextGen-Editor", nullptr, nullptr);
+#ifndef NEXTGEN_EDITOR_BUILD_ID
+#define NEXTGEN_EDITOR_BUILD_ID "dev"
+#endif
+    // Build-Kennung im Titel (CI: Datum + Commit), damit sichtbar ist, welcher Stand läuft.
+    const std::string windowTitle = std::string("NextGen-Editor (") + NEXTGEN_EDITOR_BUILD_ID + ")";
+    GLFWwindow* window = glfwCreateWindow(1600, 900, windowTitle.c_str(), nullptr, nullptr);
     g_automationWindow = window;
     if (window == nullptr) {
         std::fprintf(stderr, "glfwCreateWindow fehlgeschlagen\n");
