@@ -715,6 +715,11 @@ All merchant kinds except SoulStone use these files; skill merchants sell skill 
 Welt X = Ost, Welt Z = Nord, Y = Höhe. In NPC.txt sind Coord-X / Coord-Y die Welt-X und Welt-Z. Das 2D-Bild zeigt Norden oben.
 # Textdateien (Server)
 - World/NPC.txt (MobName, Map, Coord-X, Coord-Y, Direct, NPCMenu, Role, RoleArg0), MobRegen/<Karte>.txt, MobRoam, NPCItemList/<NPC>.txt, Script (Lua).
+- Speichern ist minimal: nur geänderte Zeilen werden neu geschrieben, alles andere bleibt byte-gleich (geprüft an allen 680 Textdateien von NA2016).
+- ';' leitet auch mitten in einer Zeile einen Kommentar ein. Er ist weder Spalte noch Wert und bleibt beim Bearbeiten der Zeile stehen. Werte jenseits der Spaltenzahl bleiben ebenso unverändert stehen.
+- Unter '#delimiter \x20' werden Zeilen ohne Tab an Leerzeichen getrennt (NPC.txt: Xiaoming, Oluming, Toryming in Eld) und beim Bearbeiten mit Leerzeichen geschrieben.
+- Texte über mehrere Zeilen (Script/Scenario.txt) werden vollständig gelesen, lassen sich aber nur unverändert speichern; eine Änderung daran meldet einen Fehler.
+- Dateien ohne '#Table' (DefaultCharacterData.txt, World/QuestParser.txt) sind keine Tabellen und bleiben unverändert.
 # Modelle
 - NIF (Gamebryo 10.x/20.0.0.4): Objekte in resmap, Charaktere in reschar, Waffen/Items in resitem. Ein kleiner Teil (unter 10 %) von Sonderdateien - Partikel/Effekte - lädt nicht und erscheint als Platzhalter.)MAN",
      R"MAN(# Maps (legacy)
@@ -726,6 +731,11 @@ Welt X = Ost, Welt Z = Nord, Y = Höhe. In NPC.txt sind Coord-X / Coord-Y die We
 World X = east, world Z = north, Y = height. In NPC.txt Coord-X / Coord-Y are world X and world Z. The 2D image shows north up.
 # Text files (server)
 - World/NPC.txt (MobName, Map, Coord-X, Coord-Y, Direct, NPCMenu, Role, RoleArg0), MobRegen/<map>.txt, MobRoam, NPCItemList/<NPC>.txt, Script (Lua).
+- Saving is minimal: only changed lines are rewritten, everything else stays byte-identical (checked on all 680 NA2016 text files).
+- ';' also starts a comment in the middle of a line. It is neither a column nor a value and stays in place when the line is edited. Values beyond the column count also stay unchanged.
+- Under '#delimiter \x20', lines without tabs are split at spaces (NPC.txt: Xiaoming, Oluming, Toryming in Eld) and written back with spaces when edited.
+- Texts spanning several lines (Script/Scenario.txt) are read in full but can only be saved unchanged; changing one reports an error.
+- Files without '#Table' (DefaultCharacterData.txt, World/QuestParser.txt) are not tables and stay unchanged.
 # Models
 - NIF (Gamebryo 10.x/20.0.0.4): objects in resmap, characters in reschar, weapons/items in resitem. A small part (under 10 %) of special files - particles/effects - does not load and appears as a placeholder.)MAN",
      "format htd shbd shmd nif koordinaten datei"},

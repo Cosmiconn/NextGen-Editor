@@ -44,6 +44,158 @@ void TrimTrailingEmpty(std::vector<std::string>& tokens) {
     while (!tokens.empty() && TrimAscii(tokens.back()).empty()) tokens.pop_back();
 }
 
+bool IsCommentToken(const std::string& token) {
+    const std::string t = TrimAscii(token);
+    return !t.empty() && t[0] == ';';
+}
+
+std::size_t FirstNonEmpty(const std::vector<std::string>& tokens) {
+    std::size_t i = 0;
+    while (i < tokens.size() && TrimAscii(tokens[i]).empty()) ++i;
+    return i;
+}
+
+// Zerlegte Zeile mit den Trennern dazwischen, damit eine bearbeitete Zeile mit genau ihren
+// Original-Trennern (Tab oder Leerzeichenlauf) wieder zusammengesetzt werden kann.
+struct LineTokens {
+    std::string prefix;              // führender Weißraum (nur bei Leerzeichen-Trennung)
+    std::vector<std::string> tokens;
+    std::vector<std::string> seps;   // seps[i] steht zwischen tokens[i] und tokens[i + 1]
+    std::string defaultSep = "\t";
+};
+
+LineTokens TokenizeLine(const std::string& raw, bool spaceDelimiter) {
+    LineTokens lt;
+    lt.tokens = SplitTab(raw);
+    lt.seps.assign(lt.tokens.empty() ? 0 : lt.tokens.size() - 1, "\t");
+    if (!spaceDelimiter) return lt;
+    // "#delimiter \x20": eine Record-Zeile ohne Tab zwischen Direktive und Werten
+    // ("    #recordin    ShineNPC    Xiaoming ...") wird an Leerzeichenläufen getrennt.
+    const std::size_t d = FirstNonEmpty(lt.tokens);
+    if (d >= lt.tokens.size()) return lt;
+    const std::string first = LowerAsciiCopy(TrimAscii(lt.tokens[d]));
+    if (first.rfind("#record", 0) != 0 || first == "#record" || first == "#recordin") return lt;
+    LineTokens sp;
+    sp.defaultSep = " ";
+    auto isWs = [](char c) { return c == ' ' || c == '\t'; };
+    std::size_t i = 0;
+    while (i < raw.size() && isWs(raw[i])) ++i;
+    sp.prefix = raw.substr(0, i);
+    while (i < raw.size()) {
+        std::size_t j = i;
+        while (j < raw.size() && !isWs(raw[j])) ++j;
+        sp.tokens.push_back(raw.substr(i, j - i));
+        std::size_t k = j;
+        while (k < raw.size() && isWs(raw[k])) ++k;
+        if (k > j) {
+            sp.seps.push_back(raw.substr(j, k - j));
+            if (k == raw.size()) sp.tokens.emplace_back(); // Weißraum am Zeilenende
+        }
+        i = k;
+    }
+    return sp;
+}
+
+// Setzt (Token, Trenner danach)-Paare wieder zusammen; ein fehlender Trenner vor einem weiteren
+// Token wird durch den Standard-Trenner der Zeile ersetzt.
+std::string JoinTokens(const std::string& prefix, const std::vector<std::pair<std::string, std::string>>& parts,
+                       const std::string& defaultSep) {
+    std::string out = prefix;
+    for (std::size_t i = 0; i < parts.size(); ++i) {
+        out += parts[i].first;
+        if (i + 1 < parts.size()) out += parts[i].second.empty() ? defaultSep : parts[i].second;
+        else out += parts[i].second;
+    }
+    return out;
+}
+
+struct RecordDirective {
+    bool isRecord = false;
+    bool recordin = false;
+    std::size_t firstArg = 0; // Index des ersten Werts (nach Direktive bzw. Tabellenname)
+    std::string table;        // nur bei #recordin
+};
+
+RecordDirective ParseRecordDirective(const LineTokens& lt) {
+    RecordDirective d;
+    const std::size_t idx = FirstNonEmpty(lt.tokens);
+    if (idx >= lt.tokens.size()) return d;
+    const std::string lower = LowerAsciiCopy(TrimAscii(lt.tokens[idx]));
+    if (lower == "#record") {
+        d.isRecord = true;
+        d.firstArg = idx + 1;
+    } else if (lower == "#recordin" && idx + 1 < lt.tokens.size()) {
+        d.isRecord = true;
+        d.recordin = true;
+        d.table = TrimAscii(lt.tokens[idx + 1]);
+        d.firstArg = idx + 2;
+    }
+    return d;
+}
+
+// Tokenbereich [begin, end) der Werte eines Records. Danach folgen unverändert Kommentar, ein
+// ";"-Sentinel, überzählige Werte und Auffüll-Tabs.
+struct ValueSpan {
+    std::size_t begin = 0;
+    std::size_t end = 0;
+    bool truncated = false; // Werte jenseits der Spaltenzahl abgeschnitten
+};
+
+ValueSpan FindValueSpan(const LineTokens& lt, const RecordDirective& d, std::size_t columnCount) {
+    ValueSpan s;
+    const std::size_t n = lt.tokens.size();
+    s.begin = std::min(d.firstArg, n);
+    std::size_t comment = s.begin;
+    while (comment < n && !IsCommentToken(lt.tokens[comment])) ++comment;
+    s.end = comment;
+    while (s.end > s.begin && TrimAscii(lt.tokens[s.end - 1]).empty()) --s.end;
+    // Manche Dateien (z.B. MobRegen/<Karte>.txt) haben bei "#record" ein zusätzliches Leer-Tab vor dem
+    // ersten Wert - genau ein Wert zu viel, und der erste ist leer (siehe #ColumnType/#ColumnName).
+    if (!d.recordin && s.end - s.begin == columnCount + 1 && TrimAscii(lt.tokens[s.begin]).empty()) ++s.begin;
+    // Daten breiter als der Kopf (Script/Honeying.txt): nur die deklarierten Spalten sind Werte.
+    if (columnCount > 0 && s.end - s.begin > columnCount) {
+        s.end = s.begin + columnCount;
+        s.truncated = true;
+    }
+    return s;
+}
+
+std::vector<std::string> SpanValues(const LineTokens& lt, const ValueSpan& s) {
+    return {lt.tokens.begin() + static_cast<std::ptrdiff_t>(s.begin), lt.tokens.begin() + static_cast<std::ptrdiff_t>(s.end)};
+}
+
+// Folgezeilen eines Records, dessen Text über mehrere Zeilen läuft: Zeilen direkt danach, die weder
+// leer noch Direktive noch Kommentar sind (in NA2016 nur Script/Scenario.txt).
+std::size_t CountContinuationLines(const std::vector<std::string>& lines, std::size_t recordLine) {
+    std::size_t count = 0;
+    for (std::size_t i = recordLine + 1; i < lines.size(); ++i) {
+        const auto tokens = SplitTab(lines[i]);
+        const std::size_t d = FirstNonEmpty(tokens);
+        if (d >= tokens.size()) break;
+        const std::string first = TrimAscii(tokens[d]);
+        if (first[0] == '#' || first[0] == ';') break;
+        ++count;
+    }
+    return count;
+}
+
+// Hängt den Text der Folgezeilen (bis zu ihrem Kommentar) samt Zeilenumbruch an den letzten Wert an.
+void AppendContinuation(std::vector<std::string>& values, const std::vector<std::string>& lines,
+                        const std::vector<std::string>& endings, std::size_t recordLine, std::size_t count) {
+    if (values.empty()) return;
+    for (std::size_t i = recordLine + 1; i <= recordLine + count && i < lines.size(); ++i) {
+        auto tokens = SplitTab(lines[i]);
+        std::size_t end = 0;
+        while (end < tokens.size() && !IsCommentToken(tokens[end])) ++end;
+        tokens.resize(end);
+        TrimTrailingEmpty(tokens);
+        std::string text;
+        for (std::size_t t = 0; t < tokens.size(); ++t) { if (t) text += '\t'; text += tokens[t]; }
+        const std::string ending = i - 1 < endings.size() && !endings[i - 1].empty() ? endings[i - 1] : std::string("\n");
+        values.back() += ending + text;
+    }
+}
+
 } // namespace
 
 ShineTable* ShineTextFile::FindTable(const std::string& name) {
@@ -82,10 +234,22 @@ std::expected<ShineTextFile, std::string> LoadShineTextFile(const std::filesyste
     }
 
     ShineTable* current = nullptr;
+    bool typeLineSemicolon = false; // #ColumnType der aktuellen Tabelle endete mit dem ";"-Sentinel
+    // Spalten einer Kopfzeile: bis zum ersten Kommentar-Token (z. B. "#ColumnName\tScriptName\t; *.ps").
+    // Liefert, ob die Zeile genau mit einem einzelnen ";" endet (Sentinel, siehe ShineTable).
+    auto headerTokens = [](const std::vector<std::string>& tokens, std::size_t argBase, std::size_t& end) {
+        end = argBase;
+        while (end < tokens.size() && !IsCommentToken(tokens[end])) ++end;
+        if (end >= tokens.size() || TrimAscii(tokens[end]) != ";") return false;
+        for (std::size_t i = end + 1; i < tokens.size(); ++i)
+            if (!TrimAscii(tokens[i]).empty()) return false;
+        return true;
+    };
     for (std::size_t lineIdx = 0; lineIdx < file.rawLines.size(); ++lineIdx) {
         const std::string& raw = file.rawLines[lineIdx];
         if (raw.empty()) continue;
-        auto tokens = SplitTab(raw);
+        const LineTokens lt = TokenizeLine(raw, file.spaceDelimiter);
+        const auto& tokens = lt.tokens;
         if (tokens.empty()) continue;
         // Manche Dateien (z.B. World/NPC.txt) haben ein führendes Leer-Tab VOR der Direktive
         // ("\t#Table\tShineNPC\t...") - erstes NICHT-leeres Token suchen statt blind tokens[0]
@@ -100,7 +264,14 @@ std::expected<ShineTextFile, std::string> LoadShineTextFile(const std::filesyste
         std::string firstLower = LowerAsciiCopy(first);
         const std::size_t argBase = directiveIdx + 1; // erstes Argument-Token nach der Direktive
 
-        if (firstLower == "#table") {
+        if (firstLower == "#delimiter") {
+            for (std::size_t i = argBase; i < tokens.size(); ++i) {
+                const std::string t = LowerAsciiCopy(TrimAscii(tokens[i]));
+                if (t.empty()) continue;
+                if (t == "\\x20") file.spaceDelimiter = true;
+                break;
+            }
+        } else if (firstLower == "#table") {
             std::string name;
             for (std::size_t i = argBase; i < tokens.size(); ++i) {
                 std::string t = TrimAscii(tokens[i]);
@@ -112,9 +283,12 @@ std::expected<ShineTextFile, std::string> LoadShineTextFile(const std::filesyste
             current->lastLine = lineIdx;
             current->headerFirstLine = lineIdx;
             current->headerLastLine = lineIdx;
+            typeLineSemicolon = false;
         } else if (firstLower == "#columntype") {
             if (!current) continue;
-            for (std::size_t i = argBase; i < tokens.size(); ++i) {
+            std::size_t end = 0;
+            typeLineSemicolon = headerTokens(tokens, argBase, end);
+            for (std::size_t i = argBase; i < end; ++i) {
                 std::string t = TrimAscii(tokens[i]);
                 if (t.empty()) continue;
                 std::size_t col = i - argBase;
@@ -125,7 +299,9 @@ std::expected<ShineTextFile, std::string> LoadShineTextFile(const std::filesyste
             current->headerLastLine = lineIdx;
         } else if (firstLower == "#columnname") {
             if (!current) continue;
-            for (std::size_t i = argBase; i < tokens.size(); ++i) {
+            std::size_t end = 0;
+            const bool nameLineSemicolon = headerTokens(tokens, argBase, end);
+            for (std::size_t i = argBase; i < end; ++i) {
                 std::string t = TrimAscii(tokens[i]);
                 if (t.empty()) continue;
                 std::size_t col = i - argBase;
@@ -146,48 +322,24 @@ std::expected<ShineTextFile, std::string> LoadShineTextFile(const std::filesyste
             // an #ColumnType als auch #ColumnName noch ein "\t;" an. Dieses Semikolon ist
             // ein Shine-Zeilen-/Kommentar-Sentinel, keine 291. Datenspalte. Einige Records
             // tragen an derselben Position ";" und andere nur ein leeres Auffüllfeld.
-            if (!current->columns.empty() &&
-                TrimAscii(current->columns.back().name) == ";" &&
-                TrimAscii(current->columns.back().type) == ";") {
-                current->columns.pop_back();
-                current->trailingSemicolonSentinel = true;
-            }
+            if (typeLineSemicolon && nameLineSemicolon) current->trailingSemicolonSentinel = true;
             current->lastLine = lineIdx;
             current->headerLastLine = lineIdx;
-        } else if (firstLower == "#record") {
-            if (!current) continue;
-            std::vector<std::string> values(tokens.begin() + static_cast<std::ptrdiff_t>(argBase), tokens.end());
-            TrimTrailingEmpty(values);
-            if (current->trailingSemicolonSentinel && !values.empty() &&
-                TrimAscii(values.back()) == ";") {
-                values.pop_back();
-            }
-            // Dasselbe Leer-Tab-Muster wie bei #ColumnType/#ColumnName (siehe dort) tritt bei
-            // manchen Dateien (z.B. MobRegen/<Karte>.txt) auch bei "#record" selbst auf - genau
-            // ein Wert zu viel, und der erste ist leer, während die Spaltenliste bereits korrekt
-            // bereinigt wurde.
-            if (values.size() == current->columns.size() + 1 && !values.empty() && TrimAscii(values[0]).empty()) {
-                values.erase(values.begin());
-            }
-            current->records.push_back(ShineRecord{values, lineIdx});
-            file.loadedRecordLines.push_back(lineIdx);
-            current->lastLine = lineIdx;
-        } else if (firstLower == "#recordin") {
-            // "#recordin <Tabellenname> <werte...>" - siehe World/NPC.txt. Zielt explizit auf
-            // eine per Namen benannte Tabelle statt der zuletzt deklarierten.
-            if (tokens.size() < argBase + 1) continue;
-            std::string targetName = TrimAscii(tokens[argBase]);
-            ShineTable* target = file.FindTable(targetName);
+        } else if (firstLower == "#record" || firstLower == "#recordin") {
+            // "#record" gehört zur zuletzt deklarierten Tabelle, "#recordin <Tabellenname> <werte...>"
+            // (siehe World/NPC.txt) zielt explizit auf eine per Namen benannte Tabelle.
+            const RecordDirective d = ParseRecordDirective(lt);
+            if (!d.isRecord) continue;
+            ShineTable* target = d.recordin ? file.FindTable(d.table) : current;
             if (!target) continue;
-            std::vector<std::string> values(tokens.begin() + static_cast<std::ptrdiff_t>(argBase) + 1, tokens.end());
-            TrimTrailingEmpty(values);
-            if (target->trailingSemicolonSentinel && !values.empty() &&
-                TrimAscii(values.back()) == ";") {
-                values.pop_back();
-            }
-            target->records.push_back(ShineRecord{values, lineIdx});
-            file.loadedRecordLines.push_back(lineIdx);
-            target->lastLine = lineIdx;
+            const ValueSpan span = FindValueSpan(lt, d, target->columns.size());
+            ShineRecord rec{SpanValues(lt, span), lineIdx};
+            rec.continuationLines = CountContinuationLines(file.rawLines, lineIdx);
+            if (!span.truncated) AppendContinuation(rec.values, file.rawLines, file.rawLineEndings, lineIdx, rec.continuationLines);
+            for (std::size_t i = 0; i <= rec.continuationLines; ++i) file.loadedRecordLines.push_back(lineIdx + i);
+            target->lastLine = lineIdx + rec.continuationLines;
+            lineIdx += rec.continuationLines;
+            target->records.push_back(std::move(rec));
         }
         // Andere Direktiven (#ignore, #exchange, #delimiter, #end, unbekannte) werden bewusst
         // übersprungen - sie beeinflussen nur eine Vorverarbeitung (Zeichen-Ersetzung), die für
@@ -218,28 +370,29 @@ bool IsNumberToken(const std::string& s) {
 // genau dieser Tabelle gehören (sie ist dort die zuletzt per "#Table" deklarierte).
 std::string FormatLikeStyleLine(const std::string& styleRaw, const ShineTable& table, const std::vector<std::string>& values,
                                 bool recordDirectiveSafe) {
-    const auto tokens = SplitTab(styleRaw);
-    std::size_t dIdx = 0;
-    while (dIdx < tokens.size() && TrimAscii(tokens[dIdx]).empty()) ++dIdx;
-    const std::string directive = dIdx < tokens.size() ? tokens[dIdx] : std::string("#recordin");
-    const std::string directiveLower = LowerAsciiCopy(TrimAscii(directive));
-    std::size_t lastNonEmpty = tokens.size();
-    for (std::size_t ti = tokens.size(); ti-- > 0;)
-        if (!TrimAscii(tokens[ti]).empty()) { lastNonEmpty = ti; break; }
-    const bool styleSemicolon = table.trailingSemicolonSentinel && lastNonEmpty < tokens.size() &&
-                                TrimAscii(tokens[lastNonEmpty]) == ";";
-    const std::size_t logicalLast = styleSemicolon && lastNonEmpty > 0 ? lastNonEmpty - 1 : lastNonEmpty;
+    const LineTokens lt = TokenizeLine(styleRaw, false);
+    const auto& tokens = lt.tokens;
+    const RecordDirective rd = ParseRecordDirective(lt);
+    if (!rd.isRecord) {
+        // Keine tab-getrennte Record-Zeile als Muster (z. B. eine leerzeichengetrennte): schlichte Form.
+        std::string line = "#recordin\t" + table.name;
+        for (const auto& v : values) line += "\t" + v;
+        if (table.trailingSemicolonSentinel) line += "\t;";
+        return line;
+    }
+    const std::size_t dIdx = FirstNonEmpty(tokens);
+    const std::string directive = tokens[dIdx];
+    const std::size_t valueBegin = FindValueSpan(lt, rd, table.columns.size()).begin;
 
     std::string line(dIdx, '\t');
     std::size_t valueStart = dIdx + 1; // Index des ersten Werts in der Musterzeile
-    if (directiveLower == "#recordin") {
-        line += directive + "\t" + (dIdx + 1 < tokens.size() ? tokens[dIdx + 1] : table.name);
+    if (rd.recordin) {
+        line += directive + "\t" + tokens[dIdx + 1];
         valueStart = dIdx + 2;
     } else if (recordDirectiveSafe) {
         line += directive;
         // "#record\t\t<werte>": zusätzliches Leer-Tab wie in der Musterzeile.
-        if (dIdx + 1 < tokens.size() && TrimAscii(tokens[dIdx + 1]).empty() && logicalLast < tokens.size() && logicalLast > dIdx &&
-            (logicalLast - dIdx) == table.columns.size() + 1) {
+        if (valueBegin == dIdx + 2) {
             line += "\t" + tokens[dIdx + 1];
             ++valueStart;
         }
@@ -325,52 +478,43 @@ std::expected<void, std::string> SaveShineTextFile(const ShineTextFile& file, co
                 joined += rec.values[i];
             }
             if (rec.sourceLine > 0 && rec.sourceLine < outLines.size()) {
-                // Bestehender Record - nur diese eine Zeile ersetzen, Format ("#record"/
-                // "#recordin <Name>") und eventuelle Auffüll-Tabs am Ende beibehalten, damit
-                // der Rest der Zeile (und der Datei) unverändert bleibt. Manche Dateien haben
-                // ein führendes Leer-Tab VOR der Direktive (siehe LoadShineTextFile) - deshalb
-                // hier genauso das erste NICHT-leere Token suchen statt origTokens[0] blind zu
-                // nehmen (sonst geht z.B. "#recordin" mitsamt Tabellen-Name verloren).
-                auto origTokens = SplitTab(outLines[rec.sourceLine]);
-                std::size_t dIdx = 0;
-                while (dIdx < origTokens.size() && TrimAscii(origTokens[dIdx]).empty()) ++dIdx;
-                std::string leadingBlanks(dIdx, '\t');
-                std::string directive = dIdx < origTokens.size() ? origTokens[dIdx] : "#record";
-                std::string directiveLower = LowerAsciiCopy(TrimAscii(directive));
-                std::string newLine = leadingBlanks + directive;
-                if (directiveLower == "#recordin" && origTokens.size() > dIdx + 1) {
-                    newLine += "\t" + origTokens[dIdx + 1];
+                // Bestehender Record - nur seine Werte-Tokens ersetzen. Alles andere der Zeile bleibt
+                // exakt stehen: führende Tabs, Direktive ("#record"/"#recordin <Name>"), das
+                // zusätzliche Leer-Tab, die Trenner, ein Kommentar ab ";", der ";"-Sentinel,
+                // überzählige Werte und die Auffüll-Tabs. Die Zerlegung ist dieselbe wie beim Laden
+                // (FindValueSpan), ein unveränderter Record bleibt so byte-identisch.
+                const LineTokens lt = TokenizeLine(outLines[rec.sourceLine], file.spaceDelimiter);
+                const RecordDirective rd = ParseRecordDirective(lt);
+                const std::size_t cont = CountContinuationLines(file.rawLines, rec.sourceLine);
+                if (!rd.isRecord) {
+                    // Sollte nicht vorkommen (sourceLine zeigt immer auf eine Record-Zeile).
+                    return std::unexpected("Zeile " + std::to_string(rec.sourceLine + 1) + " ist kein Record: " + path.string());
                 }
-                // Letztes nicht-leeres Token der Originalzeile (Grundlage fuer Auffuell-Tabs unten).
-                std::size_t lastNonEmpty = origTokens.size();
-                for (std::size_t ti = origTokens.size(); ti-- > 0;) {
-                    if (!TrimAscii(origTokens[ti]).empty()) { lastNonEmpty = ti; break; }
+                const ValueSpan span = FindValueSpan(lt, rd, table.columns.size());
+                auto original = SpanValues(lt, span);
+                if (!span.truncated) AppendContinuation(original, file.rawLines, outEndings, rec.sourceLine, cont);
+                for (std::size_t i = 0; i <= cont && rec.sourceLine + i < deleted.size(); ++i) deleted[rec.sourceLine + i] = 0;
+                if (rec.values == original) continue; // unverändert: Zeile(n) bleiben wie sie sind
+                if (cont > 0) {
+                    return std::unexpected("Zeile " + std::to_string(rec.sourceLine + 1) +
+                                           ": mehrzeiliger Text kann nur unverändert gespeichert werden: " + path.string());
                 }
-                const bool hadTrailingSemicolon =
-                    table.trailingSemicolonSentinel && lastNonEmpty < origTokens.size() &&
-                    TrimAscii(origTokens[lastNonEmpty]) == ";";
-                const std::size_t logicalLastNonEmpty =
-                    hadTrailingSemicolon && lastNonEmpty > 0 ? lastNonEmpty - 1 : lastNonEmpty;
-
-                // "#record\t\t<wert>...": das zusaetzliche Leer-Tab nach der Direktive hat der Loader
-                // aus den Werten entfernt (siehe LoadShineTextFile) - hier exakt wieder einsetzen.
-                if (directiveLower == "#record" && origTokens.size() > dIdx + 1 &&
-                    TrimAscii(origTokens[dIdx + 1]).empty() && logicalLastNonEmpty < origTokens.size() &&
-                    logicalLastNonEmpty > dIdx &&
-                    (logicalLastNonEmpty - dIdx) == table.columns.size() + 1) {
-                    newLine += "\t" + origTokens[dIdx + 1];
+                std::vector<std::pair<std::string, std::string>> parts;
+                const std::size_t n = lt.tokens.size();
+                auto sepAfter = [&](std::size_t i) { return i + 1 < n ? lt.seps[i] : std::string(); };
+                for (std::size_t i = 0; i < span.begin; ++i) parts.emplace_back(lt.tokens[i], sepAfter(i));
+                const std::size_t m = rec.values.size();
+                for (std::size_t k = 0; k < m; ++k) {
+                    std::string sep;
+                    if (k + 1 < m) sep = span.begin + k + 1 < span.end ? sepAfter(span.begin + k) : lt.defaultSep;
+                    else if (span.end > span.begin) sep = sepAfter(span.end - 1);
+                    else if (span.end < n) sep = lt.defaultSep;
+                    parts.emplace_back(rec.values[k], sep);
                 }
-                newLine += "\t" + joined;
-                if (hadTrailingSemicolon) newLine += "\t" + origTokens[lastNonEmpty];
-
-                // Auffuell-Tabs (und alles, was hinter dem letzten nicht-leeren Token der
-                // Originalzeile steht) unveraendert anhaengen - echte Dateien fuellen jede Zeile
-                // auf eine feste Spaltenzahl auf. Ein unveraenderter Record bleibt so exakt gleich.
-                if (lastNonEmpty < origTokens.size()) {
-                    for (std::size_t ti = lastNonEmpty + 1; ti < origTokens.size(); ++ti) newLine += "\t" + origTokens[ti];
-                }
-                outLines[rec.sourceLine] = newLine;
-                deleted[rec.sourceLine] = 0;
+                // Fielen alle Werte weg, verbindet der Trenner nach dem letzten Wert den Rest der Zeile.
+                if (m == 0 && span.end > span.begin && !parts.empty()) parts.back().second = sepAfter(span.end - 1);
+                for (std::size_t i = span.end; i < n; ++i) parts.emplace_back(lt.tokens[i], sepAfter(i));
+                outLines[rec.sourceLine] = JoinTokens(lt.prefix, parts, lt.defaultSep);
             } else {
                 // Neuer Record (sourceLine==0, nicht Teil der Originaldatei) - direkt nach dem
                 // letzten bekannten Zeilenindex dieser Tabelle einfügen. IMMER "#recordin
@@ -384,9 +528,15 @@ std::expected<void, std::string> SaveShineTextFile(const ShineTextFile& file, co
                 // Musterzeile: styleLine, sonst die letzte vorhandene Zeile dieser Tabelle.
                 std::size_t style = rec.styleLine;
                 if (style == 0 || style >= file.rawLines.size()) {
+                    // Letzte tab-getrennte, einzeilige Zeile der Tabelle (nicht die leerzeichengetrennten
+                    // Ausnahmezeilen in World/NPC.txt und keine mehrzeiligen Texte).
                     style = 0;
-                    for (const auto& other : table.records)
-                        if (other.sourceLine > 0 && other.sourceLine < file.rawLines.size()) style = std::max(style, other.sourceLine);
+                    for (const auto& other : table.records) {
+                        if (other.sourceLine == 0 || other.sourceLine >= file.rawLines.size() || other.sourceLine <= style) continue;
+                        if (TokenizeLine(file.rawLines[other.sourceLine], file.spaceDelimiter).defaultSep != "\t") continue;
+                        if (CountContinuationLines(file.rawLines, other.sourceLine) > 0) continue;
+                        style = other.sourceLine;
+                    }
                 }
                 std::string line;
                 if (style > 0) {
