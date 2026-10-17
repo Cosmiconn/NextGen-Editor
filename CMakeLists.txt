@@ -224,6 +224,7 @@ set(NEXTGEN_EDITOR_MODULES
     src/app/editor/LoadingScreens.cpp
     src/app/editor/IconAtlasEditor.cpp
     src/app/editor/Portraits.cpp
+    src/app/editor/WindowLayouts.cpp
     src/app/editor/MapWorkspace.cpp
     src/app/editor/Automation.cpp
     src/app/editor/MinimapTools.cpp

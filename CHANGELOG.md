@@ -1,3 +1,19 @@
+## Interface — window layouts
+- New **Windows** switch in the interface tab: the 310 interface NIFs of NA2016 shown as a 2D view.
+  - Every element is a textured NiTriShape in the X/Z plane (screen pixels, Z pointing down). It is drawn with its texture, UVs, vertex colours and material alpha.
+  - Untextured elements are placeholders for content the client draws itself, and can be shown or hidden.
+  - Hovering names an element; a click selects it, and the element list on the right does the same.
+- Textures of the window: each can be replaced as a whole.
+- Selected element: position, size, its pixel region in the texture with a preview, and **Replace region...**, which uses the replace dialog's cell mode with "stretch" as the default.
+  - For DDS only the touched blocks change.
+  - For uncompressed TGA only the region's pixels change (`core::SpliceTgaRegion`); header, image ID and footer stay byte-identical.
+  - Verified on `game/Attend.tga` (AttendWin close button): same file size, footer kept, only the 26×26 region changed.
+- Honest limit: element positions and sizes are not written, because there is no verified NIF writer for these blocks yet. Only textures change.
+- New automation commands `uilayout <nif> [element]` and `uilayoutreplace <source>`. Manual section "Window layouts" and tooltips added.
+- Tests:
+  - `test_image_io`: TGA region splicing with footer and mixed row order;
+  - `test_data_editors`: an element's UV region in pixels (rounded outward, clamped).
+
 ## Interface — icon atlas editor and portraits
 - New **Icons** switch in the interface tab, covering every atlas below `resmenu/Icon` (8×8 grid, cell = atlas width / 8).
   - **Usage index:** every cell knows its users from ItemViewInfo (Icon, SubIcon, PeriodIcon), ActiveSkillView, PassiveSkillView and AbStateView. The list shows used cells per atlas.

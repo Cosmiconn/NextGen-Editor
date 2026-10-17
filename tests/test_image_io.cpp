@@ -178,6 +178,39 @@ void AtlasCellSplice() {
           "abweichende Größe wird abgelehnt");
 }
 
+// TGA-Ausschnitt: Footer und übrige Pixel bleiben byte-gleich, auch bei unterschiedlicher Zeilenrichtung.
+void TgaRegionSplice() {
+    const RgbaImage img = Gradient(32, 16);
+    ImageFormat f;
+    f.container = ImageContainer::Tga;
+    f.tgaBits = 32;
+    f.width = 32;
+    f.height = 16;
+    auto original = *EncodeImage(img, f);
+    const std::string footer = std::string(8, '\0') + "TRUEVISION-XFILE." + std::string(1, '\0');
+    original.insert(original.end(), footer.begin(), footer.end());
+    RgbaImage changed = img;
+    RgbaImage white;
+    white.width = white.height = 4;
+    white.rgba.assign(4 * 4 * 4, 255);
+    PasteImage(changed, white, 8, 2);
+    f.tgaTopDown = true; // andere Zeilenrichtung als das Original
+    const auto updated = *EncodeImage(changed, f);
+    auto spliced = SpliceTgaRegion(original, updated, 8, 2, 4, 4);
+    Check(spliced && spliced->size() == original.size() &&
+              std::equal(spliced->end() - static_cast<std::ptrdiff_t>(footer.size()), spliced->end(), footer.begin()),
+          "TGA-Ausschnitt: Footer und Dateigröße erhalten");
+    auto back = spliced ? DecodeImage(*spliced) : std::unexpected(std::string("-"));
+    bool ok = back.has_value();
+    for (std::uint32_t y = 0; ok && y < 16; ++y)
+        for (std::uint32_t x = 0; x < 32; ++x) {
+            const bool inside = x >= 8 && x < 12 && y >= 2 && y < 6;
+            const std::size_t i = (std::size_t{y} * 32 + x) * 4;
+            if (inside ? back->rgba[i] != 255 : back->rgba[i] != img.rgba[i]) ok = false;
+        }
+    Check(ok, "TGA-Ausschnitt: nur das Rechteck geändert (auch bei anderer Zeilenrichtung)");
+}
+
 void RealResmenu(const std::filesystem::path& root) {
     std::map<std::string, int> ok, failed;
     std::string firstFailure;
@@ -205,6 +238,7 @@ int main(int argc, char** argv) {
     Tga16Opaque();
     Resizing();
     AtlasCellSplice();
+    TgaRegionSplice();
     if (argc > 1 && argv[1][0] != '\0') RealResmenu(argv[1]);
     if (g_failures) { std::fprintf(stderr, "%d Fehler\n", g_failures); return 1; }
     std::printf("Alle Bild-Tests bestanden.\n");

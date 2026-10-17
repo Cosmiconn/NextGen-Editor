@@ -427,4 +427,31 @@ std::expected<std::vector<std::uint8_t>, std::string> SpliceDdsRegion(std::span<
     return out;
 }
 
+std::expected<std::vector<std::uint8_t>, std::string> SpliceTgaRegion(std::span<const std::uint8_t> original,
+                                                                     std::span<const std::uint8_t> updated, std::uint32_t x,
+                                                                     std::uint32_t y, std::uint32_t width, std::uint32_t height) {
+    if (!LooksLikeTga(original) || !LooksLikeTga(updated)) return std::unexpected("TGA erwartet");
+    const auto uncompressed = [](std::span<const std::uint8_t> b) { return b[2] == 2 || b[2] == 3; };
+    if (!uncompressed(original) || !uncompressed(updated)) return std::unexpected("TGA: nur unkomprimiert");
+    const std::uint32_t w = Le16(&original[12]), h = Le16(&original[14]);
+    if (w != Le16(&updated[12]) || h != Le16(&updated[14]) || original[16] != updated[16] || original[2] != updated[2])
+        return std::unexpected("TGA: Format oder Größe weichen ab");
+    const std::size_t bpp = original[16] / 8;
+    const auto pixelStart = [](std::span<const std::uint8_t> b) {
+        return std::size_t{18} + b[0] + std::size_t{Le16(&b[5])} * ((b[7] + 7u) / 8u);
+    };
+    const std::size_t oStart = pixelStart(original), uStart = pixelStart(updated);
+    if (oStart + std::size_t{w} * h * bpp > original.size() || uStart + std::size_t{w} * h * bpp > updated.size())
+        return std::unexpected("TGA: Datei zu kurz");
+    const bool oTop = (original[17] & 0x20) != 0, uTop = (updated[17] & 0x20) != 0;
+    std::vector<std::uint8_t> out(original.begin(), original.end());
+    const std::uint32_t x1 = std::min(w, x + width), y1 = std::min(h, y + height);
+    for (std::uint32_t row = y; row < y1; ++row) {
+        const std::size_t oRow = oTop ? row : h - 1 - row, uRow = uTop ? row : h - 1 - row;
+        if (x1 > x)
+            std::memcpy(out.data() + oStart + (oRow * w + x) * bpp, updated.data() + uStart + (uRow * w + x) * bpp, (x1 - x) * bpp);
+    }
+    return out;
+}
+
 } // namespace theseed::mapeditor::core
