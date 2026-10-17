@@ -110,7 +110,8 @@ bleiben erhalten, weil Fiesta diese Formate selbst verwendet.
 Die eigenen Zwischenformate TSHM/TSTEX/TSWALK/TSOBJ wurden aus API und Oberfläche entfernt.
 Begleitdateien werden unverändert mitgeführt; der Formatbericht benennt, welche abgeleiteten
 Daten nach Änderungen noch nicht neu erzeugt werden. Vollständige Spiel- oder NifSkope-
-Darstellungsgleichheit, Partikelsimulation und ein NIF-Writer sind noch nicht nachgewiesen bzw. umgesetzt.
+Darstellungsgleichheit, Partikelsimulation und ein allgemeiner NIF-Writer sind noch nicht nachgewiesen bzw. umgesetzt;
+für Fenster-Layouts gibt es einen geprüften In-Place-Patch (Eckpunkte und Bounding-Sphere von NiTriShapeData).
 
 Die ZIP im Verzeichnis `releases` enthält Quellen, Fixtures, Berichte und den Windows-Build in
 `bin/`. Historische Berichte sind ausdrücklich versionsgebunden; neue Ergebnisse stehen in

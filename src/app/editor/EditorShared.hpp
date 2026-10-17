@@ -1089,6 +1089,16 @@ struct EditorState {
     bool layoutShowOutlines = false;
     bool layoutScrollToSelected = false;
     std::string layoutAutomationReplaceSource; // Automation "layoutreplace"
+    // Element verschieben/skalieren: Eingabefelder (für layoutEditKey = NIF|Element|Revision gefüllt),
+    // Ziehen in der Ansicht (0 = nichts, 1 = verschieben, 2..5 = Ecke links-oben/rechts-oben/
+    // rechts-unten/links-unten) und die letzte Meldung.
+    float layoutEditRect[4] = {0, 0, 0, 0};
+    std::string layoutEditKey;
+    int layoutDragMode = 0;
+    float layoutDragStart[2] = {0, 0};
+    float layoutDragRect[4] = {0, 0, 0, 0};
+    std::string layoutMoveStatus;
+    bool layoutMoveStacked = true; // Elemente mit gleichem Rechteck (Knopf-Zustände) mitbewegen
     bool loadingAutomationAssign = false; // Automation "loadingassign": loadingPickChoice zuweisen
     std::string loadingAutomationOwnSource; // Automation "loadingown": Quelle für "Eigenes Bild"
     std::vector<std::string> interfaceAssets;
@@ -1775,6 +1785,9 @@ void OpenIconInAtlasEditor(EditorState& state, const std::string& iconFile, int 
 std::vector<std::string> IconAtlasUsers(EditorState& state, const std::string& iconFile, int index);
 void DrawPortraitEditor(EditorState& state);
 void DrawWindowLayoutViewer(EditorState& state);
+// Element `part` des Interface-NIF `nifRel` auf das Rechteck x, y, Breite, Höhe (Bildschirmpixel)
+// bringen: core::PatchNifPartRect, Projektkopie über WriteResmenuOverride (Strg+Z). Meldung in message.
+bool MoveLayoutElement(EditorState& state, const std::string& nifRel, int part, const float rect[4], std::string& message);
 // UV-Rechteck eines Fensterelements in Pixeln der Textur (auf 0..1 geklemmt, nach außen gerundet).
 bool NifPartUvRect(const core::NifMeshPart& part, std::uint32_t texW, std::uint32_t texH, std::uint32_t& x, std::uint32_t& y,
                    std::uint32_t& w, std::uint32_t& h);

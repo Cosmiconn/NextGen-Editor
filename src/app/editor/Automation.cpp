@@ -296,6 +296,16 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         state.layoutPart = part;
         state.layoutScrollToSelected = true;
     }
+    else if (cmd == "uilayoutmove") {
+        // uilayoutmove <X> <Y> <Breite> <Höhe>: gewähltes Element dorthin verschieben/skalieren.
+        float rect[4] = {0, 0, 0, 0};
+        in >> rect[0] >> rect[1] >> rect[2] >> rect[3];
+        std::string message;
+        const bool ok = MoveLayoutElement(state, state.layoutSelected, state.layoutPart, rect, message);
+        state.layoutMoveStatus = message;
+        std::printf("[uilayoutmove] %s #%d ok=%d %s\n", state.layoutSelected.c_str(), state.layoutPart, ok ? 1 : 0, message.c_str());
+        std::fflush(stdout);
+    }
     else if (cmd == "uilayoutreplace") {
         // uilayoutreplace <Quelldatei>: "Ausschnitt ersetzen" für das gewählte Element mit dieser Quelle.
         std::string source; std::getline(in >> std::ws, source);

@@ -26,6 +26,14 @@ namespace {
 // Bei der Variantensuche wird nur die STRUKTUR geprueft - das aufwendige Dekodieren eingebetteter
 // Texturen entfaellt (der erfolgreiche Lauf wird danach noch einmal vollstaendig ausgefuehrt).
 thread_local bool g_probeNoDecode = false;
+// Nur für LoadNifByteLayout: zeichnet während eines strikten Standardlaufs die Byte-Lage der
+// überschreibbaren Felder auf (siehe NifBlockLayout). Sonst nullptr - kein Einfluss aufs Laden.
+thread_local NifByteLayout* g_byteLayout = nullptr;
+thread_local std::uint32_t g_byteLayoutBlock = 0;
+NifBlockLayout* CurrentLayoutBlock() {
+    if (g_byteLayout == nullptr || g_byteLayoutBlock >= g_byteLayout->blocks.size()) return nullptr;
+    return &g_byteLayout->blocks[g_byteLayoutBlock];
+}
 
 class ByteReader {
 public:
@@ -312,9 +320,16 @@ AVObjectBase ParseAVObjectBase(ByteReader& r) {
     AVObjectBase base;
     base.net = ParseObjectNetBase(r);
     base.flags = r.U16();
+    const std::size_t transformOffset = r.Pos();
     base.translation = {r.F32(), r.F32(), r.F32()};
     for (float& v : base.rotation) v = r.F32();
     base.scale = r.F32();
+    if (auto* layout = CurrentLayoutBlock(); layout && layout->transformOffset == 0) {
+        layout->transformOffset = transformOffset;
+        layout->translation = base.translation;
+        layout->rotation = base.rotation;
+        layout->scale = base.scale;
+    }
     const std::uint32_t numProps = r.CountU32(1000u);
     base.properties.reserve(numProps);
     for (std::uint32_t i = 0; i < numProps; ++i) {
@@ -2808,6 +2823,10 @@ RawTriShapeData ParseNiTriShapeData(ByteReader& r, bool hasTrailer, bool isOlder
     // (Varianten-/Verschiebungssuche) stehen hier oft riesige Zaehler - ohne diese Pruefung parste jeder
     // Probelauf bis zu 65535 Vertices durch (8x langsamer nach Anhebung der u16-Grenzen).
     if (hasVerts && static_cast<std::size_t>(numVerts) * 12u > r.Remaining()) { r.Invalidate(); return d; }
+    if (auto* layout = CurrentLayoutBlock(); layout && hasVerts) {
+        layout->vertexOffset = r.Pos();
+        layout->vertexCount = numVerts;
+    }
     if (hasVerts) {
         d.vertices.reserve(numVerts);
         for (std::uint32_t i = 0; i < numVerts; ++i) {
@@ -2836,6 +2855,7 @@ RawTriShapeData ParseNiTriShapeData(ByteReader& r, bool hasTrailer, bool isOlder
             r.Skip(static_cast<std::size_t>(numVerts) * 12u * 2u);
         }
     }
+    if (auto* layout = CurrentLayoutBlock(); layout && hasVerts) layout->boundOffset = r.Pos();
     r.F32(); r.F32(); r.F32(); r.F32(); // Bounding-Sphere (center xyz + radius)
     const std::uint8_t hasColors = r.U8();
     if (hasColors) {
@@ -3076,6 +3096,9 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
     std::uint32_t pixelIndex = 0;
     bool partialStop = false;
     std::vector<SceneNode> scene(hdr.numBlocks);
+    // Namen der Geometrie-Knoten (NiTriShape/NiTriStrips) - NICHT in SceneNode::name, dessen
+    // Leerstand Geometrieeintraege aus der exportierten Node-Hierarchie heraushaelt.
+    std::unordered_map<std::uint32_t, std::string> geometryNames;
     std::unordered_map<std::int32_t, std::uint32_t> dataToGeometry; // Legacy fast path: Datenblock -> letzter Geometrieblock
     std::vector<std::int32_t> partDataBlock;                        // Part-Index -> Datenblock
     // Authoritative scene owner of each rendered part. Multiple AVObjects may legally share
@@ -3140,6 +3163,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         sn.effects = n.effects;
         sn.name = n.base.net.name;
         sn.appCulled = (n.base.flags & 1u) != 0;
+        if (g_byteLayout != nullptr && idx < g_byteLayout->blocks.size()) g_byteLayout->blocks[idx].children = n.children;
     };
 
     for (std::uint32_t blockIdx = 0; blockIdx < hdr.numBlocks; ++blockIdx) {
@@ -3176,6 +3200,11 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
         if (!r.LegacyLayout() && hdr.version <= 0x0A01006Au && r.U32() != 0)
             return std::unexpected("Ungueltiger Block-Marker bei Block " + std::to_string(blockIdx) + " (" + type + ")");
         if (traceBlocks) std::fprintf(stderr, "block %u %s offset %zu\n", blockIdx, type.c_str(), r.Pos());
+        g_byteLayoutBlock = blockIdx;
+        if (auto* layout = CurrentLayoutBlock()) {
+            layout->type = type;
+            layout->offset = r.Pos();
+        }
         if (type == "NiNode") {
             NiNodeBlock node = ParseNiNode(r);
             recordNode(blockIdx, node);
@@ -3631,6 +3660,7 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
                 sn.appCulled = (strips.base.flags & 1u) != 0;
                 if (strips.dataRef >= 0) dataToGeometry[strips.dataRef] = blockIdx;
             }
+            geometryNames[blockIdx] = strips.base.net.name;
             geomNodes.push_back({blockIdx, strips.dataRef, strips.skinInstanceRef,
                                  strips.base.properties, strips.base.net.extraDataRefs,
                                  strips.shaderName, strips.shaderExtraData});
@@ -4080,6 +4110,14 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
             const auto it = dataToGeometry.find(partDataBlock[p]);
             if (it != dataToGeometry.end())
                 partGeometryBlock[p] = static_cast<std::int32_t>(it->second);
+        }
+    }
+    for (std::size_t p = 0; p < model.parts.size(); ++p) {
+        model.parts[p].geometryBlock = p < partGeometryBlock.size() ? partGeometryBlock[p] : -1;
+        model.parts[p].dataBlock = p < partDataBlock.size() ? partDataBlock[p] : -1;
+        if (model.parts[p].name.empty() && model.parts[p].geometryBlock >= 0) {
+            const auto it = geometryNames.find(static_cast<std::uint32_t>(model.parts[p].geometryBlock));
+            if (it != geometryNames.end()) model.parts[p].name = it->second;
         }
     }
 
@@ -6694,6 +6732,30 @@ std::expected<NifModel, std::string> LoadNifMesh(const std::filesystem::path& fi
     return std::unexpected(firstError);
 }
 
+std::expected<NifByteLayout, std::string> LoadNifByteLayout(const std::vector<std::uint8_t>& bytes) {
+    NifByteLayout layout;
+    {
+        ByteReader r(bytes, false);
+        auto hdr = ParseHeader(r, bytes);
+        if (!hdr) return std::unexpected(hdr.error());
+        layout.version = hdr->version;
+        layout.blocks.resize(hdr->numBlocks);
+    }
+    struct LayoutGuard {
+        ~LayoutGuard() { g_byteLayout = nullptr; g_byteLayoutBlock = 0; }
+    } guard;
+    g_byteLayout = &layout;
+    // Derselbe strikte Standardlauf wie der erste Versuch in LoadNifMesh (inkl. Footer-Pruefung).
+    auto model = LoadNifMeshData(bytes, 0, 0, false, nullptr, nullptr, nullptr, false, false, false);
+    g_byteLayout = nullptr;
+    if (!model) return std::unexpected(model.error());
+    for (std::size_t i = 0; i < layout.blocks.size(); ++i)
+        for (const auto c : layout.blocks[i].children)
+            if (c >= 0 && static_cast<std::size_t>(c) < layout.blocks.size() && layout.blocks[static_cast<std::size_t>(c)].parent < 0)
+                layout.blocks[static_cast<std::size_t>(c)].parent = static_cast<std::int32_t>(i);
+    layout.model = std::move(*model);
+    return layout;
+}
 
 NifSiblingEmbeddedTextureResolution ResolveSiblingEmbeddedTexture(
     const std::filesystem::path& requestingNif,

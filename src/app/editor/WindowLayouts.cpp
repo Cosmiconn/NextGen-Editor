@@ -2,11 +2,13 @@
 // Fenster-Layouts: die Interface-NIFs unter resmenu (NA2016: 310 Dateien, Gamebryo 20.0.0.4) als
 // 2D-Ansicht. Jedes Fensterelement ist ein texturiertes NiTriShape in der X/Z-Ebene (Y = 0, Z nach
 // unten, Einheit = Bildschirmpixel); Teile ohne Textur sind Platzhalter für Inhalte, die der Client
-// selbst zeichnet (Text, Slots). Bearbeitbar sind die Texturen: ganz ersetzen oder nur den
-// UV-Ausschnitt eines Elements. Positionen und Größen werden nicht geschrieben - dafür fehlt ein
-// geprüfter NIF-Writer.
+// selbst zeichnet (Text, Slots). Bearbeitbar sind die Texturen (ganz ersetzen oder nur den
+// UV-Ausschnitt eines Elements) sowie Position und Größe der Elemente: core::PatchNifPartRect
+// überschreibt nur die Vertex-Floats und die Bounding-Sphere des NiTriShapeData-Blocks und prüft das
+// Ergebnis mit einem strikten Neu-Laden, bevor die Projektkopie geschrieben wird.
 
 #include "EditorShared.hpp"
+#include "mapeditor/core/NifPatch.hpp"
 
 namespace nge {
 
@@ -14,6 +16,8 @@ namespace {
 struct LayoutCache {
     std::string key;
     std::optional<core::NifModel> model;
+    // Byte-Lage aus dem strikten Standardpfad (nur dann lassen sich Elemente verschieben).
+    std::optional<core::NifByteLayout> byteLayout;
     std::string error;
 };
 
@@ -43,8 +47,16 @@ const LayoutCache& Layout(EditorState& state, const std::string& rel) {
     if (cache.key == key) return cache;
     cache = {};
     cache.key = key;
-    if (auto model = core::LoadNifMesh(path)) cache.model = std::move(*model);
-    else cache.error = model.error();
+    std::ifstream in(path, std::ios::binary);
+    const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    if (auto strict = core::LoadNifByteLayout(bytes)) {
+        cache.model = strict->model;
+        cache.byteLayout = std::move(*strict);
+    } else if (auto model = core::LoadNifMesh(path)) {
+        cache.model = std::move(*model);
+    } else {
+        cache.error = model.error();
+    }
     return cache;
 }
 
@@ -101,7 +113,53 @@ ImU32 PartColor(const core::NifMeshPart& part, std::size_t vertex) {
     }
     return ImGui::ColorConvertFloat4ToU32(ImVec4(r, g, b, std::clamp(a, 0.0f, 1.0f)));
 }
+// Gerundete Verschiebung (ganze Bildschirmpixel), damit Elemente auf dem Pixelraster bleiben.
+float Snap(float v) { return std::round(v); }
 } // namespace
+
+bool MoveLayoutElement(EditorState& state, const std::string& nifRel, int part, const float rect[4], std::string& message) {
+    const auto path = ResmenuEffectivePath(state, nifRel);
+    std::ifstream in(path, std::ios::binary);
+    std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    in.close();
+    if (bytes.empty() || part < 0) {
+        message = L("Datei nicht lesbar: ", "File not readable: ") + path.string();
+        return false;
+    }
+    const core::NifRect target{rect[0], rect[1], std::max(rect[2], 0.0f), std::max(rect[3], 0.0f)};
+    // Elemente mit genau demselben Rechteck (z. B. die Zustände eines Knopfs: normal, Maus darüber,
+    // gedrückt) wandern auf Wunsch mit - als ein Undo-Schritt.
+    std::vector<std::size_t> parts{static_cast<std::size_t>(part)};
+    if (state.layoutMoveStacked) {
+        if (auto layout = core::LoadNifByteLayout(bytes); layout && static_cast<std::size_t>(part) < layout->model.parts.size()) {
+            const auto own = core::NifPartRect(layout->model.parts[static_cast<std::size_t>(part)]);
+            for (std::size_t q = 0; q < layout->model.parts.size(); ++q) {
+                if (q == static_cast<std::size_t>(part)) continue;
+                const auto r = core::NifPartRect(layout->model.parts[q]);
+                if (std::abs(r.x - own.x) < 0.01f && std::abs(r.y - own.y) < 0.01f && std::abs(r.width - own.width) < 0.01f &&
+                    std::abs(r.height - own.height) < 0.01f && core::CheckNifPartPatchable(*layout, q).patchable)
+                    parts.push_back(q);
+            }
+        }
+    }
+    for (const auto q : parts) {
+        auto patched = core::PatchNifPartRect(bytes, q, target);
+        if (!patched) {
+            message = "#" + std::to_string(q) + ": " + patched.error();
+            return false;
+        }
+        bytes = std::move(*patched);
+    }
+    char label[256];
+    std::snprintf(label, sizeof(label), "%s #%d%s -> %.0f,%.0f %.0fx%.0f", std::filesystem::path(nifRel).filename().string().c_str(), part,
+                  parts.size() > 1 ? (" (+" + std::to_string(parts.size() - 1) + ")").c_str() : "", target.x, target.y, target.width, target.height);
+    if (!WriteResmenuOverride(state, nifRel, bytes, label)) {
+        message = state.statusMessage;
+        return false;
+    }
+    message = std::string(L("Element verschoben: ", "Element moved: ")) + label;
+    return true;
+}
 
 // UV-Rechteck eines Elements in Texturpixeln (gerundet), für "nur diesen Ausschnitt ersetzen".
 bool NifPartUvRect(const core::NifMeshPart& part, std::uint32_t texW, std::uint32_t texH, std::uint32_t& x, std::uint32_t& y,
@@ -138,9 +196,8 @@ void DrawWindowLayoutViewer(EditorState& state) {
     ImGui::SameLine();
     ImGui::TextDisabled("%zu %s", files.size(), L("Interface-NIFs", "interface NIFs"));
     ImGui::SameLine();
-    ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.3f, 1.0f), "%s",
-                       L("Nur Texturen werden geändert; Positionen/Größen schreibt der Editor nicht (kein geprüfter NIF-Writer).",
-                         "Only textures are changed; the editor does not write positions/sizes (no verified NIF writer)."));
+    ImGui::TextDisabled("%s", L("Element ziehen = verschieben, Ecken ziehen = Größe, Pfeiltasten = 1 px (Umschalt 10 px); Projektkopie, Strg+Z.",
+                                "Drag an element to move it, drag its corners to resize, arrow keys = 1 px (Shift 10 px); project copy, Ctrl+Z."));
 
     const float listW = std::clamp(ImGui::GetContentRegionAvail().x * 0.22f, 220.0f, 320.0f);
     ImGui::BeginChild("##layoutList", ImVec2(listW, 0.0f), true);
@@ -211,7 +268,9 @@ void DrawWindowLayoutViewer(EditorState& state) {
     DrawCheckerboard(toScreen(all.minX, all.minY), toScreen(all.maxX, all.maxY));
     int hovered = -1;
     const ImVec2 mouse = ImGui::GetMousePos();
-    const auto drawTextured = [&](const core::NifMeshPart& part, std::uint32_t tex) {
+    // Optional an ein anderes Rechteck abgebildet (Vorschau beim Ziehen): from -> to.
+    const auto drawTextured = [&](const core::NifMeshPart& part, std::uint32_t tex, const core::NifRect* from = nullptr,
+                                  const core::NifRect* to = nullptr) {
         dl->PushTextureID(static_cast<ImTextureID>(static_cast<intptr_t>(tex)));
         const std::size_t tris = part.triangleIndices.size() / 3;
         dl->PrimReserve(static_cast<int>(tris * 3), static_cast<int>(tris * 3));
@@ -219,14 +278,37 @@ void DrawWindowLayoutViewer(EditorState& state) {
             const std::uint32_t vi = part.triangleIndices[t];
             const auto& p = vi < part.positions.size() ? part.positions[vi] : part.positions.front();
             const ImVec2 uv = vi < part.uvs.size() ? ImVec2(part.uvs[vi].u, part.uvs[vi].v) : ImVec2(0, 0);
+            float x = p.x, y = p.z;
+            if (from && to) {
+                x = to->x + (x - from->x) * (from->width > 1e-6f ? to->width / from->width : 1.0f);
+                y = to->y + (y - from->y) * (from->height > 1e-6f ? to->height / from->height : 1.0f);
+            }
             dl->PrimWriteIdx(static_cast<ImDrawIdx>(dl->_VtxCurrentIdx));
-            dl->PrimWriteVtx(toScreen(p.x, p.z), uv, PartColor(part, vi));
+            dl->PrimWriteVtx(toScreen(x, y), uv, PartColor(part, vi));
         }
         dl->PopTextureID();
     };
+    // Gewähltes Element: verschiebbar? (nur bei strikt geladener Datei und eigenem NiTriShapeData-Block)
+    const int selIndex = state.layoutPart >= 0 && state.layoutPart < static_cast<int>(model.parts.size()) ? state.layoutPart : -1;
+    bool selPatchable = false;
+    std::string selRefusal;
+    if (selIndex >= 0) {
+        if (layout.byteLayout) {
+            const auto check = core::CheckNifPartPatchable(*layout.byteLayout, static_cast<std::size_t>(selIndex));
+            selPatchable = check.patchable;
+            selRefusal = app::CurrentLanguage() == app::Language::German ? check.reason : check.reasonEn;
+        } else {
+            selRefusal = L("Die Datei lädt nur über Wiederherstellungs-Heuristiken - Verschieben ist gesperrt.",
+                           "The file only loads through recovery heuristics - moving is disabled.");
+        }
+    }
+    if (selIndex < 0 || !selPatchable) state.layoutDragMode = 0;
+    const core::NifRect selRect = selIndex >= 0 ? core::NifPartRect(model.parts[static_cast<std::size_t>(selIndex)]) : core::NifRect{};
+    const bool dragging = state.layoutDragMode != 0;
     for (std::size_t pi = 0; pi < model.parts.size(); ++pi) {
         const auto& part = model.parts[pi];
         if (part.appCulled || part.positions.empty()) continue;
+        if (dragging && static_cast<int>(pi) == selIndex) continue; // wird an der Vorschau-Position gezeichnet
         const std::string texRel = ResolveTexture(state, nifRel, part.diffuseTexture);
         const std::uint32_t tex = texRel.empty() ? 0 : ResmenuPreviewTexture(state, texRel);
         const auto b = PartBounds(part);
@@ -242,7 +324,64 @@ void DrawWindowLayoutViewer(EditorState& state) {
             (tex || state.layoutShowPlaceholders))
             hovered = static_cast<int>(pi); // spätere Elemente liegen oben
     }
-    if (hovered >= 0) {
+    // Ziehen beginnen: Ecke des gewählten Elements = Größe, Fläche = verschieben.
+    if (selPatchable && !dragging && ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        const ImVec2 mn = toScreen(selRect.x, selRect.y), mx = toScreen(selRect.x + selRect.width, selRect.y + selRect.height);
+        const ImVec2 corners[4] = {mn, ImVec2(mx.x, mn.y), mx, ImVec2(mn.x, mx.y)};
+        for (int k = 0; k < 4 && state.layoutDragMode == 0; ++k)
+            if (std::abs(mouse.x - corners[k].x) <= 6.0f && std::abs(mouse.y - corners[k].y) <= 6.0f) state.layoutDragMode = 2 + k;
+        if (state.layoutDragMode == 0 && mouse.x >= mn.x && mouse.x <= mx.x && mouse.y >= mn.y && mouse.y <= mx.y) state.layoutDragMode = 1;
+        if (state.layoutDragMode != 0) {
+            state.layoutDragStart[0] = mouse.x;
+            state.layoutDragStart[1] = mouse.y;
+            state.layoutDragRect[0] = selRect.x;
+            state.layoutDragRect[1] = selRect.y;
+            state.layoutDragRect[2] = selRect.width;
+            state.layoutDragRect[3] = selRect.height;
+        }
+    }
+    core::NifRect live = selRect;
+    if (state.layoutDragMode != 0) {
+        const float dx = Snap((mouse.x - state.layoutDragStart[0]) / scale), dy = Snap((mouse.y - state.layoutDragStart[1]) / scale);
+        live = {state.layoutDragRect[0], state.layoutDragRect[1], state.layoutDragRect[2], state.layoutDragRect[3]};
+        const float minW = live.width > 0.0f ? 1.0f : 0.0f, minH = live.height > 0.0f ? 1.0f : 0.0f;
+        switch (state.layoutDragMode) {
+        case 1: live.x += dx; live.y += dy; break;
+        case 2: live.x += dx; live.y += dy; live.width -= dx; live.height -= dy; break;   // links oben
+        case 3: live.y += dy; live.width += dx; live.height -= dy; break;                 // rechts oben
+        case 4: live.width += dx; live.height += dy; break;                               // rechts unten
+        case 5: live.x += dx; live.width -= dx; live.height += dy; break;                 // links unten
+        default: break;
+        }
+        if (live.width < minW) { if (state.layoutDragMode == 2 || state.layoutDragMode == 5) live.x -= minW - live.width; live.width = minW; }
+        if (live.height < minH) { if (state.layoutDragMode == 2 || state.layoutDragMode == 3) live.y -= minH - live.height; live.height = minH; }
+        if (state.layoutDragMode == 1 || state.layoutDragMode == 0) {
+            live.width = state.layoutDragRect[2];
+            live.height = state.layoutDragRect[3];
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+            state.layoutDragMode = 0;
+        } else if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+            const bool changed = live.x != selRect.x || live.y != selRect.y || live.width != selRect.width || live.height != selRect.height;
+            state.layoutDragMode = 0;
+            if (changed) {
+                const float r[4] = {live.x, live.y, live.width, live.height};
+                MoveLayoutElement(state, nifRel, selIndex, r, state.layoutMoveStatus);
+            }
+        }
+        ImGui::SetTooltip("%.0f, %.0f  %.0f x %.0f", live.x, live.y, live.width, live.height);
+    } else if (selPatchable && ImGui::IsWindowHovered() && !ImGui::GetIO().WantTextInput) {
+        // Pfeiltasten: 1 px, mit Umschalt 10 px - je Tastendruck ein Undo-Schritt.
+        const float step = ImGui::GetIO().KeyShift ? 10.0f : 1.0f;
+        float r[4] = {selRect.x, selRect.y, selRect.width, selRect.height};
+        bool move = false;
+        if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) { r[0] -= step; move = true; }
+        if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) { r[0] += step; move = true; }
+        if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) { r[1] -= step; move = true; }
+        if (ImGui::IsKeyPressed(ImGuiKey_DownArrow)) { r[1] += step; move = true; }
+        if (move) MoveLayoutElement(state, nifRel, selIndex, r, state.layoutMoveStatus);
+    }
+    if (hovered >= 0 && !dragging && state.layoutDragMode == 0) {
         const auto b = PartBounds(model.parts[static_cast<std::size_t>(hovered)]);
         dl->AddRect(toScreen(b.minX, b.minY), toScreen(b.maxX, b.maxY), IM_COL32(255, 220, 90, 220), 0.0f, 0, 1.5f);
         ImGui::SetTooltip("#%d %s\n%s", hovered, model.parts[static_cast<std::size_t>(hovered)].name.c_str(),
@@ -255,10 +394,18 @@ void DrawWindowLayoutViewer(EditorState& state) {
         // Gewähltes Element obenauf: Zustände eines Knopfs (normal/hover/gedrückt) liegen übereinander.
         const auto& selPart = model.parts[static_cast<std::size_t>(state.layoutPart)];
         const std::string selTex = ResolveTexture(state, nifRel, selPart.diffuseTexture);
+        const bool preview = state.layoutDragMode != 0;
         if (const std::uint32_t tex = selTex.empty() ? 0 : ResmenuPreviewTexture(state, selTex); tex && !selPart.positions.empty())
-            drawTextured(selPart, tex);
-        const auto b = PartBounds(selPart);
-        dl->AddRect(toScreen(b.minX, b.minY), toScreen(b.maxX, b.maxY), IM_COL32(32, 221, 242, 255), 0.0f, 0, 2.5f);
+            drawTextured(selPart, tex, preview ? &selRect : nullptr, preview ? &live : nullptr);
+        else if (preview)
+            dl->AddRectFilled(toScreen(live.x, live.y), toScreen(live.x + live.width, live.y + live.height), IM_COL32(60, 140, 220, 70));
+        const ImVec2 mn = toScreen(live.x, live.y), mx = toScreen(live.x + live.width, live.y + live.height);
+        dl->AddRect(mn, mx, IM_COL32(32, 221, 242, 255), 0.0f, 0, 2.5f);
+        if (selPatchable) {
+            // Eck-Griffe zum Ändern der Größe.
+            for (const ImVec2 c : {mn, ImVec2(mx.x, mn.y), mx, ImVec2(mn.x, mx.y)})
+                dl->AddRectFilled(ImVec2(c.x - 4.0f, c.y - 4.0f), ImVec2(c.x + 4.0f, c.y + 4.0f), IM_COL32(32, 221, 242, 255));
+        }
     }
     ImGui::Dummy(ImVec2(w * scale + 8.0f, h * scale + 8.0f));
     ImGui::EndChild();
@@ -292,6 +439,27 @@ void DrawWindowLayoutViewer(EditorState& state) {
         ImGui::Text("%s #%d %s", L("Element", "Element"), sel, part.name.c_str());
         ImGui::TextDisabled(L("Position %.0f, %.0f · Größe %.0f x %.0f · %zu Dreiecke", "Position %.0f, %.0f · size %.0f x %.0f · %zu triangles"),
                             b.minX, b.minY, b.maxX - b.minX, b.maxY - b.minY, part.triangleIndices.size() / 3);
+        // Position und Größe: Felder für dieses Element (und diesen Dateistand) füllen.
+        const std::string editKey = nifRel + "|" + std::to_string(sel) + "|" + layout.key;
+        if (state.layoutEditKey != editKey) {
+            state.layoutEditKey = editKey;
+            state.layoutEditRect[0] = b.minX;
+            state.layoutEditRect[1] = b.minY;
+            state.layoutEditRect[2] = b.maxX - b.minX;
+            state.layoutEditRect[3] = b.maxY - b.minY;
+        }
+        ImGui::BeginDisabled(!selPatchable || state.project.projectFolder[0] == '\0');
+        ImGui::SetNextItemWidth(-1.0f);
+        ImGui::InputFloat4("##layoutRect", state.layoutEditRect, "%.1f");
+        UI::Tip("InputFloat", "##layoutRect");
+        if (UI::Button(L("Übernehmen##layoutRect", "Apply##layoutRect")))
+            MoveLayoutElement(state, nifRel, sel, state.layoutEditRect, state.layoutMoveStatus);
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s", L("X, Y, Breite, Höhe", "X, Y, width, height"));
+        UI::Checkbox(L("Elemente an derselben Stelle mitnehmen##layout", "Move elements at the same place along##layout"), &state.layoutMoveStacked);
+        if (!selPatchable && !selRefusal.empty()) ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.3f, 1.0f), "%s", selRefusal.c_str());
+        if (!state.layoutMoveStatus.empty()) ImGui::TextWrapped("%s", state.layoutMoveStatus.c_str());
         const std::string texRel = ResolveTexture(state, nifRel, part.diffuseTexture);
         if (part.diffuseTexture.empty()) {
             ImGui::TextDisabled("%s", L("Ohne Textur: Platzhalter für Inhalte, die der Client selbst zeichnet.",
