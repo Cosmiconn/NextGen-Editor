@@ -388,6 +388,71 @@ int main() {
               st2->records[2].values[6] == "1005", "Projekt-Override enthält Änderung und neue Gruppe (CheckSum 2+3+1000)");
     }
 
+    std::printf("\n== Formular-Editor (Mob-Familie): Client+Server schreiben, Undo, Klonen ==\n");
+    {
+        auto makeMob = [](std::initializer_list<const char*> extra, std::initializer_list<std::uint32_t> values) {
+            core::legacy::ShnFile f;
+            f.encrypted = false;
+            f.columns = {UIntColumn("ID"), StringColumn("InxName", 32)};
+            for (const char* c : extra)
+                f.columns.push_back(std::string(c) == "Name" || std::string(c) == "FileName" ? StringColumn(c, 32) : UIntColumn(c));
+            for (std::uint32_t id = 1; id <= 2; ++id) {
+                core::legacy::ShnRow r;
+                r.values = {id, std::string(id == 1 ? "Wolf01" : "Slime01")};
+                std::size_t i = 0;
+                for (const char* c : extra) {
+                    const std::string name = c;
+                    if (name == "Name") r.values.push_back(std::string(id == 1 ? "Wolf" : "Slime"));
+                    else if (name == "FileName") r.values.push_back(std::string(id == 1 ? "Wolf" : "Slime"));
+                    else r.values.push_back(*(values.begin() + static_cast<std::ptrdiff_t>(i)) * id);
+                    ++i;
+                }
+                f.rows.push_back(std::move(r));
+            }
+            return f;
+        };
+        (void)core::legacy::SaveShnFile(makeMob({"Name", "Level"}, {0, 5}), ressystem / "MobInfo.shn");
+        (void)core::legacy::SaveShnFile(makeMob({"Name", "Level"}, {0, 5}), shine / "MobInfo.shn");
+        (void)core::legacy::SaveShnFile(makeMob({"MonEXP"}, {100}), shine / "MobInfoServer.shn");
+        (void)core::legacy::SaveShnFile(makeMob({"FileName"}, {0}), ressystem / "MobViewInfo.shn");
+
+        const auto& spec = MobFormSpec();
+        const auto docs = ResolveFormDocs(st, spec);
+        Check(docs.byTable.size() == 3 && docs.byTable[0].size() == 2 && docs.byTable[1].size() == 1 && docs.byTable[2].size() == 1,
+              "MobInfo (Client+Server), MobInfoServer, MobViewInfo aufgelöst");
+        st.dataHistory.Clear();
+        Check(FormCellRead(st, docs, 0, "Level", 1) == "5" && FormCellRead(st, docs, 1, "MonEXP", 2) == "200", "Werte gelesen");
+        Check(FormCellWrite(st, docs, 0, "Level", 1, "7", "Mob #1 · Level") && st.dataHistory.UndoCount() == 1, "Level geschrieben (ein Verlaufseintrag)");
+        Check(ShnCellText(ShnDocFile(st, docs.byTable[0][0]), 0, "Level") == "7" && ShnCellText(ShnDocFile(st, docs.byTable[0][1]), 0, "Level") == "7",
+              "Client- und Server-Kopie beide geändert");
+        Check(!FormCopiesDiffer(st, docs, 0, "Level", 1), "Kopien gleich");
+        Check(!FormCellWrite(st, docs, 0, "Level", 1, "7", "gleich"), "gleicher Wert schreibt nichts");
+        Check(DataUndo(st) && FormCellRead(st, docs, 0, "Level", 1) == "5" &&
+              ShnCellText(ShnDocFile(st, docs.byTable[0][1]), 0, "Level") == "5", "Undo nimmt beide Kopien zurück");
+        SetShnCellText(ShnDocFile(st, docs.byTable[0][1]), 0, "Level", "9");
+        std::string details;
+        Check(FormCopiesDiffer(st, docs, 0, "Level", 1, &details) && details.find("9") != std::string::npos, "Abweichung Client/Server erkannt");
+        SetShnCellText(ShnDocFile(st, docs.byTable[0][1]), 0, "Level", "5");
+
+        std::vector<std::string> report;
+        st.dataHistory.Clear();
+        Check(CloneFormRecord(st, spec, docs, 1, "Slime01", "", report) < 0, "doppelter InxName wird abgelehnt");
+        const long long newId = CloneFormRecord(st, spec, docs, 1, "Wolf02", "Grauer Wolf", report);
+        Check(newId > 2, "Mob geklont, neue ID " + std::to_string(newId));
+        bool everywhere = true;
+        for (const auto& copies : docs.byTable)
+            for (const int d : copies) everywhere = everywhere && FormRowIn(st, d, newId) >= 0;
+        Check(everywhere, "neue Zeile in allen vier Tabellen");
+        Check(FormCellRead(st, docs, 0, "Name", newId) == "Grauer Wolf" &&
+              ShnCellText(ShnDocFile(st, docs.byTable[0][1]), static_cast<std::size_t>(FormRowIn(st, docs.byTable[0][1], newId)), "Name") == "Grauer Wolf",
+              "Name in Client und Server gesetzt");
+        Check(FormCellRead(st, docs, 1, "MonEXP", newId) == "100" && FormCellRead(st, docs, 2, "FileName", newId) == "Wolf", "übrige Werte aus der Vorlage");
+        Check(st.dataHistory.UndoCount() == 1 && DataUndo(st) && FormRowIn(st, docs.byTable[2][0], newId) < 0 &&
+              ShnDocFile(st, docs.byTable[0][0]).rows.size() == 2, "ein Undo entfernt den Klon überall");
+        Check(DataRedo(st) && FormCellRead(st, docs, 0, "Name", newId) == "Grauer Wolf", "Redo stellt ihn mit Namen wieder her");
+        Check(SaveShnDocument(st, docs.byTable[0][0]), "MobInfo mit Klon besteht die Speicherprüfung (" + st.shnStatus + ")");
+    }
+
     std::filesystem::remove_all(base, ec);
     if (g_failures) std::fprintf(stderr, "%d Fehler\n", g_failures);
     return g_failures == 0 ? 0 : 1;

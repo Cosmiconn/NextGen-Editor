@@ -1964,6 +1964,8 @@ void DrawShnEditor(EditorState& state) {
         {"ai","AI Scripts",DrawIconCode,"module.ai",8,-1},
         {"interface","Interface",DrawIconMonitorEye,"module.interface",9,-1},
         {"drops","Drops",DrawIconSpawn,"module.droptable",10,-1},
+        {"items","Items",DrawIconTable,"module.prices",11,-1},
+        {"mobs","Mobs",DrawIconSpawn,"module.custom_mob",12,-1},
     };
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(5.0f, 5.0f));
     for (int i = 0; i < static_cast<int>(std::size(dataTools)); ++i) {
@@ -2090,7 +2092,9 @@ void DrawShnEditor(EditorState& state) {
     else if(state.shnSubTab==7) { DrawSkillEditor(state); }
     else if(state.shnSubTab==8) { DrawAiWorkspace(state); }
     else if(state.shnSubTab==9) { DrawInterfaceWorkspace(state); }
-    else { DrawDropTableEditor(state); }
+    else if(state.shnSubTab==10) { DrawDropTableEditor(state); }
+    else if(state.shnSubTab==11) { DrawItemEditor(state); }
+    else { DrawMobEditor(state); }
     ImGui::EndChild(); ImGui::EndChild(); ImGui::PopStyleColor();
 }
 
