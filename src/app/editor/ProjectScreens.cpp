@@ -312,6 +312,38 @@ void DrawMapEditorLauncher(EditorState& state) {
         ImGui::Dummy(ImVec2(0,4));
         ImGui::TextDisabled("%s",L("SPIELDATEN","GAME DATA"));
         UI::Checkbox(L("MapInfo + MapViewInfo (Client und Server)##nm","MapInfo + MapViewInfo (client and server)##nm"), &state.newMapWriteMapInfo);
+        if (state.newMapWriteMapInfo) {
+            ImGui::Indent();
+            ImGui::TextDisabled("%s", L("Ladebild (leer = Kopie des Vorlagen-Ladebilds)", "Loading image (empty = copy of the template's image)"));
+            ImGui::SetNextItemWidth(-130.0f);
+            UI::InputText("##newmaploading", state.newMapLoadingSource, sizeof(state.newMapLoadingSource));
+#ifdef _WIN32
+            ImGui::SameLine();
+            if (UI::Button(L("Durchsuchen...##newmaploading", "Browse...##newmaploading"))) {
+                if (auto picked = BrowseForInterfaceAssetWindows(L("Ladebild wählen", "Choose loading image"), ""))
+                    std::snprintf(state.newMapLoadingSource, sizeof(state.newMapLoadingSource), "%s", picked->c_str());
+            }
+#endif
+            // Größe/Format der Quelle (nur bei geändertem Pfad neu gelesen).
+            static std::string inspectedPath, inspectedInfo;
+            static bool inspectedOk = false;
+            const std::string sourcePath = TrimAscii(state.newMapLoadingSource);
+            if (sourcePath != inspectedPath) {
+                inspectedPath = sourcePath;
+                const auto format = sourcePath.empty() ? std::expected<core::ImageFormat, std::string>(std::unexpected(std::string()))
+                                                       : core::InspectImageFile(sourcePath);
+                inspectedOk = format.has_value();
+                inspectedInfo = format ? core::DescribeImageFormat(*format) : format.error();
+            }
+            if (!sourcePath.empty()) {
+                if (inspectedOk)
+                    ImGui::TextDisabled("%s %s", inspectedInfo.c_str(), L("- wird auf Größe und Format des Vorlagen-Ladebilds umgerechnet",
+                                                                          "- converted to the size and format of the template's image"));
+                else
+                    ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.3f, 1.0f), "%s", inspectedInfo.c_str());
+            }
+            ImGui::Unindent();
+        }
         UI::Checkbox(L("World/Field.txt (Kartenliste des Servers)##nm","World/Field.txt (server map list)##nm"), &state.newMapWriteField);
         UI::Checkbox(L("Gate von einer vorhandenen Karte (mit Rückweg)##nm","Gate from an existing map (with way back)##nm"), &state.newMapGate);
         if (state.newMapGate) {

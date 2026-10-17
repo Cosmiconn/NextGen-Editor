@@ -160,9 +160,10 @@ bool CreateNewMapFromWizard(EditorState& state) {
     }
     const long long newId = std::max(MaxShnId(state, "MapInfo.shn"), MaxShnId(state, "MapViewInfo.shn")) + 1;
 
-    // Eigenes Ladebild: alle Varianten (PNG/TGA) des Vorlagen-Ladebilds unverändert als
-    // loading/<Name>.<ext> ins Projekt kopieren; MapViewInfo.Loading zeigt dann auf <Name>. Ersetzen
-    // lässt es sich danach im Ladebildschirm-Editor, ohne andere Karten zu berühren.
+    // Eigenes Ladebild als loading/<Name>.<ext> im Projekt; MapViewInfo.Loading zeigt dann auf <Name>.
+    // Je Variante des Vorlagen-Ladebilds (PNG/TGA) entsteht eine Datei mit deren Größe und Format: aus
+    // dem gewählten Quellbild (newMapLoadingSource) umgerechnet, sonst eine unveränderte Kopie der
+    // Vorlage. Ersetzen lässt es sich danach im Ladebildschirm-Editor, ohne andere Karten zu berühren.
     std::string ownLoading;
     if (state.newMapWriteMapInfo && tmplId >= 0) {
         std::string tmplLoading;
@@ -172,23 +173,70 @@ bool CreateNewMapFromWizard(EditorState& state) {
                 if (std::atoll(TrimAscii(ShnCellText(f, r, "ID")).c_str()) == tmplId) tmplLoading = TrimAscii(ShnCellText(f, r, "Loading"));
         }
         const auto variants = tmplLoading.empty() ? std::vector<std::string>{} : LoadingImageFiles(state, tmplLoading);
-        int copied = 0;
-        for (const auto& rel : variants) {
-            std::ifstream in(ResmenuEffectivePath(state, rel), std::ios::binary);
-            const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        auto readBytes = [](const std::filesystem::path& p) {
+            std::ifstream in(p, std::ios::binary);
+            return std::vector<std::uint8_t>((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        };
+        // Bytes je Variante: aus dem Quellbild, wenn es sich für alle Varianten umrechnen lässt.
+        std::vector<std::vector<std::uint8_t>> converted;
+        std::vector<std::string> formats;
+        const std::string sourcePath = TrimAscii(state.newMapLoadingSource);
+        if (!sourcePath.empty() && !variants.empty()) {
+            auto source = core::LoadImageFile(sourcePath);
+            const auto sourceFormat = core::InspectImageFile(sourcePath);
+            std::string error = source ? std::string() : source.error();
+            for (const auto& rel : variants) {
+                if (!error.empty()) break;
+                const auto original = core::InspectImageFile(ResmenuEffectivePath(state, rel));
+                if (!original) { error = rel + ": " + original.error(); break; }
+                // Hat die Quelle schon exakt Format und Größe der Vorlage, wird sie unverändert übernommen
+                // (keine erneute verlustbehaftete Kompression) - wie im Ersetzen-Dialog.
+                const auto& o = *original;
+                const bool identical = sourceFormat && sourceFormat->container == o.container && sourceFormat->width == o.width &&
+                                       sourceFormat->height == o.height &&
+                                       (o.container != core::ImageContainer::Dds || (sourceFormat->dds == o.dds && sourceFormat->mipmaps == o.mipmaps)) &&
+                                       (o.container != core::ImageContainer::Tga || sourceFormat->tgaBits == o.tgaBits) &&
+                                       (o.container != core::ImageContainer::Png || sourceFormat->pngAlpha == o.pngAlpha);
+                if (identical) {
+                    converted.push_back(readBytes(sourcePath));
+                } else if (auto built = core::BuildReplacement(*source, o, {core::FitMode::Fill, true})) {
+                    converted.push_back(std::move(built->bytes));
+                } else {
+                    error = rel + ": " + built.error();
+                    break;
+                }
+                formats.push_back(core::DescribeImageFormat(o));
+            }
+            if (!error.empty() || converted.size() != variants.size()) {
+                converted.clear();
+                rep.push_back(std::string(L("- Ladebild: Quellbild nicht verwendbar (", "- Loading image: source image not usable (")) + error +
+                              L("), Vorlage wird kopiert", "), copying the template"));
+            }
+        }
+        int written = 0;
+        for (std::size_t i = 0; i < variants.size(); ++i) {
+            const auto& rel = variants[i];
+            const std::vector<std::uint8_t> bytes = converted.empty() ? readBytes(ResmenuEffectivePath(state, rel)) : converted[i];
             const std::string target = "loading/" + name + std::filesystem::path(rel).extension().string();
             const auto projectPath = InterfaceProjectOverridePath(state, target);
             std::error_code ec;
             std::filesystem::create_directories(projectPath.parent_path(), ec);
             std::ofstream out(projectPath, std::ios::binary);
             out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-            if (in && !bytes.empty() && out) ++copied;
+            if (!bytes.empty() && out) ++written;
         }
-        if (copied > 0 && copied == static_cast<int>(variants.size())) {
+        if (written > 0 && written == static_cast<int>(variants.size())) {
             ownLoading = name;
             ++state.resmenuRevision;
-            rep.push_back("+ Client resmenu/loading/" + name + L(": eigenes Ladebild (Kopie von ", ": own loading image (copy of ") +
-                          tmplLoading + ", " + std::to_string(copied) + L(" Datei(en))", " file(s))"));
+            if (converted.empty()) {
+                rep.push_back("+ Client resmenu/loading/" + name + L(": eigenes Ladebild (Kopie von ", ": own loading image (copy of ") +
+                              tmplLoading + ", " + std::to_string(written) + L(" Datei(en))", " file(s))"));
+            } else {
+                std::string list;
+                for (const auto& f : formats) list += (list.empty() ? "" : "; ") + f;
+                rep.push_back("+ Client resmenu/loading/" + name + L(": eigenes Ladebild aus ", ": own loading image from ") +
+                              std::filesystem::path(sourcePath).filename().string() + " (" + list + ")");
+            }
         } else {
             rep.push_back(std::string(L("- Ladebild: keine Datei der Vorlage gefunden, Karte nutzt ", "- Loading image: no template file found, map uses ")) +
                           (tmplLoading.empty() ? std::string("-") : tmplLoading));
