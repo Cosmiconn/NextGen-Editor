@@ -641,6 +641,14 @@ std::expected<DdsImage, std::string> LoadTgaImage(const std::filesystem::path& f
             putPixel(px.data());
         }
     }
+    // 16 Bit mit gemeldetem, aber in keinem Pixel gesetztem Alpha-Bit (alle NA2016-Ladebilder):
+    // das Bit trägt keine Information, das Bild ist deckend (wie core::DecodeImage).
+    if (depth == 16 && !grayscale && (h[17] & 15) != 0) {
+        bool anyAlpha = false;
+        for (std::size_t i = 3; i < image.rgba.size() && !anyAlpha; i += 4) anyAlpha = image.rgba[i] != 0;
+        if (!anyAlpha)
+            for (std::size_t i = 3; i < image.rgba.size(); i += 4) image.rgba[i] = 255;
+    }
     // TGA Origin-Bit: bit 5 gesetzt = obere Zeile zuerst, sonst untere Zeile zuerst.
     // OpenGL erwartet bei unserem gemeinsamen Texturpfad V=0 unten; daher nur bei Top-Origin flippen.
     if ((h[17] & 0x20u) != 0) FlipVertical(image);

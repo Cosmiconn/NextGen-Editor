@@ -43,6 +43,7 @@
 #include "mapeditor/core/DdsImage.hpp"
 #include "mapeditor/core/DataDependency.hpp"
 #include "mapeditor/core/DataHistory.hpp"
+#include "mapeditor/core/ImageIO.hpp"
 #include "mapeditor/core/legacy/ShnPatchCheck.hpp"
 #include "mapeditor/core/Manual.hpp"
 #include "mapeditor/core/EditOps.hpp"
@@ -1017,7 +1018,32 @@ struct EditorState {
     // Erste sichere Ausbaustufe des Interface-Editors: rein lesender Katalog des echten
     // Client/resmenu-Bestands. TGA/DDS werden direkt vorgeschaut, NIFs verwenden denselben
     // verifizierten read-only NIF-/Materialinspektor wie der Karten-Asset-Browser.
+    // Bild ersetzen mit Konvertierung (ImageReplace.cpp): Ziel relativ zu resmenu, Quelle, Optionen,
+    // Ergebnis und Vorschau-Texturen. Genutzt vom Interface-Bereich, Ladebildern, Icons und Porträts.
+    struct ImageReplaceState {
+        bool open = false;
+        std::string targetRel;     // z. B. "loading/Eld.png"
+        std::string templateRel;   // Formatvorlage, wenn das Ziel noch nicht existiert
+        std::string title;
+        char sourcePath[1024] = "";
+        std::string loadedSource;  // für welchen Pfad sourceImage gilt
+        core::RgbaImage sourceImage;
+        int fit = 2;               // core::FitMode (Standard: Füllen)
+        bool keepSize = true;
+        std::string error;
+        std::string resultKey;     // Quelle|Optionen, für die result gilt
+        std::optional<core::ReplaceResult> result;
+        bool resultUnchanged = false; // Quelle hatte bereits Format und Größe des Originals
+        std::uint32_t previewTex = 0, originalTex = 0;
+        std::string originalTexFor;
+        std::optional<core::ImageFormat> originalFormat; // Format des Ziels bzw. der Vorlage
+        std::string originalError;
+        float previewW = 0, previewH = 0, originalW = 0, originalH = 0;
+        bool applied = false;      // im letzten Frame übernommen (für Aufrufer)
+    } imageReplace;
+    std::size_t resmenuRevision = 0; // erhöht bei jeder Änderung einer resmenu-Projektkopie
     std::string interfaceRoot;
+    std::string interfacePendingAsset; // Automation: nach dem Scan diese Datei auswählen
     std::vector<std::string> interfaceAssets;
     bool interfaceAssetsScanned = false;
     int interfaceSelectedAsset = -1;
@@ -1692,6 +1718,26 @@ void DrawCustomCreatureEditor(EditorState& state);
 void DrawSkillEditor(EditorState& state);
 void DrawAiWorkspace(EditorState& state);
 void DrawInterfaceWorkspace(EditorState& state);
+// --- Bild ersetzen mit Konvertierung (ImageReplace.cpp) ---
+// resmenu-Ordner des Clients (Original) und die Datei, die der Client tatsächlich lädt (Projekt vor Original).
+std::filesystem::path ResmenuSourceRoot(EditorState& state);
+std::filesystem::path ResmenuEffectivePath(EditorState& state, const std::string& rel);
+// Schreibt eine Projektkopie unter <Projekt>/Client/resmenu/<rel> - mit Undo (Strg+Z stellt den
+// vorherigen Stand wieder her bzw. entfernt eine neu angelegte Datei).
+bool WriteResmenuOverride(EditorState& state, const std::string& rel, const std::vector<std::uint8_t>& bytes, const std::string& label);
+// Entfernt die Projektkopie (Original gilt wieder) - ebenfalls mit Undo.
+bool RemoveResmenuOverride(EditorState& state, const std::string& rel);
+// Öffnet den Dialog "Bild ersetzen" für ein resmenu-Ziel; templateRel liefert das Format, falls das
+// Ziel neu ist. Einmal je Frame DrawImageReplaceDialog aufrufen.
+void OpenImageReplaceDialog(EditorState& state, const std::string& targetRel, const std::string& title,
+                            const std::string& templateRel = {});
+void DrawImageReplaceDialog(EditorState& state);
+// Exportiert die geladene Datei als PNG nach <Projekt>/Export/resmenu/<rel>.png (zum Bearbeiten in
+// einem Bildprogramm); Rückgabe: Zielpfad oder leer.
+std::filesystem::path ExportResmenuAsPng(EditorState& state, const std::string& rel);
+// Vorschau eines Bildes als GL-Textur (Cache je Pfad + Änderungsstand); Seitenverhältnis über aspect.
+std::uint32_t ResmenuPreviewTexture(EditorState& state, const std::string& rel, float* aspect = nullptr);
+void DrawCheckerboard(ImVec2 min, ImVec2 max);
 void DrawDropTableEditor(EditorState& state);
 bool SaveDropTable(EditorState& state);
 void DrawShnEditor(EditorState& state);

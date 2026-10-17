@@ -56,6 +56,8 @@ add_library(mapeditor_core
     src/core/BlendMap.cpp
     src/core/DdsImage.cpp
     src/core/DdsWrite.cpp
+    src/core/ImageIO.cpp
+    src/core/StbImpl.cpp
     src/core/NifModel.cpp
     src/core/KfmFile.cpp
     src/core/KfAnimation.cpp
@@ -103,6 +105,8 @@ add_library(mapeditor_core
     src/core/legacy/LegacyMapProject.cpp
 )
 target_include_directories(mapeditor_core PUBLIC include)
+# Gebündelte stb-Header (third_party/stb/README.md); nur intern im Kern verwendet.
+target_include_directories(mapeditor_core PRIVATE third_party/stb)
 target_compile_features(mapeditor_core PUBLIC cxx_std_23)
 
 # -----------------------------------------------------------------------------
@@ -216,6 +220,7 @@ set(NEXTGEN_EDITOR_MODULES
     src/app/editor/NifInspector.cpp
     src/app/editor/DropEditor.cpp
     src/app/editor/InterfaceWorkspace.cpp
+    src/app/editor/ImageReplace.cpp
     src/app/editor/MapWorkspace.cpp
     src/app/editor/Automation.cpp
     src/app/editor/MinimapTools.cpp
@@ -380,6 +385,9 @@ add_test(NAME minimap COMMAND test_minimap)
 add_executable(test_icon_atlas tests/test_icon_atlas.cpp)
 target_link_libraries(test_icon_atlas PRIVATE mapeditor_core)
 add_test(NAME icon_atlas COMMAND test_icon_atlas "${NEXTGEN_NA2016_DATA}")
+add_executable(test_image_io tests/test_image_io.cpp)
+target_link_libraries(test_image_io PRIVATE mapeditor_core)
+add_test(NAME image_io COMMAND test_image_io)
 
 add_executable(test_view_culling tests/test_view_culling.cpp)
 target_link_libraries(test_view_culling PRIVATE mapeditor_core)

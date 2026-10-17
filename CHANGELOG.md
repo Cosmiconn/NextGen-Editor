@@ -1,3 +1,21 @@
+## Interface — replace images with conversion
+- New image pipeline in the core library (`core/ImageIO`), measured against all 5,602 files of the NA2016 `Client/resmenu`:
+  - reads PNG, JPG, BMP (stb_image, vendored under `third_party/stb`), TGA 16/24/32 bit incl. RLE and DDS DXT1/3/5 and uncompressed;
+  - writes PNG (RGBA/RGB), JPG, TGA 16/24/32 bit (bottom-up like the originals) and DDS DXT1/DXT3/DXT5 or A8R8G8B8 (new in the DDS writer), each with or without mipmaps;
+  - detects the exact format from the file header, resizes with stb_image_resize2 (stretch, fit with transparent border, fill with centred crop), crops and pastes rectangles (for icon atlases).
+- Interface tab: **"Replace..."** now works on every platform and accepts any image:
+  - source as a path field, plus a file dialog on Windows;
+  - the result takes over the original's container, compression, mipmaps, colour depth and (optionally) size, so the client loads it exactly like before;
+  - before/after on a checkerboard; "after" is decoded from the bytes that will be written, so DXT or 16-bit losses are visible;
+  - a source that already has the original's exact format and size is copied unchanged;
+  - "Apply" writes `<Project>/Client/resmenu/...`; Ctrl+Z restores the previous project copy or removes a new one. "Remove project copy" is undoable too.
+- "Export as PNG" writes the current image to `<Project>/Export/resmenu/....png`.
+- Fixed: the interface preview showed TGA and DDS images upside down, and PNG/JPG previews were missing outside Windows. The preview now decodes through `core/ImageIO` and shows transparency on a checkerboard together with the detected format.
+- Fixed: 16-bit TGAs whose alpha bit is 0 in every pixel were shown fully transparent. All 84 16-bit TGAs in NA2016 (loading screens) are like that, so such files now count as opaque, and opaque replacements are written the same way.
+- Outside Windows, PNG/JPG textures and UI icons now load through the same decoder instead of failing.
+- Manual section "Replacing interface images" and tooltips for the new controls.
+- Tests: `test_image_io` round-trips every target format (pixels, orientation, header detection), the three fit modes, replacement in the original's format and size, crop/paste; with a resmenu path it decodes every real image file.
+
 ## Data editors — passive skills and states
 - New **Passive** tab (PassiveSkill client + server, PassiveSkillView) on the shared form editor:
   - "Requirement" picks from all passive skills (DemandSk names the previous step in 470 of 503 rows);

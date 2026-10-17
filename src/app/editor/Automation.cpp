@@ -238,6 +238,35 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         std::printf("[questtext] %u %s\n", id, SetQuestText(state, id, text) ? "ok" : "FEHLER");
         std::fflush(stdout);
     }
+    else if (cmd == "interface") {
+        // interface <resmenu-Pfad>: öffnet den Interface-Bereich mit dieser Datei.
+        std::string rel; std::getline(in >> std::ws, rel);
+        state.screen = AppScreen::ShnEditor;
+        state.shnSubTab = 9;
+        state.interfacePendingAsset = rel;
+    }
+    else if (cmd == "imagereplace") {
+        // imagereplace <resmenu-Pfad>|<Quelldatei>[|<Anpassung 0-2>]: öffnet den Ersetzen-Dialog.
+        std::string rest; std::getline(in >> std::ws, rest);
+        std::vector<std::string> parts;
+        for (std::size_t start = 0;;) {
+            const auto bar = rest.find('|', start);
+            parts.push_back(rest.substr(start, bar - start));
+            if (bar == std::string::npos) break;
+            start = bar + 1;
+        }
+        OpenImageReplaceDialog(state, parts[0], parts[0]);
+        if (parts.size() > 1) std::snprintf(state.imageReplace.sourcePath, sizeof(state.imageReplace.sourcePath), "%s", parts[1].c_str());
+        if (parts.size() > 2) state.imageReplace.fit = std::clamp(std::atoi(parts[2].c_str()), 0, 2);
+    }
+    else if (cmd == "imageapply") {
+        // imageapply: übernimmt das Ergebnis des offenen Ersetzen-Dialogs (wie der Knopf).
+        auto& r = state.imageReplace;
+        const bool ok = r.result && WriteResmenuOverride(state, r.targetRel, r.result->bytes, "Bild ersetzt: " + r.targetRel);
+        if (ok) r.open = false;
+        std::printf("[imageapply] %s %s\n", r.targetRel.c_str(), ok ? "ok" : "FEHLER");
+        std::fflush(stdout);
+    }
     else if (cmd == "undo") DataUndo(state);
     else if (cmd == "itemeditor" || cmd == "mobeditor" || cmd == "passiveeditor" || cmd == "stateeditor") {
         // itemeditor/mobeditor/passiveeditor/stateeditor <ID>: öffnet den Formular-Editor mit diesem Eintrag.
