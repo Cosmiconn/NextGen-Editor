@@ -271,6 +271,34 @@ void OpenImageReplaceDialog(EditorState& state, const std::string& targetRel, co
     r.originalFormat.reset();
     r.originalError.clear();
     r.applied = false;
+    r.extraTargets.clear();
+    r.onApply = nullptr;
+}
+
+bool ApplyImageReplacement(EditorState& state) {
+    auto& r = state.imageReplace;
+    if (!r.result) return false;
+    const std::string label = L("Bild ersetzt: ", "Image replaced: ") + r.targetRel;
+    DataHistoryBegin(state, label);
+    bool ok = WriteResmenuOverride(state, r.targetRel, r.result->bytes, label);
+    core::ReplaceOptions options;
+    options.fit = static_cast<core::FitMode>(std::clamp(r.fit, 0, 2));
+    options.keepOriginalSize = r.keepSize;
+    for (const auto& extra : r.extraTargets) {
+        if (!ok) break;
+        auto format = core::InspectImageFile(ResmenuEffectivePath(state, extra));
+        if (!format) continue;
+        auto built = core::BuildReplacement(r.sourceImage, *format, options);
+        ok = built && WriteResmenuOverride(state, extra, built->bytes, label);
+    }
+    if (ok && r.onApply) r.onApply(state);
+    DataHistoryCommit(state);
+    if (ok) {
+        r.applied = true;
+        r.open = false;
+        state.statusMessage = label + (r.extraTargets.empty() ? std::string() : " (+" + std::to_string(r.extraTargets.size()) + ")");
+    }
+    return ok;
 }
 
 void DrawImageReplaceDialog(EditorState& state) {
@@ -435,14 +463,15 @@ void DrawImageReplaceDialog(EditorState& state) {
     DrawComparePane("##imageReplaceAfter", L("Nachher", "After"), r.previewTex, r.previewH > 0 ? r.previewW / r.previewH : 1.0f,
                     paneSize, resultInfo);
 
+    if (!r.extraTargets.empty()) {
+        std::string extras;
+        for (const auto& e : r.extraTargets) extras += (extras.empty() ? "" : ", ") + e;
+        ImGui::TextDisabled("%s %s", L("Ebenfalls geschrieben (im eigenen Format):", "Also written (in its own format):"), extras.c_str());
+    }
     const bool hasProject = state.project.projectFolder[0] != '\0';
     ImGui::BeginDisabled(!r.result || !hasProject);
     if (UI::Button(L("Übernehmen##imageReplace", "Apply##imageReplace"))) {
-        const std::string label = L("Bild ersetzt: ", "Image replaced: ") + r.targetRel;
-        if (WriteResmenuOverride(state, r.targetRel, r.result->bytes, label)) {
-            r.applied = true;
-            r.open = false;
-        }
+        ApplyImageReplacement(state);
     }
     ImGui::EndDisabled();
     ImGui::SameLine();

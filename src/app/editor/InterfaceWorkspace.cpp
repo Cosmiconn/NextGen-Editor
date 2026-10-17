@@ -194,6 +194,15 @@ void DrawInterfaceWorkspace(EditorState& state) {
                     L("Originale nur lesen · Projekt-Overrides aktiv",
                       "sources read-only · project overrides enabled"));
     DrawImageReplaceDialog(state);
+    ImGui::SameLine();
+    if (UI::RadioButton(L("Dateien##interfaceMode", "Files##interfaceMode"), state.interfaceMode == 0)) state.interfaceMode = 0;
+    ImGui::SameLine();
+    if (UI::RadioButton(L("Ladebildschirme##interfaceMode", "Loading screens##interfaceMode"), state.interfaceMode == 1))
+        state.interfaceMode = 1;
+    if (state.interfaceMode == 1) {
+        DrawLoadingScreenEditor(state);
+        return;
+    }
 
     if (state.interfaceRoot.empty()) {
         ImGui::Separator();

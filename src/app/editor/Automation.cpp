@@ -245,6 +245,34 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         state.shnSubTab = 9;
         state.interfacePendingAsset = rel;
     }
+    else if (cmd == "loadingscreen") {
+        // loadingscreen <MapName> [shared]: öffnet den Ladebildschirm-Editor mit dieser Karte
+        // (shared: gemeinsame Dateien aufgeklappt).
+        std::string name; in >> name;
+        state.screen = AppScreen::ShnEditor;
+        state.shnSubTab = 9;
+        state.interfaceMode = 1;
+        if (const int doc = SharedShnDoc(state, "MapViewInfo.shn", EditorState::ShnSource::Client); doc >= 0) {
+            const auto& f = ShnDocFile(state, doc);
+            for (std::size_t r = 0; r < f.rows.size(); ++r)
+                if (LowerAscii(TrimAscii(ShnCellText(f, r, "MapName"))) == LowerAscii(name))
+                    state.loadingSelectedId = std::atoll(TrimAscii(ShnCellText(f, r, "ID")).c_str());
+        }
+        state.loadingScrollToSelected = true;
+        std::string extra; in >> extra;
+        state.loadingSharedOpenRequest = extra == "shared";
+    }
+    else if (cmd == "loadingassign") {
+        // loadingassign <Bildname>: weist der gewählten Karte ein vorhandenes Ladebild zu (wie "Zuweisen").
+        std::string image; in >> image;
+        state.loadingPickChoice = image;
+        state.loadingAutomationAssign = true;
+    }
+    else if (cmd == "loadingown") {
+        // loadingown <Quelldatei>: "Eigenes Bild für diese Karte" mit dieser Quelle (Dialog öffnet sich).
+        std::string source; std::getline(in >> std::ws, source);
+        state.loadingAutomationOwnSource = source;
+    }
     else if (cmd == "imagereplace") {
         // imagereplace <resmenu-Pfad>|<Quelldatei>[|<Anpassung 0-2>]: öffnet den Ersetzen-Dialog.
         std::string rest; std::getline(in >> std::ws, rest);
@@ -262,8 +290,7 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
     else if (cmd == "imageapply") {
         // imageapply: übernimmt das Ergebnis des offenen Ersetzen-Dialogs (wie der Knopf).
         auto& r = state.imageReplace;
-        const bool ok = r.result && WriteResmenuOverride(state, r.targetRel, r.result->bytes, "Bild ersetzt: " + r.targetRel);
-        if (ok) r.open = false;
+        const bool ok = ApplyImageReplacement(state);
         std::printf("[imageapply] %s %s\n", r.targetRel.c_str(), ok ? "ok" : "FEHLER");
         std::fflush(stdout);
     }
