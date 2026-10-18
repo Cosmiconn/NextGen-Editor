@@ -151,11 +151,6 @@ void ApplyEditorTheme();
 extern GLFWwindow* g_appWindowForDialogs;
 #endif
 
-// EditMode deckt jetzt auch die vier laut Mockup vorgesehenen, aber noch nicht
-// implementierten Bereiche ab (Npcs/NpcAi/Mobs/MobAi) - sie erscheinen als eigene
-// Reiter im neuen Arbeitsbereich-Tabbalken (siehe DrawWorkspaceTabBar), zeigen im
-// Tools-/2D-/3D-Bereich aber nur einen "noch nicht implementiert"-Platzhalter an,
-// bis die jeweilige Funktion gebaut wird.
 
 // ---------------------------------------------------------------------------
 // UI::  - duenne Huelle um die ImGui-Eingabeelemente: rufen das Element auf und zeigen danach (nach kurzer
@@ -183,6 +178,7 @@ template <class... A> bool SmallButton(const char* l, A&&... a) { const bool r =
 template <class... A> bool Checkbox(const char* l, A&&... a) { const bool r = ImGui::Checkbox(l, std::forward<A>(a)...); Tip("Checkbox", l); return r; }
 template <class... A> bool RadioButton(const char* l, A&&... a) { const bool r = ImGui::RadioButton(l, std::forward<A>(a)...); Tip("RadioButton", l); return r; }
 template <class... A> bool SliderFloat(const char* l, A&&... a) { const bool r = ImGui::SliderFloat(l, std::forward<A>(a)...); Tip("SliderFloat", l); return r; }
+template <class... A> bool DragFloat(const char* l, A&&... a) { const bool r = ImGui::DragFloat(l, std::forward<A>(a)...); Tip("DragFloat", l); return r; }
 template <class... A> bool SliderInt(const char* l, A&&... a) { const bool r = ImGui::SliderInt(l, std::forward<A>(a)...); Tip("SliderInt", l); return r; }
 template <class... A> bool InputInt(const char* l, A&&... a) { const bool r = ImGui::InputInt(l, std::forward<A>(a)...); Tip("InputInt", l); return r; }
 template <class... A> bool InputFloat(const char* l, A&&... a) { const bool r = ImGui::InputFloat(l, std::forward<A>(a)...); Tip("InputFloat", l); return r; }
@@ -197,12 +193,10 @@ template <class... A> bool MenuItem(const char* l, A&&... a) { const bool r = Im
 }
  // namespace UI
 
-enum class EditMode { Heightmap, TexturePaint, BlockWalk, ObjectPlacement, Npcs, NpcAi, Mobs, MobAi, Portals };
+enum class EditMode { Heightmap, TexturePaint, BlockWalk, ObjectPlacement, Npcs, Mobs, Portals };
 // Oberste Navigationsebene der neuen, an den Mockups orientierten Oberfläche (siehe
-// HANDOFF.md / MAP_FORMAT.md für den Kontext). ComingSoon deckt die vier Editor-Karten ab,
-// die im Mockup als "Noch nicht entschieden" markiert sind bzw. noch nicht gebaut wurden
-// (Quest/Interface/Drop Table/Skill+Action) sowie den SHN Editor.
-enum class AppScreen { ProjectHub, NewProjectConfig, MapEditorLauncher, MapEditorWorkspace, ShnEditor, KfmBrowser, ComingSoon };
+// HANDOFF.md / MAP_FORMAT.md für den Kontext).
+enum class AppScreen { ProjectHub, NewProjectConfig, MapEditorLauncher, MapEditorWorkspace, ShnEditor, KfmBrowser };
 // Projekt-Ebene (NEU): getrennt von den Client-/Server-Ordnern, siehe die Erläuterung im
 // Mockup ("Neues Projekt konfigurieren") - im Projekt-Ordner werden geänderte Dateien mit
 // der korrekten Ordnerstruktur für Client/Server abgelegt, NIE direkt im Client- oder
@@ -290,6 +284,7 @@ enum class MapHistoryDomain {
     TextureLayers,
     Walk,
     Objects,
+    Environment, // SHMD-Umgebung (Licht, Nebel, Hintergrund, Sichtweite) - eigene, leichte Historie
 };
 struct ObjectEditSnapshot {
     core::ObjectPlacementSet placementSet;
@@ -342,6 +337,13 @@ struct EditorState {
     std::vector<TextureLayerHistoryPatch> textureLayerRedo;
     std::optional<ObjectEditSnapshot> pendingObjectEdit;
     bool pendingObjectEditChanged = false;
+    // Umgebungs-Panel: Werte vor der Änderung je Undo-Schritt; während ein Regler gezogen wird,
+    // hält pendingEnvironmentEdit den Stand vor dem Ziehen (ein Schritt pro Zug).
+    std::vector<core::SceneEnvironment> environmentUndo;
+    std::vector<core::SceneEnvironment> environmentRedo;
+    std::optional<core::SceneEnvironment> pendingEnvironmentEdit;
+    core::SceneEnvironment environmentAtLoad; // Werte beim Öffnen der Karte ("Zurücksetzen")
+    char environmentModelPath[260] = ""; // Eingabe "Modell hinzufügen" für Sky/Water/GroundObject
     core::BrushMode brushMode = core::BrushMode::Raise;
     bool flattenPickOnStroke = true; // Einebnen: Zielhöhe beim Strichbeginn unter dem Pinsel aufnehmen (wie Unreal)
     std::optional<std::array<float, 3>> rampStart; // Rampe: erster Klick (x, Höhe, z)
@@ -1194,7 +1196,6 @@ struct EditorState {
     std::deque<Toast> toasts;
     std::string lastToastedStatus;
 
-    std::string comingSoonTitle; // Titel der Karte, über die der Platzhalter-Bildschirm erreicht wurde
 
     // "Create New Map"-Formular (siehe DrawMapEditorLauncher) - ersetzt das bisherige feste
     // "Neu (257x257)" durch nutzerdefinierte Maße, wie im Mockup vorgesehen.
@@ -1396,6 +1397,11 @@ void BeginObjectEditTransaction(EditorState& state);
 void CommitObjectEditTransaction(EditorState& state);
 std::optional<ObjectEditSnapshot> BeginObjectMutation(EditorState& state);
 void FinishObjectMutation(EditorState& state, std::optional<ObjectEditSnapshot> before, bool changed = true);
+// Setzt die SHMD-Umgebung der Karte. Innerhalb eines laufenden Reglerzugs (pendingEnvironmentEdit)
+// entsteht erst beim Abschluss (CommitEnvironmentEdit) ein Undo-Schritt, sonst sofort einer.
+void SetSceneEnvironment(EditorState& state, const core::SceneEnvironment& value);
+void CommitEnvironmentEdit(EditorState& state);
+void DrawEnvironmentPanel(EditorState& state);
 bool CanUndoMapEdit(const EditorState& state);
 bool CanRedoMapEdit(const EditorState& state);
 bool UndoMapEdit(EditorState& state);
@@ -1834,7 +1840,6 @@ void StartNifThumbnailPrecache(EditorState& state, const std::filesystem::path& 
 void AdvanceNifPrecache(EditorState& state, int filesPerFrame);
 bool CreateNewMapFromWizard(EditorState& state);
 void DrawMapEditorLauncher(EditorState& state);
-void DrawComingSoon(EditorState& state);
 std::optional<std::filesystem::path> FindResmapRootForAssets(const std::string& clientFolder);
 std::uint32_t UploadThumbnailTexture(const std::vector<std::uint8_t>& rgba, std::uint32_t width, std::uint32_t height);
 // Rendert ein NIF-Modell als Vorschaubild (eigener NifMeshRenderer + Offscreen-Framebuffer):

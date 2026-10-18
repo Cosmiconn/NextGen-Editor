@@ -229,6 +229,9 @@ in einem modernen, eigenständigen Editor zu öffnen und zu bearbeiten.
     aber noch keine UI-Anbindung (fehlt: wie findet man den richtigen PineScript-Pfad zu einem
     Mob/einer Zone - vermutlich über `World/PineScript.txt`s Registry plus Kontext, welche KQ/
     Instanz gerade bearbeitet wird, noch nicht geklärt).
+    - Späterer Stand: PineScript-Dateien sind im KI-Arbeitsbereich (Datei Editor → AI Scripts)
+      als Text bearbeitbar. Ein direkter Sprung von einer Mob-Zone zu ihrem PineScript fehlt
+      weiterhin; `OpenPineScriptEditor` ist dafür vorbereitet.
 14. **v0.44.23: Objekte im Block/Walk-2D-View sichtbar (Nutzerwunsch, "nicht durch Häuser
     laufen") + Patrouillenrouten-Editor.** Objekte jetzt auch im BlockWalk-Modus als dezente
     Referenz-Punkte sichtbar (nicht anklickbar dort, reine Orientierung). Bekannte Grenze:

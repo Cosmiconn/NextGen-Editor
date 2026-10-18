@@ -15,6 +15,10 @@ ansehen, Verweise prüfen und eine neue KFM-Kopie exportieren. Vorhandene Ziele
 werden nicht überschrieben. Der C++-Auditor unterstützt `.kfm` mit Roundtrip- und
 Verweisprüfung; Originaldateien wurden nur gelesen.
 
+> Späterer Stand: Das KFM-Panel bearbeitet inzwischen auch Felder (Event-ID, KF-Datei,
+> Übergänge, Text-Keys u. a.) und kann Animationen duplizieren und löschen; siehe
+> [FIESTA_FORMAT_STATUS.md](FIESTA_FORMAT_STATUS.md). Dieses Dokument beschreibt den Stand v14.
+
 ## Erfolgreich kompiliert
 
 Windows Release, MSVC 19.51, C++23: vollständige GUI, Core, Auditor und Tests.

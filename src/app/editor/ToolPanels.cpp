@@ -1084,9 +1084,6 @@ void DrawToolsContent(EditorState& state) {
         }
     } else if (state.editMode == EditMode::Portals) {
         DrawPortalsToolsPanel(state);
-    } else {
-        // NpcAi / MobAi - laut Mockup vorgesehene, aber noch nicht gebaute Bereiche.
-        ImGui::TextDisabled("%s", T("workspace.notimplemented"));
     }
     DrawAiScriptEditorPopup(state); // aus Npcs- UND Mobs-Tab erreichbar, siehe CHANGELOG [0.44.22]
     DrawPatrolRouteEditorPopup(state); // dito, siehe CHANGELOG [0.44.23]
