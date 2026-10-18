@@ -18,13 +18,13 @@ const Section kSections[] = {
      "Überblick", "Overview",
      R"MAN(Der Editor besteht aus zwei großen Bereichen; die Startseite zeigt genau diese zwei Felder:
 - Map Editor (links): alles, was auf einer Karte liegt. Karten anlegen (Assistent) und öffnen, Höhenkarte und Texturen, Foliage, Begehbarkeit (Block & Walk), Objekte und Prefabs, Sky/Water/GroundObject, NPCs, Mobs (Monster-Spawns), Routen und Portale, Minimap und Kartenprüfung. Alle Bereiche zeigen dieselbe Karte in einer 2D-Draufsicht (zum Bearbeiten) und einer 3D-Ansicht (zum Prüfen und Ausrichten).
-- Datei Editor (rechts): alle Spieldaten-Dateien unabhängig von einer Karte, aus Client (ressystem, resmenu) und Server (9Data/Shine). SHN-Tabellen einzeln oder mehrere zugleich, Items, Mobs, Skills, Passive, Zustände, Item-Systeme (Sets, Aufwertung, Mix, Zufallsoptionen, Pakete), Quests, Drops, Preise, XP, KI-Skripte, Texte und Lokalisierung, Interface (Ladebilder, Icons, Porträts, Fenster-Layouts) und Animationen (KFM).
+- Datei Editor (rechts): alle Spieldaten-Dateien unabhängig von einer Karte, aus Client (ressystem, resmenu) und Server (9Data/Shine). SHN-Tabellen einzeln oder mehrere zugleich, Items, Mobs, Skills, Passive, Zustände, Item-Systeme (Sets, Aufwertung, Mix, Zufallsoptionen, Pakete), Angriffsfolgen der Mobs, Quests, Drops, Preise, XP, KI-Skripte, Texte und Lokalisierung, Interface (Ladebilder, Icons, Porträts, Fenster-Layouts) und Animationen (KFM).
 Unter jeder Beschreibung führen Schnellknöpfe direkt in einen Unterbereich (z. B. Neue Karte, Items, Interface, Animationen).
 Es wird NICHTS automatisch gespeichert. Jede Änderung liegt zunächst nur im Speicher; die jeweiligen Speichern-Knöpfe schreiben die Dateien. Angepasste SHN-Dateien sind in den Listen mit * markiert.
 Lege vor dem ersten Speichern eine Sicherung Deiner Client- und Server-Ordner an.)MAN",
      R"MAN(The editor has two main areas; the start page shows exactly these two fields:
 - Map Editor (left): everything that lives on a map. Create maps (wizard) and open them, heightmap and textures, foliage, walkability (Block & Walk), objects and prefabs, Sky/Water/GroundObject, NPCs, mobs (monster spawns), routes and portals, minimap and map check. All areas show the same map as a 2D top view (for editing) and a 3D view (for checking and aligning).
-- File Editor (right): all game data files independent of a map, from client (ressystem, resmenu) and server (9Data/Shine). SHN tables one at a time or several at once, items, mobs, skills, passives, states, item systems (sets, upgrade, mix, random options, packages), quests, drops, prices, XP, AI scripts, texts and localization, interface (loading screens, icons, portraits, window layouts) and animations (KFM).
+- File Editor (right): all game data files independent of a map, from client (ressystem, resmenu) and server (9Data/Shine). SHN tables one at a time or several at once, items, mobs, skills, passives, states, item systems (sets, upgrade, mix, random options, packages), mob attack sequences, quests, drops, prices, XP, AI scripts, texts and localization, interface (loading screens, icons, portraits, window layouts) and animations (KFM).
 Below each description, quick buttons lead straight into a sub-area (e.g. New map, Items, Interface, Animations).
 NOTHING is saved automatically. Every change first exists only in memory; the respective Save buttons write the files. Modified SHN files are marked with * in the lists.
 Make a backup of your client and server folders before the first save.)MAN",
@@ -494,6 +494,7 @@ Relations between tables use ID and InxName (text key). An InxName is referenced
 - Passiv / Zustände: Passiv-Skills (PassiveSkill, PassiveSkillView) und Zustände (AbState, AbStateView, SubAbState).
 - Texte: alle Text- und Lokalisierungstabellen (TextData, ScriptMsg, QuestDialog, AnnounceData ...) mit Suche und CSV-Austausch.
 - Item-Systeme: Sets, Set-Effekte, Aufwertung, Aufwertungs-Chancen, Item-Mix, Zufallsoptionen und Item-Pakete.
+- Angriffsfolgen: Skill-Reihenfolge und Regeln der Mobs (MobAttackSequence).
 Die Prozent-Editoren ändern ALLE Zeilen der Spalte - vorher prüfen, dann speichern.)MAN",
      R"MAN(- Single SHN Editor: edit any table as a grid.
 - Multi SHN Editor: choose a task (new item, new NPC, new mob, new skill, shop/price, new quest, XP/rate); the editor marks the relevant tables in CLIENT and SERVER yellow as candidates. This is an orientation aid, not a proven dependency.
@@ -508,6 +509,7 @@ Die Prozent-Editoren ändern ALLE Zeilen der Spalte - vorher prüfen, dann speic
 - Passive / States: passive skills (PassiveSkill, PassiveSkillView) and states (AbState, AbStateView, SubAbState).
 - Texts: all text and localization tables (TextData, ScriptMsg, QuestDialog, AnnounceData ...) with search and CSV exchange.
 - Item systems: sets, set effects, upgrade, upgrade chances, item mix, random options and item packages.
+- Attack sequences: skill order and rules of mobs (MobAttackSequence).
 The percentage editors change ALL rows of the column - check first, then save.)MAN",
      "tabs multi xp rate buy sell quest single"},
     {"shn.quest", "shn",
@@ -638,6 +640,23 @@ Usage:
 - 'Create as copy' creates the entry under the new key as a copy of the selected one in all tables, 'Rename selected' changes the key everywhere, 'Delete selected' removes all rows (with a note about referencing items).
 - Tables on both sides are changed together: the n-th row of an entry on the client matches the n-th on the server. Everything goes through the data history (Ctrl+Z) and is written with 'Save all changed SHN' as a project copy.)MAN",
      "item system sets set effekt upgrade aufwertung mix random zufall option paket package itemupgrade upgradeinfo randomoption"},
+    {"shn.attackseq", "shn",
+     "Angriffsfolgen der Mobs und Effekt-Prüfung", "Mob attack sequences and effect check",
+     R"MAN(Der Tab 'Angriffsfolgen' bearbeitet Server/9Data/Shine/MobAttackSequence/<Mob>.txt (297 Dateien in NA2016, der Dateiname ist der InxName des Mobs). Im Mob-Editor öffnet 'Angriffsfolge öffnen' die passende Datei.
+- Schritte (Tabelle AttSeq): der Mob benutzt die Skills der Reihe nach. Ein Klick auf den Skill öffnet die Auswahl (Server-ActiveSkill, Suche nach InxName oder Name). '-' ist ein leerer Schritt, '*RepeatStart' eine Sondermarke (vermutet: ab hier wiederholen). ^ und v verschieben, + fügt eine Kopie dahinter ein, X löscht. Die Order-Nummern werden immer 0, 1, 2 ... geschrieben, damit Dateireihenfolge und Order gleich bleiben.
+- Mob-Skills tragen in NA2016 koreanische Namen (EUC-KR), die der Editor nicht darstellen kann; dann steht dort die Skill-ID. Unbekannte Skills sind farbig markiert.
+- Regeln (Tabelle SkillChange): Bedingung (HPLow_ChangeOrder, OutOfRange, HPLow, NextSkill), Wert, From und To (neuer Skill). Die genaue Bedeutung von Wert und From ist nicht aus dem Server belegt (vermutet: HP-Grenze in Promille bzw. Schritt). Fehlt die Tabelle, legt '+ Regel' sie an.
+- 'Als Kopie für diesen Mob anlegen' kopiert die geladene Folge für den eingegebenen InxName.
+- Jede Änderung ist ein Undo-Schritt (Strg+Z). 'Speichern' schreibt die Datei als Projektkopie; unveränderte Zeilen und Kommentare bleiben bytegleich.
+Effekt-Prüfung: Im Skill-Editor zeigt 'Effekt-Dateien prüfen', welche Effekte aus ActiveSkillView (ShoEffect, LastEffectA, LastAreaEf, DOTRageEft, DOTRageEftLoop) und AbStateView (effName, LoopEffect, LastEffect, DOTEffect) keine Datei in reseffect haben; ein Klick springt zum Skill bzw. Zustand. 'MyWeapon' gilt als Sonderwert (vermutet: die geworfene Waffe selbst). Fehlende Effekte eines Zustands stehen auch in seinen Problemen.)MAN",
+     R"MAN(The 'Attack sequences' tab edits Server/9Data/Shine/MobAttackSequence/<mob>.txt (297 files in NA2016, the file name is the mob's InxName). In the mob editor, 'Open attack sequence' opens the matching file.
+- Steps (table AttSeq): the mob uses the skills in order. A click on the skill opens the picker (server ActiveSkill, search by InxName or name). '-' is an empty step, '*RepeatStart' a special marker (assumed: repeat from here). ^ and v move, + inserts a copy behind it, X deletes. Order numbers are always written as 0, 1, 2 ... so that file order and Order stay equal.
+- Mob skills carry Korean names (EUC-KR) in NA2016 that the editor cannot display; the skill ID is shown instead. Unknown skills are highlighted.
+- Rules (table SkillChange): condition (HPLow_ChangeOrder, OutOfRange, HPLow, NextSkill), value, From and To (new skill). The exact meaning of value and From is not confirmed from the server (assumed: HP limit in per mille and step). If the table is missing, '+ Rule' creates it.
+- 'Create as copy for this mob' copies the loaded sequence for the entered InxName.
+- Every change is one undo step (Ctrl+Z). 'Save' writes the file as a project copy; unchanged lines and comments stay byte-identical.
+Effect check: in the skill editor, 'Check effect files' shows which effects from ActiveSkillView (ShoEffect, LastEffectA, LastAreaEf, DOTRageEft, DOTRageEftLoop) and AbStateView (effName, LoopEffect, LastEffect, DOTEffect) have no file in reseffect; a click jumps to the skill or state. 'MyWeapon' counts as a special value (assumed: the thrown weapon itself). Missing effects of a state also appear among its problems.)MAN",
+     "angriffsfolge attack sequence mob ki ai skill reihenfolge skillchange repeatstart effekt effect reseffect prüfung check"},
     {"shn.interface", "shn",
      "Interface-Bilder ersetzen", "Replacing interface images",
      R"MAN(Tab 'Interface' im SHN-Editor: alle Dateien unter Client/resmenu (Bilder und Fenster-NIFs). Originale werden nie verändert; jede Änderung ist eine Projektkopie unter <Projekt>/Client/resmenu/... (Markierung OVR* = geändert, OVR= = gleich, NEW = nur im Projekt).
@@ -1123,6 +1142,25 @@ const TipRow kTips[] = {
     {"T:mapeditor.cancel", "Bricht ab.", "Cancels."},
     {"T:mapeditor.open", "Öffnet die gewählte Karte.", "Opens the chosen map."},
     {"T:card.start", "Startet diesen Editor.", "Starts this editor."},
+    {"Button:Angriffsfolgen##hubAttackSeq", "Angriffsfolgen der Mobs: Skill-Reihenfolge und Regeln.", "Mob attack sequences: skill order and rules."},
+    {"Button:Attack sequences##hubAttackSeq", "Angriffsfolgen der Mobs: Skill-Reihenfolge und Regeln.", "Mob attack sequences: skill order and rules."},
+    {"Button:Speichern##attackSeq", "Schreibt die Angriffsfolge als Projektkopie (Strg+S).", "Writes the attack sequence as a project copy (Ctrl+S)."},
+    {"Button:Save##attackSeq", "Schreibt die Angriffsfolge als Projektkopie (Strg+S).", "Writes the attack sequence as a project copy (Ctrl+S)."},
+    {"InputText:##attackSeqNewMob", "InxName des Mobs, für den eine Kopie der geladenen Folge angelegt wird.", "InxName of the mob that gets a copy of the loaded sequence."},
+    {"Button:Als Kopie für diesen Mob anlegen##attackSeq", "Kopiert die geladene Angriffsfolge für den eingegebenen Mob (noch nicht gespeichert).", "Copies the loaded attack sequence for the entered mob (not saved yet)."},
+    {"Button:Create as copy for this mob##attackSeq", "Kopiert die geladene Angriffsfolge für den eingegebenen Mob (noch nicht gespeichert).", "Copies the loaded attack sequence for the entered mob (not saved yet)."},
+    {"InputText:##attackSkillFilter", "Skills nach InxName oder Name filtern.", "Filter skills by InxName or name."},
+    {"SmallButton:^##stepUp", "Schritt nach oben verschieben.", "Move the step up."},
+    {"SmallButton:v##stepDown", "Schritt nach unten verschieben.", "Move the step down."},
+    {"SmallButton:+##stepInsert", "Kopie dieses Schritts direkt dahinter einfügen.", "Insert a copy of this step right behind it."},
+    {"SmallButton:X##stepDelete", "Schritt löschen (der letzte Schritt bleibt).", "Delete the step (the last step stays)."},
+    {"SmallButton:+ Schritt am Ende##attackSeq", "Hängt eine Kopie des letzten Schritts an.", "Appends a copy of the last step."},
+    {"SmallButton:+ Step at the end##attackSeq", "Hängt eine Kopie des letzten Schritts an.", "Appends a copy of the last step."},
+    {"SmallButton:X##ruleDelete", "Regel löschen.", "Delete the rule."},
+    {"SmallButton:+ Regel##attackSeq", "Neue Regel (legt die Tabelle SkillChange an, falls sie fehlt).", "New rule (creates the SkillChange table if it is missing)."},
+    {"SmallButton:+ Rule##attackSeq", "Neue Regel (legt die Tabelle SkillChange an, falls sie fehlt).", "New rule (creates the SkillChange table if it is missing)."},
+    {"SmallButton:Angriffsfolge öffnen##mobAttackSeq", "Öffnet die Angriffsfolge dieses Mobs (MobAttackSequence).", "Opens this mob's attack sequence (MobAttackSequence)."},
+    {"SmallButton:Open attack sequence##mobAttackSeq", "Öffnet die Angriffsfolge dieses Mobs (MobAttackSequence).", "Opens this mob's attack sequence (MobAttackSequence)."},
     {"Button:Item-Systeme##hubItemSystems", "Item-Systeme: Sets, Aufwertung, Mix, Zufallsoptionen, Pakete.", "Item systems: sets, upgrade, mix, random options, packages."},
     {"Button:Item systems##hubItemSystems", "Item-Systeme: Sets, Aufwertung, Mix, Zufallsoptionen, Pakete.", "Item systems: sets, upgrade, mix, random options, packages."},
     {"Button:Alle geänderten SHN speichern##itemSystems", "Speichert alle geänderten SHN-Dateien als Projektkopie (Strg+S).", "Saves all changed SHN files as a project copy (Ctrl+S)."},

@@ -1163,6 +1163,21 @@ struct EditorState {
         std::vector<std::string> report;
         std::unordered_set<std::string> missing; // "Wurzel|Datei" ohne Datei
     } itemSystems;
+    // Angriffsfolgen (Datei Editor, Unterreiter 17): MobAttackSequence/<Mob>.txt.
+    struct AttackSeqState {
+        std::string listRoot;               // Server-Ordner|Projektordner der Dateiliste
+        std::vector<std::string> files;     // Dateinamen ohne .txt, sortiert
+        char filter[96] = "";
+        std::string selected;               // gewünschte Datei
+        std::string loaded;                 // geladene Datei
+        core::legacy::ShineTextFile doc;
+        bool loadedOk = false;
+        bool dirty = false;
+        std::string loadError;
+        std::vector<std::string> report;
+        char newMob[64] = "";
+        char skillFilter[64] = "";
+    } attackSeq;
     // Drop-Gruppen (World/ItemDropGroup.txt): eine Kopie im Speicher, die der Gruppen-Editor bearbeitet
     // und aus der der Katalog für die Drop-Tabelle (dropGroups) aufgebaut wird.
     int dropEditorTab = 0; // 0 Mob-Drop-Tabelle, 1 Drop-Gruppen
@@ -2312,6 +2327,25 @@ void DrawItemSystemsEditor(EditorState& state);
 // Automation der Item-Systeme: itemsystem <id> [Schlüssel] | itemsystemcopy <neu> | itemsystemset <Datei> <n> <Spalte> <Wert>
 // | itemsystemrow <Datei> | itemsystemdelete. Rückgabe: Ergebniszeile für die Ausgabe.
 std::string ItemSystemsAutomation(EditorState& state, const std::string& cmd, std::istream& in);
+void DrawAttackSequenceEditor(EditorState& state);
+// Öffnet die Angriffsfolge eines Mobs (Unterreiter 17); AttackSequenceExists: Datei vorhanden (Server oder Projekt).
+void OpenAttackSequence(EditorState& state, const std::string& mobInx);
+bool AttackSequenceExists(EditorState& state, const std::string& mobInx);
+// Automation: attackseq <Mob> | attackseqset <i> <Skill> | attackseqinsert <i> <Skill> | attackseqrule <Bed> <Wert> <From> <To>
+// | attackseqcopy <Mob> | attackseqsave
+std::string AttackSequenceAutomation(EditorState& state, const std::string& cmd, std::istream& in);
+// Fehlende Effekt-Dateien (EffectCheck.cpp): Effekt-Spalten von ActiveSkillView/AbStateView gegen reseffect.
+struct EffectIssue {
+    bool stateView = false; // false: ActiveSkillView, true: AbStateView
+    long long id = 0;
+    std::string inx;
+    std::string column;
+    std::string value;
+    bool special = false;   // Sonderwert wie "MyWeapon" (vermutlich keine Datei)
+};
+const std::vector<EffectIssue>& EffectIssues(EditorState& state);
+std::vector<std::string> MissingEffectsFor(EditorState& state, bool stateView, long long id);
+void DrawEffectCheckSection(EditorState& state);
 // Text-Editor: Tabelle nach Dateiname (-1 unbekannt), CSV-Export (onlyTable -1 = alle) und -Import
 // (nur geänderte Zellen, Client und Server, ein Undo-Schritt).
 int TextTableIndex(const std::string& file);

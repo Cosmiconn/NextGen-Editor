@@ -540,6 +540,7 @@ void DrawSkillEditor(EditorState& state) {
         return;
     }
     BuildSkillPickerOptions(state, d);
+    DrawEffectCheckSection(state);
     auto& asf = state.shnFiles[static_cast<std::size_t>(d.skillC)].file;
     if (d.skillS < 0 || d.viewS < 0) {
         ImGui::TextColored(ImVec4(1.0f,0.68f,0.25f,1.0f),"%s",L(

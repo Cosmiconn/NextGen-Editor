@@ -82,6 +82,8 @@ add_library(mapeditor_core
     src/core/legacy/ShineText.cpp
     src/core/legacy/TextTables.cpp
     src/core/legacy/ShnGroups.cpp
+    src/core/legacy/MobAttackSequence.cpp
+    src/core/legacy/EffectRefs.cpp
     src/core/legacy/QuestData.cpp
     src/core/legacy/ItemDropGroups.cpp
     src/core/legacy/QuestText.cpp
@@ -231,6 +233,8 @@ set(NEXTGEN_EDITOR_MODULES
     src/app/editor/EnvironmentPanel.cpp
     src/app/editor/TextEditor.cpp
     src/app/editor/ItemSystemsEditor.cpp
+    src/app/editor/AttackSequenceEditor.cpp
+    src/app/editor/EffectCheck.cpp
     src/app/editor/MapWorkspace.cpp
     src/app/editor/Automation.cpp
     src/app/editor/MinimapTools.cpp
@@ -352,6 +356,12 @@ add_test(NAME text_tables COMMAND test_text_tables)
 add_executable(test_shn_groups tests/test_shn_groups.cpp)
 target_link_libraries(test_shn_groups PRIVATE mapeditor_core)
 add_test(NAME shn_groups COMMAND test_shn_groups)
+add_executable(test_mob_attack_sequence tests/test_mob_attack_sequence.cpp)
+target_link_libraries(test_mob_attack_sequence PRIVATE mapeditor_core)
+add_test(NAME mob_attack_sequence COMMAND test_mob_attack_sequence)
+add_executable(test_effect_refs tests/test_effect_refs.cpp)
+target_link_libraries(test_effect_refs PRIVATE mapeditor_core)
+add_test(NAME effect_refs COMMAND test_effect_refs)
 add_executable(test_quest_layout tests/test_quest_layout.cpp)
 target_link_libraries(test_quest_layout PRIVATE mapeditor_core)
 add_executable(test_map_export_layout tests/test_map_export_layout.cpp)

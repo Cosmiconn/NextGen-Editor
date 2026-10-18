@@ -260,6 +260,19 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         }
         std::fflush(stdout);
     }
+    else if (cmd == "effectcheck") {
+        // effectcheck: listet fehlende Effekt-Dateien (ActiveSkillView/AbStateView gegen reseffect).
+        const auto& issues = EffectIssues(state);
+        std::printf("[effectcheck] %zu Meldungen\n", issues.size());
+        for (const auto& i : issues)
+            std::printf("[effectcheck] %s %lld %s %s=%s%s\n", i.stateView ? "state" : "skill", i.id, i.inx.c_str(), i.column.c_str(),
+                        i.value.c_str(), i.special ? " (special)" : "");
+        std::fflush(stdout);
+    }
+    else if (cmd.rfind("attackseq", 0) == 0) {
+        std::printf("[%s] %s\n", cmd.c_str(), AttackSequenceAutomation(state, cmd, in).c_str());
+        std::fflush(stdout);
+    }
     else if (cmd.rfind("itemsystem", 0) == 0) {
         std::printf("[%s] %s\n", cmd.c_str(), ItemSystemsAutomation(state, cmd, in).c_str());
         std::fflush(stdout);
