@@ -1590,9 +1590,6 @@ bool DrawIconButton(const char* id, const char* label, IconDrawFn icon, bool act
 bool DrawCompactIconTextButton(const char* id, const char* label, IconDrawFn fallbackIcon,
                                const char* semanticIcon, bool enabled = true,
                                const char* tooltip = nullptr, bool active = false);
-bool DrawEditorCard(const char* id, ImVec2 size, ImU32 bodyColor, ImU32 headerColor, IconDrawFn icon,
-                    const char* title, const std::vector<std::string>& features, bool startEnabled,
-                    const char* semanticIcon = nullptr);
 // Später definierte Aktionen, die auch aus der globalen Menüleiste erreichbar sein müssen.
 void SaveTownPortalFiles(EditorState& state);
 bool SaveRecallCoordFile(EditorState& state);

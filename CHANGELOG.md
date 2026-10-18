@@ -1,3 +1,15 @@
+## Start page with two fields, complete icon set
+- The start page now shows exactly two large fields:
+  - **Map Editor** (left): everything on a map — create and open maps, terrain and textures, foliage, Block & Walk, objects and prefabs, Sky/Water/GroundObject, NPCs, mob spawns, routes, portals, minimap and map check.
+  - **File Editor** (right): all game data files independent of a map, client and server — SHN tables, items, mobs, skills, passives, states, quests, drops, prices, XP, AI scripts, interface (loading screens, icons, portraits, windows) and animations (KFM).
+  - Each field has a short wrapped description, a list of what it covers and quick buttons straight into sub-areas (New map, Open map, Tables, Items, Mobs, Skills, Quests, Drops, Interface, Animations). Recent projects stay below.
+  - The former six cards (Map, Game Data, Quest, Skill, KFM, Interface) are covered by the two fields and their quick buttons; the unused `DrawEditorCard` widget is removed.
+- Icons: the complete runtime set from the approved `NextGen_Icons_Final.zip` (SHA-256 checked against `docs/ui-vision/ICON_INVENTORY.md`) is now committed — all 68 semantic icons in all six sizes 16/24/32/48/64/128 (408 PNGs, before 55 PNGs for 51 icons).
+  - Places that already asked for an icon but drew the old line fallback now show the approved icon, among them `nav.world` (top bar, map launcher), `gameplay.path` (route buttons and overlays), `nav.layers`/`nav.objects` and the larger card and panel sizes.
+  - PineScript entries in the AI workspace use the path icon.
+  - `tools/ui/check_icon_consistency.py` now requires every semantic icon in every size.
+- Manual `start.overview` describes the two fields; tooltips for all quick buttons.
+
 ## Interface — move and resize window elements
 - The **Windows** view in the interface tab now writes element positions and sizes back into the interface NIFs. Before, only textures could be changed.
   - Drag an element to move it; drag the corner handles of the selected element to resize it. Values snap to whole pixels, and Esc cancels.

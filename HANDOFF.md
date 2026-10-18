@@ -757,6 +757,7 @@ als Sprachumschaltung später hinzufügbar.
   `DrawIconMonitorEye`/`DrawIconAtom`/`DrawIconClapper` - reine `ImDrawList`-Primitive, kein
   Bild-Asset nötig), Feature-Bulletpoints. NUR die MapEditor-Karte führt zu echter
   Funktionalität - alle anderen 5 zu `ComingSoon` (Platzhalter mit Zurück-Knopf).
+  - Später ersetzt: Die Startseite zeigt seit „Start page with two fields“ (CHANGELOG) nur noch zwei Felder, links **Map Editor**, rechts **Datei Editor** (SHN, Interface, KFM), je mit Beschreibung und Schnellknöpfen in die Unterbereiche.
 - **Neues Projekt konfigurieren** (`DrawNewProjectConfig`): Projekt Name/Projekt Ordner/
   Client Ordner/Server Ordner (mit `BrowseForFolderWindows`), "Projekt erstellen/Speichern".
   NEU: `ProjectConfig`-Struktur + `SaveProjectConfig`/

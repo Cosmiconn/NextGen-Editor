@@ -8,77 +8,134 @@ namespace nge {
 void DrawProjectHub(EditorState& state) {
     DrawTopNav(state, L("Übersicht","Overview"));
 
-    ImGui::TextColored(ImVec4(0.74f, 0.86f, 0.96f, 1.0f), "%s", L("ARBEITSBEREICHE","WORKSPACES"));
-    ImGui::SameLine();
-    ImGui::TextDisabled("%s",L("Vorhandene Editoren und klar getrennte Erweiterungspunkte",
-                                "Available editors and clearly separated extension points"));
-
-    const ImVec2 avail = ImGui::GetContentRegionAvail();
-    const float gap = 10.0f;
-    const float cardW = std::max(260.0f, (avail.x - gap * 2.0f) / 3.0f);
-    const float cardH = std::max(205.0f, (avail.y - gap) * 0.5f);
-
-    enum class HubAction { Map, Data, Quest, Skill, Kfm, Interface };
-    struct CardDef {
+    // Zwei Bereiche: links alles, was auf einer Karte liegt, rechts alle Spieldaten-Dateien
+    // (SHN, Shine-Text, Interface, Animationen). Schnellknöpfe führen direkt in Unterbereiche.
+    struct QuickLink {
+        const char* label;   // eindeutige ImGui-ID über ##, Tooltip in ManualData
+        int shnSubTab;       // >= 0: Unterreiter des Datei Editors
+        AppScreen screen;
+        EditorState::MapLauncherView launcherView;
+    };
+    struct HubCard {
         const char* id;
         const char* title;
-        std::vector<std::string> features;
-        IconDrawFn icon;
         const char* semanticIcon;
-        HubAction action;
-        bool enabled;
+        IconDrawFn icon;
+        const char* summary;
+        std::vector<const char*> covers;
+        std::vector<QuickLink> links;
+        AppScreen screen;
+        int shnSubTab;
     };
-    const CardDef cards[] = {
-        {"hub.map", L("Karte","Map"),
-         {L("Heightmap & Texturen","Heightmap & textures"), L("Walk & Block","Walk & block"),
-          L("Objekte + Sky/Water/GroundObject","Objects + Sky/Water/GroundObject"),
-          L("NPCs, Mobs & Portale","NPCs, mobs & portals")},
-         DrawIconTerrain, "nav.world", HubAction::Map, true},
-        {"hub.data", L("Spieldaten","Game Data"),
-         {"Single & Multi SHN", "XP Rate / Buy & Sell", "Custom NPC/Mob + AI", "Drop Tables + Client/Server"},
-         DrawIconTable, "module.shn.single", HubAction::Data, true},
-        {"hub.quest", L("Quest Editor","Quest Editor"),
-         {"QuestData + QuestDialog", L("Ziele & Drops","Objectives & drops"),
-          L("Start/Action/Finish Skripte","Start/Action/Finish scripts"),
-          L("Text-ID Auflösung","Text-ID resolution")},
-         DrawIconBook, "module.quest", HubAction::Quest, true},
-        {"hub.skill", L("Skill Editor","Skill Editor"),
-         {L("Skills bearbeiten/klonen","Edit/clone skills"), L("Skill-Stufen","Skill tiers"),
-          L("Animation/Effekt-Auswahl","Animation/effect selection"), L("Serien skalieren","Scale series")},
-         DrawIconBolt, "module.skill", HubAction::Skill, true},
-        {"hub.kfm", L("Animationen / KFM","Animations / KFM"),
-         {L("KFM-Katalog","KFM catalog"), L("Übergänge","Transitions"),
-          L("Dateiverweise prüfen","Validate file references"),
-          L("verlustfreie Kopie exportieren","Export lossless copy")},
-         DrawIconClapper, "module.kfm", HubAction::Kfm, true},
-        {"hub.interface", L("Interface Browser","Interface Browser"),
-         {L("resmenu-Assets durchsuchen","Browse resmenu assets"),
-          L("Bildformate vorschauen","Preview image formats"),
-          L("UI-NIF / Material analysieren","Analyze UI NIF / material"),
-          L("Projekt-Overrides sicher verwalten","Manage project overrides safely")},
-         DrawIconMonitorEye, "module.interface", HubAction::Interface, true},
+    using LV = EditorState::MapLauncherView;
+    const HubCard cards[] = {
+        {"hub.map", L("Map Editor","Map Editor"), "nav.world", DrawIconTerrain,
+         L("Alles, was auf einer Karte liegt: Gelände, Begehbarkeit und alles, was darauf platziert ist. "
+           "Jede Karte wird in einer 2D-Draufsicht bearbeitet und in 3D geprüft.",
+           "Everything that lives on a map: terrain, walkability and everything placed on it. "
+           "Every map is edited in a 2D top view and checked in 3D."),
+         {L("Karten anlegen (Assistent) und öffnen","Create maps (wizard) and open them"),
+          L("Terrain formen und texturieren, Foliage","Sculpt and texture terrain, foliage"),
+          L("Objekte, Prefabs, Sky/Water/GroundObject","Objects, prefabs, Sky/Water/GroundObject"),
+          L("Block & Walk, Begehbarkeit neu berechnen","Block & Walk, recompute walkability"),
+          L("NPCs, Mob-Spawns, Routen und Portale","NPCs, mob spawns, routes and portals"),
+          L("Minimap und Kartenprüfung","Minimap and map check")},
+         {{L("Neue Karte##hubNewMap","New map##hubNewMap"), -1, AppScreen::MapEditorLauncher, LV::NewMap},
+          {L("Karte öffnen##hubOpenMap","Open map##hubOpenMap"), -1, AppScreen::MapEditorLauncher, LV::Browse}},
+         AppScreen::MapEditorLauncher, -1},
+        {"hub.data", L("Datei Editor","File Editor"), "module.shn.single", DrawIconTable,
+         L("Alle Spieldaten-Dateien aus Client (ressystem, resmenu) und Server (9Data), unabhängig von einer Karte. "
+           "Client und Server werden gemeinsam bearbeitet, Strg+Z nimmt Änderungen zurück.",
+           "All game data files from client (ressystem, resmenu) and server (9Data), independent of a map. "
+           "Client and server are edited together, Ctrl+Z reverts changes."),
+         {L("SHN-Tabellen einzeln und mehrere gleichzeitig","SHN tables one at a time or several at once"),
+          L("Items, Mobs, Skills, Passive, Zustände","Items, mobs, skills, passives, states"),
+          L("Quests, Drops, Preise, XP, KI-Skripte","Quests, drops, prices, XP, AI scripts"),
+          L("Interface: Ladebilder, Icons, Porträts, Fenster","Interface: loading screens, icons, portraits, windows"),
+          L("Animationen (KFM)","Animations (KFM)")},
+         {{L("Tabellen##hubShn","Tables##hubShn"), 0, AppScreen::ShnEditor, LV::Browse},
+          {L("Items##hubItems","Items##hubItems"), 11, AppScreen::ShnEditor, LV::Browse},
+          {L("Mobs##hubMobs","Mobs##hubMobs"), 12, AppScreen::ShnEditor, LV::Browse},
+          {L("Skills##hubSkills","Skills##hubSkills"), 7, AppScreen::ShnEditor, LV::Browse},
+          {L("Quests##hubQuests","Quests##hubQuests"), 4, AppScreen::ShnEditor, LV::Browse},
+          {L("Drops##hubDrops","Drops##hubDrops"), 10, AppScreen::ShnEditor, LV::Browse},
+          {L("Interface##hubInterface","Interface##hubInterface"), 9, AppScreen::ShnEditor, LV::Browse},
+          {L("Animationen##hubKfm","Animations##hubKfm"), -1, AppScreen::KfmBrowser, LV::Browse}},
+         AppScreen::ShnEditor, 0},
+    };
+
+    const float gap = 12.0f;
+    const ImVec2 avail = ImGui::GetContentRegionAvail();
+    const float cardW = std::max(300.0f, (avail.x - gap) * 0.5f);
+    const float cardH = std::clamp(avail.y - 150.0f, 330.0f, 470.0f);
+    const auto open = [&state](AppScreen screen, int subTab) {
+        if (subTab >= 0) state.shnSubTab = subTab;
+        state.screen = screen;
     };
 
     for (int i = 0; i < static_cast<int>(std::size(cards)); ++i) {
         const auto& card = cards[i];
-        const bool clicked = DrawEditorCard(card.id, ImVec2(cardW, cardH),
-            IM_COL32(8, 24, 36, 255), IM_COL32(9, 42, 63, 255),
-            card.icon, card.title, card.features, card.enabled, card.semanticIcon);
-        if (clicked) {
-            switch (card.action) {
-                case HubAction::Map: state.screen = AppScreen::MapEditorLauncher; break;
-                case HubAction::Data: state.shnSubTab = 0; state.screen = AppScreen::ShnEditor; break;
-                case HubAction::Quest: state.shnSubTab = 4; state.screen = AppScreen::ShnEditor; break;
-                case HubAction::Skill: state.shnSubTab = 7; state.screen = AppScreen::ShnEditor; break;
-                case HubAction::Kfm: state.screen = AppScreen::KfmBrowser; break;
-                case HubAction::Interface:
-                    state.shnSubTab = 9;
-                    state.screen = AppScreen::ShnEditor;
-                    break;
+        if (i > 0) ImGui::SameLine(0.0f, gap);
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(8, 24, 36, 255));
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 6.0f);
+        ImGui::BeginChild(card.id, ImVec2(cardW, cardH), true);
+
+        constexpr float iconSize = 64.0f;
+        const ImVec2 iconPos = ImGui::GetCursorScreenPos();
+        if (const std::uint32_t tex = gUiIcons.Texture(card.semanticIcon, 64); tex != 0) {
+            ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(tex)), ImVec2(iconSize, iconSize),
+                         ImVec2(0, 1), ImVec2(1, 0));
+        } else {
+            ImGui::Dummy(ImVec2(iconSize, iconSize));
+            card.icon(ImGui::GetWindowDrawList(), ImVec2(iconPos.x + iconSize * 0.5f, iconPos.y + iconSize * 0.5f),
+                      iconSize * 0.4f, IM_COL32(255, 255, 255, 235));
+        }
+        ImGui::SameLine(0.0f, 14.0f);
+        ImGui::BeginGroup();
+        ImGui::Dummy(ImVec2(0.0f, 8.0f));
+        ImGui::SetWindowFontScale(1.6f);
+        ImGui::TextColored(UiTheme::AccentCyan, "%s", card.title);
+        ImGui::SetWindowFontScale(1.0f);
+        ImGui::EndGroup();
+
+        ImGui::Spacing();
+        ImGui::TextWrapped("%s", card.summary);
+        ImGui::Spacing();
+        for (const char* line : card.covers) {
+            ImGui::Bullet();
+            ImGui::TextWrapped("%s", line);
+        }
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::TextDisabled("%s", L("Direkt zu:", "Go directly to:"));
+        const float rowRight = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x;
+        for (std::size_t l = 0; l < card.links.size(); ++l) {
+            const auto& link = card.links[l];
+            const float w = ImGui::CalcTextSize(link.label, nullptr, true).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+            if (l > 0) {
+                ImGui::SameLine();
+                if (ImGui::GetCursorScreenPos().x + w > rowRight) ImGui::NewLine();
+            }
+            if (UI::Button(link.label)) {
+                if (link.screen == AppScreen::MapEditorLauncher) state.mapLauncherView = link.launcherView;
+                open(link.screen, link.shnSubTab);
             }
         }
-        if (i % 3 != 2) ImGui::SameLine(0.0f, gap);
-        else if (i == 2) ImGui::Dummy(ImVec2(0.0f, gap));
+
+        // Start-Knopf unten in der Karte.
+        const float buttonH = 36.0f;
+        const float bottom = ImGui::GetWindowContentRegionMax().y - buttonH;
+        if (ImGui::GetCursorPosY() < bottom) ImGui::SetCursorPosY(bottom);
+        ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(55, 125, 195, 255));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(70, 145, 220, 255));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, IM_COL32(40, 95, 155, 255));
+        if (UI::Button(T("card.start"), ImVec2(-1.0f, buttonH))) open(card.screen, card.shnSubTab);
+        ImGui::PopStyleColor(3);
+
+        ImGui::EndChild();
+        ImGui::PopStyleVar();
+        ImGui::PopStyleColor();
     }
 
     ImGui::Separator();

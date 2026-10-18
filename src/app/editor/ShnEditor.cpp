@@ -1919,7 +1919,7 @@ void DrawShnEditor(EditorState& state) {
             if (!state.shnServerRoot.empty()) ScanShnFolder(state, state.shnServerRoot, EditorState::ShnSource::Server);
         }
     }
-    DrawTopNav(state, L("Spieldaten","Game data"));
+    DrawTopNav(state, L("Datei Editor","File Editor"));
     DrawShnDeleteConfirm(state);
     ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
     ImGui::BeginChild("##shnEditor", ImVec2(0,0), false);

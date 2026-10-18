@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """Validate semantic UI icon mappings and the checked-in runtime PNG subset.
 
-This deliberately does NOT require every approved icon size to be committed.
-The complete source package lives in NextGen_Icons_Final.zip and is imported via
-tools/ui/import_icon_pack.py. The current branch may contain only the runtime
-subset needed by migrated UI surfaces.
+The source package lives in NextGen_Icons_Final.zip and is imported via
+tools/ui/import_icon_pack.py. The checkout carries the full runtime PNG matrix
+(68 semantic IDs x 6 sizes); the check requires it to stay complete.
 
 The check guarantees that:
 - icon-map.json and UiIconAssets.cpp expose the same 68 semantic IDs;
 - every semantic ID points to the same approved group/file in both places;
 - the runtime size set in C++ stays aligned with the approved 16/24/32/48/64/128 set;
-- every checked-in runtime PNG belongs to a known semantic icon at a supported size.
+- every checked-in runtime PNG belongs to a known semantic icon at a supported size;
+- every semantic ID has a runtime PNG in every approved size.
 """
 
 from __future__ import annotations
@@ -163,6 +163,14 @@ def main() -> int:
                 continue
             runtime_by_semantic[semantic].add(size)
             runtime_files += 1
+
+    for semantic in sorted(expected_by_semantic):
+        missing_sizes = [size for size in EXPECTED_SIZES if size not in runtime_by_semantic.get(semantic, set())]
+        if missing_sizes:
+            errors.append(
+                f"{semantic}: runtime PNG missing for size(s) "
+                + ", ".join(str(size) for size in missing_sizes)
+            )
 
     if errors:
         return fail(errors)

@@ -15,18 +15,19 @@ Duplicate, Delete, Command Palette and Recent Projects.
 
 ## Current checkout state
 
-The source package is complete, but the Git checkout currently contains only the
-runtime subset already needed by the migrated UI. This is intentional while the
-branch remains under visual QA.
+The checkout contains the complete runtime PNG matrix from the Final ZIP
+(SHA-256 `4057d096eb71cd9ef84bdcf5741afa66f85148ae5ffa55e82c87ff30e50e1b77`):
+all 68 semantic IDs in all six sizes `16/24/32/48/64/128` (408 PNGs under `png/`).
+The SVG masters and 1024 px raster masters stay in the ZIP; they are not needed at
+runtime and are not committed.
 
-- `UiIconAssets` accepts the full approved size set `16/24/32/48/64/128`.
-- At runtime it loads the closest **committed** approved PNG for a semantic ID.
-- If no PNG for that semantic ID is committed yet, the caller keeps its existing
-  functional DrawList fallback.
-- Do not remap a missing runtime asset to a different semantic icon merely to
-  avoid the fallback.
-- Running the importer below with the approved Final ZIP materializes the full
-  SVG masters, PNG size matrix, raster masters and manifest reproducibly.
+- `UiIconAssets` loads the closest approved PNG for a semantic ID and size.
+- The DrawList fallback of each caller remains only as a safety net when the
+  `assets/ui` folder is missing next to the executable.
+- Do not remap a semantic ID to a different icon file.
+
+To refresh the runtime PNGs from a new approved package, run the importer into a
+scratch folder and copy its `assets/ui/icons/png/` into the checkout:
 Import:
 
 ```bash

@@ -8,7 +8,7 @@ const Chapter kChapters[] = {
     {"start", "Erste Schritte", "Getting started"},
     {"controls", "Steuerung und Tastenkürzel", "Controls and shortcuts"},
     {"map", "Map-Editor", "Map editor"},
-    {"shn", "SHN-Editor (Spieldaten)", "SHN editor (game data)"},
+    {"shn", "Datei Editor (SHN-Tabellen, Interface, Animationen)", "File Editor (SHN tables, interface, animations)"},
     {"creators", "Erstellen: NPCs, Mobs, Skills, Shops", "Creating: NPCs, mobs, skills, shops"},
     {"reference", "Nachschlagen", "Reference"},
 };
@@ -16,14 +16,16 @@ const Chapter kChapters[] = {
 const Section kSections[] = {
     {"start.overview", "start",
      "Überblick", "Overview",
-     R"MAN(Der Editor besteht aus zwei großen Bereichen:
-- Map-Editor: Höhenkarte, Texturen, Begehbarkeit (Block & Walk), Objekte, NPCs, Mobs (Monster-Spawns) und Portale einer Karte. Alle Bereiche zeigen dieselbe Karte in einer 2D-Draufsicht (zum Bearbeiten) und einer 3D-Ansicht (zum Prüfen und Ausrichten).
-- SHN-Editor: die Spieldaten-Tabellen (Items, Mobs, Skills, Quests, Shops ...) aus Client (ressystem) und Server (9Data/Shine).
+     R"MAN(Der Editor besteht aus zwei großen Bereichen; die Startseite zeigt genau diese zwei Felder:
+- Map Editor (links): alles, was auf einer Karte liegt. Karten anlegen (Assistent) und öffnen, Höhenkarte und Texturen, Foliage, Begehbarkeit (Block & Walk), Objekte und Prefabs, Sky/Water/GroundObject, NPCs, Mobs (Monster-Spawns), Routen und Portale, Minimap und Kartenprüfung. Alle Bereiche zeigen dieselbe Karte in einer 2D-Draufsicht (zum Bearbeiten) und einer 3D-Ansicht (zum Prüfen und Ausrichten).
+- Datei Editor (rechts): alle Spieldaten-Dateien unabhängig von einer Karte, aus Client (ressystem, resmenu) und Server (9Data/Shine). SHN-Tabellen einzeln oder mehrere zugleich, Items, Mobs, Skills, Passive, Zustände, Quests, Drops, Preise, XP, KI-Skripte, Interface (Ladebilder, Icons, Porträts, Fenster-Layouts) und Animationen (KFM).
+Unter jeder Beschreibung führen Schnellknöpfe direkt in einen Unterbereich (z. B. Neue Karte, Items, Interface, Animationen).
 Es wird NICHTS automatisch gespeichert. Jede Änderung liegt zunächst nur im Speicher; die jeweiligen Speichern-Knöpfe schreiben die Dateien. Angepasste SHN-Dateien sind in den Listen mit * markiert.
 Lege vor dem ersten Speichern eine Sicherung Deiner Client- und Server-Ordner an.)MAN",
-     R"MAN(The editor has two main areas:
-- Map editor: heightmap, textures, walkability (Block & Walk), objects, NPCs, mobs (monster spawns) and portals of a map. All areas show the same map as a 2D top view (for editing) and a 3D view (for checking and aligning).
-- SHN editor: the game data tables (items, mobs, skills, quests, shops ...) from client (ressystem) and server (9Data/Shine).
+     R"MAN(The editor has two main areas; the start page shows exactly these two fields:
+- Map Editor (left): everything that lives on a map. Create maps (wizard) and open them, heightmap and textures, foliage, walkability (Block & Walk), objects and prefabs, Sky/Water/GroundObject, NPCs, mobs (monster spawns), routes and portals, minimap and map check. All areas show the same map as a 2D top view (for editing) and a 3D view (for checking and aligning).
+- File Editor (right): all game data files independent of a map, from client (ressystem, resmenu) and server (9Data/Shine). SHN tables one at a time or several at once, items, mobs, skills, passives, states, quests, drops, prices, XP, AI scripts, interface (loading screens, icons, portraits, window layouts) and animations (KFM).
+Below each description, quick buttons lead straight into a sub-area (e.g. New map, Items, Interface, Animations).
 NOTHING is saved automatically. Every change first exists only in memory; the respective Save buttons write the files. Modified SHN files are marked with * in the lists.
 Make a backup of your client and server folders before the first save.)MAN",
      "overview start project"},
@@ -1048,6 +1050,20 @@ const TipRow kTips[] = {
     {"T:mapeditor.cancel", "Bricht ab.", "Cancels."},
     {"T:mapeditor.open", "Öffnet die gewählte Karte.", "Opens the chosen map."},
     {"T:card.start", "Startet diesen Editor.", "Starts this editor."},
+    {"Button:Neue Karte##hubNewMap", "Öffnet den Assistenten für eine neue Karte (Terrain, SHN-Zeilen, Field.txt, Minimap, Ladebild).", "Opens the new map wizard (terrain, SHN rows, Field.txt, minimap, loading image)."},
+    {"Button:New map##hubNewMap", "Öffnet den Assistenten für eine neue Karte (Terrain, SHN-Zeilen, Field.txt, Minimap, Ladebild).", "Opens the new map wizard (terrain, SHN rows, Field.txt, minimap, loading image)."},
+    {"Button:Karte öffnen##hubOpenMap", "Zeigt die Kartenliste des Clients und die zuletzt geöffneten Karten.", "Shows the client's map list and recently opened maps."},
+    {"Button:Open map##hubOpenMap", "Zeigt die Kartenliste des Clients und die zuletzt geöffneten Karten.", "Shows the client's map list and recently opened maps."},
+    {"Button:Tabellen##hubShn", "Öffnet eine beliebige SHN-Tabelle als Raster (Client oder Server).", "Opens any SHN table as a grid (client or server)."},
+    {"Button:Tables##hubShn", "Öffnet eine beliebige SHN-Tabelle als Raster (Client oder Server).", "Opens any SHN table as a grid (client or server)."},
+    {"Button:Items##hubItems", "Item-Editor: ItemInfo, ItemInfoServer und ItemViewInfo gemeinsam.", "Item editor: ItemInfo, ItemInfoServer and ItemViewInfo together."},
+    {"Button:Mobs##hubMobs", "Mob-Editor: Werte, Modell und Verwendungen eines Mobs.", "Mob editor: stats, model and usages of a mob."},
+    {"Button:Skills##hubSkills", "Skill-Editor: aktive Skills anlegen, klonen und skalieren.", "Skill editor: create, clone and scale active skills."},
+    {"Button:Quests##hubQuests", "Quest-Editor: QuestData, Texte, Ziele und Belohnungen.", "Quest editor: QuestData, texts, objectives and rewards."},
+    {"Button:Drops##hubDrops", "Drop-Tabellen und Drop-Gruppen der Mobs.", "Mob drop tables and drop groups."},
+    {"Button:Interface##hubInterface", "Interface: Ladebilder, Icons, Porträts, Fenster-Layouts (resmenu).", "Interface: loading screens, icons, portraits, window layouts (resmenu)."},
+    {"Button:Animationen##hubKfm", "KFM-Animationen: Katalog, Übergänge, Dateiverweise.", "KFM animations: catalog, transitions, file references."},
+    {"Button:Animations##hubKfm", "KFM-Animationen: Katalog, Übergänge, Dateiverweise.", "KFM animations: catalog, transitions, file references."},
     {"T:newproject.createsave", "Legt das Projekt an und speichert die Einstellungen.", "Creates the project and saves the settings."},
     {"T:workspace.tab.heightmap", "Höhenkarte bearbeiten (Gelände anheben, senken, glätten).", "Edit the heightmap (raise, lower, smooth terrain)."},
     {"T:workspace.tab.texturing", "Texturschichten bemalen.", "Paint texture layers."},

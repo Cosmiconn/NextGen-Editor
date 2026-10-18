@@ -577,64 +577,6 @@ bool DrawCompactIconTextButton(const char* id, const char* label, IconDrawFn fal
     ImGui::PopID();
     return clicked && enabled;
 }
-// Zeichnet eine einzelne Editor-Karte (siehe Mockup "Projekt"-Übersicht). Gibt true zurück,
-// wenn der Start-Knopf in diesem Frame geklickt wurde. Die gelben Klebezettel aus dem Mockup
-// waren Hinweise für die Umsetzung (z.B. "Noch nicht entschieden"), keine echten UI-Elemente -
-// erscheinen daher hier bewusst NICHT in der gerenderten Karte.
-bool DrawEditorCard(const char* id, ImVec2 size, ImU32 bodyColor, ImU32 headerColor, IconDrawFn icon,
-                    const char* title, const std::vector<std::string>& features, bool startEnabled,
-                    const char* semanticIcon) {
-    ImGui::PushID(id);
-    ImGui::BeginGroup();
-    ImDrawList* dl = ImGui::GetWindowDrawList();
-    const ImVec2 origin = ImGui::GetCursorScreenPos();
-    const float headerH = 34.0f;
-
-    dl->AddRectFilled(origin, ImVec2(origin.x + size.x, origin.y + size.y), bodyColor, 6.0f);
-    dl->AddRectFilled(origin, ImVec2(origin.x + size.x, origin.y + headerH), headerColor, 6.0f, ImDrawFlags_RoundCornersTop);
-
-    const ImVec2 titleTextSize = ImGui::CalcTextSize(title);
-    dl->AddText(ImVec2(origin.x + (size.x - titleTextSize.x) * 0.5f, origin.y + (headerH - titleTextSize.y) * 0.5f),
-                IM_COL32(255, 255, 255, 255), title);
-
-    const ImVec2 iconCenter(origin.x + size.x * 0.5f, origin.y + headerH + size.x * 0.30f);
-    bool drewApprovedIcon = false;
-    if (semanticIcon && *semanticIcon) {
-        if (const std::uint32_t tex = gUiIcons.Texture(semanticIcon, 48); tex != 0) {
-            constexpr float iconSize = 48.0f;
-            const ImVec2 half(iconSize * 0.5f, iconSize * 0.5f);
-            dl->AddImage(static_cast<ImTextureID>(static_cast<intptr_t>(tex)),
-                         ImVec2(iconCenter.x - half.x, iconCenter.y - half.y),
-                         ImVec2(iconCenter.x + half.x, iconCenter.y + half.y),
-                         ImVec2(0,1), ImVec2(1,0),
-                         startEnabled ? IM_COL32(255,255,255,255) : IM_COL32(255,255,255,105));
-            drewApprovedIcon = true;
-        }
-    }
-    if (!drewApprovedIcon && icon)
-        icon(dl, iconCenter, size.x * 0.18f, IM_COL32(255, 255, 255, 235));
-
-    float textY = origin.y + headerH + size.x * 0.30f + size.x * 0.25f;
-    for (const auto& feature : features) {
-        dl->AddText(ImVec2(origin.x + 12.0f, textY), IM_COL32(235, 235, 225, 255), feature.c_str());
-        textY += ImGui::GetTextLineHeight() + 2.0f;
-    }
-
-    ImGui::SetCursorScreenPos(ImVec2(origin.x + 10.0f, origin.y + size.y - 44.0f));
-    ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(55, 125, 195, 255));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(70, 145, 220, 255));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, IM_COL32(40, 95, 155, 255));
-    ImGui::BeginDisabled(!startEnabled);
-    const bool clicked = UI::Button(T("card.start"), ImVec2(size.x - 20.0f, 34.0f));
-    ImGui::EndDisabled();
-    ImGui::PopStyleColor(3);
-
-    ImGui::SetCursorScreenPos(ImVec2(origin.x, origin.y + size.y + 8.0f));
-    ImGui::Dummy(ImVec2(size.x, 1.0f));
-    ImGui::EndGroup();
-    ImGui::PopID();
-    return clicked;
-}
 void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
     LoadRecentEntries(state);
     LoadShortcutSettings(state);
@@ -960,9 +902,9 @@ void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
     };
     const PrimaryNav primary[] = {
         {"nav.map",        AppScreen::MapEditorLauncher, DrawIconGlobe,       "nav.world",
-         "Karten- und World-Editor", "Map and world editor"},
+         "Map Editor: Karten anlegen, öffnen und bearbeiten", "Map editor: create, open and edit maps"},
         {"nav.data",       AppScreen::ShnEditor,         DrawIconTable,       "module.shn.single",
-         "Spieldaten-Editoren", "Game-data editors"},
+         "Datei Editor: alle Spieldaten-Dateien (SHN, Interface, KFM)", "File editor: all game data files (SHN, interface, KFM)"},
         {"nav.animations", AppScreen::KfmBrowser,        DrawIconClapper,     "module.kfm",
          "KFM/KF Animationen", "KFM/KF animations"},
         {"nav.project",    AppScreen::ProjectHub,        DrawIconPencilPaper, "panel.project",
