@@ -113,6 +113,12 @@ Daten nach Änderungen noch nicht neu erzeugt werden. Vollständige Spiel- oder 
 Darstellungsgleichheit, Partikelsimulation und ein allgemeiner NIF-Writer sind noch nicht nachgewiesen bzw. umgesetzt;
 für Fenster-Layouts gibt es einen geprüften In-Place-Patch (Eckpunkte und Bounding-Sphere von NiTriShapeData).
 
+Koreanische Texte (CP949) werden übersetzt angezeigt (mitgeliefertes Wörterbuch `assets/i18n`,
+eigenes Projekt-Wörterbuch, sonst Glossar + Umschrift) und auf Knopfdruck englisch in die Daten
+übernommen. **Datenschutz:** Die optionale Online-Übersetzung unbekannter Texte sendet diese Texte
+an die Claude-API von Anthropic und nutzt dafür den eigenen API-Schlüssel des Nutzers; ohne Schlüssel
+und ohne Klick auf „online übersetzen“ verlässt nichts den Rechner.
+
 Die ZIP im Verzeichnis `releases` enthält Quellen, Fixtures, Berichte und den Windows-Build in
 `bin/`. Historische Berichte sind ausdrücklich versionsgebunden; neue Ergebnisse stehen in
 `docs/v14-results`. Das Handbuch wird direkt in C++ gepflegt, siehe

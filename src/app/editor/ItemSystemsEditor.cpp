@@ -140,7 +140,8 @@ const std::unordered_map<std::string, std::string>& LookupMap(EditorState& state
     struct Cached { std::uint64_t edit = ~0ull; std::unordered_map<std::string, std::string> map; };
     static std::unordered_map<std::string, Cached> cache;
     auto& entry = cache[std::string(file) + "|" + keyColumn + "|" + valueColumn + "|" +
-                        (side == Source::Client ? state.shnClientRoot : state.shnServerRoot)];
+                        (side == Source::Client ? state.shnClientRoot : state.shnServerRoot) + "|" +
+                        (app::CurrentLanguage() == app::Language::German ? "de" : "en")];
     if (entry.edit == state.shnEditCounter) return entry.map;
     entry.edit = state.shnEditCounter;
     entry.map.clear();
@@ -148,7 +149,7 @@ const std::unordered_map<std::string, std::string>& LookupMap(EditorState& state
     if (doc < 0) return entry.map;
     const auto& f = ShnDocFile(state, doc);
     for (std::size_t r = 0; r < f.rows.size(); ++r)
-        entry.map.emplace(TrimAscii(ShnCellText(f, r, keyColumn)), ShnCellText(f, r, valueColumn));
+        entry.map.emplace(TrimAscii(ShnCellText(f, r, keyColumn)), DisplayText(ShnCellText(f, r, valueColumn)));
     return entry.map;
 }
 

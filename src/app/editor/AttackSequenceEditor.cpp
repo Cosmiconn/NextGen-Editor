@@ -56,25 +56,23 @@ bool LoadSequence(EditorState& state, const std::string& stem) {
 }
 
 const std::unordered_map<std::string, std::string>& NameMap(EditorState& state, const char* file, Source side) {
-    struct Cached { std::uint64_t edit = ~0ull; std::string root; std::unordered_map<std::string, std::string> map; };
+    struct Cached { std::uint64_t edit = ~0ull; std::string root; bool german = false; std::unordered_map<std::string, std::string> map; };
     static std::unordered_map<std::string, Cached> cache;
     const std::string& root = side == Source::Client ? state.shnClientRoot : state.shnServerRoot;
     auto& c = cache[file];
-    if (c.edit == state.shnEditCounter && c.root == root) return c.map;
+    const bool german = app::CurrentLanguage() == app::Language::German;
+    if (c.edit == state.shnEditCounter && c.root == root && c.german == german) return c.map;
     c.edit = state.shnEditCounter;
     c.root = root;
+    c.german = german;
     c.map.clear();
     if (root.empty()) return c.map;
     const int doc = SharedShnDoc(state, file, side, root);
     if (doc < 0) return c.map;
     const auto& f = ShnDocFile(state, doc);
-    for (std::size_t r = 0; r < f.rows.size(); ++r) {
-        std::string name = ShnCellText(f, r, "Name");
-        // Mob-Skills tragen in NA2016 koreanische Namen (EUC-KR), die ImGui nicht darstellt: dann die ID zeigen.
-        if (std::any_of(name.begin(), name.end(), [](char ch) { return static_cast<unsigned char>(ch) >= 0x80; }))
-            name = "ID " + ShnCellText(f, r, "ID") + L(" (Name nicht lesbar: EUC-KR)", " (name not readable: EUC-KR)");
-        c.map.emplace(TrimAscii(ShnCellText(f, r, "InxName")), std::move(name));
-    }
+    // Mob-Skills tragen in NA2016 koreanische Namen (CP949): übersetzt anzeigen (Sprache der Oberfläche).
+    for (std::size_t r = 0; r < f.rows.size(); ++r)
+        c.map.emplace(TrimAscii(ShnCellText(f, r, "InxName")), DisplayText(ShnCellText(f, r, "Name")));
     return c.map;
 }
 const std::unordered_map<std::string, std::string>& SkillNames(EditorState& state) { return NameMap(state, "ActiveSkill.shn", Source::Server); }

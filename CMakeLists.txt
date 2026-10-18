@@ -84,6 +84,8 @@ add_library(mapeditor_core
     src/core/legacy/ShnGroups.cpp
     src/core/legacy/MobAttackSequence.cpp
     src/core/legacy/EffectRefs.cpp
+    src/core/legacy/KoreanText.cpp
+    src/core/legacy/KoreanOnline.cpp
     src/core/legacy/QuestData.cpp
     src/core/legacy/ItemDropGroups.cpp
     src/core/legacy/QuestText.cpp
@@ -235,6 +237,8 @@ set(NEXTGEN_EDITOR_MODULES
     src/app/editor/ItemSystemsEditor.cpp
     src/app/editor/AttackSequenceEditor.cpp
     src/app/editor/EffectCheck.cpp
+    src/app/editor/KoreanDisplay.cpp
+    src/app/editor/KoreanOnlineTranslate.cpp
     src/app/editor/MapWorkspace.cpp
     src/app/editor/Automation.cpp
     src/app/editor/MinimapTools.cpp
@@ -273,7 +277,10 @@ add_custom_command(TARGET map_editor POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${CMAKE_SOURCE_DIR}/assets/ui"
             "$<TARGET_FILE_DIR:map_editor>/assets/ui"
-    COMMENT "Copying NextGen UI assets"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/assets/i18n"
+            "$<TARGET_FILE_DIR:map_editor>/assets/i18n"
+    COMMENT "Copying NextGen UI assets and translation dictionaries"
 )
 
 target_link_libraries(map_editor PRIVATE
@@ -287,6 +294,9 @@ target_link_libraries(map_editor PRIVATE
 if (WIN32)
     # Für den nativen "Ordner wählen"-Dialog (SHBrowseForFolder/CoTaskMemFree) in editor/MapFiles.cpp.
     target_link_libraries(map_editor PRIVATE Shell32 Ole32 Windowscodecs)
+    # Optionale Online-Übersetzung koreanischer Texte (editor/KoreanOnlineTranslate.cpp): HTTPS über
+    # WinHTTP, API-Schlüssel per DPAPI verschlüsselt (CryptProtectData).
+    target_link_libraries(map_editor PRIVATE winhttp crypt32)
 endif()
 endif() # NEXTGEN_EDITOR_BUILD_GUI
 
@@ -362,6 +372,9 @@ add_test(NAME mob_attack_sequence COMMAND test_mob_attack_sequence)
 add_executable(test_effect_refs tests/test_effect_refs.cpp)
 target_link_libraries(test_effect_refs PRIVATE mapeditor_core)
 add_test(NAME effect_refs COMMAND test_effect_refs)
+add_executable(test_korean_text tests/test_korean_text.cpp)
+target_link_libraries(test_korean_text PRIVATE mapeditor_core)
+add_test(NAME korean_text COMMAND test_korean_text ${CMAKE_CURRENT_SOURCE_DIR}/assets/i18n/ko_dictionary.tsv)
 add_executable(test_quest_layout tests/test_quest_layout.cpp)
 target_link_libraries(test_quest_layout PRIVATE mapeditor_core)
 add_executable(test_map_export_layout tests/test_map_export_layout.cpp)

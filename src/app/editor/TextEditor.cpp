@@ -366,9 +366,13 @@ void DrawTextEditor(EditorState& state) {
             const auto columns = legacy::TextColumns(f);
             for (std::size_t r = 0; r < f.rows.size() && te.hits.size() < 500; ++r) {
                 std::string all = keys[r];
-                for (const int c : columns) all += " " + legacy::ShnValueToString(f.rows[r].values[static_cast<std::size_t>(c)]);
+                for (const int c : columns) {
+                    const std::string raw = legacy::ShnValueToString(f.rows[r].values[static_cast<std::size_t>(c)]);
+                    all += " " + raw + " " + KoreanSearchText(raw); // findet auch Übersetzungen und Umschrift
+                }
                 if (LowerAscii(all).find(needle) == std::string::npos) continue;
-                const std::string first = columns.empty() ? std::string() : legacy::ShnValueToString(f.rows[r].values[static_cast<std::size_t>(columns.front())]);
+                const std::string first = columns.empty() ? std::string()
+                    : DisplayText(legacy::ShnValueToString(f.rows[r].values[static_cast<std::size_t>(columns.front())]));
                 te.hits.push_back({t, static_cast<int>(r), keys[r], OneLine(first, 90)});
             }
         }
@@ -465,7 +469,10 @@ void DrawTextEditor(EditorState& state) {
         for (std::size_t r = 0; r < mf.rows.size(); ++r) {
             if (!filter.empty()) {
                 std::string all = keys[r];
-                for (const int c : textColumns) all += " " + legacy::ShnValueToString(mf.rows[r].values[static_cast<std::size_t>(c)]);
+                for (const int c : textColumns) {
+                    const std::string raw = legacy::ShnValueToString(mf.rows[r].values[static_cast<std::size_t>(c)]);
+                    all += " " + raw + " " + KoreanSearchText(raw);
+                }
                 if (LowerAscii(all).find(filter) == std::string::npos) continue;
             }
             te.visible.push_back(static_cast<int>(r));
@@ -485,7 +492,7 @@ void DrawTextEditor(EditorState& state) {
         for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i) {
             const int r = te.visible[static_cast<std::size_t>(i)];
             const std::string first = textColumns.empty() ? std::string()
-                : legacy::ShnValueToString(mf.rows[static_cast<std::size_t>(r)].values[static_cast<std::size_t>(textColumns.front())]);
+                : DisplayText(legacy::ShnValueToString(mf.rows[static_cast<std::size_t>(r)].values[static_cast<std::size_t>(textColumns.front())]));
             const std::string label = keys[static_cast<std::size_t>(r)] + "  " + OneLine(first, 70) + "##row" + std::to_string(r);
             if (ImGui::Selectable(label.c_str(), te.selectedRow == r)) te.selectedRow = r;
         }
@@ -527,6 +534,8 @@ void DrawTextEditor(EditorState& state) {
         if (UI::Button(L("Abbrechen##textDelete", "Cancel##textDelete"))) ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
+    DrawKoreanApplyButton(state, docs.main, {docs.peer}, "texts");
+    DrawKoreanOnlineButton(state, docs.main, {docs.peer}, "texts");
     ImGui::Separator();
 
     if (te.selectedRow < 0) {
@@ -541,6 +550,21 @@ void DrawTextEditor(EditorState& state) {
             if (col.type == 26) ImGui::Text("%s  (%zu Byte)", col.name.c_str(), current.size());
             else ImGui::Text("%s  (%zu / %u Byte)", col.name.c_str(), current.size(), col.length - 1);
             ImGui::PushID(c);
+            // Koreanischer Rohtext: Übersetzung als Hinweis darüber; der Rohwert bleibt, bis übernommen wird.
+            if (const KoreanResult ko = TranslateKorean(current, app::CurrentLanguage() != app::Language::German); ko.korean) {
+                ImGui::TextColored(ko.source == KoreanSource::Automatic ? UiTheme::Warning : UiTheme::Success, "%s%s",
+                                   ko.source == KoreanSource::Automatic ? "\xE2\x89\x88 " : "", ko.text.c_str());
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", KoreanTooltip(current).c_str());
+                const KoreanResult en = TranslateKorean(current, true);
+                std::string why;
+                const bool usable = en.source != KoreanSource::Automatic && FitsColumn(col, en.text, why);
+                ImGui::SameLine();
+                ImGui::BeginDisabled(!usable);
+                if (UI::Button(L("Übersetzung übernehmen (Englisch)##koreanField", "Apply translation (English)##koreanField")))
+                    WriteText(state, docs, row, c, en.text);
+                ImGui::EndDisabled();
+                if (!why.empty()) ImGui::TextDisabled("%s", why.c_str());
+            }
             std::string edited;
             if (DeferredInputText("##text", current, edited, width, 110.0f)) WriteText(state, docs, row, c, edited);
             ImGui::PopID();

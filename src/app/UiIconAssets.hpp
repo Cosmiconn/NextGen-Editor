@@ -28,9 +28,10 @@ public:
     [[nodiscard]] static bool IsKnownSemantic(std::string_view semanticId);
     [[nodiscard]] bool HasAssetRoot() const { return !assetRoot_.empty(); }
     [[nodiscard]] const std::filesystem::path& AssetRoot() const { return assetRoot_; }
+    // assets/ui/icons neben der EXE bzw. im Checkout (auch für andere Assets wie assets/i18n genutzt).
+    [[nodiscard]] static std::filesystem::path FindAssetRoot();
 
 private:
-    [[nodiscard]] static std::filesystem::path FindAssetRoot();
     [[nodiscard]] static std::filesystem::path RelativePath(std::string_view semanticId, int size);
     [[nodiscard]] static int NormalizeSize(int requestedSize);
 

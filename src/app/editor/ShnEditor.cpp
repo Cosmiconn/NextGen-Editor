@@ -6,7 +6,7 @@
 namespace nge {
 
 std::string ShnShortValue(const core::legacy::ShnValue& value) {
-    std::string s = core::legacy::ShnValueToString(value);
+    std::string s = DisplayText(core::legacy::ShnValueToString(value)); // koreanische Texte übersetzt
     if (s.size() > 120) s.resize(117), s += "...";
     return s;
 }
@@ -783,6 +783,8 @@ void DrawShnGrid(EditorState& state) {
 
     if (DrawKnownShnFamilyReferenceStrip(state, state.shnSelectedFile, familyPeers))
         return;
+    DrawKoreanApplyButton(state, state.shnSelectedFile, {counterpartIndex}, "shnGrid");
+    DrawKoreanOnlineButton(state, state.shnSelectedFile, {counterpartIndex}, "shnGrid");
 
     ImGui::Separator();
     const std::string needle = LowerAscii(state.shnSearch);
@@ -871,6 +873,12 @@ void DrawShnGrid(EditorState& state) {
         if (visibleKey != state.shnVisibleKey) {
             state.shnVisibleKey = visibleKey;
             state.shnVisibleRows.clear();
+            // Suchtext einer Zelle: Rohwert, bei koreanischem Text zusätzlich Übersetzungen und Umschrift.
+            const auto searchText = [&](const core::legacy::ShnValue& value) {
+                const std::string raw = core::legacy::ShnValueToString(value);
+                const std::string korean = KoreanSearchText(raw);
+                return LowerAscii(korean.empty() ? raw : raw + " " + korean);
+            };
             for (std::size_t ri = 0; ri < file.rows.size(); ++ri) {
                 bool matches = needle.empty();
                 if (!matches) {
@@ -880,8 +888,7 @@ void DrawShnGrid(EditorState& state) {
                             matches = true;
                             break;
                         }
-                        if (state.shnSearchValues &&
-                            LowerAscii(core::legacy::ShnValueToString(row.values[ci])).find(needle) != std::string::npos) {
+                        if (state.shnSearchValues && searchText(row.values[ci]).find(needle) != std::string::npos) {
                             matches = true;
                             break;
                         }
@@ -893,7 +900,7 @@ void DrawShnGrid(EditorState& state) {
                 for (std::size_t ci = 0; ci < state.shnColumnFilters.size(); ++ci) {
                     if (state.shnColumnFilters[ci][0] == '\0') continue;
                     if (ci >= file.rows[ri].values.size()) { columnFiltersMatch = false; break; }
-                    const std::string cell = LowerAscii(core::legacy::ShnValueToString(file.rows[ri].values[ci]));
+                    const std::string cell = searchText(file.rows[ri].values[ci]);
                     const std::string filter = LowerAscii(state.shnColumnFilters[ci].data());
                     if (cell.find(filter) == std::string::npos) { columnFiltersMatch = false; break; }
                 }
@@ -1049,11 +1056,32 @@ void DrawShnGrid(EditorState& state) {
                             ImGui::Separator();
                             if (UI::MenuItem(L("Kopieren","Copy"), L("Strg+C","Ctrl+C"))) CopySelectedShnCell(state);
                             if (UI::MenuItem(L("Einfügen","Paste"), L("Strg+V","Ctrl+V"))) PasteSelectedShnCell(state);
+                            if (const KoreanResult kr = TranslateKorean(core::legacy::ShnValueToString(row.values[ci]), true); kr.korean) {
+                                ImGui::Separator();
+                                const bool usable = kr.source != KoreanSource::Automatic;
+                                const auto& col = file.columns[ci];
+                                const bool fits = col.type == 26 || col.length == 0 || kr.text.size() <= col.length - 1;
+                                const bool key = core::legacy::IsKoreanKeyColumn(col.name);
+                                if (UI::MenuItem(L("Übersetzung übernehmen (Englisch)", "Apply translation (English)"), nullptr, false, usable && fits && !key)) {
+                                    DataHistoryBegin(state, std::string(L("Übersetzung übernommen: ", "Translation applied: ")) + col.name);
+                                    ApplyShnCellText(state, state.shnSelectedFile, static_cast<int>(ri), static_cast<int>(ci), kr.text);
+                                    if (counterpartIndex >= 0 && counterpartColumns[ci] >= 0 && ri < counterpart->rows.size() &&
+                                        core::legacy::ShnValueToString(counterpart->rows[ri].values[static_cast<std::size_t>(counterpartColumns[ci])]) ==
+                                            core::legacy::ShnValueToString(row.values[ci]))
+                                        ApplyShnCellText(state, counterpartIndex, static_cast<int>(ri), counterpartColumns[ci], kr.text);
+                                    DataHistoryCommit(state);
+                                }
+                                if (key) ImGui::TextDisabled("%s", L("Schlüsselspalte (Verweis/Befehl) - wird nicht übersetzt.", "Key column (reference/command) - not translated."));
+                                else if (!usable) ImGui::TextDisabled("%s", L("Nur automatische Übersetzung - erst ins Wörterbuch aufnehmen.", "Automatic translation only - add it to the dictionary first."));
+                                else if (!fits) ImGui::TextDisabled(L("Übersetzung zu lang (%zu > %u Byte).", "Translation too long (%zu > %u bytes)."), kr.text.size(), col.length - 1);
+                            }
                             ImGui::EndPopup();
                         }
 
                         if (ImGui::IsItemHovered()) {
-                            std::string tooltip = core::legacy::ShnValueToString(row.values[ci]) +
+                            const std::string rawCell = core::legacy::ShnValueToString(row.values[ci]);
+                            const std::string korean = KoreanTooltip(rawCell);
+                            std::string tooltip = (korean.empty() ? rawCell : DisplayText(rawCell) + "\n" + korean) +
                                                   "\n" + L("Typ: ","Type: ") + file.TypeName(file.columns[ci]);
                             if (counterpartDiff)
                                 tooltip += "\n" + std::string(L("Gegenstück: ","Counterpart: ")) + counterpartText;

@@ -578,6 +578,8 @@ bool DrawCompactIconTextButton(const char* id, const char* label, IconDrawFn fal
     return clicked && enabled;
 }
 void DrawTopNav(EditorState& state, const char* breadcrumbTitle) {
+    UpdateKoreanProject(state);
+    PollKoreanOnlineTranslation(state);
     LoadRecentEntries(state);
     LoadShortcutSettings(state);
     LoadViewportSettings(state);

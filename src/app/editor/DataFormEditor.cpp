@@ -45,7 +45,7 @@ const PickList& InxPickList(EditorState& state, const char* file, EditorState::S
     for (std::size_t r = 0; r < f.rows.size(); ++r) {
         const std::string inx = TrimAscii(ShnCellText(f, r, "InxName"));
         if (inx.empty() || (!list.values.empty() && list.values.back() == inx)) continue; // SubAbState: Stufen derselben InxName hintereinander
-        const std::string name = ShnCellText(f, r, "Name");
+        const std::string name = DisplayText(ShnCellText(f, r, "Name"));
         list.values.push_back(inx);
         list.labels.push_back(inx + (name.empty() ? std::string() : "  ·  " + name) + "  (#" + ShnCellText(f, r, "ID") + ")");
     }
@@ -99,10 +99,10 @@ std::string RefDisplay(EditorState& state, const char* file, EditorState::ShnSou
     if (byId) {
         const long long row = FormRowIn(state, doc, std::atoll(value.c_str()));
         if (row < 0) return L("nicht gefunden", "not found");
-        return ShnCellText(f, static_cast<std::size_t>(row), "InxName") + "  " + ShnCellText(f, static_cast<std::size_t>(row), "Name");
+        return ShnCellText(f, static_cast<std::size_t>(row), "InxName") + "  " + DisplayText(ShnCellText(f, static_cast<std::size_t>(row), "Name"));
     }
     for (std::size_t r = 0; r < f.rows.size(); ++r)
-        if (TrimAscii(ShnCellText(f, r, "InxName")) == value) return ShnCellText(f, r, "Name").empty() ? value : ShnCellText(f, r, "Name");
+        if (TrimAscii(ShnCellText(f, r, "InxName")) == value) return ShnCellText(f, r, "Name").empty() ? value : DisplayText(ShnCellText(f, r, "Name"));
     return L("nicht gefunden", "not found");
 }
 
@@ -455,7 +455,7 @@ void DrawDataFormEditor(EditorState& state, const dataform::Spec& spec, DataForm
             const std::string idText = ShnCellText(mf, r, "ID");
             const long long id = std::atoll(idText.c_str());
             if (!needle.empty() &&
-                LowerAscii(ShnCellText(mf, r, "InxName") + " " + ShnCellText(mf, r, "Name") + " " + idText).find(needle) == std::string::npos)
+                LowerAscii(ShnCellText(mf, r, "InxName") + " " + DisplayText(ShnCellText(mf, r, "Name")) + " " + idText).find(needle) == std::string::npos)
                 continue;
             if (form.quickFilter == 1 && !modified.contains(id)) continue;
             if (form.quickFilter == 2) {
@@ -493,7 +493,7 @@ void DrawDataFormEditor(EditorState& state, const dataform::Spec& spec, DataForm
             }
             ImGui::SameLine(x + 2.0f);
             if (listIcon) { listIcon(id, rowH); ImGui::SameLine(); }
-            const std::string name = ShnCellText(mf, r, "Name");
+            const std::string name = DisplayText(ShnCellText(mf, r, "Name"));
             ImGui::Text("#%lld  %s", id, ShnCellText(mf, r, "InxName").c_str());
             if (!name.empty()) { ImGui::SameLine(); ImGui::TextDisabled("%s", name.c_str()); }
             ImGui::PopID();
@@ -513,7 +513,7 @@ void DrawDataFormEditor(EditorState& state, const dataform::Spec& spec, DataForm
     const std::string inx = ShnCellText(mf, static_cast<std::size_t>(selRow), "InxName");
     ImGui::TextColored(UiTheme::AccentCyan, "%s", inx.c_str());
     ImGui::SameLine();
-    ImGui::Text("#%lld  %s", sel, ShnCellText(mf, static_cast<std::size_t>(selRow), "Name").c_str());
+    ImGui::Text("#%lld  %s", sel, DisplayText(ShnCellText(mf, static_cast<std::size_t>(selRow), "Name")).c_str());
     if (UI::Button(L("Löschen##form", "Delete##form"))) RequestShnRowDelete(state, mainDoc, static_cast<int>(selRow));
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
         ImGui::SetTooltip("%s", L("Löscht den Eintrag in allen geladenen Tabellen der Familie (beide Seiten); vorher werden Verweise gezeigt. Strg+Z macht es rückgängig.",
