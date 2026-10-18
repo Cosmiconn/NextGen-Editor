@@ -1,0 +1,1216 @@
+# Koreanische Texte aus Fiesta NA2016 -> Englisch / Deutsch (NextGen Editor, einmalig übersetzt).
+# Spalten: korean<TAB>english<TAB>german; \t \n \\ als Escapes. Eigene Korrekturen gehören in <Projekt>/Texte/ko_user.tsv.
+"나에게도 좋은 아이템이 생겼으면 좋겠어!"	"I want good items too!"	"Ich hätte auch gern mal gute Items!"
+(5초동안)1초마다 역넉백하고, 공격력,방어력 감소되는 상태이상걸?	(5s) Pull every 1s and lower ATK/DEF debuff	(5 Sek.) Jede Sekunde heranziehen und ANG/VERT senken (Statuseffekt)
+* 제외대상 아이템 / To be removed	* Excluded item / To be removed	* Ausgeschlossenes Item / Wird entfernt
+105실험실의원혼(1)그레이트스윙	Lab 105 Vengeful Spirit (1) Great Swing	Rachegeist aus Labor 105 (1): Großer Schwung
+105실험실의원혼(1)레드슬래쉬	Lab 105 Vengeful Spirit (1) Red Slash	Rachegeist aus Labor 105 (1): Roter Hieb
+105실험실의원혼(1)크러쉬스트라이크	Lab 105 Vengeful Spirit (1) Crush Strike	Rachegeist aus Labor 105 (1): Zerschmetternder Schlag
+108실험실의원혼(2)그레이트스윙	Lab 108 Vengeful Spirit (2) Great Swing	Rachegeist aus Labor 108 (2): Großer Schwung
+108실험실의원혼(2)레드슬래쉬	Lab 108 Vengeful Spirit (2) Red Slash	Rachegeist aus Labor 108 (2): Roter Hieb
+108실험실의원혼(2)크러쉬스트라이크	Lab 108 Vengeful Spirit (2) Crush Strike	Rachegeist aus Labor 108 (2): Zerschmetternder Schlag
+2014년 11월 무버	November 2014 Mover	Reittier November 2014
+;  (2 무기를 장착해 보자)	;  (2 Let's equip a weapon)	;  (2 Rüsten wir eine Waffe aus)
+;  1 (인벤토리를 열어 보자)	;  1 (Let's open the inventory)	;  1 (Öffnen wir das Inventar)
+;  2 (무기를 장착해 보자)	;  2 (Let's equip a weapon)	;  2 (Rüsten wir eine Waffe aus)
+;  8 (아이템 제련을 시도해라)	;  8 (Try refining an item)	;  8 (Versuche, ein Item zu veredeln)
+; ( 18 저주의 인형 1 시작)	; ( 18 Cursed Doll 1 start)	; ( 18 Verfluchte Puppe 1 Start)
+; ( 19 저주의 인형 2 완료)	; ( 19 Cursed Doll 2 complete)	; ( 19 Verfluchte Puppe 2 Abschluss)
+; ( 20 저주의 인형 3 루비 만나기)	; ( 20 Cursed Doll 3 meet Ruby)	; ( 20 Verfluchte Puppe 3 Ruby treffen)
+; (1 인벤토리를 열어보자)	; (1 Let's open the inventory)	; (1 Öffnen wir das Inventar)
+; (15 크랩의 집게발 완료)	; (15 Crab's Claw complete)	; (15 Die Krabbenschere Abschluss)
+; (15 크랩의 집게발 진행)	; (15 Crab's Claw in progress)	; (15 Die Krabbenschere laufend)
+; (15 크랩의 집게발)	; (15 Crab's Claw)	; (15 Die Krabbenschere)
+; (16 꿀통 도둑 하닝 완료)	; (16 Honeying the Honey Thief complete)	; (16 Honeying, der Honigdieb Abschluss)
+; (16 꿀통 도둑 하닝 진행)	; (16 Honeying the Honey Thief in progress)	; (16 Honeying, der Honigdieb laufend)
+; (16 꿀통 도둑 하닝)	; (16 Honeying the Honey Thief)	; (16 Honeying, der Honigdieb)
+; (17 시끌벅적 촌장님 완료)	; (17 The Noisy Village Chief complete)	; (17 Der lärmende Dorfvorsteher Abschluss)
+; (17 시끌벅적 촌장님 진행)	; (17 The Noisy Village Chief in progress)	; (17 Der lärmende Dorfvorsteher laufend)
+; (17 시끌벅적 촌장님)	; (17 The Noisy Village Chief)	; (17 Der lärmende Dorfvorsteher)
+; (18 저주의 인형 1 완료)	; (18 Cursed Doll 1 complete)	; (18 Verfluchte Puppe 1 Abschluss)
+; (18 저주의 인형 1 진행)	; (18 Cursed Doll 1 in progress)	; (18 Verfluchte Puppe 1 laufend)
+; (19 저주의 인형 2 시작)	; (19 Cursed Doll 2 start)	; (19 Verfluchte Puppe 2 Start)
+; (19 저주의 인형 2 진행)	; (19 Cursed Doll 2 in progress)	; (19 Verfluchte Puppe 2 laufend)
+; (20 새로운 명예를 위해 시작)	; (20 For a New Honor start)	; (20 Für eine neue Ehre Start)
+; (20 새로운 명예를 위해 완료)	; (20 For a New Honor complete)	; (20 Für eine neue Ehre Abschluss)
+; (20 새로운 명예를 위해 진행)	; (20 For a New Honor in progress)	; (20 Für eine neue Ehre laufend)
+; (20 저주의 인형 3 완료)	; (20 Cursed Doll 3 complete)	; (20 Verfluchte Puppe 3 Abschluss)
+; (21 새로운 명예를 위해 2 - 신비의 메아리동굴)	; (21 For a New Honor 2 - Mysterious Echo Cave)	; (21 Für eine neue Ehre 2 - Geheimnisvolle Echohöhle)
+; (21 새로운 명예를 위해 2 - 완료)	; (21 For a New Honor 2 - complete)	; (21 Für eine neue Ehre 2 - Abschluss)
+; (21 새로운 명예를 위해 2 -진행)	; (21 For a New Honor 2 -in progress)	; (21 Für eine neue Ehre 2 -laufend)
+; (22 약초의 행방 시작)	; (22 Whereabouts of the Herbs start)	; (22 Der Verbleib der Kräuter Start)
+; (22 약초의 행방 완료)	; (22 Whereabouts of the Herbs complete)	; (22 Der Verbleib der Kräuter Abschluss)
+; (22 약초의 행방 진행)	; (22 Whereabouts of the Herbs in progress)	; (22 Der Verbleib der Kräuter laufend)
+; (23 사과 도둑 1 시작)	; (23 Apple Thief 1 start)	; (23 Apfeldieb 1 Start)
+; (23 사과 도둑 1 완료)	; (23 Apple Thief 1 complete)	; (23 Apfeldieb 1 Abschluss)
+; (23 사과 도둑 1진행)	; (23 Apple Thief 1in progress)	; (23 Apfeldieb 1laufend)
+; (24 사과 도둑 2 시작)	; (24 Apple Thief 2 start)	; (24 Apfeldieb 2 Start)
+; (24 사과 도둑 2 완료)	; (24 Apple Thief 2 complete)	; (24 Apfeldieb 2 Abschluss)
+; (24 사과 도둑 2 진행)	; (24 Apple Thief 2 in progress)	; (24 Apfeldieb 2 laufend)
+; (25 아이들의 저녁식사 시작)	; (25 The Children's Dinner start)	; (25 Das Abendessen der Kinder Start)
+; (25 아이들의 저녁식사 완료)	; (25 The Children's Dinner complete)	; (25 Das Abendessen der Kinder Abschluss)
+; (25 아이들의 저녁식사 진행)	; (25 The Children's Dinner in progress)	; (25 Das Abendessen der Kinder laufend)
+; (26 악의 화신 마라해적단 1 시작)	; (26 Mara Pirates, Incarnation of Evil 1 start)	; (26 Die Mara-Piraten, Inkarnation des Bösen 1 Start)
+; (26 악의 화신 마라해적단 1 완료)	; (26 Mara Pirates, Incarnation of Evil 1 complete)	; (26 Die Mara-Piraten, Inkarnation des Bösen 1 Abschluss)
+; (26 악의 화신 마라해적단 1 진행)	; (26 Mara Pirates, Incarnation of Evil 1 in progress)	; (26 Die Mara-Piraten, Inkarnation des Bösen 1 laufend)
+; (26 태초의 이야기)	; (26 The Story of the Beginning)	; (26 Die Geschichte des Anbeginns)
+; (27 악의 화신 마라해적단 2 시작)	; (27 Mara Pirates, Incarnation of Evil 2 start)	; (27 Die Mara-Piraten, Inkarnation des Bösen 2 Start)
+; (28 악의 화신 마라해적단 2 완료)	; (28 Mara Pirates, Incarnation of Evil 2 complete)	; (28 Die Mara-Piraten, Inkarnation des Bösen 2 Abschluss)
+; (28 악의 화신 마라해적단 2 진행)	; (28 Mara Pirates, Incarnation of Evil 2 in progress)	; (28 Die Mara-Piraten, Inkarnation des Bösen 2 laufend)
+; (29 악의 화신 마라해적단 3 시작)	; (29 Mara Pirates, Incarnation of Evil 3 start)	; (29 Die Mara-Piraten, Inkarnation des Bösen 3 Start)
+; (29 악의 화신 마라해적단 3 완료)	; (29 Mara Pirates, Incarnation of Evil 3 complete)	; (29 Die Mara-Piraten, Inkarnation des Bösen 3 Abschluss)
+; (29 악의 화신 마라해적단 3 진행)	; (29 Mara Pirates, Incarnation of Evil 3 in progress)	; (29 Die Mara-Piraten, Inkarnation des Bösen 3 laufend)
+; (29 제임스의 신비의 검 시작)	; (29 James's Mystic Sword start)	; (29 James' geheimnisvolles Schwert Start)
+; (3 회복스톤을 사용해 보자)	; (3 Let's use a Recovery Stone)	; (3 Benutzen wir einen Heilstein)
+; (30 제임스의 신비의 검 완료)	; (30 James's Mystic Sword complete)	; (30 James' geheimnisvolles Schwert Abschluss)
+; (30 제임스의 신비의 검 진행)	; (30 James's Mystic Sword in progress)	; (30 James' geheimnisvolles Schwert laufend)
+; (31 영혼을 잃은 아이들 1 시작)	; (31 Children Who Lost Their Souls 1 start)	; (31 Kinder ohne Seele 1 Start)
+; (31 영혼을 잃은 아이들 1 완료)	; (31 Children Who Lost Their Souls 1 complete)	; (31 Kinder ohne Seele 1 Abschluss)
+; (31 영혼을 잃은 아이들 1 진행)	; (31 Children Who Lost Their Souls 1 in progress)	; (31 Kinder ohne Seele 1 laufend)
+; (32 영혼을 잃은 아이들 2 시작)	; (32 Children Who Lost Their Souls 2 start)	; (32 Kinder ohne Seele 2 Start)
+; (32 영혼을 잃은 아이들 2 완료)	; (32 Children Who Lost Their Souls 2 complete)	; (32 Kinder ohne Seele 2 Abschluss)
+; (32 영혼을 잃은 아이들 2 진행)	; (32 Children Who Lost Their Souls 2 in progress)	; (32 Kinder ohne Seele 2 laufend)
+; (33 켄튼의 럭셔리 드레스 시작)	; (33 Kenton's Luxury Dress start)	; (33 Kentons Luxuskleid Start)
+; (33 켄튼의 럭셔리 드레스 완료)	; (33 Kenton's Luxury Dress complete)	; (33 Kentons Luxuskleid Abschluss)
+; (33 켄튼의 럭셔리 드레스 진행)	; (33 Kenton's Luxury Dress in progress)	; (33 Kentons Luxuskleid laufend)
+; (34 말론클랜의 야욕 1 시작)	; (34 Ambition of the Malon Clan 1 start)	; (34 Die Gier des Malon-Clans 1 Start)
+; (34 말론클랜의 야욕 1 완료 경비대장 슈티안)	; (34 Ambition of the Malon Clan 1 complete - Guard Captain Shutian)	; (34 Die Gier des Malon-Clans 1 Abschluss - Wachhauptmann Shutian)
+; (34 말론클랜의 야욕 1 진행)	; (34 Ambition of the Malon Clan 1 in progress)	; (34 Die Gier des Malon-Clans 1 laufend)
+; (35 말론클랜의 야욕 2 시작)	; (35 Ambition of the Malon Clan 2 start)	; (35 Die Gier des Malon-Clans 2 Start)
+; (35 말론클랜의 야욕 2 완료)	; (35 Ambition of the Malon Clan 2 complete)	; (35 Die Gier des Malon-Clans 2 Abschluss)
+; (35 말론클랜의 야욕 2 진행)	; (35 Ambition of the Malon Clan 2 in progress)	; (35 Die Gier des Malon-Clans 2 laufend)
+; (36 말론클랜의 야욕 3 시작)	; (36 Ambition of the Malon Clan 3 start)	; (36 Die Gier des Malon-Clans 3 Start)
+; (36 말론클랜의 야욕 3 완료)	; (36 Ambition of the Malon Clan 3 complete)	; (36 Die Gier des Malon-Clans 3 Abschluss)
+; (36 말론클랜의 야욕 3 진행)	; (36 Ambition of the Malon Clan 3 in progress)	; (36 Die Gier des Malon-Clans 3 laufend)
+; (37 말론클랜의 야욕 4 시작)	; (37 Ambition of the Malon Clan 4 start)	; (37 Die Gier des Malon-Clans 4 Start)
+; (37 말론클랜의 야욕 4 완료)	; (37 Ambition of the Malon Clan 4 complete)	; (37 Die Gier des Malon-Clans 4 Abschluss)
+; (37 말론클랜의 야욕 4 진행)	; (37 Ambition of the Malon Clan 4 in progress)	; (37 Die Gier des Malon-Clans 4 laufend)
+; (4 루메너스가 제임스에게 가보라고 한다)	; (4 Roumenus tells you to go see James)	; (4 Roumenus schickt dich zu James)
+; (머쉬룸 8마리 잡자고)	; (Let's hunt 8 Mushrooms)	; (Erlegen wir 8 Pilze)
+; (머쉬룸 8마리 축하해 주자고)	; (Let's congratulate on the 8 Mushrooms)	; (Gratulieren wir zu den 8 Pilzen)
+; (무기 타이틀 다시 찾아 왔을 때)	; (When returning about the weapon title)	; (Wenn man wegen des Waffentitels zurückkommt)
+; (무기 타이틀 완료)	; (Weapon title complete)	; (Waffentitel abgeschlossen)
+; (무기타이틀 등록 해봐)	; (Try registering a weapon title)	; (Registriere einen Waffentitel)
+; (무기타이틀창 열어봐)	; (Open the weapon title window)	; (Öffne das Waffentitelfenster)
+; (무기타이틀창 축하해줘야지)	; (Congratulate on the weapon title window)	; (Zum Waffentitelfenster gratulieren)
+; (스킬을 다시 배우러 왔을 때 완료)	; (Returning to learn a skill again - complete)	; (Erneut zum Fertigkeitenlernen zurückgekehrt - Abschluss)
+; (스킬을 다시 배우러 왔을 때)	; (Returning to learn a skill again)	; (Erneut zum Fertigkeitenlernen zurückgekehrt)
+; (스킬을 배우고 등록해야지, 스킬을 숏컷에 올려 놓기)	; (Learn a skill and register it - put the skill on the shortcut bar)	; (Fertigkeit lernen und registrieren - Fertigkeit in die Schnellleiste legen)
+; (슬라임 10마리 잡자고)	; (Let's hunt 10 Slimes)	; (Erlegen wir 10 Schleime)
+; (슬라임 10마리 축하해줘야지)	; (Congratulate on the 10 Slimes)	; (Zu den 10 Schleimen gratulieren)
+; (아이템 제련 완료)	; (Item refinement complete)	; (Itemveredelung abgeschlossen)
+; (아이템 제련 축하해 줘야지)	; (Congratulate on the item refinement)	; (Zur Itemveredelung gratulieren)
+; (아이템 제련을 다시 찾아왔을 때)	; (When returning about item refinement)	; (Wenn man wegen der Itemveredelung zurückkommt)
+; (아이템 제련창을 열어야지)	; (Open the item refinement window)	; (Das Itemveredelungsfenster öffnen)
+; (임프 10마리 잡아야지)	; (Hunt 10 Imps)	; (10 Imps erlegen)
+; (임프 10마리 축하해줘야지)	; (Congratulate on the 10 Imps)	; (Zu den 10 Imps gratulieren)
+; (임프 1마리 잡자고)	; (Let's hunt 1 Imp)	; (Erlegen wir 1 Imp)
+; (임프 1마리 축하해 주자고)	; (Let's congratulate on the 1 Imp)	; (Gratulieren wir zu dem 1 Imp)
+; (킹덤 퀘스트 잘 다녀왔니)	; (Did the Kingdom Quest go well?)	; (Ist die Königreichsquest gut gelaufen?)
+; (킹덤 퀘스트 참가해야지)	; (Join the Kingdom Quest)	; (An der Königreichsquest teilnehmen)
+; 3 (쥴리아에게 대화하기)	; 3 (Talk to Julia)	; 3 (Mit Julia sprechen)
+; 4 (소울스톤 사용해보기)	; 4 (Try using a Soul Stone)	; 4 (Einen Seelenstein benutzen)
+Apprentice of Aquarius트윙클어택	Apprentice of Aquarius Twinkle Attack	Lehrling des Aquarius: Funkelangriff
+Apprentice of Neptune라이트닝볼트	Apprentice of Neptune Lightning Bolt	Lehrling des Neptun: Blitzschlag
+Beauty Shop (준비중)	Beauty Shop (Coming Soon)	Beauty Shop (in Vorbereitung)
+Guardian of Aquarius트윙클어택	Guardian of Aquarius Twinkle Attack	Wächter des Aquarius: Funkelangriff
+Guardian of Neptune파이어볼트	Guardian of Neptune Fire Bolt	Wächter des Neptun: Feuerblitz
+HP 가 20% 이하 일때 마법 공격력 증가	Increases magic attack when HP is 20% or less	Erhöht den magischen Angriff, wenn die HP bei 20% oder weniger liegen
+HP 가 20% 이하 일때 마법 방어력 증가	Increases magic defense when HP is 20% or less	Erhöht die magische Verteidigung, wenn die HP bei 20% oder weniger liegen
+HP 가 20% 이하 일때 물리 공격력 증가	Increases physical attack when HP is 20% or less	Erhöht den physischen Angriff, wenn die HP bei 20% oder weniger liegen
+HP 가 20% 이하 일때 물리 방어력 증가	Increases physical defense when HP is 20% or less	Erhöht die physische Verteidigung, wenn die HP bei 20% oder weniger liegen
+HP 가 20% 이하 일때 이동 속도 증가	Increases movement speed when HP is 20% or less	Erhöht das Bewegungstempo, wenn die HP bei 20% oder weniger liegen
+HP 가 20% 이하 일때 주변 파티원의 공격 속도 증가	Increases attack speed of nearby party members when HP is 20% or less	Erhöht das Angriffstempo naher Gruppenmitglieder, wenn die HP bei 20% oder weniger liegen
+HP 가 20% 이하 일때 평타 공격 속도 증가	Increases basic attack speed when HP is 20% or less	Erhöht das Tempo normaler Angriffe, wenn die HP bei 20% oder weniger liegen
+Zealot of Aquarius트윙클어택	Zealot of Aquarius Twinkle Attack	Eiferer des Aquarius: Funkelangriff
+Zealot of Neptune파이어볼트	Zealot of Neptune Fire Bolt	Eiferer des Neptun: Feuerblitz
+[길드성향변경]스크롤 : 길드의 성향을 전투 가능, 불가능으로 변경할 수있는 마법 스크롤(전쟁 선포 및 전쟁중 사용 불가) [유료아이템]	[Guild Alignment Change] Scroll: A magic scroll that switches your guild's alignment between PvP enabled and PvP disabled (cannot be used after declaring war or during a war) [Premium Item]	[Gildenausrichtung ändern] Schriftrolle: Eine magische Schriftrolle, mit der die Ausrichtung der Gilde zwischen kampfbereit und nicht kampfbereit gewechselt werden kann (nicht nach einer Kriegserklärung oder während eines Krieges verwendbar) [Premium-Item]
+[길드이름변경]스크롤 : 길드의 이름을 새로 만들 수 있는 마법 스크롤(이미 사용되고 있는 길드의 이름으로는 변경 불가) [유료아이템]	[Guild Name Change] Scroll: A magic scroll that lets you give your guild a new name (cannot be changed to a guild name that is already in use) [Premium Item]	[Gildennamen ändern] Schriftrolle: Eine magische Schriftrolle, mit der die Gilde einen neuen Namen erhalten kann (ein bereits verwendeter Gildenname ist nicht möglich) [Premium-Item]
+ㅋ	kk (z key)	kk (Taste z)
+가고일	Gargoyle	Gargoyle
+가구	Furniture	Möbel
+가구 수리 키트 테스트 용(1)	Furniture Repair Kit for Testing (1)	Möbel-Reparaturset zum Testen (1)
+가디언 마스터	Guardian Master	Wächtermeister
+가디언01의 대지 자르기	Guardian 01 Earth Cleave	Wächter 01: Erdspalter
+가디언02의 연속 베기	Guardian 02 Combo Slash	Wächter 02: Serienhieb
+가디언03의 교묘한 일격	Guardian 03 Cunning Strike	Wächter 03: Listiger Schlag
+가디언들의 대지 폭발	Guardians' Earth Explosion	Erdexplosion der Wächter
+강인한 철인의 각성	Steadfast Ironman's Awakening	Erwachen des standhaften Eisernen
+강인한 철인의 결의	Steadfast Ironman's Resolve	Entschlossenheit des standhaften Eisernen
+강인한 철인의 낙인	Steadfast Ironman's Brand	Brandmal des standhaften Eisernen
+강인한 철인의 분노	Steadfast Ironman's Fury	Zorn des standhaften Eisernen
+강인한 철인의 애호	Steadfast Ironman's Devotion	Hingabe des standhaften Eisernen
+강인한 철인의 위용	Steadfast Ironman's Majesty	Pracht des standhaften Eisernen
+강인한 철인의 은공	Steadfast Ironman's Benevolence	Gunst des standhaften Eisernen
+강인한 철인의 흥망	Steadfast Ironman's Rise and Fall	Aufstieg und Fall des standhaften Eisernen
+갬블하우스 npc 머리(골드)	Gamble House NPC Hair (Gold)	Spielhaus-NPC-Frisur (Gold)
+갬블하우스 npc 머리(핑크)	Gamble House NPC Hair (Pink)	Spielhaus-NPC-Frisur (Pink)
+갬블하우스 npc 안경	Gamble House NPC Glasses	Spielhaus-NPC-Brille
+갬블하우스 코스튬(레드)	Gamble House Costume (Red)	Spielhaus-Kostüm (Rot)
+갬블하우스 코스튬(블루)	Gamble House Costume (Blue)	Spielhaus-Kostüm (Blau)
+갬블하우스 코인상점	Gamble House Coin Shop	Münzladen des Gamble House
+거대 샌드 머쉬룸 공격 스킬	Giant Sand Mushroom Attack Skill	Riesiger Sandpilz: Angriffsfertigkeit
+거대한 어둠의 골드 쥬얼키퍼 광역 공격	Giant Dark Gold Jewel Keeper Area Attack	Riesiger dunkler Gold-Juwelenhüter: Flächenangriff
+거대한 어둠의 골드 쥬얼키퍼 단일 공격	Giant Dark Gold Jewel Keeper Single Attack	Riesiger dunkler Gold-Juwelenhüter: Einzelangriff
+거대한 어둠의 립스 광역 공격	Giant Dark Lips Area Attack	Riesiger dunkler Lips: Flächenangriff
+거대한 어둠의 립스 단일 공격	Giant Dark Lips Single Attack	Riesiger dunkler Lips: Einzelangriff
+거대한 어둠의 스파크독 광역 공격	Giant Dark Spark Dog Area Attack	Riesiger dunkler Spark Dog: Flächenangriff
+거대한 어둠의 스파크독 단일 공격	Giant Dark Spark Dog Single Attack	Riesiger dunkler Spark Dog: Einzelangriff
+거대한 어둠의 아콘 광역 공격	Giant Dark Archon Area Attack	Riesiger dunkler Archon: Flächenangriff
+거대한 어둠의 아콘 단일 공격	Giant Dark Archon Single Attack	Riesiger dunkler Archon: Einzelangriff
+거대한 쥬얼키퍼 광역 공격	Giant Jewel Keeper Area Attack	Riesiger Juwelenhüter: Flächenangriff
+거대한 쥬얼키퍼 단일 공격	Giant Jewel Keeper Single Attack	Riesiger Juwelenhüter: Einzelangriff
+거품방울_자폭	Foam Bubble Self-Destruct	Schaumblase: Selbstzerstörung
+검	Sword	Schwert
+게이트	Gate	Tor
+게임	Game	Spiel
+게임 매니저	Game Manager	Spielleiter
+게임머니, 캐쉬, 가지고 있는 진귀한 아이템 이런것들은 절대 사절이야.	No money, cash or rare items!	Spielgeld, Cash oder seltene Items, die du besitzt, nehme ich auf keinen Fall an.
+경보석 스킬 1	Alarm Stone Skill 1	Alarmstein: Fertigkeit 1
+경험치보너스	ExpBonus	EP-Bonus
+고결한 정령의 분노	Noble Spirit's Fury	Zorn des edlen Geistes
+고결한 정령의 은공	Noble Spirit's Benevolence	Gunst des edlen Geistes
+고귀한 수라의 각성	Exalted Asura's Awakening	Erwachen des erhabenen Asura
+고귀한 수라의 결의	Exalted Asura's Resolve	Entschlossenheit des erhabenen Asura
+고귀한 수라의 기적	Exalted Asura's Miracle	Wunder des erhabenen Asura
+고귀한 수라의 낙인	Exalted Asura's Brand	Brandmal des erhabenen Asura
+고귀한 수라의 애호	Exalted Asura's Devotion	Hingabe des erhabenen Asura
+고귀한 수라의 연마	Exalted Asura's Discipline	Läuterung des erhabenen Asura
+고귀한 수라의 위용	Exalted Asura's Majesty	Pracht des erhabenen Asura
+고귀한 수라의 인도	Exalted Asura's Guidance	Führung des erhabenen Asura
+고급의 광속의 세트	Advanced Lightspeed Set	Fortgeschrittenes Lichtgeschwindigkeits-Set
+고급의 광휘의 세트	Advanced Radiance Set	Fortgeschrittenes Glanz-Set
+고급의 동화의 세트	Advanced Assimilation Set	Fortgeschrittenes Assimilations-Set
+고급의 불꽃의 세트	Advanced Flame Set	Fortgeschrittenes Flammen-Set
+고급의 윈디스 세트	Advanced Windys Set	Fortgeschrittenes Windys-Set
+고급의 자연의 세트	Advanced Nature Set	Fortgeschrittenes Natur-Set
+고급의 질풍의 세트	Advanced Gale Set	Fortgeschrittenes Sturmwind-Set
+고급의 축복의 세트	Advanced Blessing Set	Fortgeschrittenes Segens-Set
+고급의 투혼의 세트	Advanced Fighting Spirit Set	Fortgeschrittenes Kampfgeist-Set
+고급의 헬파이어 세트	Advanced Hellfire Set	Fortgeschrittenes Höllenfeuer-Set
+고급의 현자의 세트	Advanced Sage Set	Fortgeschrittenes Weisen-Set
+고급의 혈류의 세트	Advanced Bloodstream Set	Fortgeschrittenes Blutstrom-Set
+고대 엘프의 사악한 혼 스턴 스킬	Vicious Ancient Elf Spirit Stun Skill	Bösartige Seele des alten Elfen: Betäubung
+고대 엘프의 사악한 혼 힐링	Vicious Ancient Elf Spirit Heal	Bösartige Seele des alten Elfen: Heilung
+고대 엘프의 원혼 공격 스킬	Ancient Elf Vengeful Spirit Attack Skill	Rachegeist des alten Elfen: Angriffsfertigkeit
+고대 엘프의 타락한 혼 공격 스킬	Fallen Ancient Elf Spirit Attack Skill	Gefallene Seele des alten Elfen: Angriffsfertigkeit
+고대 엘프의 타락한 혼 힐링	Fallen Ancient Elf Spirit Heal	Gefallene Seele des alten Elfen: Heilung
+고대 엘프의 혼	Soul of the Ancient Elf	Seele des uralten Elfen
+고대 엘프의 혼 공격 스킬	Ancient Elf Spirit Attack Skill	Seele des alten Elfen: Angriffsfertigkeit
+고문관	Torturer	Folterknecht
+고블린	Goblin	Goblin
+고블린 메이지	Goblin Mage	Goblin-Magier
+고블린 캡틴	Goblin Captain	Goblin-Hauptmann
+고블킹	Gobking	Gobking
+고스트	Ghost	Geist
+고스트 깨빙 공격 스킬	Ghost Kebing Attack Skill	Geister-Kebing: Angriffsfertigkeit
+고스트 나이트	Ghost Knight	Geisterritter
+고스트 럼프 공격 스킬	Ghost Lump Attack Skill	Geister-Lump: Angriffsfertigkeit
+고위 리치 광기 디버프	High Lich Madness Debuff	Hoher Lich: Wahnsinn-Debuff
+곤봉	Mace	Keule
+골드 슬라임	Gold Slime	Goldschleim
+골렘	Golem	Golem
+공간의 감시자 1호	Space Watcher No. 1	Raumwächter Nr. 1
+공간의 감시자 2호	Space Watcher No. 2	Raumwächter Nr. 2
+공간의 경계병 1호	Space Sentinel No. 1	Raumposten Nr. 1
+공간의 경계병 2호	Space Sentinel No. 2	Raumposten Nr. 2
+공간의감시자1호의 강력한 화염	Space Watcher No.1 Mighty Flame	Raumwächter Nr. 1: Mächtige Flamme
+공간의감시자1호의 비명	Space Watcher No.1 Scream	Raumwächter Nr. 1: Schrei
+공간의감시자2호의 강력한 화염	Space Watcher No.2 Mighty Flame	Raumwächter Nr. 2: Mächtige Flamme
+공간의감시자2호의 마비	Space Watcher No.2 Paralysis	Raumwächter Nr. 2: Lähmung
+공간의감시자2호의 비명	Space Watcher No.2 Scream	Raumwächter Nr. 2: Schrei
+공간의경계병1호의 강력한 공격	Space Sentry No.1 Mighty Attack	Raumposten Nr. 1: Mächtiger Angriff
+공간의경계병1호의 강력한 광역 공격	Space Sentry No.1 Mighty Area Attack	Raumposten Nr. 1: Mächtiger Flächenangriff
+공간의경계병1호의 분노	Space Sentry No.1 Rage	Raumposten Nr. 1: Zorn
+공간의경계병2호의 강력한 공격	Space Sentry No.2 Mighty Attack	Raumposten Nr. 2: Mächtiger Angriff
+공간의경계병2호의 강력한 광역 공격	Space Sentry No.2 Mighty Area Attack	Raumposten Nr. 2: Mächtiger Flächenangriff
+공간의경계병2호의 분노	Space Sentry No.2 Rage	Raumposten Nr. 2: Zorn
+공격형[그레이연미복/스카이드레스](15일)	Attack Type [Gray Tailcoat/Sky Dress] (15 Days)	Angriffstyp [Grauer Frack/Himmelskleid] (15 Tage)
+공격형[그레이연미복/스카이드레스](30일)	Attack Type [Gray Tailcoat/Sky Dress] (30 Days)	Angriffstyp [Grauer Frack/Himmelskleid] (30 Tage)
+광역 재우기	Area Sleep	Flächenschlaf
+괴성 폭발	Screech Blast	Kreischexplosion
+교주 마그리트	Cult Leader Magrit	Kultführer Magrit
+그레이트 토네이도 슬로우	Great Tornado Slow	Großer Tornado: Verlangsamung
+그리핀 무버	Griffin Mover	Greifen-Reittier
+그린키	Greenky	Greenky
+그림자크루얼남자_웨폰블라스트08	Shadow Cruel (Male) Weapon Blast 08	Schatten-Cruel (männlich): Waffenexplosion 08
+그림자크루얼여자_웨폰블라스트08	Shadow Cruel (Female) Weapon Blast 08	Schatten-Cruel (weiblich): Waffenexplosion 08
+근거리 범위 공격	Melee Area Attack	Nahkampf-Flächenangriff
+금화	Gold Coin	Goldmünze
+길드 성향 변경 스크롤	Guild Alignment Change Scroll	Schriftrolle: Gildenausrichtung ändern
+길드 이름 뱐경 스크롤	Guild Name Change Scroll	Schriftrolle: Gildennamen ändern
+까칠한 핑키 힐링	Fastidious Pinky Heal	Pingeliger Pinky: Heilung
+깨빙	Kebing	Kebing
+나는야~갬블하우스 코인상인!! 다양한 아이템을 팔고 있어.	I'm the Gamble House coin merchant!! I sell all kinds of items.	Ich bin der Münzhändler des Gamble House!! Ich verkaufe die verschiedensten Items.
+나바르	Navar	Navar
+나이아스 소울	Naias Soul	Naias-Seele
+난폭한 레오파드 공격력 증가 / 방어력 감소	Wild Leopard ATK Up / DEF Down	Wilder Leopard: ANG erhöht / VERT gesenkt
+난폭한 레오파드 출혈	Wild Leopard Bleed	Wilder Leopard: Blutung
+내려찍기	Downward Smash	Niederschmettern
+냉기의 근접 마계 병기	Frost Melee Demon Weapon	Frost-Nahkampf-Dämonenwaffe
+냉기의 마계병사 평타	Frost Demon Soldier Basic Attack	Frost-Dämonensoldat: Normaler Angriff
+냉기의 원거리 마계 병기	Frost Ranged Demon Weapon	Frost-Fernkampf-Dämonenwaffe
+냉기의 이동 마계 병기	Frost Mobile Demon Weapon	Frost-Bewegungs-Dämonenwaffe
+넉백 범위 100	Knockback Range 100	Rückstoß, Reichweite 100
+넉백 범위 200	Knockback Range 200	Rückstoß, Reichweite 200
+네르파	Nerpa	Nerpa
+네피림	Nephilim	Nephilim
+녹스	Nox	Nox
+뇌전의 스켈레톤 소환	Summon Thunder Skeleton	Donnerskelett beschwören
+뇌전의 스켈레톤 챔피언 소환	Summon Thunder Skeleton Champion	Donnerskelett-Champion beschwören
+뇌전의스켈레톤스킬1	Thunder Skeleton Skill 1	Donnerskelett: Fertigkeit 1
+뇌전의스켈레톤참피언스킬1	Thunder Skeleton Champion Skill 1	Donnerskelett-Champion: Fertigkeit 1
+다시 인간으로 돌아갑니다! (텍스트 색상 : 검은색)	Returning to human form! (Text color: black)	Du wirst wieder zum Menschen! (Textfarbe: Schwarz)
+다연발 화염 브레스	Multi Fire Breath	Mehrfacher Feueratem
+다이아 몬드 트리	Diamond Tree	Diamantbaum
+다이아 트럼피	Diamond Trumpy	Karo-Trumpy
+다이아몬트리 공격 스킬	Diamond Tree Attack Skill	Diamantbaum: Angriffsfertigkeit
+다중 토네이도	Multi Tornado	Mehrfachtornado
+다크 리치 공격01	Dark Lich Attack 01	Dunkler Lich: Angriff 01
+다크 리치 공격02	Dark Lich Attack 02	Dunkler Lich: Angriff 02
+다크 리치 침묵	Dark Lich Silence	Dunkler Lich: Stille
+다크 섀도우	Dark Shadow	Dunkler Schatten
+다크 에이프공격	Dark Ape Attack	Dunkler Affe: Angriff
+다크 포그	Dark Fog	Dunkler Nebel
+단단한 껍질의 립스1 광역 공격	Hard-Shell Lips 1 Area Attack	Hartschalen-Lips 1: Flächenangriff
+단단한 껍질의 립스1 단일 공격	Hard-Shell Lips 1 Single Attack	Hartschalen-Lips 1: Einzelangriff
+단단한 껍질의 립스2 광역 공격	Hard-Shell Lips 2 Area Attack	Hartschalen-Lips 2: Flächenangriff
+단단한 껍질의 립스2 단일 공격	Hard-Shell Lips 2 Single Attack	Hartschalen-Lips 2: Einzelangriff
+단단한 붉은 스토니 광역 공격	Hard Red Stonie Area Attack	Harter roter Stonie: Flächenangriff
+단단한 붉은 스토니 단일 공격	Hard Red Stonie Single Attack	Harter roter Stonie: Einzelangriff
+단단한 스토니 광역 공격	Hard Stonie Area Attack	Harter Stonie: Flächenangriff
+단단한 스토니 단일 공격	Hard Stonie Single Attack	Harter Stonie: Einzelangriff
+단일 강공격	Heavy Single Attack	Schwerer Einzelangriff
+달걀폭탄 자폭	Egg Bomb Self-Destruct	Eierbombe: Selbstzerstörung
+달걀폭탄 투척	Throw Egg Bomb	Eierbombe werfen
+달빛 술이 가득 담긴 술통 [퀘스트 아이템]	A barrel filled with moonlight wine [Quest Item]	Ein Fass voller Mondlichtwein [Quest-Item]
+달빛 술통	Moonlight Wine Barrel	Mondlicht-Weinfass
+대장장이 한스의 증표	Blacksmith Hans' Token	Abzeichen des Schmieds Hans
+대지의 캐러벤	Caraven of the Earth	Caraven der Erde
+더스트 골렘	Dust Golem	Staubgolem
+더스트 골렘 공격스킬1	Dust Golem Attack Skill 1	Staubgolem: Angriffsfertigkeit 1
+더스트 골렘 공격스킬2	Dust Golem Attack Skill 2	Staubgolem: Angriffsfertigkeit 2
+더스트 골렘 광역스킬1	Dust Golem Area Skill 1	Staubgolem: Flächenfertigkeit 1
+더스트 골렘 버프	Dust Golem Buff	Staubgolem: Buff
+데스나이트	Death Knight	Todesritter
+데스나이트 에피스	Death Knight Epis	Todesritter Epis
+도굴꾼	Grave Robber	Grabräuber
+도끼	Axe	Axt
+도플갱어 너스 공격 스킬	Doppelganger Nus Attack Skill	Doppelgänger Nus: Angriffsfertigkeit
+도플갱어 루비 공격 스킬	Doppelganger Rubi Attack Skill	Doppelgänger Rubi: Angriffsfertigkeit
+도플갱어 마리아 공격 스킬	Doppelganger Maria Attack Skill	Doppelgänger Maria: Angriffsfertigkeit
+도플갱어 브란 공격 스킬	Doppelganger Bran Attack Skill	Doppelgänger Bran: Angriffsfertigkeit
+도플갱어 싸이번 공격 스킬	Doppelganger Chyburn Attack Skill	Doppelgänger Chyburn: Angriffsfertigkeit
+도플갱어 싸이번 광역 공격	Doppelganger Chyburn Area Attack	Doppelgänger Chyburn: Flächenangriff
+도플갱어 아드리엔 광역 공격	Doppelganger Adrien Area Attack	Doppelgänger Adrien: Flächenangriff
+도플갱어 아드리엔 마나 번	Doppelganger Adrien Mana Burn	Doppelgänger Adrien: Manabrand
+도플갱어 아드리엔 힐링	Doppelganger Adrien Heal	Doppelgänger Adrien: Heilung
+도플갱어 위시스 광역 공격	Doppelganger Wishis Area Attack	Doppelgänger Wishis: Flächenangriff
+도플갱어 위시스 소환 스킬	Doppelganger Wishis Summon Skill	Doppelgänger Wishis: Beschwörung
+도플갱어 자크 공격 스킬	Doppelganger Zach Attack Skill	Doppelgänger Zach: Angriffsfertigkeit
+도플갱어 한스 스턴 스킬	Doppelganger Hans Stun Skill	Doppelgänger Hans: Betäubung
+돌아온 모험가의 무버 (3Days)	Returner's Mover (3Days)	Reittier des zurückgekehrten Abenteurers (3 Tage)
+돌연변이 스파이더 공격 스킬	Mutant Spider Attack Skill	Mutantenspinne: Angriffsfertigkeit
+돌진 공격1	Charge Attack 1	Sturmangriff 1
+돌진 공격2	Charge Attack 2	Sturmangriff 2
+두더지	Mole	Maulwurf
+두목 원숭이 넉백	Boss Monkey Knockback	Affenboss: Rückstoß
+떡국	Rice Cake Soup	Reiskuchensuppe
+띄우기 1.5초	Knock-Up 1.5s	Hochschleudern 1,5 Sek.
+라이노스	Rhinos	Rhinos
+라이노스 로드	Rhinos Lord	Rhinos-Lord
+라이노스 헌터	Rhinos Hunter	Rhinos-Jäger
+라파엘의 약병	Raphael's Medicine Bottle	Raphaels Medizinfläschchen
+라플랜	Raplan	Raplan
+라플랜 프린세스 공격 스킬	Raplan Princess Attack Skill	Raplan-Prinzessin: Angriffsfertigkeit
+라플랜 프린스 스턴 스킬	Raplan Prince Stun Skill	Raplan-Prinz: Betäubung
+라플랜시아의 꿀	Raplansia Honey	Raplansia-Honig
+라플랜시아의 더욱 달콤하고 향긋한 꿀 [퀘스트 아이템]	Raplansia's even sweeter and more fragrant honey [Quest Item]	Der noch süßere und duftendere Honig der Raplansia [Quest-Item]
+라플랜의 꿀	Raplan Honey	Raplan-Honig
+라플랜의 달콤하고 향기로운 꿀 [퀘스트 아이템]	Raplan's sweet and fragrant honey [Quest Item]	Süßer, duftender Honig des Raplan [Quest-Item]
+랜덤 옵션 테스트용 Axe	Random Option Test Axe	Zufallsoptions-Test-Axt
+랜덤 옵션 테스트용 Bow	Random Option Test Bow	Zufallsoptions-Test-Bogen
+랜덤 옵션 테스트용 Claws	Random Option Test Claws	Zufallsoptions-Test-Klauen
+랜덤 옵션 테스트용 Crossbow	Random Option Test Crossbow	Zufallsoptions-Test-Armbrust
+랜덤 옵션 테스트용 Dual Swords	Random Option Test Dual Swords	Zufallsoptions-Test-Doppelschwerter
+랜덤 옵션 테스트용 Hammer	Random Option Test Hammer	Zufallsoptions-Test-Hammer
+랜덤 옵션 테스트용 Mace	Random Option Test Mace	Zufallsoptions-Test-Streitkolben
+랜덤 옵션 테스트용 Staff	Random Option Test Staff	Zufallsoptions-Test-Stab
+랜덤 옵션 테스트용 Sword	Random Option Test Sword	Zufallsoptions-Test-Schwert
+랜덤 옵션 테스트용 T Sword	Random Option Test T Sword	Zufallsoptions-Test-Zweihandschwert
+랜덤 옵션 테스트용 Wand	Random Option Test Wand	Zufallsoptions-Test-Zauberstab
+랫맨	Ratman	Rattenmann
+러닝바스	Running Bass	Running Bass
+럭키 캡슐로 다양한 아이템 중 하나를 내손안에!!	Lucky Capsule: win an item!!	Mit der Glückskapsel eines von vielen Items in meine Hände!!
+레드 섀도우	Red Shadow	Roter Schatten
+레드 콘돌	Red Condor	Roter Kondor
+레드닉스	Rednix	Rednix
+레드콘돌의 끈적하고 붉은 피 [퀘스트 아이템]	Red Condor's sticky red blood [Quest Item]	Klebriges rotes Blut des Roten Kondors [Quest-Item]
+레드콘돌의 피	Red Condor Blood	Blut des Roten Kondors
+레미의 증표	Remi's Token	Remis Abzeichen
+레비아탄	Leviathan	Leviathan
+레오파드	Leopard	Leopard
+레오파드 공격력증가버프스킬	Leopard ATK Up Buff Skill	Leopard: Angriffskraft-Buff
+레오파드 출혈공격	Leopard Bleed Attack	Leopard: Blutungsangriff
+레이스 유령 공격	Wraith Ghost Attack	Wraith-Geist: Angriff
+레이푼	Raypoon	Raypoon
+레이푼 시야가리는 스킬	Leipoon Blinding Skill	Leipoon: Blendung
+레전드 트리	Legend Tree	Legendenbaum
+렌스	Lens	Lens
+로드 아이언 골램 공격스킬1	Lord Iron Golem Attack Skill 1	Lord-Eisengolem: Angriffsfertigkeit 1
+로드 아이언 골램 공격스킬2	Lord Iron Golem Attack Skill 2	Lord-Eisengolem: Angriffsfertigkeit 2
+로드 아이언 골램 광역스킬1	Lord Iron Golem Area Skill 1	Lord-Eisengolem: Flächenfertigkeit 1
+로드 아이언 골램 버프	Lord Iron Golem Buff	Lord-Eisengolem: Buff
+로드 아이언 골렘	Lord Iron Golem	Lord-Eisengolem
+로보	Robo	Robo
+록크 스톤	Rock Stone	Felsstein
+록크 스톤 스턴 스킬	Rock Stone Stun Skill	Rock: Stein-Betäubung
+록크 파워삼지창	Rock Power Trident	Rock: Kraft-Dreizack
+록크 포효	Rock Roar	Rock: Gebrüll
+루가	Luga	Luga
+루멘 아이템 상인 페이가 몬스터에게 도둑맞은 춘련.[이벤트 아이템]	Spring couplets that Roumen item merchant Pey had stolen by monsters. [Event Item]	Frühlingsspruchbänder, die Monster dem Roumen-Itemhändler Pey gestohlen haben. [Event-Item]
+루비 가디언	Ruby Guardian	Rubinwächter
+리빙 스태츄	Living Statue	Lebende Statue
+리자드맨	Lizardman	Echsenmann
+리자드맨 나이트	Lizardman Knight	Echsenmann-Ritter
+리틀 미믹 공격 스킬	Little Mimic Attack Skill	Kleiner Mimic: Angriffsfertigkeit
+립스	Lips	Lips
+마계 병기	Demonic Weapon	Dämonische Waffe
+마계 병사	Demon Soldier	Dämonensoldat
+마그리트 교단 광신도	Magrit Cult Fanatic	Fanatiker des Magrit-Kults
+마그리트 교단 신도	Magrit Cult Follower	Anhänger des Magrit-Kults
+마그리트 교단 전도사	Magrit Cult Preacher	Prediger des Magrit-Kults
+마그마톤	Magmaton	Magmaton
+마라	Mara	Mara
+마라해적단 정예 공격 스킬	Mara Pirate Elite Attack Skill	Mara-Piraten-Elite: Angriffsfertigkeit
+마룡 소환	Summon Demon Dragon	Dämonendrache beschwören
+마법생명형 몬스터 공격시 공격 데미지 10% 증가	Increases damage dealt to Magical Life monsters by 10%	Erhöht den Schaden gegen magische Lebewesen um 10%
+마법생명형 몬스터에게 피격시 피해 데미지 10% 감소	Reduces damage taken from Magical Life monsters by 10%	Verringert den erlittenen Schaden durch magische Lebewesen um 10%
+마법에 면역된 걸린 뱃 광역 공격	Magic-Immune Bat Area Attack	Magieimmune Fledermaus: Flächenangriff
+마법에 면역된 걸린 뱃 단일 공격	Magic-Immune Bat Single Attack	Magieimmune Fledermaus: Einzelangriff
+마법에 면역된 고블린 소드맨 광역 공격	Magic-Immune Goblin Swordsman Area Attack	Magieimmuner Goblin-Schwertkämpfer: Flächenangriff
+마법에 면역된 고블린 소드맨 단일 공격	Magic-Immune Goblin Swordsman Single Attack	Magieimmuner Goblin-Schwertkämpfer: Einzelangriff
+마법에 면역된 뱀파이어 뱃 광역 공격	Magic-Immune Vampire Bat Area Attack	Magieimmune Vampirfledermaus: Flächenangriff
+마법에 면역된 뱀파이어 뱃 단일 공격	Magic-Immune Vampire Bat Single Attack	Magieimmune Vampirfledermaus: Einzelangriff
+마법에에 면역된 도굴꾼 광역 공격	Magic-Immune Tomb Raider Area Attack	Magieimmuner Grabräuber: Flächenangriff
+마법에에 면역된 도굴꾼 단일 공격	Magic-Immune Tomb Raider Single Attack	Magieimmuner Grabräuber: Einzelangriff
+마블북 10권 공격 스킬	Marvel Book Vol. 10 Attack Skill	Marvel-Buch Band 10: Angriffsfertigkeit
+마블북 1권 공격 스킬	Marvel Book Vol. 1 Attack Skill	Marvel-Buch Band 1: Angriffsfertigkeit
+마블북 2권 공격 스킬	Marvel Book Vol. 2 Attack Skill	Marvel-Buch Band 2: Angriffsfertigkeit
+마블북 3권 공격 스킬	Marvel Book Vol. 3 Attack Skill	Marvel-Buch Band 3: Angriffsfertigkeit
+마블북 4권 공격 스킬	Marvel Book Vol. 4 Attack Skill	Marvel-Buch Band 4: Angriffsfertigkeit
+마블북 5권 공격 스킬	Marvel Book Vol. 5 Attack Skill	Marvel-Buch Band 5: Angriffsfertigkeit
+마블북 6권 공격 스킬	Marvel Book Vol. 6 Attack Skill	Marvel-Buch Band 6: Angriffsfertigkeit
+마블북 7권 공격 스킬	Marvel Book Vol. 7 Attack Skill	Marvel-Buch Band 7: Angriffsfertigkeit
+마블북 8권 공격 스킬	Marvel Book Vol. 8 Attack Skill	Marvel-Buch Band 8: Angriffsfertigkeit
+마블북 9권 공격 스킬	Marvel Book Vol. 9 Attack Skill	Marvel-Buch Band 9: Angriffsfertigkeit
+마블북 부록 공격 스킬	Marvel Book Appendix Attack Skill	Marvel-Buch Anhang: Angriffsfertigkeit
+마이너	Miner	Bergarbeiter
+만드라고라 공격 스킬	Mandragora Attack Skill	Mandragora: Angriffsfertigkeit
+말론	Malon	Malon
+말론클랜 메가톤	Malon Clan Megaton	Malon-Clan-Megaton
+말론클랜 아쳐	Malon Clan Archer	Malon-Clan-Bogenschütze
+말론클랜 캡틴	Malon Clan Captain	Malon-Clan-Hauptmann
+말론클랜 파이터	Malon Clan Fighter	Malon-Clan-Kämpfer
+맑은 빛이 서린 정령의 유리병 [퀘스트 아이템]	A spirit's glass bottle shimmering with clear light [Quest Item]	Ein Geisterglasfläschchen, in dem klares Licht schimmert [Quest-Item]
+망치	Hammer	Hammer
+맞으면 눈사람으로 변신	Turns Target into Snowman on Hit	Verwandelt bei Treffer in einen Schneemann
+맞으면 동결	Freezes Target on Hit	Friert bei Treffer ein
+매드 슬러그	Mad Slug	Irre Schnecke
+맨드레이크	Mandrake	Alraune
+맨트랩 플랜트	Mantrap Plant	Menschenfallenpflanze
+머드맨	Mudman	Schlammmann
+머쉬룸	Mushroom	Pilz
+멋진 아이템을 나에게로!!	Bring the awesome items to me!!	Her mit den tollen Items!!
+메이지 북	Mage Book	Magierbuch
+명예로운 생명의 각성	Honorable Life's Awakening	Erwachen des ehrenvollen Lebens
+명예로운 생명의 결의	Honorable Life's Resolve	Entschlossenheit des ehrenvollen Lebens
+명예로운 생명의 낙인	Honorable Life's Brand	Brandmal des ehrenvollen Lebens
+명예로운 생명의 분노	Honorable Life's Fury	Zorn des ehrenvollen Lebens
+명예로운 생명의 애호	Honorable Life's Devotion	Hingabe des ehrenvollen Lebens
+명예로운 생명의 위용	Honorable Life's Majesty	Pracht des ehrenvollen Lebens
+명예로운 생명의 은공	Honorable Life's Benevolence	Gunst des ehrenvollen Lebens
+명예로운 생명의 은총	Honorable Life's Grace	Gnade des ehrenvollen Lebens
+몹추적	TrackMob	Monster verfolgen
+무적	Invincible	Unverwundbarkeit
+문 하피 포효 스킬	Moon Harpy Roar Skill	Mondharpyie: Gebrüll
+물기둥	Water Pillar	Wassersäule
+물의파동	Water Wave	Wasserwoge
+물풍선 스턴	Water Balloon Stun	Wasserballon: Betäubung
+미니 드래곤	Mini Dragon	Minidrache
+미니 드레곤(올 스텟 +10)[킹덤 퉤스트 아이템]	Mini Dragon (All Stats +10) [Kingdom Quest Item]	Mini-Drache (Alle Werte +10) [Königreichsquest-Item]
+미니드래곤_리젠후 착륙	Mini Dragon Landing After Respawn	Minidrache: Landung nach dem Erscheinen
+미니드래곤_메테오	Mini Dragon Meteor	Minidrache: Meteor
+미니드래곤_소환_둘다	Mini Dragon Summon Both	Minidrache: Beide beschwören
+미니드래곤_소환_불	Mini Dragon Summon Fire	Minidrache: Feuer beschwören
+미니드래곤_소환_얼음	Mini Dragon Summon Ice	Minidrache: Eis beschwören
+미니드래곤_평타	Mini Dragon Basic Attack	Minidrache: Normaler Angriff
+미니드래곤_폭발	Mini Dragon Explosion	Minidrache: Explosion
+미니드래곤_화염방사	Mini Dragon Flamethrower	Minidrache: Flammenwerfer
+미니드레곤	Mini Dragon	Minidrache
+미믹	Mimic	Mimik
+미스트 버프 해제	Mist Buff Removal	Nebel: Buff-Entfernung
+미스트 유령 공격	Mist Ghost Attack	Nebelgeist: Angriff
+미완성실험체의 강력한 공격	Unfinished Test Subject Mighty Attack	Unvollendetes Versuchsobjekt: Mächtiger Angriff
+미완성실험체의 강력한 광역 공격	Unfinished Test Subject Mighty Area Attack	Unvollendetes Versuchsobjekt: Mächtiger Flächenangriff
+미완성실험체의 분노	Unfinished Test Subject Rage	Unvollendetes Versuchsobjekt: Zorn
+바라돈	Baradon	Baradon
+박쥐	Bat	Fledermaus
+반 헤니스 동맹 빨간 두건	Anti-Henis Alliance Red Hood	Rote Kapuze der Anti-Henis-Allianz
+반 헤니스 동맹 빨간 헬멧	Anti-Henis Alliance Red Helmet	Roter Helm der Anti-Henis-Allianz
+반 헤니스 동맹 파란 두건	Anti-Henis Alliance Blue Hood	Blaue Kapuze der Anti-Henis-Allianz
+반 헤니스 동맹 파란 헬멧	Anti-Henis Alliance Blue Helmet	Blauer Helm der Anti-Henis-Allianz
+반 헤니스 동맹원이 쓰고 다니는 빨간 두건	A red bandana worn by members of the Anti-Henis Alliance	Ein rotes Kopftuch, das von Mitgliedern der Anti-Henis-Allianz getragen wird
+반 헤니스 동맹원이 쓰고 다니는 파란 두건	A blue bandana worn by members of the Anti-Henis Alliance	Ein blaues Kopftuch, das von Mitgliedern der Anti-Henis-Allianz getragen wird
+반 헤니스 정예가 쓰고 다니는 빨간 헬멧	A red helmet worn by the Anti-Henis elite	Ein roter Helm, der von der Anti-Henis-Elite getragen wird
+반 헤니스 정예가 쓰고 다니는 파란 헬멧	A blue helmet worn by the Anti-Henis elite	Ein blauer Helm, der von der Anti-Henis-Elite getragen wird
+배고픈 늑대	Hungry Wolf	Hungriger Wolf
+배틀비크	Battlebeak	Battlebeak
+배틀비크 공격스킬	Battle Beak Attack Skill	Battle Beak: Angriffsfertigkeit
+배틀비크의 노란 가죽 [퀘스트 아이템]	Battle Beak's yellow leather [Quest Item]	Gelbes Leder des Kampfschnabels [Quest-Item]
+밸로우 나이트	Ballow Knight	Ballow-Ritter
+밸로우 나이트 골드	Ballow Knight Gold	Ballow-Ritter (Gold)
+밸로우 나이트 로드	Ballow Knight Lord	Ballow-Ritter-Lord
+밸로우 나이트 실버	Ballow Knight Silver	Ballow-Ritter (Silber)
+벌집 볼 자폭	Hive Ball Self-Destruct	Bienenstockball: Selbstzerstörung
+벌집 볼 투척	Throw Hive Ball	Bienenstockball werfen
+범위 물리 공격	Physical Area Attack	Physischer Flächenangriff
+범위 평타	Area Basic Attack	Normaler Flächenangriff
+범위 평타(Skill01 사운드를 SS로 적용한것)	Area Basic Attack (Skill01 sound applied as SS)	Normaler Flächenangriff (Skill01-Sound als SS verwendet)
+범죄자	Criminal	Verbrecher
+베히모스	Behemoth	Behemoth
+베히모스 언데드 공격 스킬	Undead Behemoth Attack Skill	Untoter Behemoth: Angriffsfertigkeit
+변이된 스네이크	Mutated Snake	Mutierte Schlange
+변이된스네이크의 강력한 물기	Mutated Snake Mighty Bite	Mutierte Schlange: Mächtiger Biss
+변이된스네이크의 독 뿜기	Mutated Snake Poison Spit	Mutierte Schlange: Giftspucken
+별빛의 기운이 서린듯한 병 [퀘스트 아이템]	A bottle that seems imbued with the energy of starlight [Quest Item]	Eine Flasche, die von der Kraft des Sternenlichts erfüllt scheint [Quest-Item]
+보석 골렘	Jewel Golem	Juwelengolem
+보석골렘 광역 스킬1	Jewel Golem Area Skill 1	Juwelengolem: Flächenfertigkeit 1
+보석골렘 단일 스킬1	Jewel Golem Single Skill 1	Juwelengolem: Einzelfertigkeit 1
+보석골렘 단일스킬2	Jewel Golem Single Skill 2	Juwelengolem: Einzelfertigkeit 2
+보석골렘 버프 스킬1	Jewel Golem Buff Skill 1	Juwelengolem: Buff-Fertigkeit 1
+보석골렘 소환 스킬	Jewel Golem Summon Skill	Juwelengolem: Beschwörung
+보석을 노리는 도굴꾼 광역 공격	Jewel-Seeking Tomb Raider Area Attack	Juwelenjagender Grabräuber: Flächenangriff
+보석을 노리는 도굴꾼 단일 공격	Jewel-Seeking Tomb Raider Single Attack	Juwelenjagender Grabräuber: Einzelangriff
+보석을 지키는 고블린 소드맨 광역 공격	Jewel-Guarding Goblin Swordsman Area Attack	Juwelenhütender Goblin-Schwertkämpfer: Flächenangriff
+보석을 지키는 고블린 소드맨 단일 공격	Jewel-Guarding Goblin Swordsman Single Attack	Juwelenhütender Goblin-Schwertkämpfer: Einzelangriff
+보스 버프 해제	Boss Buff Removal	Boss-Buff-Entfernung
+보어	Boar	Keiler
+보여	Show	Zeigen
+부기	Boogy	Boogy
+부기 나이트	Boogy Knight	Boogy-Ritter
+부채꼴 전방 광역1	Frontal Cone Area Attack 1	Kegelförmiger Frontalangriff 1
+부채꼴 전방 광역2	Frontal Cone Area Attack 2	Kegelförmiger Frontalangriff 2
+부활	Resurrection	Wiederbelebung
+분노폭발	Rage Explosion	Zornesausbruch
+불꽃의 루비가디언 공격 스킬	Flame Ruby Guardian Attack Skill	Flammen-Rubinwächter: Angriffsfertigkeit
+불의 골렘	Fire Golem	Feuergolem
+불정령_자폭	Fire Spirit Self-Destruct	Feuergeist: Selbstzerstörung
+블랙 스파이크 혼 뿔 올려치기(단일 공격)	Black Spike Horn Horn Uppercut (Single Attack)	Schwarzes Stachelhorn: Horn-Aufwärtshieb (Einzelangriff)
+블랙 인큐버스	Black Incubus	Schwarzer Inkubus
+블러드 광역공포	Blood Vampire Area Fear	Blutvampir: Flächenfurcht
+블러드 힐	Blood Heal	Blutheilung
+블레이드	Blade	Klinge
+블루 크랩	Blue Crab	Blaue Krabbe
+비비	Vivi	Vivi
+빅머드맨	Big Mudman	Großer Schlammmann
+빨간 기문	Red Gate Flag	Rote Torflagge
+사나운 에이프 기절	Fierce Ape Stun	Wilder Affe: Betäubung
+사도 스킬 1	Apostle Skill 1	Apostel: Fertigkeit 1
+사도 스킬 2	Apostle Skill 2	Apostel: Fertigkeit 2
+사도 스킬 3	Apostle Skill 3	Apostel: Fertigkeit 3
+상태이상광산스크롤 사용하기	Use Status Mine Scroll	Statusminen-Schriftrolle benutzen
+새끼 원숭이 스턴	Baby Monkey Stun	Affenjunges: Betäubung
+새끼레이푼 공격력증가버프스킬	Baby Leipoon ATK Up Buff Skill	Leipoon-Junges: Angriffskraft-Buff
+새도우 엘프(도적) 찌르기	Shadow Elf (Rogue) Stab	Schattenelf (Schurke): Stich
+새도우 엘프(마법사) 사기 증진	Shadow Elf (Mage) Morale Boost	Schattenelf (Magier): Moralschub
+새로 변신합니다! (텍스트 색상 : 분홍색)	Transforming anew! (Text color: pink)	Neue Verwandlung! (Textfarbe: Rosa)
+새싹 몹 소환	Summon Sprout Mobs	Sprösslinge beschwören
+새해음식인 떡국으로 신년 이벤트용 아이템(사용 시 30분간 초당 HP 1이 회복된다)[이벤트아이템]	Tteokguk (rice cake soup), a traditional New Year dish; New Year event item (restores 1 HP per second for 30 minutes when used) [Event Item]	Tteokguk (Reiskuchensuppe), ein traditionelles Neujahrsgericht; Item für das Neujahrsevent (stellt bei Verwendung 30 Minuten lang 1 HP pro Sekunde wieder her) [Event-Item]
+생명의 각성	Life's Awakening	Erwachen des Lebens
+생명의 결의	Life's Resolve	Entschlossenheit des Lebens
+생명의 낙인	Life's Brand	Brandmal des Lebens
+생명의 분노	Life's Fury	Zorn des Lebens
+생명의 애호	Life's Devotion	Hingabe des Lebens
+생명의 위용	Life's Majesty	Pracht des Lebens
+생명의 은공	Life's Benevolence	Gunst des Lebens
+생명의 은총	Life's Grace	Gnade des Lebens
+섀도우	Shadow	Schatten
+섀도우 마스터	Shadow Master	Schattenmeister
+서큐버스 악령소환	Succubus Evil Spirit Summon	Sukkubus: Böse Geister beschwören
+서큐버스 퀸 카렌	Succubus Queen Karen	Sukkubus-Königin Karen
+서큐버스 하트광역	Succubus Heart Area Attack	Sukkubus: Herz-Flächenangriff
+서큐버스 힐	Succubus Heal	Sukkubus: Heilung
+석궁	Crossbow	Armbrust
+선물상자	Gift Box	Geschenkbox
+섬광의 근접 마계 병기	Lightning Melee Demon Weapon	Blitz-Nahkampf-Dämonenwaffe
+섬광의 마계병사 평타	Flash Demon Soldier Basic Attack	Blitz-Dämonensoldat: Normaler Angriff
+섬광의 원거리 마계 병기	Lightning Ranged Demon Weapon	Blitz-Fernkampf-Dämonenwaffe
+섬광의 이동 마계 병기	Lightning Mobile Demon Weapon	Blitz-Bewegungs-Dämonenwaffe
+성기사 스킬 1	Paladin Skill 1	Paladin: Fertigkeit 1
+성기사 스킬 2	Paladin Skill 2	Paladin: Fertigkeit 2
+센티넬의 기운으로 피해량이 감소합니다! (텍스트 색상 : 초록색)	The Sentinel's aura reduces damage taken! (Text color: green)	Die Aura des Sentinels verringert den erlittenen Schaden! (Textfarbe: Grün)
+센티넬의 기운이 사라졌습니다. (텍스트 색상 : 검은색)	The Sentinel's aura has faded. (Text color: black)	Die Aura des Sentinels ist verflogen. (Textfarbe: Schwarz)
+소드	Sword	Schwert
+소환 스킬	Summon Skill	Beschwörungsfertigkeit
+소환 토템	Summoning Totem	Beschwörungstotem
+소환석 작동	Activate Summoning Stone	Beschwörungsstein aktivieren
+수라의 각성	Asura's Awakening	Erwachen des Asura
+수라의 결의	Asura's Resolve	Entschlossenheit des Asura
+수라의 기적	Asura's Miracle	Wunder des Asura
+수라의 낙인	Asura's Brand	Brandmal des Asura
+수라의 애호	Asura's Devotion	Hingabe des Asura
+수라의 연마	Asura's Discipline	Läuterung des Asura
+수라의 위용	Asura's Majesty	Pracht des Asura
+수라의 인도	Asura's Guidance	Führung des Asura
+순간이동	Teleport	Teleportation
+숨어	Hide	Verstecken
+쉐도우	Shadow	Schatten
+쉐도우 %n	Shadow %n	Schatten %n
+쉘라	Shella	Shella
+슈티안의 증표	Shutian's Token	Shutians Abzeichen
+슈퍼 핑피그 공격 스킬	Super Pingpig Attack Skill	Super-Pingpig: Angriffsfertigkeit
+스노우 볼 자폭	Snowball Self-Destruct	Schneeball: Selbstzerstörung
+스노우 볼 투척	Throw Snowball	Schneeball werfen
+스켈레톤 나이트	Skeleton Knight	Skelettritter
+스켈레톤 아쳐	Skeleton Archer	Skelettbogenschütze
+스켈레톤 워리어	Skeleton Warrior	Skelettkrieger
+스토니	Stony	Stony
+스톤 골렘	Stone Golem	Steingolem
+스톤골렘 공격스킬1	Stone Golem Attack Skill 1	Steingolem: Angriffsfertigkeit 1
+스톤골렘 공격스킬2	Stone Golem Attack Skill 2	Steingolem: Angriffsfertigkeit 2
+스톤골렘 광역스킬1	Stone Golem Area Skill 1	Steingolem: Flächenfertigkeit 1
+스톤골렘 버프	Stone Golem Buff	Steingolem: Buff
+스파이더	Spider	Spinne
+스파크독	Spark Dog	Funkenhund
+스페이드 트럼피 기마병	Spade Trumpy Cavalry	Pik-Trumpy-Reiter
+슬라임	Slime	Schleim
+슬라임조각_자폭	Slime Chunk Self-Destruct	Schleimbrocken: Selbstzerstörung
+슬러그	Slug	Schnecke
+신비한 기운이 서린듯한 병	Bottle with a Mysterious Aura	Fläschchen mit geheimnisvoller Aura
+신성한 정령의 각성	Holy Spirit's Awakening	Erwachen des heiligen Geistes
+신성한 정령의 결의	Holy Spirit's Resolve	Entschlossenheit des heiligen Geistes
+신성한 정령의 낙인	Holy Spirit's Brand	Brandmal des heiligen Geistes
+신성한 정령의 분노	Holy Spirit's Fury	Zorn des heiligen Geistes
+신성한 정령의 애호	Holy Spirit's Devotion	Hingabe des heiligen Geistes
+신성한 정령의 연마	Holy Spirit's Discipline	Läuterung des heiligen Geistes
+신성한 정령의 위용	Holy Spirit's Majesty	Pracht des heiligen Geistes
+신성한 정령의 은공	Holy Spirit's Benevolence	Gunst des heiligen Geistes
+실버 슬라임	Silver Slime	Silberschleim
+실버크	Silberk	Silberk
+실버크 돌진	Silberk Charge	Silberk: Sturmangriff
+실버크 출혈	Silberk Bleed	Silberk: Blutung
+실프	Sylph	Sylphe
+실험체 19호	Test Subject No. 19	Versuchsobjekt Nr. 19
+실험체 20호	Test Subject No. 20	Versuchsobjekt Nr. 20
+실험체 23호	Test Subject No. 23	Versuchsobjekt Nr. 23
+실험체 25호	Test Subject No. 25	Versuchsobjekt Nr. 25
+실험체19호의 강력한 내려찍기	Test Subject No.19 Mighty Smash	Versuchsobjekt Nr. 19: Mächtiges Niederschmettern
+실험체19호의 내려찍기	Test Subject No.19 Smash	Versuchsobjekt Nr. 19: Niederschmettern
+실험체19호의 돌격	Test Subject No.19 Charge	Versuchsobjekt Nr. 19: Sturmangriff
+실험체19호의 분노의 시작	Test Subject No.19 Onset of Rage	Versuchsobjekt Nr. 19: Beginn des Zorns
+실험체20호의 강력한 해머 내려치기	Test Subject No.20 Mighty Hammer Smash	Versuchsobjekt Nr. 20: Mächtiger Hammerschlag
+실험체20호의 공포의 외침	Test Subject No.20 Cry of Terror	Versuchsobjekt Nr. 20: Schreckensschrei
+실험체20호의 분노의 포효	Test Subject No.20 Roar of Rage	Versuchsobjekt Nr. 20: Zornesgebrüll
+실험체20호의 일격 필살	Test Subject No.20 Deadly Strike	Versuchsobjekt Nr. 20: Tödlicher Schlag
+실험체20호의 해머 내려치기	Test Subject No.20 Hammer Smash	Versuchsobjekt Nr. 20: Hammerschlag
+실험체23호의 강력한 내려찍기	Test Subject No.23 Mighty Smash	Versuchsobjekt Nr. 23: Mächtiges Niederschmettern
+실험체23호의 기합	Test Subject No.23 Battle Cry	Versuchsobjekt Nr. 23: Kampfschrei
+실험체23호의 돌격	Test Subject No.23 Charge	Versuchsobjekt Nr. 23: Sturmangriff
+실험체23호의 분노의 공격	Test Subject No.23 Furious Attack	Versuchsobjekt Nr. 23: Zorniger Angriff
+실험체23호의 분노의 시작	Test Subject No.23 Onset of Rage	Versuchsobjekt Nr. 23: Beginn des Zorns
+실험체25호의 강력한 내려찍기	Test Subject No.25 Mighty Smash	Versuchsobjekt Nr. 25: Mächtiges Niederschmettern
+실험체25호의 강력한 독액뿜기	Test Subject No.25 Mighty Venom Spit	Versuchsobjekt Nr. 25: Mächtiges Giftspucken
+실험체25호의 강력한 전신마비	Test Subject No.25 Mighty Full Paralysis	Versuchsobjekt Nr. 25: Mächtige Ganzkörperlähmung
+실험체25호의 내려찍기	Test Subject No.25 Smash	Versuchsobjekt Nr. 25: Niederschmettern
+실험체25호의 독액뿜기	Test Subject No.25 Venom Spit	Versuchsobjekt Nr. 25: Giftspucken
+실험체25호의 분노	Test Subject No.25 Rage	Versuchsobjekt Nr. 25: Zorn
+실험체25호의 전신마비	Test Subject No.25 Full Paralysis	Versuchsobjekt Nr. 25: Ganzkörperlähmung
+쌍검	Dual Swords	Doppelschwerter
+아고르 광역스킬	Agole Area Skill	Agole: Flächenfertigkeit
+아고르 마방다운	Agole M-DEF Down	Agole: Magische Verteidigung gesenkt
+아델리아 마을 이동 NPC	Adelia Village Teleport NPC	Teleport-NPC zum Dorf Adelia
+아리의 냉기의 주인	Airi's Master of Frost	Airi: Herrin des Frosts
+아리의 마법 강타	Airi's Magic Strike	Airi: Magischer Schlag
+아리의 열기의 주인	Airi's Master of Heat	Airi: Herrin der Hitze
+아이스 리치	Ice Lich	Eislich
+아이스 리치 광역 공격	Ice Lich Area Attack	Eislich: Flächenangriff
+아이스슬라임_자폭	Ice Slime Self-Destruct	Eisschleim: Selbstzerstörung
+아이템 상자(A)	Item Box (A)	Itemkiste (A)
+아이템 상자(B)	Item Box (B)	Itemkiste (B)
+아이템 상자(모두)	Item Box (All)	Itemkiste (Alle)
+아이템보너스	ItemBonus	Item-Bonus
+아콘	Acon	Acon
+아크메이지 북	Archmage Book	Erzmagierbuch
+알카	Alka	Alka
+알케미스북 10권 공격 스킬	Alchemis Book Vol. 10 Attack Skill	Alchemis-Buch Band 10: Angriffsfertigkeit
+알케미스북 10권 광역 공격	Alchemis Book Vol. 10 Area Attack	Alchemis-Buch Band 10: Flächenangriff
+알케미스북 10권 힐링	Alchemis Book Vol. 10 Heal	Alchemis-Buch Band 10: Heilung
+알케미스북 1권 공격 스킬	Alchemis Book Vol. 1 Attack Skill	Alchemis-Buch Band 1: Angriffsfertigkeit
+알케미스북 1권 힐링	Alchemis Book Vol. 1 Heal	Alchemis-Buch Band 1: Heilung
+알케미스북 2권 공격 스킬	Alchemis Book Vol. 2 Attack Skill	Alchemis-Buch Band 2: Angriffsfertigkeit
+알케미스북 2권 힐링	Alchemis Book Vol. 2 Heal	Alchemis-Buch Band 2: Heilung
+알케미스북 3권 공격 스킬	Alchemis Book Vol. 3 Attack Skill	Alchemis-Buch Band 3: Angriffsfertigkeit
+알케미스북 3권 힐링	Alchemis Book Vol. 3 Heal	Alchemis-Buch Band 3: Heilung
+알케미스북 4권 공격 스킬	Alchemis Book Vol. 4 Attack Skill	Alchemis-Buch Band 4: Angriffsfertigkeit
+알케미스북 4권 힐링	Alchemis Book Vol. 4 Heal	Alchemis-Buch Band 4: Heilung
+알케미스북 5권 공격 스킬	Alchemis Book Vol. 5 Attack Skill	Alchemis-Buch Band 5: Angriffsfertigkeit
+알케미스북 5권 힐링	Alchemis Book Vol. 5 Heal	Alchemis-Buch Band 5: Heilung
+알케미스북 6권 공격 스킬	Alchemis Book Vol. 6 Attack Skill	Alchemis-Buch Band 6: Angriffsfertigkeit
+알케미스북 6권 힐링	Alchemis Book Vol. 6 Heal	Alchemis-Buch Band 6: Heilung
+알케미스북 7권 공격 스킬	Alchemis Book Vol. 7 Attack Skill	Alchemis-Buch Band 7: Angriffsfertigkeit
+알케미스북 7권 힐링	Alchemis Book Vol. 7 Heal	Alchemis-Buch Band 7: Heilung
+알케미스북 8권 공격 스킬	Alchemis Book Vol. 8 Attack Skill	Alchemis-Buch Band 8: Angriffsfertigkeit
+알케미스북 8권 힐링	Alchemis Book Vol. 8 Heal	Alchemis-Buch Band 8: Heilung
+알케미스북 9권 공격 스킬	Alchemis Book Vol. 9 Attack Skill	Alchemis-Buch Band 9: Angriffsfertigkeit
+알케미스북 9권 힐링	Alchemis Book Vol. 9 Heal	Alchemis-Buch Band 9: Heilung
+알케미스북 부록 공격 스킬	Alchemis Book Appendix Attack Skill	Alchemis-Buch Anhang: Angriffsfertigkeit
+알케미스북 부록 힐링	Alchemis Book Appendix Heal	Alchemis-Buch Anhang: Heilung
+암살자 말론 광역 공격	Assassin Marlone Area Attack	Assassine Marlone: Flächenangriff
+암살자 말론 단일 공격	Assassin Marlone Single Attack	Assassine Marlone: Einzelangriff
+암혹의 네피림 WindLenAtkSkill1	Dark Nephilim WindLenAtkSkill1	Dunkler Nephilim: WindLenAtkSkill1
+암혹의 네피림 허리케인	Dark Nephilim Hurricane	Dunkler Nephilim: Hurrikan
+암흑구슬	Dark Orb	Dunkle Kugel
+암흑불꽃	Dark Flame	Dunkle Flamme
+암흑소용돌이	Dark Vortex	Dunkler Wirbel
+앤션트 스토니	Ancient Stony	Uralter Stony
+야수의 각성	Beast's Awakening	Erwachen der Bestie
+야수의 결의	Beast's Resolve	Entschlossenheit der Bestie
+야수의 낙인	Beast's Brand	Brandmal der Bestie
+야수의 발톱	Beast's Claw	Klaue der Bestie
+야수의 분노	Beast's Fury	Zorn der Bestie
+야수의 애호	Beast's Devotion	Hingabe der Bestie
+야수의 위용	Beast's Majesty	Pracht der Bestie
+야수의 은공	Beast's Benevolence	Gunst der Bestie
+야수형 몬스터 공격시 공격 데미지 10% 증가	Increases damage dealt to Beast monsters by 10%	Erhöht den Schaden gegen Bestien um 10%
+야수형 몬스터에게 피격시 피해 데미지 10% 감소	Reduces damage taken from Beast monsters by 10%	Verringert den erlittenen Schaden durch Bestien um 10%
+얍삽한 오우거 스턴 스킬	Sneaky Ogre Stun Skill	Hinterhältiger Oger: Betäubung
+양손검	Two-Handed Sword	Zweihandschwert
+어둠에 물든 스켈레톤 워리어 광역 공격	Darkened Skeleton Warrior Area Attack	Verdunkelter Skelettkrieger: Flächenangriff
+어둠에 물든 스켈레톤 워리어 단일 공격	Darkened Skeleton Warrior Single Attack	Verdunkelter Skelettkrieger: Einzelangriff
+어둠의 골드 쥬얼키퍼 광역 공격	Dark Gold Jewel Keeper Area Attack	Dunkler Gold-Juwelenhüter: Flächenangriff
+어둠의 골드 쥬얼키퍼 단일 공격	Dark Gold Jewel Keeper Single Attack	Dunkler Gold-Juwelenhüter: Einzelangriff
+어둠의 그린키 광역 공격	Dark Greenky Area Attack	Dunkler Greenky: Flächenangriff
+어둠의 그린키 단일 공격	Dark Greenky Single Attack	Dunkler Greenky: Einzelangriff
+어둠의 그림자 후마르 어둠의 광기	Shadow of Darkness Humar Dark Madness	Schatten der Finsternis Humar: Dunkler Wahnsinn
+어둠의 그림자 후마르 어둠의 소환	Shadow of Darkness Humar Dark Summon	Schatten der Finsternis Humar: Dunkle Beschwörung
+어둠의 나바르 광역 공격	Dark Navar Area Attack	Dunkler Navar: Flächenangriff
+어둠의 나바르 단일 공격	Dark Navar Single Attack	Dunkler Navar: Einzelangriff
+어둠의 레인져 광역 공격	Dark Ranger Area Attack	Dunkler Waldläufer: Flächenangriff
+어둠의 레인져 단일 공격	Dark Ranger Single Attack	Dunkler Waldläufer: Einzelangriff
+어둠의 레젼드리 트리 광역 공격	Dark Legendary Tree Area Attack	Dunkler legendärer Baum: Flächenangriff
+어둠의 레젼드리 트리 단일 공격	Dark Legendary Tree Single Attack	Dunkler legendärer Baum: Einzelangriff
+어둠의 리자드맨 광역 공격	Dark Lizardman Area Attack	Dunkler Echsenmensch: Flächenangriff
+어둠의 리자드맨 단일 공격	Dark Lizardman Single Attack	Dunkler Echsenmensch: Einzelangriff
+어둠의 리자드맨 지휘관 광역 공격	Dark Lizardman Commander Area Attack	Dunkler Echsenmensch-Kommandant: Flächenangriff
+어둠의 리자드맨 지휘관 단일 공격	Dark Lizardman Commander Single Attack	Dunkler Echsenmensch-Kommandant: Einzelangriff
+어둠의 립스 광역 공격	Dark Lips Area Attack	Dunkler Lips: Flächenangriff
+어둠의 립스 단일 공격	Dark Lips Single Attack	Dunkler Lips: Einzelangriff
+어둠의 마법에 걸린 뱀파이어 뱃 광역 공격	Dark Enchanted Vampire Bat Area Attack	Dunkel verzauberte Vampirfledermaus: Flächenangriff
+어둠의 마법에 걸린 뱀파이어 뱃 단일 공격	Dark Enchanted Vampire Bat Single Attack	Dunkel verzauberte Vampirfledermaus: Einzelangriff
+어둠의 마법에 걸린 뱃 광역 공격	Dark Enchanted Bat Area Attack	Dunkel verzauberte Fledermaus: Flächenangriff
+어둠의 마법에 걸린 뱃 단일 공격	Dark Enchanted Bat Single Attack	Dunkel verzauberte Fledermaus: Einzelangriff
+어둠의 말론클랜 아쳐 광역 공격	Dark Marlone Clan Archer Area Attack	Dunkler Marlone-Clan-Bogenschütze: Flächenangriff
+어둠의 말론클랜 아쳐 단일 공격	Dark Marlone Clan Archer Single Attack	Dunkler Marlone-Clan-Bogenschütze: Einzelangriff
+어둠의 매직 스태프 광역 공격	Dark Magic Staff Area Attack	Dunkler Zauberstab: Flächenangriff
+어둠의 매직 스태프 단일 공격	Dark Magic Staff Single Attack	Dunkler Zauberstab: Einzelangriff
+어둠의 머쉬룸 광역 공격	Dark Mushroom Area Attack	Dunkler Pilz: Flächenangriff
+어둠의 머쉬룸 단일 공격	Dark Mushroom Single Attack	Dunkler Pilz: Einzelangriff
+어둠의 무리	Horde of Darkness	Horde der Finsternis
+어둠의 수호탑1 광역 공격	Dark Guard Tower 1 Area Attack	Dunkler Wachturm 1: Flächenangriff
+어둠의 수호탑1 광역 공포	Dark Guard Tower 1 Area Fear	Dunkler Wachturm 1: Flächenfurcht
+어둠의 수호탑1 단일 공격	Dark Guard Tower 1 Single Attack	Dunkler Wachturm 1: Einzelangriff
+어둠의 수호탑1 소환	Dark Guard Tower 1 Summon	Dunkler Wachturm 1: Beschwörung
+어둠의 스켈레톤 나이트 광역 공격	Dark Skeleton Knight Area Attack	Dunkler Skelettritter: Flächenangriff
+어둠의 스켈레톤 나이트 단일 공격	Dark Skeleton Knight Single Attack	Dunkler Skelettritter: Einzelangriff
+어둠의 스켈레톤 나이트 지휘관 광역 공격	Dark Skeleton Knight Commander Area Attack	Dunkler Skelettritter-Kommandant: Flächenangriff
+어둠의 스켈레톤 나이트 지휘관 단일 공격	Dark Skeleton Knight Commander Single Attack	Dunkler Skelettritter-Kommandant: Einzelangriff
+어둠의 스켈레톤 아쳐 광역 공격	Dark Skeleton Archer Area Attack	Dunkler Skelettbogenschütze: Flächenangriff
+어둠의 스켈레톤 아쳐 단일 공격	Dark Skeleton Archer Single Attack	Dunkler Skelettbogenschütze: Einzelangriff
+어둠의 스토니 광역 공격	Dark Stonie Area Attack	Dunkler Stonie: Flächenangriff
+어둠의 스토니 단일 공격	Dark Stonie Single Attack	Dunkler Stonie: Einzelangriff
+어둠의 스토니 지휘관 광역 공격	Dark Stonie Commander Area Attack	Dunkler Stonie-Kommandant: Flächenangriff
+어둠의 스토니 지휘관 단일 공격	Dark Stonie Commander Single Attack	Dunkler Stonie-Kommandant: Einzelangriff
+어둠의 스파크독 광역 공격	Dark Spark Dog Area Attack	Dunkler Spark Dog: Flächenangriff
+어둠의 스파크독 단일 공격	Dark Spark Dog Single Attack	Dunkler Spark Dog: Einzelangriff
+어둠의 실프 광역 공격	Dark Sylph Area Attack	Dunkle Sylphe: Flächenangriff
+어둠의 실프 단일 공격	Dark Sylph Single Attack	Dunkle Sylphe: Einzelangriff
+어둠의 아콘 광역 공격	Dark Archon Area Attack	Dunkler Archon: Flächenangriff
+어둠의 아콘 단일 공격	Dark Archon Single Attack	Dunkler Archon: Einzelangriff
+어둠의 영혼이 깃든 스켈레톤 광역 공격	Dark Soul Skeleton Area Attack	Skelett mit dunkler Seele: Flächenangriff
+어둠의 영혼이 깃든 스켈레톤 단일 공격	Dark Soul Skeleton Single Attack	Skelett mit dunkler Seele: Einzelangriff
+어둠의 오크 광역 공격	Dark Orc Area Attack	Dunkler Ork: Flächenangriff
+어둠의 오크 단일 공격	Dark Orc Single Attack	Dunkler Ork: Einzelangriff
+어둠의 원샷원킬 스켈아쳐 광역 공격	Dark One-Shot Skeleton Archer Area Attack	Dunkler Ein-Schuss-Skelettbogenschütze: Flächenangriff
+어둠의 원샷원킬 스켈아쳐 단일 공격	Dark One-Shot Skeleton Archer Single Attack	Dunkler Ein-Schuss-Skelettbogenschütze: Einzelangriff
+어둠의 좀비 광역 공격	Dark Zombie Area Attack	Dunkler Zombie: Flächenangriff
+어둠의 좀비 단일 공격	Dark Zombie Single Attack	Dunkler Zombie: Einzelangriff
+어둠의 쥬얼키퍼 광역 공격	Dark Jewel Keeper Area Attack	Dunkler Juwelenhüter: Flächenangriff
+어둠의 쥬얼키퍼 단일 공격	Dark Jewel Keeper Single Attack	Dunkler Juwelenhüter: Einzelangriff
+어둠의 킹 머쉬룸 광역 공격	Dark King Mushroom Area Attack	Dunkler Königspilz: Flächenangriff
+어둠의 킹 머쉬룸 단일 공격	Dark King Mushroom Single Attack	Dunkler Königspilz: Einzelangriff
+어둠의 픽시 광역 공격	Dark Pixie Area Attack	Dunkle Pixie: Flächenangriff
+어둠의 픽시 단일 공격	Dark Pixie Single Attack	Dunkle Pixie: Einzelangriff
+어둠의 핑키 광역 공격	Dark Pinky Area Attack	Dunkler Pinky: Flächenangriff
+어둠의 핑키 단일 공격	Dark Pinky Single Attack	Dunkler Pinky: Einzelangriff
+어둠의카마리스광역공포	Dark Kamaris Area Fear	Dunkler Kamaris: Flächenfurcht
+어둠의카마리스광역화염공격	Dark Kamaris Area Fire Attack	Dunkler Kamaris: Flächen-Feuerangriff
+어린 포우치의 검붉은 피 [퀘스트 아이템]	Baby Phouc's dark red blood [Quest Item]	Dunkelrotes Blut eines jungen Phouc [Quest-Item]
+어린 포우치의 피	Young Phouch Blood	Blut eines jungen Phouch
+언데드 마이너	Undead Miner	Untoter Bergarbeiter
+언데드 베히모스	Undead Behemoth	Untoter Behemoth
+언데드형 몬스터 공격시 공격 데미지 10% 증가	Increases damage dealt to Undead monsters by 10%	Erhöht den Schaden gegen Untote um 10%
+언데드형 몬스터에게 피격시 피해 데미지 10% 감소	Reduces damage taken from Undead monsters by 10%	Verringert den erlittenen Schaden durch Untote um 10%
+얼음정령_자폭	Ice Spirit Self-Destruct	Eisgeist: Selbstzerstörung
+에드몽씨의 자랑인 스튜. 정체불명의 고기와 야채가 들어 가 있다. [퀘스트 아이템]	Mr. Edmond's prized stew. It contains meat and vegetables of unknown origin. [Quest Item]	Herr Edmonds ganzer Stolz: ein Eintopf. Er enthält Fleisch und Gemüse unbekannter Herkunft. [Quest-Item]
+에이프	Ape	Affe
+에이프 스턴 스킬	Ape Stun Skill	Affe: Betäubung
+엘더린 에서 온 편지	Letter from Elderine	Brief aus Elderine
+엘더린 에서 온 편지. 어쩐지 성의 없어 보인다 [퀘스트 아이템]	A letter from Elderine. Somehow it looks carelessly written [Quest Item]	Ein Brief aus Elderine. Irgendwie wirkt er lieblos geschrieben [Quest-Item]
+엘븐 트리	Elven Tree	Elfenbaum
+영민한 야수의 발톱	Clever Beast's Claw	Klaue der klugen Bestie
+영민한 야수의 은공	Clever Beast's Benevolence	Gunst der klugen Bestie
+오우거	Ogre	Oger
+오크	Orc	Ork
+오크 도망자 광역 공격	Orc Fugitive Area Attack	Ork-Flüchtling: Flächenangriff
+오크 도망자 단일 공격	Orc Fugitive Single Attack	Ork-Flüchtling: Einzelangriff
+오크 도망자 지휘관 광역 공격	Orc Fugitive Commander Area Attack	Ork-Flüchtlingskommandant: Flächenangriff
+오크 도망자 지휘관 단일 공격	Orc Fugitive Commander Single Attack	Ork-Flüchtlingskommandant: Einzelangriff
+오크 추적자 광역 공격	Orc Tracker Area Attack	Ork-Verfolger: Flächenangriff
+오크 추적자 단일 공격	Orc Tracker Single Attack	Ork-Verfolger: Einzelangriff
+오크 추적자 지휘관 광역 공격	Orc Tracker Commander Area Attack	Ork-Verfolgerkommandant: Flächenangriff
+오크 추적자 지휘관 단일 공격	Orc Tracker Commander Single Attack	Ork-Verfolgerkommandant: Einzelangriff
+오크 캡틴	Orc Captain	Ork-Hauptmann
+올드레이푼 전방광격공격	Old Leipoon Frontal Area Attack	Alter Leipoon: Frontaler Flächenangriff
+와일드 샌드랫맨 출혈 스킬	Wild Sand Ratman Bleed Skill	Wilder Sandrattenmann: Blutung
+완드	Wand	Zauberstab
+왕관(15일)	Crown (15 Days)	Krone (15 Tage)
+왕관(30일)	Crown (30 Days)	Krone (30 Tage)
+왕관(60일)	Crown (60 Days)	Krone (60 Tage)
+용맹한 야수의 각성	Valiant Beast's Awakening	Erwachen der tapferen Bestie
+용맹한 야수의 결의	Valiant Beast's Resolve	Entschlossenheit der tapferen Bestie
+용맹한 야수의 낙인	Valiant Beast's Brand	Brandmal der tapferen Bestie
+용맹한 야수의 발톱	Valiant Beast's Claw	Klaue der tapferen Bestie
+용맹한 야수의 분노	Valiant Beast's Fury	Zorn der tapferen Bestie
+용맹한 야수의 애호	Valiant Beast's Devotion	Hingabe der tapferen Bestie
+용맹한 야수의 위용	Valiant Beast's Majesty	Pracht der tapferen Bestie
+용맹한 야수의 은공	Valiant Beast's Benevolence	Gunst der tapferen Bestie
+용사의 냉기 세트	Hero's Frost Set	Frost-Set des Helden
+용사의 본어텍 세트	Hero's Bone Attack Set	Knochenangriff-Set des Helden
+용사의 승리 세트	Hero's Victory Set	Sieges-Set des Helden
+용사의 토르 세트	Hero's Thor Set	Thor-Set des Helden
+용사의 파워 세트	Hero's Power Set	Kraft-Set des Helden
+원거리 단일	Ranged Single Attack	Fernkampf-Einzelangriff
+원거리 범위 공격	Ranged Area Attack	Fernkampf-Flächenangriff
+웨어베어	Werebear	Werbär
+웨어보어	Wereboar	Werkeiler
+위즐	Weasel	Wiesel
+유럽 1주년 이벤트에 쓰이는 금화 200개로 교환하는 슈티안의 증표 [퀘스트 아이템]	Shutian's Token, obtained in exchange for 200 gold coins from the Europe 1st Anniversary event [Quest Item]	Shutians Abzeichen, eintauschbar gegen 200 Goldmünzen des Events zum 1. Europa-Jubiläum [Quest-Item]
+유럽 1주년 이벤트에 쓰이는 금화 50개로 교환하는 레미의 증표 [퀘스트 아이템]	Remi's Token, obtained in exchange for 50 gold coins from the Europe 1st Anniversary event [Quest Item]	Remis Abzeichen, eintauschbar gegen 50 Goldmünzen des Events zum 1. Europa-Jubiläum [Quest-Item]
+유럽 1주년 이벤트에 쓰이는 금화 50개로 교환하는 한스의 증표 [퀘스트 아이템]	Hans's Token, obtained in exchange for 50 gold coins from the Europe 1st Anniversary event [Quest Item]	Hans' Abzeichen, eintauschbar gegen 50 Goldmünzen des Events zum 1. Europa-Jubiläum [Quest-Item]
+유럽 1주년 이벤트에 쓰이는 금화 [퀘스트 아이템]	Gold coin used in the Europe 1st Anniversary event [Quest Item]	Goldmünze für das Event zum 1. Europa-Jubiläum [Quest-Item]
+이그렉 타겟 주변 광역 스턴	Eglack Area Stun Around Target	Eglack: Flächenbetäubung um das Ziel
+이동	Move	Bewegen
+이런 분들을 위한 단 2주에 1번 3일 동안만	For you: 3 days every 2 weeks	Für solche Leute: nur alle 2 Wochen für 3 Tage
+이벤트 좀비 보스 전염 스킬	Event Zombie Boss Infection Skill	Event-Zombieboss: Ansteckung
+인간형 몬스터 공격시 공격 데미지 10% 증가	Increases damage dealt to Humanoid monsters by 10%	Erhöht den Schaden gegen humanoide Monster um 10%
+인간형 몬스터에게 피격시 피해 데미지 10% 감소	Reduces damage taken from Humanoid monsters by 10%	Verringert den erlittenen Schaden durch humanoide Monster um 10%
+인큐버스	Incubus	Inkubus
+인큐버스 록크	Incubus Rock	Inkubus Rock
+인큐버스 아고르	Incubus Agor	Inkubus Agor
+일반광산스크롤 사용하기	Use Normal Mine Scroll	Normale Minen-Schriftrolle benutzen
+일본1	Japan 1	Japan 1
+일본2	Japan 2	Japan 2
+일본3	Japan 3	Japan 3
+임프	Imp	Imp
+자신의 중심으로부터 300그리드만큼 큰 폭발 발생	Large Explosion in 300 Grid Radius Around Self	Große Explosion im Umkreis von 300 Rastereinheiten um sich selbst
+자아! 서두르세요!	Come on! Hurry up!	Los! Beeilt euch!
+자이언트 레드 콘돌	Giant Red Condor	Riesiger Roter Kondor
+자이언트 마그마톤	Giant Magmaton	Riesiger Magmaton
+자이언트 카이만	Giant Kaiman	Riesiger Kaiman
+자이언트 하닝	Giant Honeying	Riesen-Honeying
+자폭	Self-Destruct	Selbstzerstörung
+저주받은 어둠의 나바르 광역 공격	Cursed Dark Navar Area Attack	Verfluchter dunkler Navar: Flächenangriff
+저주받은 어둠의 나바르 단일 공격	Cursed Dark Navar Single Attack	Verfluchter dunkler Navar: Einzelangriff
+저주받은 어둠의 오크 광역 공격	Cursed Dark Orc Area Attack	Verfluchter dunkler Ork: Flächenangriff
+저주받은 어둠의 오크 단일 공격	Cursed Dark Orc Single Attack	Verfluchter dunkler Ork: Einzelangriff
+저주받은 엘프(궁수) 멀티 사격	Cursed Elf (Archer) Multi Shot	Verfluchter Elf (Bogenschütze): Mehrfachschuss
+저주받은 엘프(도적) 찌르기	Cursed Elf (Rogue) Stab	Verfluchter Elf (Schurke): Stich
+저주받은 엘프(마법사) 사기증진	Cursed Elf (Mage) Morale Boost	Verfluchter Elf (Magier): Moralschub
+저주받은 엘프(성직자) 철퇴 내려치기	Cursed Elf (Cleric) Mace Smash	Verfluchter Elf (Kleriker): Streitkolbenhieb
+저주받은 엘프(현자) 마나번	Cursed Elf (Sage) Mana Burn	Verfluchter Elf (Weiser): Manabrand
+저주받은 엘프(현자) 메테오	Cursed Elf (Sage) Meteor	Verfluchter Elf (Weiser): Meteor
+저주받은 엘프(현자) 지면 변화 늪지	Cursed Elf (Sage) Swamp Terrain	Verfluchter Elf (Weiser): Bodenverwandlung in Sumpf
+전격공격	Lightning Attack	Blitzangriff
+전격지대	Lightning Field	Blitzfeld
+전기구체	Electric Orb	Elektrische Kugel
+전방60도 광역스턴	60-Degree Frontal Area Stun	Frontale Flächenbetäubung (60 Grad)
+전율의 스켈레톤 소환	Summon Shudder Skeleton	Schauderskelett beschwören
+전율의 스켈레톤 챔피언 소환	Summon Shudder Skeleton Champion	Schauderskelett-Champion beschwören
+전율의스켈레톤스킬1	Shudder Skeleton Skill 1	Schauderskelett: Fertigkeit 1
+전율의스켈레톤참피언스킬1	Shudder Skeleton Champion Skill 1	Schauderskelett-Champion: Fertigkeit 1
+전투형 실험체 1호	Combat Test Subject No. 1	Kampf-Versuchsobjekt Nr. 1
+전투형 실험체 2호	Combat Test Subject No. 2	Kampf-Versuchsobjekt Nr. 2
+전투형실험체1호의 강력한 내려찍기	Combat Test Subject No.1 Mighty Smash	Kampf-Versuchsobjekt Nr. 1: Mächtiges Niederschmettern
+전투형실험체1호의 날카로운 찌르기	Combat Test Subject No.1 Sharp Stab	Kampf-Versuchsobjekt Nr. 1: Scharfer Stich
+전투형실험체1호의 내려찍기	Combat Test Subject No.1 Smash	Kampf-Versuchsobjekt Nr. 1: Niederschmettern
+전투형실험체2호의 강력한 내려찍기	Combat Test Subject No.2 Mighty Smash	Kampf-Versuchsobjekt Nr. 2: Mächtiges Niederschmettern
+전투형실험체2호의 강하게 휘두르기	Combat Test Subject No.2 Heavy Swing	Kampf-Versuchsobjekt Nr. 2: Wuchtiger Schwung
+전투형실험체2호의 날카로운 찌르기	Combat Test Subject No.2 Sharp Stab	Kampf-Versuchsobjekt Nr. 2: Scharfer Stich
+전투형실험체2호의 내려찍기	Combat Test Subject No.2 Smash	Kampf-Versuchsobjekt Nr. 2: Niederschmettern
+점령군 격투가 광기 디버프	Occupier Knuckleman Madness Debuff	Besatzer-Knuckleman: Wahnsinn-Debuff
+점령군 정찰병 광기 디버프	Occupier Scout Madness Debuff	Besatzer-Späher: Wahnsinn-Debuff
+점령군 창병 광기 디버프	Occupier Spearman Madness Debuff	Besatzer-Speerkämpfer: Wahnsinn-Debuff
+정령의 각성	Spirit's Awakening	Erwachen des Geistes
+정령의 결의	Spirit's Resolve	Entschlossenheit des Geistes
+정령의 낙인	Spirit's Brand	Brandmal des Geistes
+정령의 분노	Spirit's Fury	Zorn des Geistes
+정령의 애호	Spirit's Devotion	Hingabe des Geistes
+정령의 연마	Spirit's Discipline	Läuterung des Geistes
+정령의 위용	Spirit's Majesty	Pracht des Geistes
+정령의 유리병	Elemental Glass Bottle	Elementar-Glasflasche
+정령의 은공	Spirit's Benevolence	Gunst des Geistes
+정령형 몬스터 공격시 공격 데미지 10% 증가	Increases damage dealt to Spirit monsters by 10%	Erhöht den Schaden gegen Geistwesen um 10%
+정령형 몬스터에게 피격시 피해 데미지 10% 감소	Reduces damage taken from Spirit monsters by 10%	Verringert den erlittenen Schaden durch Geistwesen um 10%
+조각조각 찢어진 상품권의 한 부분. 총 8개로 찢어진 조각을 모두 모아보자.[크리스마스 이벤트 아이템]	A piece of a torn gift voucher. It was torn into 8 pieces in total - collect them all. [Christmas Event Item]	Ein Stück eines zerrissenen Gutscheins. Er wurde in insgesamt 8 Stücke zerrissen - sammle sie alle. [Weihnachtsevent-Item]
+조커 트럼피	Joker Trumpy	Joker-Trumpy
+존귀한 생명의 각성	Venerable Life's Awakening	Erwachen des ehrwürdigen Lebens
+존귀한 생명의 애호	Venerable Life's Devotion	Hingabe des ehrwürdigen Lebens
+좀비	Zombie	Zombie
+주니어 카이만	Junior Kaiman	Junger Kaiman
+쥬얼키퍼	Jewel Keeper	Juwelenhüter
+지뢰 광역폭발	Mine Area Explosion	Mine: Flächenexplosion
+지뢰 냉각폭발	Mine Frost Explosion	Mine: Frostexplosion
+지뢰 섬광폭발	Mine Flash Explosion	Mine: Blendexplosion
+지뢰 폭발	Mine Explosion	Mine: Explosion
+지역 이동	Zone Transfer	Gebietswechsel
+지팡이	Staff	Stab
+질주 [01]	Sprint [01]	Sprint [01]
+질주 [01] 단계를 배울 수 있는 스크롤	Scroll that teaches Dash [01]	Schriftrolle zum Erlernen von Sprint [01]
+착용시 HP 지속 회복	Continuously restores HP while equipped	Stellt beim Tragen kontinuierlich HP wieder her
+착용시 MaxHP 2% 증가	Increases MaxHP by 2% while equipped	Erhöht beim Tragen die MaxHP um 2%
+착용시 SP 지속 회복	Continuously restores SP while equipped	Stellt beim Tragen kontinuierlich SP wieder her
+착용시 마법 공격력 증가	Increases magic attack while equipped	Erhöht beim Tragen den magischen Angriff
+착용시 마법 방어력 증가	Increases magic defense while equipped	Erhöht beim Tragen die magische Verteidigung
+착용시 물리 방어력 증가	Increases physical defense while equipped	Erhöht beim Tragen die physische Verteidigung
+참!! 이봐! 난 코인만 받는다구!!	Hey!! I only take coins!!	Ach ja!! Hey! Ich nehme nur Münzen!!
+창기사 스킬 1	Lancer Skill 1	Lanzenritter: Fertigkeit 1
+채굴두더지	Mining Mole	Bergbaumaulwurf
+천상 수라의 낙인	Celestial Asura's Brand	Brandmal des himmlischen Asura
+천상 수라의 인도	Celestial Asura's Guidance	Führung des himmlischen Asura
+철인의 각성	Ironman's Awakening	Erwachen des Eisernen
+철인의 결의	Ironman's Resolve	Entschlossenheit des Eisernen
+철인의 낙인	Ironman's Brand	Brandmal des Eisernen
+철인의 분노	Ironman's Fury	Zorn des Eisernen
+철인의 애호	Ironman's Devotion	Hingabe des Eisernen
+철인의 위용	Ironman's Majesty	Pracht des Eisernen
+철인의 은공	Ironman's Benevolence	Gunst des Eisernen
+철인의 흥망	Ironman's Rise and Fall	Aufstieg und Fall des Eisernen
+추방	Kick	Verbannen
+춘련	Spring Festival Couplet	Neujahrs-Spruchband
+카라시안 솔져	Karasian Soldier	Karasianischer Soldat
+카라시안 템플러	Karasian Templar	Karasianischer Templer
+카렌 광역sp소모	Karen Area SP Drain	Karen: Flächen-SP-Entzug
+카렌 광역sp소모 힐	Karen Area SP Drain Heal	Karen: Flächen-SP-Entzug mit Heilung
+카렌 광역매혹	Karen Area Charm	Karen: Flächenbezauberung
+카렌 단일날개짓	Karen Single Wing Strike	Karen: Einzelner Flügelschlag
+카렌 뒷날개짓	Karen Rear Wing Strike	Karen: Hinterer Flügelschlag
+카렌 평타 스턴	Karen Stunning Basic Attack	Karen: Betäubender Normalangriff
+카렌 하트광역	Karen Heart Area Attack	Karen: Herz-Flächenangriff
+카렌 힐	Karen Heal	Karen: Heilung
+카마리스	Kamaris	Kamaris
+카마리스화염공격	Kamaris Fire Attack	Kamaris: Feuerangriff
+카이만	Kaiman	Kaiman
+카트 마이너	Cart Miner	Loren-Bergarbeiter
+칼반 오벳	Kalban Obet	Kalban Obet
+칼반오벳광역독공격	Kalban Obet Area Poison Attack	Kalban Obet: Flächen-Giftangriff
+칼반오벳광역스턴공격	Kalban Obet Area Stun Attack	Kalban Obet: Flächen-Betäubungsangriff
+칼반오벳광역질병공격	Kalban Obet Area Disease Attack	Kalban Obet: Flächen-Krankheitsangriff
+칼반오벳몬스터소환	Kalban Obet Summon Monsters	Kalban Obet: Monster beschwören
+칼반오벳주변광역공격	Kalban Obet Surrounding Area Attack	Kalban Obet: Flächenangriff um sich
+칼반오벳타겟광역공격	Kalban Obet Target Area Attack	Kalban Obet: Flächenangriff auf Ziel
+칼반오벳힐	Kalban Obet Heal	Kalban Obet: Heilung
+캐릭터를 기절시켰다가 이속 100% 상승	Stun Character, then 100% Move Speed Up	Betäubt den Charakter, danach +100 % Laufgeschwindigkeit
+캐소환	SummonChar	Charakter beschwören
+캐추적	TrackChar	Charakter verfolgen
+코어 가디언	Core Guardian	Kernwächter
+퀸 슬라임	Queen Slime	Königinnenschleim
+크랩	Crab	Krabbe
+크러쉬 볼 자폭	Crush Ball Self-Destruct	Crush-Ball: Selbstzerstörung
+크러쉬 볼 투척	Throw Crush Ball	Crush-Ball werfen
+크로우	Claw	Klaue
+크루거	Kruger	Kruger
+크루거 포스 스턴 스킬	Kruger Force Stun Skill	Kruger Force: Betäubung
+크리스마스 동결 스노우 볼 자폭	Christmas Freezing Snowball Self-Destruct	Weihnachtlicher Frost-Schneeball: Selbstzerstörung
+크리스마스 동결 크러시 볼 자폭	Christmas Freezing Crush Ball Self-Destruct	Weihnachtlicher Frost-Crush-Ball: Selbstzerstörung
+크리스마스 상품권 조각	Christmas Gift Certificate Piece	Teil eines Weihnachtsgutscheins
+크리스마스의 악몽 넉백	Christmas Nightmare Knockback	Weihnachtsalbtraum: Rückstoß
+크리스탈 가디언	Crystal Guardian	Kristallwächter
+클러버 트럼피	Clover Trumpy	Kreuz-Trumpy
+키드몬	Kidmon	Kidmon
+키메라 공중 브레스 공격1(넉백)	Chimera Aerial Breath Attack 1 (Knockback)	Chimäre: Atemangriff aus der Luft 1 (Rückstoß)
+키메라 공중 브레스 공격2(슛)	Chimera Aerial Breath Attack 2 (Shot)	Chimäre: Atemangriff aus der Luft 2 (Schuss)
+키메라 물리 공격 무시	Chimera Ignore Physical Attacks	Chimäre: Physische Angriffe ignorieren
+키메라 전방 브레스 공격	Chimera Frontal Breath Attack	Chimäre: Frontaler Atemangriff
+키메라 제자리 충격파 공격	Chimera Stationary Shockwave Attack	Chimäre: Schockwelle an Ort und Stelle
+키메라 할퀴기 공격	Chimera Claw Attack	Chimäre: Klauenangriff
+킬러 하이드	Killer Hide	Killer Hide
+킬올몹	Kill All Mobs	Alle Monster töten
+킹 부기	King Boogy	König Boogy
+킹 스파이더	King Spider	Königsspinne
+킹 슬라임	King Slime	Königsschleim
+킹 크랩	King Crab	Königskrabbe
+킹슬라임_꿀렁	King Slime Squish	Königsschleim: Glibbern
+킹슬라임_독가스	King Slime Poison Gas	Königsschleim: Giftgas
+킹슬라임_소환_둘다	King Slime Summon Both	Königsschleim: Beide beschwören
+킹슬라임_소환_아이스	King Slime Summon Ice	Königsschleim: Eis beschwören
+킹슬라임_소환_조각	King Slime Summon Chunks	Königsschleim: Brocken beschwören
+킹슬라임_최초 낙하(1회)	King Slime Initial Drop (Once)	Königsschleim: Erster Fall (einmalig)
+킹슬라임_평타	King Slime Basic Attack	Königsschleim: Normaler Angriff
+킹콩 피노	Kingkong Phino	Kingkong Phino
+킹콩피노밟기스킬2	King Kong Phino Stomp Skill 2	King-Kong-Phino: Stampfen 2
+킹콩피노업어지기스킬1	King Kong Phino Piggyback Skill 1	King-Kong-Phino: Huckepack 1
+킹크랩_거품방울소환	King Crab Summon Foam Bubbles	Königskrabbe: Schaumblasen beschwören
+킹크랩_게거품발사	King Crab Crab Foam Shot	Königskrabbe: Krabbenschaum-Schuss
+킹크랩_반월참	King Crab Half-Moon Slash	Königskrabbe: Halbmondhieb
+킹크랩_평타	King Crab Basic Attack	Königskrabbe: Normaler Angriff
+킹크랩_휠윈드	King Crab Whirlwind	Königskrabbe: Wirbelwind
+타겟방향 BMP스턴	Target-Direction BMP Stun	Zielrichtung: BMP-Betäubung
+타겟방향 BMP중독	Target-Direction BMP Poison	Zielrichtung: BMP-Vergiftung
+타겟중심 광역스턴	Target-Centered Area Stun	Zielzentrierte Flächenbetäubung
+타락한 격투가 공격력 상승 버프	Fallen Fighter Attack Up Buff	Gefallener Kämpfer: Angriffsstärkung
+타락한 격투가 어퍼컷	Fallen Fighter Uppercut	Gefallener Kämpfer: Aufwärtshaken
+타락한 격투가 정권 찌르기	Fallen Fighter Straight Punch	Gefallener Kämpfer: Gerader Fauststoß
+타락한 나이트 검 휘두르기	Fallen Knight Sword Swing	Gefallener Ritter: Schwerthieb
+타락한 나이트 공격력 상승 버프	Fallen Knight Attack Up Buff	Gefallener Ritter: Angriffsstärkung
+타락한 나이트 어퍼컷	Fallen Knight Uppercut	Gefallener Ritter: Aufwärtshaken
+타락한 나이트 정권 찌르기(기절 효과)	Fallen Knight Straight Punch (Stun)	Gefallener Ritter: Gerader Fauststoß (Betäubung)
+타락한 숭배자	Fallen Worshipper	Gefallener Anbeter
+타락한 정찰자 독 화살	Fallen Scout Poison Arrow	Gefallener Späher: Giftpfeil
+타락한 창병 창 휘두르기	Fallen Spearman Spear Swing	Gefallener Speerträger: Speerschwung
+타락한 철인의 낙인	Fallen Ironman's Brand	Brandmal des gefallenen Eisernen
+타락한 철인의 분노	Fallen Ironman's Fury	Zorn des gefallenen Eisernen
+탈옥수	Escaped Prisoner	Entflohener Häftling
+탐욕의 다크리치 공격 01	Greedy Dark Lich Attack 01	Gieriger Dunkler Lich: Angriff 01
+탐욕의 다크리치 공격 02	Greedy Dark Lich Attack 02	Gieriger Dunkler Lich: Angriff 02
+탐욕의 다크리치 침묵	Greedy Dark Lich Silence	Gieriger Dunkler Lich: Schweigen
+탐욕의 정찰자 독 화살	Greedy Scout Poison Arrow	Gieriger Späher: Giftpfeil
+탐욕의 창병 창 휘두르기	Greedy Spearman Spear Swing	Gieriger Speerträger: Speerschwung
+탑 고스트 공격스킬1	Tower Ghost Attack 1	Turm-Geist: Angriff 1
+탑 고스트 공격스킬2	Tower Ghost Attack 2	Turm-Geist: Angriff 2
+탑 굶주린 늑대 공격스킬1	Tower Hungry Wolf Attack 1	Turm-Hungriger Wolf: Angriff 1
+탑 굶주린 늑대 공격스킬2	Tower Hungry Wolf Attack 2	Turm-Hungriger Wolf: Angriff 2
+탑 깨빙 힐	Tower Kebing Heal	Turm-Kebing: Heilung
+탑 난폭한 늑대 공격스킬1	Tower Wild Wolf Attack 1	Turm-Wilder Wolf: Angriff 1
+탑 난폭한 늑대 공격스킬2	Tower Wild Wolf Attack 2	Turm-Wilder Wolf: Angriff 2
+탑 랫맨 공격스킬1	Tower Ratman Attack 1	Turm-Rattenmann: Angriff 1
+탑 랫맨 공격스킬2	Tower Ratman Attack 2	Turm-Rattenmann: Angriff 2
+탑 묘지의 폭스 공격스킬1	Tower Graveyard Fox Attack 1	Turm-Friedhofsfuchs: Angriff 1
+탑 묘지의 폭스 공격스킬2	Tower Graveyard Fox Attack 2	Turm-Friedhofsfuchs: Angriff 2
+탑 보어 공격스킬1	Tower Boar Attack 1	Turm-Keiler: Angriff 1
+탑 보어 공격스킬2	Tower Boar Attack 2	Turm-Keiler: Angriff 2
+탑 불량한 임프 공격스킬1	Tower Rogue Imp Attack 1	Turm-Flegelhafter Imp: Angriff 1
+탑 불량한 임프 공격스킬2	Tower Rogue Imp Attack 2	Turm-Flegelhafter Imp: Angriff 2
+탑 스켈레톤 공격스킬1	Tower Skeleton Attack 1	Turm-Skelett: Angriff 1
+탑 스켈레톤 공격스킬2	Tower Skeleton Attack 2	Turm-Skelett: Angriff 2
+탑 스켈레톤 아쳐 공격스킬1	Tower Skeleton Archer Attack 1	Turm-Skelettbogenschütze: Angriff 1
+탑 스켈레톤 아쳐 공격스킬2	Tower Skeleton Archer Attack 2	Turm-Skelettbogenschütze: Angriff 2
+탑 스켈레톤 워리어 공격스킬1	Tower Skeleton Warrior Attack 1	Turm-Skelettkrieger: Angriff 1
+탑 스켈레톤 워리어 공격스킬2	Tower Skeleton Warrior Attack 2	Turm-Skelettkrieger: Angriff 2
+탑 스파이더 공격스킬1	Tower Spider Attack 1	Turm-Spinne: Angriff 1
+탑 스파이더 공격스킬2	Tower Spider Attack 2	Turm-Spinne: Angriff 2
+탑 아이스 비비 공격스킬1	Tower Ice Vivi Attack 1	Turm-Eis-Vivi: Angriff 1
+탑 아이스 비비 공격스킬2	Tower Ice Vivi Attack 2	Turm-Eis-Vivi: Angriff 2
+탑 아이언슬라임 공격스킬1	Tower Iron Slime Attack 1	Turm-Eisenschleim: Angriff 1
+탑 아이언슬라임 공격스킬2	Tower Iron Slime Attack 2	Turm-Eisenschleim: Angriff 2
+탑 아크메이지 북 공격스킬1	Tower Archmage Book Attack 1	Turm-Erzmagierbuch: Angriff 1
+탑 아크메이지 북 공격스킬2	Tower Archmage Book Attack 2	Turm-Erzmagierbuch: Angriff 2
+탑 암흑 고대 석상  공격스킬1	Tower Dark Ancient Statue Attack 1	Turm-Dunkle Uralte Statue: Angriff 1
+탑 어둠의 카마리스 광역스킬1	Tower Kamaris of Darkness Area Skill 1	Turm-Kamaris der Dunkelheit: Flächenskill 1
+탑 임프 공격스킬1	Tower Imp Attack 1	Turm-Imp: Angriff 1
+탑 임프 공격스킬2	Tower Imp Attack 2	Turm-Imp: Angriff 2
+탑 좀비 공격스킬1	Tower Zombie Attack 1	Turm-Zombie: Angriff 1
+탑 좀비 공격스킬2	Tower Zombie Attack 2	Turm-Zombie: Angriff 2
+탑 카마리스01 공격스킬1	Tower Kamaris01 Attack 1	Turm-Kamaris01: Angriff 1
+탑 카마리스01 광역스킬1	Tower Kamaris01 Area Skill 1	Turm-Kamaris01: Flächenskill 1
+탑 카마리스01 광역스킬2	Tower Kamaris01 Area Skill 2	Turm-Kamaris01: Flächenskill 2
+탑 킹 스파이더 공격스킬1	Tower King Spider Attack 1	Turm-Königsspinne: Angriff 1
+탑 킹 스파이더 공격스킬2	Tower King Spider Attack 2	Turm-Königsspinne: Angriff 2
+탑 킹콜 공격스킬1	Tower King Call Attack 1	Turm-King Call: Angriff 1
+탑 킹콜 공격스킬2	Tower King Call Attack 2	Turm-King Call: Angriff 2
+탑 프락 공격스킬1	Tower Prock Attack 1	Turm-Prock: Angriff 1
+탑 프락 공격스킬2	Tower Prock Attack 2	Turm-Prock: Angriff 2
+탑 플라잉 스태프 공격스킬1	Tower Flying Staff Attack 1	Turm-Fliegender Stab: Angriff 1
+탑 플라잉 스태프 공격스킬2	Tower Flying Staff Attack 2	Turm-Fliegender Stab: Angriff 2
+탑의수호자그레이트오크 광역 스킬1	Tower Guardian Great Orc Area Skill 1	Turmwächter Großork: Flächenskill 1
+탑의수호자그레이트오크 단일 스킬1	Tower Guardian Great Orc Single Skill 1	Turmwächter Großork: Einzelskill 1
+탑의수호자그레이트오크 단일 스킬2	Tower Guardian Great Orc Single Skill 2	Turmwächter Großork: Einzelskill 2
+탑의수호자그레이트오크 소환 스킬1	Tower Guardian Great Orc Summon Skill 1	Turmwächter Großork: Beschwörung 1
+탑의수호자리자드맨 광역 독	Tower Guardian Lizardman Area Poison	Turmwächter Echsenmann: Flächengift
+탑의수호자리자드맨 단일 스턴	Tower Guardian Lizardman Single Stun	Turmwächter Echsenmann: Einzelbetäubung
+탑의수호자리자드맨 단일 출혈	Tower Guardian Lizardman Single Bleed	Turmwächter Echsenmann: Einzelblutung
+태풍	Typhoon	Taifun
+테스트 무기	Test Weapon	Testwaffe
+토린의 찌르기	Torin's Thrust	Torins Stich
+토템 먹자방지스킬	Totem Anti-Kill-Steal Skill	Totem: Schutz vor Kill-Diebstahl
+투명 토템	Invisible Totem	Unsichtbares Totem
+투명인간	Invisible Man	Unsichtbarer Mann
+투명인간2	Invisible Man 2	Unsichtbarer Mann 2
+튜토리얼 티나부츠	Tutorial Tina Boots	Tutorial-Tina-Stiefel
+튜토리얼 티나셔츠	Tutorial Tina Shirt	Tutorial-Tina-Hemd
+튜토리얼 티나완드	Tutorial Tina Wand	Tutorial-Tina-Zauberstab
+튜토리얼 티나팬츠	Tutorial Tina Pants	Tutorial-Tina-Hose
+특제 불끈불끈 스튜	Special Power-Up Stew	Spezial-Kraftprotz-Eintopf
+파겔스 스킬 01	Fargels Skill 01	Fargels: Skill 01
+파겔스 스킬 02	Fargels Skill 02	Fargels: Skill 02
+파겔스 스킬 03	Fargels Skill 03	Fargels: Skill 03
+파겔스 스킬 04	Fargels Skill 04	Fargels: Skill 04
+파겔스 스킬 05	Fargels Skill 05	Fargels: Skill 05
+파겔스 스킬 06	Fargels Skill 06	Fargels: Skill 06
+파겔스 스킬 07	Fargels Skill 07	Fargels: Skill 07
+파멸의 수호자 무딘 발톱 단일 공격	Guardian of Ruin Blunt Claw Single Attack	Wächter des Verderbens: Stumpfe Klaue (Einzelangriff)
+파멸의 수호자 재앙 음파 광역 공격	Guardian of Ruin Calamity Sonic Area Attack	Wächter des Verderbens: Unheilsschallwelle (Flächenangriff)
+파멸의 착취자 재앙 음파 광역 공격	Exploiter of Ruin Calamity Sonic Area Attack	Ausbeuter des Verderbens: Unheilsschallwelle (Flächenangriff)
+파멸의 착취자 질병 광역 공격	Exploiter of Ruin Disease Area Attack	Ausbeuter des Verderbens: Seuche (Flächenangriff)
+파멸자 후마르	Destroyer Humar	Zerstörer Humar
+파멸자 후마르 SP 흡수	Destroyer Humar SP Drain	Zerstörer Humar: SP-Entzug
+파멸자 후마르 방어구 녹이기 단일 공격	Destroyer Humar Armor Melt Single Attack	Zerstörer Humar: Rüstung schmelzen (Einzelangriff)
+파멸자 후마르 자힐	Destroyer Humar Self Heal	Zerstörer Humar: Selbstheilung
+파멸자 후마르 재앙 음파 단일 공격	Destroyer Humar Calamity Sonic Single Attack	Zerstörer Humar: Unheilsschallwelle (Einzelangriff)
+파멸자 후마르파멸의 재앙 광역 공격	Destroyer Humar Calamity of Ruin Area Attack	Zerstörer Humar: Unheil des Verderbens (Flächenangriff)
+파이어 골램 공격 스킬	Fire Golem Attack Skill	Feuergolem: Angriffsskill
+파이어 리치	Fire Lich	Feuerlich
+파이어 리치 광역 공격	Fire Lich Area Attack	Feuerlich: Flächenangriff
+파이어 스리피트	Fire Sripit	Feuer-Sripit
+파이어 타이탄	Fire Titan	Feuertitan
+판매불가 : 갬블하우스 npc 머리(골드)	Cannot be sold: Gamble House NPC hair (Gold)	Unverkäuflich: Gamble-House-NPC-Frisur (Gold)
+판매불가 : 갬블하우스 npc 머리(핑크)	Cannot be sold: Gamble House NPC hair (Pink)	Unverkäuflich: Gamble-House-NPC-Frisur (Pink)
+판매불가 : 갬블하우스 npc 안경	Cannot be sold: Gamble House NPC glasses	Unverkäuflich: Gamble-House-NPC-Brille
+팬덤 고르넬리오	Phantom Gornelio	Phantom Gornelio
+퍼기	Pergy	Pergy
+퍼기의 가죽	Pergy Leather	Pergy-Leder
+퍼기의 부드러운 가죽 [퀘스트 아이템]	Pergy's soft leather [Quest Item]	Weiches Leder eines Pergy [Quest-Item]
+퍼기의 뿔	Pergy Horn	Pergy-Horn
+펫 소환	Summon Pet	Haustier beschwören
+포우치	Phouch	Phouch
+포이즌 골렘	Poison Golem	Giftgolem
+포이즌 골렘 공격스킬1	Poison Golem Attack 1	Giftgolem: Angriff 1
+포이즌 골렘 공격스킬2	Poison Golem Attack 2	Giftgolem: Angriff 2
+포이즌 골렘 광역스킬1	Poison Golem Area Skill 1	Giftgolem: Flächenskill 1
+포이즌 골렘 버프	Poison Golem Buff	Giftgolem: Stärkung
+포카폴카북 10권 공격 스킬	Poka Polka Book Vol. 10 Attack Skill	Poka-Polka-Buch Band 10: Angriffsskill
+포카폴카북 1권 공격 스킬	Poka Polka Book Vol. 1 Attack Skill	Poka-Polka-Buch Band 1: Angriffsskill
+포카폴카북 2권 공격 스킬	Poka Polka Book Vol. 2 Attack Skill	Poka-Polka-Buch Band 2: Angriffsskill
+포카폴카북 3권 공격 스킬	Poka Polka Book Vol. 3 Attack Skill	Poka-Polka-Buch Band 3: Angriffsskill
+포카폴카북 4권 공격 스킬	Poka Polka Book Vol. 4 Attack Skill	Poka-Polka-Buch Band 4: Angriffsskill
+포카폴카북 5권 공격 스킬	Poka Polka Book Vol. 5 Attack Skill	Poka-Polka-Buch Band 5: Angriffsskill
+포카폴카북 6권 공격 스킬	Poka Polka Book Vol. 6 Attack Skill	Poka-Polka-Buch Band 6: Angriffsskill
+포카폴카북 7권 공격 스킬	Poka Polka Book Vol. 7 Attack Skill	Poka-Polka-Buch Band 7: Angriffsskill
+포카폴카북 8권 공격 스킬	Poka Polka Book Vol. 8 Attack Skill	Poka-Polka-Buch Band 8: Angriffsskill
+포카폴카북 9권 공격 스킬	Poka Polka Book Vol. 9 Attack Skill	Poka-Polka-Buch Band 9: Angriffsskill
+포카폴카북 부록 공격 스킬	Poka Polka Book Appendix Attack Skill	Poka-Polka-Buch Anhang: Angriffsskill
+폭발	Explosion	Explosion
+폭스	Fox	Fuchs
+폭풍의 근접 마계 병기	Storm Melee Demon Weapon	Sturm-Nahkampf-Dämonenwaffe
+폭풍의 마계병사 평타	Storm Demon Soldier Basic Attack	Sturm-Dämonensoldat: Normaler Angriff
+폭풍의 원거리 마계 병기	Storm Ranged Demon Weapon	Sturm-Fernkampf-Dämonenwaffe
+폭풍의 이동 마계 병기	Storm Mobile Demon Weapon	Sturm-Bewegungs-Dämonenwaffe
+프락	Prock	Prock
+프시켄	Psyken	Psyken
+프시켄 광역 마법 스킬	Psyken Area Magic Skill	Psyken: Flächenmagie
+프시켄 마법 공격 무시	Psyken Magic Attack Immunity	Psyken: Magieangriffe ignorieren
+프시켄 마법구체 발사 스킬	Psyken Magic Orb Shot	Psyken: Magiekugel abfeuern
+프시켄 소환 스킬	Psyken Summon Skill	Psyken: Beschwörung
+프시켄 순간이동 스킬	Psyken Teleport Skill	Psyken: Teleportation
+프시켄 치유 스킬	Psyken Healing Skill	Psyken: Heilung
+프시켄의 개	Psyken's Dog	Psykens Hund
+프시켄의 개 출혈	Psyken's Dog Bleed	Psykens Hund: Blutung
+플라잉 스태프	Flying Staff	Fliegender Stab
+플레임 스리피트	Flame Sripit	Flammen-Sripit
+플레임하닝	Flame Honeying	Flammen-Honeying
+피격시 HP 10 회복	Restores 10 HP when hit	Stellt bei Treffern 10 HP wieder her
+피격시 HP 30 회복	Restores 30 HP when hit	Stellt bei Treffern 30 HP wieder her
+피격시 공격 속도 증가	Increases attack speed when hit	Erhöht bei Treffern das Angriffstempo
+피격시 공격자 HP 10 피해	Deals 10 HP damage to the attacker when hit	Fügt dem Angreifer bei Treffern 10 HP Schaden zu
+피격시 공격자 HP 30 피해	Deals 30 HP damage to the attacker when hit	Fügt dem Angreifer bei Treffern 30 HP Schaden zu
+피격시 공격자 공격력 감소	Reduces the attacker's attack power when hit	Verringert bei Treffern die Angriffskraft des Angreifers
+피격시 공격자 마법 방어력 감소	Reduces the attacker's magic defense when hit	Verringert bei Treffern die magische Verteidigung des Angreifers
+피격시 공격자 물리 방어력 감소	Reduces the attacker's physical defense when hit	Verringert bei Treffern die physische Verteidigung des Angreifers
+피격시 공격자 이동속도 감소	Reduces the attacker's movement speed when hit	Verringert bei Treffern das Bewegungstempo des Angreifers
+피격시 마법 공격력 증가	Increases magic attack when hit	Erhöht bei Treffern den magischen Angriff
+피격시 이동 속도 증가	Increases movement speed when hit	Erhöht bei Treffern das Bewegungstempo
+피노	Phino	Phino
+피노플리	Phinofly	Phinofly
+피에스타 모자	Fiesta Hat	Fiesta-Hut
+피에스타검은모자	Fiesta Black Hat	Schwarzer Fiesta-Hut
+피에스타검은모자(15일)	Fiesta Black Hat (15 Days)	Schwarzer Fiesta-Hut (15 Tage)
+피에스타검은모자(30일)	Fiesta Black Hat (30 Days)	Schwarzer Fiesta-Hut (30 Tage)
+피에스타검은모자(60일)	Fiesta Black Hat (60 Days)	Schwarzer Fiesta-Hut (60 Tage)
+피에스타노랑모자	Fiesta Yellow Hat	Gelber Fiesta-Hut
+피에스타노랑모자(15일)	Fiesta Yellow Hat (15 Days)	Gelber Fiesta-Hut (15 Tage)
+피에스타노랑모자(30일)	Fiesta Yellow Hat (30 Days)	Gelber Fiesta-Hut (30 Tage)
+피에스타노랑모자(60일)	Fiesta Yellow Hat (60 Days)	Gelber Fiesta-Hut (60 Tage)
+피에스타빨강모자	Fiesta Red Hat	Roter Fiesta-Hut
+피에스타빨강모자(15일)	Fiesta Red Hat (15 Days)	Roter Fiesta-Hut (15 Tage)
+피에스타빨강모자(30일)	Fiesta Red Hat (30 Days)	Roter Fiesta-Hut (30 Tage)
+피에스타빨강모자(60일)	Fiesta Red Hat (60 Days)	Roter Fiesta-Hut (60 Tage)
+피에스타온라인 오픈베타 기간동안 판매되는 기념 모자	Commemorative hat sold during the Fiesta Online open beta	Erinnerungshut, der während der Open Beta von Fiesta Online verkauft wurde
+피에스타주황모자	Fiesta Orange Hat	Orangefarbener Fiesta-Hut
+피에스타주황모자(15일)	Fiesta Orange Hat (15 Days)	Orangefarbener Fiesta-Hut (15 Tage)
+피에스타초록모자	Fiesta Green Hat	Grüner Fiesta-Hut
+피에스타초록모자(15일)	Fiesta Green Hat (15 Days)	Grüner Fiesta-Hut (15 Tage)
+피에스타초록모자(30일)	Fiesta Green Hat (30 Days)	Grüner Fiesta-Hut (30 Tage)
+피에스타초록모자(60일)	Fiesta Green Hat (60 Days)	Grüner Fiesta-Hut (60 Tage)
+피에스타파랑모자	Fiesta Blue Hat	Blauer Fiesta-Hut
+피에스타파랑모자(15일)	Fiesta Blue Hat (15 Days)	Blauer Fiesta-Hut (15 Tage)
+피에스타흰색모자	Fiesta White Hat	Weißer Fiesta-Hut
+피에스타흰색모자(15일)	Fiesta White Hat (15 Days)	Weißer Fiesta-Hut (15 Tage)
+피에스타흰색모자(30일)	Fiesta White Hat (30 Days)	Weißer Fiesta-Hut (30 Tage)
+피에스타흰색모자(60일)	Fiesta White Hat (60 Days)	Weißer Fiesta-Hut (60 Tage)
+픽시	Pixie	Pixie
+필드보너스	FieldBonus	Feld-Bonus
+핏빛 늑대 공격 스킬	Blood Wolf Attack Skill	Blutwolf: Angriffsskill
+핑키	Pinky	Pinky
+핑피그	Pingpig	Pingpig
+하닝	Honeying	Honeying
+하닝 방해스킬	Honeying Hindrance Skill	Honeying: Störskill
+하이드 단도	Killer Hide Dagger	Killer Hide: Dolch
+하이드 분신술	Killer Hide Clone Technique	Killer Hide: Doppelgänger-Technik
+하칸	Hakan	Hakan
+하트 트럼피	Heart Trumpy	Herz-Trumpy
+하피	Harpy	Harpyie
+하피 썬더 포효 스킬	Harpy Thunder Roar Skill	Harpyie Thunder: Brüllen
+하피 썬더 힐링	Harpy Thunder Healing	Harpyie Thunder: Heilung
+하피 클라우스 공격 스킬	Harpy Claous Attack Skill	Harpyie Claous: Angriffsskill
+하피 클라우스 광역 독	Harpy Claous Area Poison	Harpyie Claous: Flächengift
+하피 클라우스 힐링	Harpy Claous Healing	Harpyie Claous: Heilung
+해골돌격병스킬1	Skeleton Charger Skill 1	Skelett-Stürmer: Skill 1
+해적단	Pirate Crew	Piratenbande
+해적단 수병	Pirate Sailor	Piratenmatrose
+해적단 조교	Pirate Drill Instructor	Piratenausbilder
+허니 볼 자폭	Honey Ball Self-Destruct	Honigball: Selbstzerstörung
+허니 볼 투척	Honey Ball Throw	Honigball: Wurf
+헬 가이트	Hell Gait	Hell Gait
+헬가	Helga	Helga
+헬가 아무 능력없는 상태이상 - 연결동작	Helga No-Effect Status - Linking Motion	Helga: Statuseffekt ohne Wirkung - Übergangsanimation
+홀리나이트드래곤메테오공격	Holy Knight Dragon Meteor Attack	Heiliger Ritterdrache: Meteorangriff
+홀리나이트드래곤발로밟기공격	Holy Knight Dragon Stomp Attack	Heiliger Ritterdrache: Stampfen
+홀리나이트드래곤플래임월공격	Holy Knight Dragon Flame Wall Attack	Heiliger Ritterdrache: Flammenwand
+홀리나이트드래곤힐	Holy Knight Dragon Heal	Heiliger Ritterdrache: Heilung
+홉	Hob	Hob
+홍염의 파멜리아	Pamelia of the Crimson Flame	Pamelia der Purpurflamme
+화염 날갯짓	Flame Wingbeat	Flammenflügelschlag
+화염브레스	Fire Breath	Feueratem
+화염의 근접 마계 병기	Flame Melee Demonic Weapon	Flammende dämonische Nahkampfwaffe
+화염의 마계병사 평타	Flame Demon Soldier Basic Attack	Flammen-Dämonensoldat: Normaler Angriff
+화염의 원거리 마계 병기	Flame Ranged Demonic Weapon	Flammende dämonische Fernkampfwaffe
+화염의 이동 마계 병기	Flame Mobile Demonic Weapon	Flammende mobile dämonische Waffe
+화염폭발	Fire Explosion	Feuerexplosion
+활	Bow	Bogen
+황금 박쥐	Golden Bat	Goldene Fledermaus
+황제슬라임 스킬1	Emperor Slime Skill 1	Kaiserschleim: Skill 1
+황제슬라임 스킬2(능력없이 애니만)	Emperor Slime Skill 2 (Animation Only)	Kaiserschleim: Skill 2 (nur Animation)
+회색 정령의 물	Grey Spirit Water	Graues Geisterwasser
+회전베기1	Spin Slash 1	Wirbelhieb 1
+회전베기2	Spin Slash 2	Wirbelhieb 2
+흡혈 박쥐	Vampire Bat	Vampirfledermaus

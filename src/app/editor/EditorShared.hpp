@@ -65,6 +65,8 @@
 #include "mapeditor/core/legacy/LegacyTextureSetIO.hpp"
 #include "mapeditor/core/legacy/ShnFile.hpp"
 #include "mapeditor/core/legacy/ShineText.hpp"
+#include "mapeditor/core/legacy/KoreanOnline.hpp"
+#include "mapeditor/core/legacy/KoreanText.hpp"
 #include "mapeditor/core/legacy/QuestData.hpp"
 #include "mapeditor/core/legacy/ItemDropGroups.hpp"
 #include "mapeditor/core/LevelEditorTools.hpp"
@@ -2346,6 +2348,47 @@ struct EffectIssue {
 const std::vector<EffectIssue>& EffectIssues(EditorState& state);
 std::vector<std::string> MissingEffectsFor(EditorState& state, bool stateView, long long id);
 void DrawEffectCheckSection(EditorState& state);
+// Koreanische Texte (KoreanDisplay.cpp): Anzeige übersetzt (Projekt-Wörterbuch > mitgeliefertes Wörterbuch >
+// Automatik "≈"), Übernahme der englischen Übersetzung in die Daten.
+enum class KoreanSource { None, Project, Dictionary, Automatic };
+struct KoreanResult {
+    bool korean = false;     // Rohtext war koreanisch (CP949)
+    std::string text;        // Übersetzung bzw. unveränderter Rohtext
+    std::string utf8;        // koreanischer Text als UTF-8
+    std::string romanized;   // Umschrift
+    KoreanSource source = KoreanSource::None;
+};
+struct KoreanApplyReport {
+    std::size_t korean = 0;              // koreanische Zellen im Hauptdokument
+    std::size_t applied = 0;             // ersetzt
+    std::vector<std::string> tooLong;    // Übersetzung länger als die Spalte
+    std::vector<std::string> missing;    // nur automatische Übersetzung vorhanden
+    std::vector<std::string> keys;       // Schlüsselspalte (Verweis/Befehl), nie übernommen
+};
+void UpdateKoreanProject(const EditorState& state); // einmal je Bild (Top-Leiste): Projekt-Wörterbuch nachladen
+KoreanResult TranslateKorean(const std::string& raw, bool english);
+std::string DisplayText(const std::string& raw);    // für die Anzeige (Sprache der Oberfläche)
+std::string KoreanTooltip(const std::string& raw);  // leer, wenn nicht koreanisch
+std::string KoreanSearchText(const std::string& raw); // Englisch, Deutsch und Umschrift für Suchen; leer, wenn nicht koreanisch
+std::size_t KoreanDictionarySize();
+bool AddProjectKoreanTranslations(EditorState& state,
+                                  const std::vector<std::pair<std::string, core::legacy::KoreanTranslation>>& entries,
+                                  std::string& message);
+KoreanApplyReport ApplyKoreanTranslation(EditorState& state, int document, const std::vector<int>& peers);
+void DrawKoreanApplyButton(EditorState& state, int document, const std::vector<int>& peers, const char* id);
+const core::legacy::KoreanDictionary& KoreanGlossary();
+// Online-Übersetzung (KoreanOnlineTranslate.cpp, optional): unbekannte Texte (nur Automatik) über die
+// Claude-API mit eigenem Schlüssel; Ergebnisse landen im Projekt-Wörterbuch <Projekt>/Texte/ko_user.tsv.
+std::string KoreanApiKey();                        // ANTHROPIC_API_KEY, sonst gespeicherte Einstellung
+bool KoreanApiKeyFromEnvironment();
+bool SaveKoreanApiKey(const std::string& key);     // leer = löschen
+std::vector<core::legacy::KoreanOnlineItem> UnknownKoreanTexts(EditorState& state, int document, const std::vector<int>& peers);
+bool StartKoreanOnlineTranslation(EditorState& state, std::vector<core::legacy::KoreanOnlineItem> items, std::string& message);
+bool KoreanOnlineRunning();
+void PollKoreanOnlineTranslation(EditorState& state); // einmal je Bild: fertige Blöcke ins Projekt-Wörterbuch
+std::vector<std::string> KoreanOnlineLog();
+void DrawKoreanOnlineButton(EditorState& state, int document, const std::vector<int>& peers, const char* id);
+void DrawKoreanApiKeySettings(EditorState& state);
 // Text-Editor: Tabelle nach Dateiname (-1 unbekannt), CSV-Export (onlyTable -1 = alle) und -Import
 // (nur geänderte Zellen, Client und Server, ein Undo-Schritt).
 int TextTableIndex(const std::string& file);

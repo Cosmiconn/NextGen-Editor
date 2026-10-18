@@ -2,7 +2,10 @@
 // Automatisierung für Screenshots und visuelle Regression.
 
 #include "EditorShared.hpp"
+
 #include "mapeditor/core/legacy/TextTables.hpp"
+
+#include <thread>
 
 namespace nge {
 
@@ -257,6 +260,67 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
             const auto n = ImportTextCsv(state, path, problems);
             std::printf("[textimport] %s\n", n ? (std::to_string(*n) + " Zellen übernommen").c_str() : n.error().c_str());
             for (const auto& p : problems) std::printf("[textimport] ! %s\n", p.c_str());
+        }
+        std::fflush(stdout);
+    }
+    else if (cmd == "shngrid") {
+        // shngrid <Client|Server> <Datei.shn> [Suche]: zeigt die Datei im SHN-Raster (Single SHN Editor).
+        std::string side, file, search; in >> side >> file; std::getline(in >> std::ws, search);
+        const bool client = side == "Client";
+        const int doc = SharedShnDoc(state, file, client ? EditorState::ShnSource::Client : EditorState::ShnSource::Server,
+                                     client ? state.shnClientRoot : state.shnServerRoot);
+        if (doc >= 0) {
+            state.screen = AppScreen::ShnEditor;
+            state.shnSubTab = 0;
+            SelectShnDocument(state, doc);
+            std::snprintf(state.shnSearch, sizeof(state.shnSearch), "%s", search.c_str());
+            state.shnVisibleKey.clear();
+        }
+        std::printf("[shngrid] %s %s\n", file.c_str(), doc >= 0 ? "ok" : "nicht gefunden");
+        std::fflush(stdout);
+    }
+    else if (cmd == "koreankey") {
+        // koreankey <Schlüssel|->: speichert bzw. löscht den API-Schlüssel wie die Einstellungen (Test der Ablage).
+        std::string key; in >> key;
+        const bool ok = SaveKoreanApiKey(key == "-" ? std::string() : key);
+        std::printf("[koreankey] %s, gelesen: %s\n", ok ? "ok" : "Fehler", KoreanApiKey() == (key == "-" ? std::string() : key) ? "gleich" : "anders");
+        std::fflush(stdout);
+    }
+    else if (cmd == "koreancheck" || cmd == "koreantranslate" || cmd == "koreanonline") {
+        // korean* <Client|Server> <Datei.shn>: koreancheck zählt koreanische Zellen je Quelle,
+        // koreantranslate übernimmt die englische Übersetzung (mit Gegenstück der anderen Seite),
+        // koreanonline übersetzt unbekannte Texte online und wartet, bis alle Blöcke fertig sind.
+        std::string side, file; in >> side >> file;
+        const bool client = side == "Client";
+        const int doc = SharedShnDoc(state, file, client ? EditorState::ShnSource::Client : EditorState::ShnSource::Server,
+                                     client ? state.shnClientRoot : state.shnServerRoot);
+        const int peer = SharedShnDoc(state, file, client ? EditorState::ShnSource::Server : EditorState::ShnSource::Client,
+                                      client ? state.shnServerRoot : state.shnClientRoot);
+        UpdateKoreanProject(state);
+        if (doc < 0) std::printf("[%s] %s nicht gefunden\n", cmd.c_str(), file.c_str());
+        else if (cmd == "koreancheck") {
+            std::size_t counts[4] = {};
+            const auto& f = ShnDocFile(state, doc);
+            for (const auto& row : f.rows)
+                for (std::size_t c = 0; c < f.columns.size() && c < row.values.size(); ++c)
+                    if (f.columns[c].kind == core::legacy::ShnValueKind::String)
+                        if (const KoreanResult r = TranslateKorean(core::legacy::ShnValueToString(row.values[c]), true); r.korean)
+                            ++counts[static_cast<int>(r.source)];
+            std::printf("[koreancheck] %s: Projekt %zu, Wörterbuch %zu, automatisch %zu\n", file.c_str(), counts[1], counts[2], counts[3]);
+        } else if (cmd == "koreantranslate") {
+            const auto r = ApplyKoreanTranslation(state, doc, {peer});
+            std::printf("[koreantranslate] %s: %zu von %zu ersetzt, %zu zu lang, %zu ohne Eintrag, %zu Schlüssel\n", file.c_str(), r.applied,
+                        r.korean, r.tooLong.size(), r.missing.size(), r.keys.size());
+            for (const auto& k : r.keys) std::printf("[koreantranslate] Schlüssel: %s\n", k.c_str());
+            for (const auto& t : r.tooLong) std::printf("[koreantranslate] zu lang: %s\n", t.c_str());
+            for (const auto& m : r.missing) std::printf("[koreantranslate] ohne Eintrag: %s\n", m.c_str());
+        } else {
+            std::string message;
+            if (StartKoreanOnlineTranslation(state, UnknownKoreanTexts(state, doc, {peer}), message))
+                while (KoreanOnlineRunning()) std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            PollKoreanOnlineTranslation(state);
+            std::printf("[koreanonline] %s\n", message.c_str());
+            for (const auto& line : KoreanOnlineLog()) std::printf("[koreanonline] %s\n", line.c_str());
         }
         std::fflush(stdout);
     }

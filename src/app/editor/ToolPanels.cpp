@@ -147,6 +147,9 @@ void DrawSettingsWindow(EditorState& state) {
     if (UI::Button(L("Jetzt sichern##autosaveNow", "Autosave now##autosaveNow")) && !StartMapAutosave(state))
         state.autosaveStatus = L("Keine Karte mit Projektordner offen.", "No map with a project folder open.");
 
+    ImGui::Spacing();
+    DrawKoreanApiKeySettings(state);
+
     ImGui::End();
 }
 void DrawCommandPalette(EditorState& state) {

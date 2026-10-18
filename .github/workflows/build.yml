@@ -587,6 +587,9 @@ jobs:
           Get-ChildItem build/vcpkg_installed/x64-windows/bin/*.dll -ErrorAction SilentlyContinue | Copy-Item -Destination artifact/
           if (Test-Path build/Release/assets -PathType Container) {
             Copy-Item build/Release/assets artifact/assets -Recurse
+            if (-not (Test-Path artifact/assets/i18n/ko_dictionary.tsv -PathType Leaf)) {
+              throw 'Korean translation dictionary (assets/i18n) missing next to Editor.exe.'
+            }
           } else {
             throw 'Runtime UI assets were not copied next to Editor.exe.'
           }
