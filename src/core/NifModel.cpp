@@ -2091,6 +2091,7 @@ NifMaterial ParseNiMaterialProperty(ByteReader& r, bool fifteenFloats) {
     // zufällig für die ursprünglichen Testdateien. ParseObjectNetBase() entscheidet das jetzt
     // korrekt per Peek.
     ParseObjectNetBase(r);
+    if (auto* layout = CurrentLayoutBlock(); layout && !r.LegacyLayout()) layout->materialOffset = r.Pos();
     NifMaterial mat;
     for (float& v : mat.ambient) v = r.F32();
     for (float& v : mat.diffuse) v = r.F32();
@@ -2279,7 +2280,13 @@ NifTextureSource ParseNiSourceTexture(ByteReader& r) {
         ParseObjectNetBase(r);
         NifTextureSource source;
         source.useExternal = r.U8();
+        const std::size_t nameOffset = r.Pos();
         source.filename = r.SizedString();
+        if (auto* layout = CurrentLayoutBlock()) {
+            layout->textureNameOffset = nameOffset;
+            layout->textureFile = source.filename;
+            layout->textureExternal = source.useExternal;
+        }
         source.pixelDataRef = r.I32();
         r.U32(); // pixel layout
         r.U32(); // mipmap format
@@ -3949,6 +3956,10 @@ std::expected<NifModel, std::string> LoadNifMeshData(const std::vector<std::uint
     }
 
     if (!r.LegacyLayout() && !partialStop) {
+        if (g_byteLayout != nullptr) {
+            g_byteLayout->footerOffset = r.Pos();
+            g_byteLayout->blockMarkers = hdr.version <= 0x0A01006Au;
+        }
         const auto roots = r.CountU32(hdr.numBlocks);
         for (std::uint32_t i = 0; i < roots; ++i) {
             const auto ref = r.I32();

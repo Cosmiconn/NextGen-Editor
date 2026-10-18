@@ -1845,6 +1845,9 @@ void DrawWindowLayoutViewer(EditorState& state);
 // Element `part` des Interface-NIF `nifRel` auf das Rechteck x, y, Breite, Höhe (Bildschirmpixel)
 // bringen: core::PatchNifPartRect, Projektkopie über WriteResmenuOverride (Strg+Z). Meldung in message.
 bool MoveLayoutElement(EditorState& state, const std::string& nifRel, int part, const float rect[4], std::string& message);
+// Texturdatei eines Fensters umstellen (NIF-Writer v1, alle NiSourceTexture-Blöcke mit oldName), Projektkopie mit Strg+Z.
+bool AssignLayoutTexture(EditorState& state, const std::string& nifRel, const std::string& oldName, const std::string& newName,
+                         std::string& message);
 // UV-Rechteck eines Fensterelements in Pixeln der Textur (auf 0..1 geklemmt, nach außen gerundet).
 bool NifPartUvRect(const core::NifMeshPart& part, std::uint32_t texW, std::uint32_t texH, std::uint32_t& x, std::uint32_t& y,
                    std::uint32_t& w, std::uint32_t& h);

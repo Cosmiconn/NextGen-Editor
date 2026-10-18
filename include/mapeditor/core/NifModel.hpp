@@ -739,10 +739,18 @@ struct NifBlockLayout {
     std::size_t vertexOffset = 0;
     std::uint32_t vertexCount = 0;
     std::size_t boundOffset = 0;
+    // NiSourceTexture: Längenfeld (u32) des Dateinamens, gelesener Name, extern/eingebettet. 0 = keiner.
+    std::size_t textureNameOffset = 0;
+    std::string textureFile;
+    std::uint8_t textureExternal = 0;
+    // NiMaterialProperty: erste der 14 Floats (Ambient, Diffuse, Specular, Emissive je RGB, Glanz, Alpha). 0 = keiner.
+    std::size_t materialOffset = 0;
 };
 struct NifByteLayout {
     std::uint32_t version = 0;
     std::vector<NifBlockLayout> blocks;
+    std::size_t footerOffset = 0;       // Ende des letzten Blocks = Beginn der Root-Liste
+    bool blockMarkers = false;          // bis 10.1.0.106 steht vor jedem Block ein u32 = 0
     NifModel model;                     // dasselbe Modell wie LoadNifMesh(file, false)
 };
 // Nur der strikte Standardpfad (ohne Wiederherstellungs-Heuristik): Dateien, die nur über
