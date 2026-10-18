@@ -339,6 +339,35 @@ void DrawPortrait(EditorState& state, ItemSystemsState& is, const PortraitSource
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) ImGui::SetTooltip("resmenu/%s", rel.c_str());
 }
 
+// Tabelle der Gruppenzeilen. Viele Spalten (z. B. KingdomQuestRew mit 33) bekommen feste Breiten und
+// einen horizontalen Rollbalken, statt bis zur Unlesbarkeit gestaucht zu werden.
+bool BeginGroupTable(const legacy::ShnFile& f, const std::vector<int>& cols, std::size_t rowCount) {
+    const bool wide = cols.size() > 10;
+    ImGuiTableFlags flags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg;
+    ImVec2 outer(0.0f, 0.0f);
+    if (wide) {
+        flags |= ImGuiTableFlags_ScrollX | ImGuiTableFlags_SizingFixedFit;
+        const float rowH = ImGui::GetFrameHeightWithSpacing() + ImGui::GetTextLineHeightWithSpacing();
+        outer.y = std::min(420.0f, ImGui::GetTextLineHeightWithSpacing() * 2.0f + rowH * static_cast<float>(rowCount) + ImGui::GetStyle().ScrollbarSize);
+    } else {
+        flags |= ImGuiTableFlags_SizingStretchProp;
+    }
+    if (!ImGui::BeginTable("##groupRows", static_cast<int>(cols.size()) + 1, flags, outer)) return false;
+    for (const int col : cols) {
+        const auto& column = f.columns[static_cast<std::size_t>(col)];
+        const auto& name = column.name;
+        // Texte nach Feldlänge breiter (Titel, Skriptpfade), Zahlen nach der Kopfzeile.
+        const float textWidth = column.kind == legacy::ShnValueKind::String
+            ? std::clamp(static_cast<float>(column.length) * 6.0f, 90.0f, 240.0f) : 0.0f;
+        if (wide) ImGui::TableSetupColumn(name.c_str(), ImGuiTableColumnFlags_WidthFixed,
+                                          std::max({70.0f, textWidth, ImGui::CalcTextSize(name.c_str()).x + 12.0f}));
+        else ImGui::TableSetupColumn(name.c_str());
+    }
+    ImGui::TableSetupColumn("##actions", ImGuiTableColumnFlags_WidthFixed, 26.0f);
+    if (wide) ImGui::TableSetupScrollFreeze(0, 1);
+    return true;
+}
+
 void DrawGroupTable(EditorState& state, ItemSystemsState& is, const GroupTable& t, const std::string& key) {
     WarmLookups(state, is, t);
     const Copies c = CopiesOf(state, is, t);
@@ -359,10 +388,7 @@ void DrawGroupTable(EditorState& state, ItemSystemsState& is, const GroupTable& 
     std::optional<std::size_t> remove;
     ImGui::PushID(t.file);
     if (!rows.empty() &&
-        ImGui::BeginTable("##groupRows", static_cast<int>(cols.size()) + 1,
-                          ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
-        for (const int col : cols) ImGui::TableSetupColumn(f.columns[static_cast<std::size_t>(col)].name.c_str());
-        ImGui::TableSetupColumn("##actions", ImGuiTableColumnFlags_WidthFixed, 26.0f);
+        BeginGroupTable(f, cols, rows.size())) {
         ImGui::TableHeadersRow();
         for (std::size_t n = 0; n < rows.size(); ++n) {
             ImGui::TableNextRow();
@@ -660,7 +686,7 @@ std::string GroupSystemsAutomation(EditorState& state, const std::string& cmd, s
     std::string sub = cmd.substr(std::string("groupsystem").size());
     if (sub.empty()) {
         std::string category; in >> category;
-        for (const auto* c : {&groups::ItemCategory(), &groups::MountCategory(), &groups::HouseCategory()})
+        for (const auto* c : {&groups::ItemCategory(), &groups::MountCategory(), &groups::HouseCategory(), &groups::GuildCategory()})
             if (category == c->id) current = c;
         sub = "open";
     }

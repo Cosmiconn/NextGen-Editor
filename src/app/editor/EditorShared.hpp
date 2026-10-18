@@ -1166,10 +1166,11 @@ struct EditorState {
         std::vector<std::string> report;
         std::unordered_set<std::string> missing; // "Wurzel|Datei" ohne Datei
     };
-    // Gruppen-Editoren (GroupSystems.hpp): Item-Systeme (Unterreiter 16), Reittiere & Haustiere (18), MiniHouse & Karten (19).
+    // Gruppen-Editoren (GroupSystems.hpp): Item-Systeme (Unterreiter 16), Reittiere & Haustiere (18), MiniHouse & Karten (19), Gilde/KQ/Glücksspiel (20).
     ItemSystemsState itemSystems;
     ItemSystemsState mountSystems;
     ItemSystemsState houseSystems;   // MiniHouse und Sammelkarten (19)
+    ItemSystemsState guildSystems;   // Gilde, Kingdom Quest, Glücksspiel (20)
     // Angriffsfolgen (Datei Editor, Unterreiter 17): MobAttackSequence/<Mob>.txt.
     struct AttackSeqState {
         std::string listRoot;               // Server-Ordner|Projektordner der Dateiliste
@@ -2333,6 +2334,7 @@ void DrawTextEditor(EditorState& state);
 void DrawItemSystemsEditor(EditorState& state);
 void DrawMountSystemsEditor(EditorState& state); // Reittiere (Mover) und Haustiere (Pup), Unterreiter 18
 void DrawHouseSystemsEditor(EditorState& state); // MiniHouse (Häuser, Möbel) und Sammelkarten, Unterreiter 19
+void DrawGuildSystemsEditor(EditorState& state); // Gilde, Kingdom Quest und Glücksspiel, Unterreiter 20
 // Automation aller Gruppen-Editoren: groupsystem <Kategorie> <System> [Schlüssel] | groupsystemcopy <neu> |
 // groupsystemset <Datei> <n> <Spalte> <Wert> | groupsystemrow <Datei> | groupsystemdelete (wirkt auf die zuletzt geöffnete Kategorie).
 std::string GroupSystemsAutomation(EditorState& state, const std::string& cmd, std::istream& in);
