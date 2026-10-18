@@ -2,6 +2,7 @@
 // Automatisierung für Screenshots und visuelle Regression.
 
 #include "EditorShared.hpp"
+#include "mapeditor/core/legacy/TextTables.hpp"
 
 namespace nge {
 
@@ -223,6 +224,41 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         // window <ImGui-Fenstername>: holt ein angedocktes Fenster (Tab) nach vorn, z.B. Umgebung##environmentPanel.
         std::string name; std::getline(in >> std::ws, name);
         ImGui::SetWindowFocus(name.c_str());
+    }
+    else if (cmd == "texts") {
+        // texts <Tabelle.shn> [Schlüssel]: öffnet den Text-Editor mit dieser Tabelle (und Zeile).
+        std::string file, key; in >> file >> key;
+        state.screen = AppScreen::ShnEditor;
+        state.shnSubTab = 15;
+        state.textEditor.table = std::max(0, TextTableIndex(file));
+        state.textEditor.selectedRow = -1;
+        state.textEditor.listKey.clear();
+        if (!key.empty()) {
+            const auto& client = state.shnClientRoot;
+            int doc = client.empty() ? -1 : SharedShnDoc(state, file, EditorState::ShnSource::Client, client);
+            if (doc < 0) doc = SharedShnDoc(state, file, EditorState::ShnSource::Server, state.shnServerRoot);
+            if (doc >= 0) {
+                const auto keys = core::legacy::TextRowKeys(ShnDocFile(state, doc));
+                for (std::size_t r = 0; r < keys.size(); ++r)
+                    if (keys[r] == key) { state.textEditor.selectedRow = static_cast<int>(r); state.textEditor.scrollToRow = true; }
+            }
+        }
+        std::printf("[texts] %s %s row=%d\n", file.c_str(), key.c_str(), state.textEditor.selectedRow);
+        std::fflush(stdout);
+    }
+    else if (cmd == "textexport" || cmd == "textimport") {
+        // textexport <Pfad> [Tabelle.shn] | textimport <Pfad>
+        std::string path, file; in >> path >> file;
+        if (cmd == "textexport") {
+            const auto n = ExportTextCsv(state, path, file.empty() ? -1 : TextTableIndex(file));
+            std::printf("[textexport] %s\n", n ? (std::to_string(*n) + " Zellen").c_str() : n.error().c_str());
+        } else {
+            std::vector<std::string> problems;
+            const auto n = ImportTextCsv(state, path, problems);
+            std::printf("[textimport] %s\n", n ? (std::to_string(*n) + " Zellen übernommen").c_str() : n.error().c_str());
+            for (const auto& p : problems) std::printf("[textimport] ! %s\n", p.c_str());
+        }
+        std::fflush(stdout);
     }
     else if (cmd == "mapundo") UndoMapEdit(state);
     else if (cmd == "mapredo") RedoMapEdit(state);

@@ -80,6 +80,7 @@ add_library(mapeditor_core
     src/core/legacy/ShnFile.cpp
     src/core/legacy/ShnPatchCheck.cpp
     src/core/legacy/ShineText.cpp
+    src/core/legacy/TextTables.cpp
     src/core/legacy/QuestData.cpp
     src/core/legacy/ItemDropGroups.cpp
     src/core/legacy/QuestText.cpp
@@ -227,6 +228,7 @@ set(NEXTGEN_EDITOR_MODULES
     src/app/editor/Portraits.cpp
     src/app/editor/WindowLayouts.cpp
     src/app/editor/EnvironmentPanel.cpp
+    src/app/editor/TextEditor.cpp
     src/app/editor/MapWorkspace.cpp
     src/app/editor/Automation.cpp
     src/app/editor/MinimapTools.cpp
@@ -342,6 +344,9 @@ target_link_libraries(test_questdata PRIVATE mapeditor_core)
 add_test(NAME shn_file COMMAND test_shn_file ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/data/ChrBasicEquip.shn)
 add_test(NAME shinetext COMMAND test_shinetext ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/data/NPC.txt)
 add_test(NAME questdata COMMAND test_questdata ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/data/QuestData.shn)
+add_executable(test_text_tables tests/test_text_tables.cpp)
+target_link_libraries(test_text_tables PRIVATE mapeditor_core)
+add_test(NAME text_tables COMMAND test_text_tables)
 add_executable(test_quest_layout tests/test_quest_layout.cpp)
 target_link_libraries(test_quest_layout PRIVATE mapeditor_core)
 add_executable(test_map_export_layout tests/test_map_export_layout.cpp)

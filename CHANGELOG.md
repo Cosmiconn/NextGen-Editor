@@ -1,3 +1,18 @@
+## File Editor — texts and localization
+- New **Texts** tab (File Editor, also a quick button on the start page) for all text tables of client and server:
+  - client: TextData, TextData2, TextData3, ScriptMsg, QuestDialog, MobKillAnnounceText, AbStateMsg, BasicInfoTip, ItemActionEffectDesc, SetItemName, KingdomQuestDesc, KQVoteDesc, CollectCardGroupDesc;
+  - server: AnnounceData, MsgWorldManager, ErrorCodeTable, QuestDialog, CollectCardGroupDesc.
+- Search across all tables by key and content; a hit jumps to the row.
+- Editing: text columns as multi-line fields (one undo step when leaving the field), byte counter and limit for fixed-length columns, the other columns (SM_Inx, color, size, duration ...) below. Tables that exist on both sides are changed identically on client and server.
+- **Used by**: ScriptMsg lists the Lua scripts that call the SM_Inx and the FaceCutMsg rows; MobKillAnnounceText lists the mobs from MobKillAnnounce.shn; AbStateMsg the state from AbState.shn.
+- New row with the next free ID (copy of the selected row, empty texts) and delete with confirmation and usage list, both with Ctrl+Z. New rows are disabled for TextData* (the text ID is a hash from the client code), AnnounceData and the row-addressed tables.
+- **CSV for translations**: export one table or all tables as `table,key,column,text` (RFC 4180); import applies only cells whose text differs, as one undo step, and lists unknown keys, non-text columns and texts that are too long. Text is taken byte for byte.
+- Keys: first column; repeated values get `#2`, `#3` (QuestDialog contains repeated IDs), tables without a key column are addressed by row.
+- New core module `core::legacy::TextTables` (text column detection, keys, CSV writer/parser, diff against a table).
+- New automation commands `texts <table> [key]`, `textexport <path> [table]`, `textimport <path>`.
+- Checked on NA2016: all 32,138 text cells of the 16 tables export and re-import without a single difference; a translated ScriptMsg line and a QuestDialog title were imported and saved, and exactly those cells changed (QuestDialog on client and server).
+- Tests: new `test_text_tables` (column detection, repeated keys, CSV with commas/quotes/line breaks, BOM, diff with problems, save/load of fixed and variable strings).
+
 ## Map — environment panel (light, fog, sky); cleanup
 - New **Environment** tab next to Scene, Layers and Visibility in the map editor. It edits the scene values of `<map>.shmd`:
   - `GlobalLight`, `DirectionLightAmbient` and `DirectionLightDiffuse` (sun color) as color pickers (values above 1 allowed);
