@@ -337,6 +337,10 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         std::printf("[%s] %s\n", cmd.c_str(), AttackSequenceAutomation(state, cmd, in).c_str());
         std::fflush(stdout);
     }
+    else if (cmd.rfind("groupsystem", 0) == 0) {
+        std::printf("[%s] %s\n", cmd.c_str(), GroupSystemsAutomation(state, cmd, in).c_str());
+        std::fflush(stdout);
+    }
     else if (cmd.rfind("itemsystem", 0) == 0) {
         std::printf("[%s] %s\n", cmd.c_str(), ItemSystemsAutomation(state, cmd, in).c_str());
         std::fflush(stdout);

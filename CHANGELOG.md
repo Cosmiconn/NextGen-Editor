@@ -1,3 +1,16 @@
+## File Editor — mounts and pets (movers, pups)
+- New **Mounts** tab (File Editor, also a quick button on the start page) for movers and pups, built on the group editor of the item systems:
+  - **Mover** (key MoverIDX, 461 in NA2016): MoverMain, MoverItem, MoverHG, MoverView, MoverSlotView, MoverAbility and MoverUseSkill side by side; the list shows the mover name, the entry shows its image from `resmenu/game/MobPortrait/<Normalmage>`;
+  - **Mover types** (MoverSlotCharAni per MoverTypeIDX) with the movers of the type (a click selects the mover);
+  - **Mover upgrade** (MoverUpgradeEffect, a table without key);
+  - **Pups** (PupMain, PupView, PupServer, PupCaseDesc with the ScriptMsg text) and **Pup behavior** (PupCase, PupMind, PupPriority, PupFactorCondition).
+- Copying a mover or pup gives `MoverMain.MoverID` / `PupMain.PupID` the next free number (the same on client and server). The check reports a summoning item that another mover/pup already uses (in NA2016 every item summons exactly one).
+- The group editor is now generic (`GroupSystems.hpp`): categories with their own tab, tables without key column, unique number columns, distinct-value checks, display names, links into another system and image previews. New automation `groupsystem <category> <system> [key]`, `groupsystemcopy`, `groupsystemset`, `groupsystemrow`, `groupsystemdelete`; `itemsystem*` keeps working.
+- Fixed: looking up a value in a table that was not loaded yet could leave the group editor with a dangling file reference (crash when opening such an entry first).
+- Checked on NA2016: copying M_Sidecar01_3 wrote exactly one new row in each of the seven mover files (two in MoverSlotView, like the template) with MoverID 477 on both sides; copying P_Slime wrote PupMain (PupID 4), PupView, PupServer and its 24 PupCaseDesc rows; no existing row changed; the item systems still write exactly the same rows as before.
+- Not possible with NA2016: mover/pup models are not part of the data, so there is no 3D preview.
+- Tests: `test_data_editors` covers copying with a free number on both sides, the shared-item check, tables without key and undo.
+
 ## Korean texts — translated display, dictionary, apply, optional online translation
 - Korean strings (CP949/EUC-KR) are now **shown translated everywhere**: SHN grid, editor lists and pickers, attack sequences, item systems and the text editor. The language follows the interface (German/English). A cell's tooltip shows the romanized original and where the translation comes from.
 - Sources in this order: project dictionary `<project>/Texte/ko_user.tsv` > shipped dictionary `assets/i18n/ko_dictionary.tsv` (all 1,214 distinct Korean strings of NA2016, English and German, English within each column's byte limit) > automatic offline translation (glossary `assets/i18n/ko_glossary.tsv` + romanization, marked "≈").
