@@ -9,6 +9,7 @@ namespace nge {
 // setzt außerdem alle Undo-Stacks/Auswahl/Dirty-Flags zurück (neue Karte, alte Historie ungültig).
 void ApplyProjectToState(EditorState& state, core::legacy::LegacyMapProject&& project, const std::filesystem::path& mapDir) {
     state.sceneEnvironmentFromShmd = project.hasObjects && !project.objects.originalText.empty();
+    state.environmentAtLoad = project.objects.environment;
     const bool hadHeightmap = state.mapHasHeightmap;
     const bool hasHeightmap = project.hasHeightmap &&
         project.heightmap.Width() > 0 && project.heightmap.Height() > 0;

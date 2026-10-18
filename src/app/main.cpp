@@ -146,7 +146,6 @@ int main() {
                 ImGui::PopStyleColor();
                 break;
             }
-            case AppScreen::ComingSoon: DrawComingSoon(state); break;
         }
 
         ImGui::End();

@@ -65,6 +65,7 @@ void DrawMapEditorWorkspace(EditorState& state) {
             ImGui::DockBuilderDockWindow("Navigator##mapNavigator", navigatorId);
             ImGui::DockBuilderDockWindow("Layer##layerManager", sceneId);
             ImGui::DockBuilderDockWindow("Sichtbarkeit##visibilityPanel", sceneId);
+            ImGui::DockBuilderDockWindow("Umgebung##environmentPanel", sceneId);
             ImGui::DockBuilderDockWindow("Szene##sceneOutliner", sceneId);
             ImGui::DockBuilderDockWindow("Eigenschaften##fileToolsCol", inspectorId);
             ImGui::DockBuilderDockWindow("Asset Browser##assetBrowser", assetId);
@@ -91,8 +92,6 @@ void DrawMapEditorWorkspace(EditorState& state) {
             case EditMode::Npcs: return "NPCs";
             case EditMode::Mobs: return L("Mobs / Spawn-Zonen","Mobs / spawn zones");
             case EditMode::Portals: return L("Portale","Portals");
-            case EditMode::NpcAi: return "NPC AI";
-            case EditMode::MobAi: return "Mob AI";
         }
         return L("Werkzeug","Tool");
     };
@@ -163,6 +162,17 @@ void DrawMapEditorWorkspace(EditorState& state) {
                                     "No renderable NIF geometry was found to center.");
         }
     }
+    ImGui::End();
+    ImGui::PopStyleColor();
+
+    // Bestehende layout.ini kennen das Umgebungs-Panel noch nicht: beim ersten Auftauchen als Tab
+    // neben die Sichtbarkeit docken.
+    if (ImGuiWindow* visibilityWindow = ImGui::FindWindowByName("Sichtbarkeit##visibilityPanel");
+        visibilityWindow && visibilityWindow->DockId != 0)
+        ImGui::SetNextWindowDockID(visibilityWindow->DockId, ImGuiCond_FirstUseEver);
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, UiTheme::Panel);
+    ImGui::Begin("Umgebung##environmentPanel");
+    DrawEnvironmentPanel(state);
     ImGui::End();
     ImGui::PopStyleColor();
 

@@ -510,21 +510,5 @@ void DrawMapEditorLauncher(EditorState& state) {
         ImGui::TextWrapped("%s", state.statusMessage.c_str());
     }
 }
-void DrawComingSoon(EditorState& state) {
-    DrawTopNav(state, state.comingSoonTitle.c_str());
-    ImGui::Dummy(ImVec2(0.0f, 40.0f));
-    const ImVec2 avail = ImGui::GetContentRegionAvail();
-    const char* msg = T("card.comingsoon");
-    const ImVec2 textSize = ImGui::CalcTextSize(msg);
-    ImGui::SetCursorPosX((avail.x - textSize.x) * 0.5f);
-    ImGui::TextDisabled("%s", msg);
-    ImGui::Dummy(ImVec2(0.0f, 20.0f));
-    ImGui::SetCursorPosX((avail.x - 120.0f) * 0.5f);
-    ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(55, 125, 195, 255));
-    if (UI::Button(T("nav.back"), ImVec2(120.0f, 34.0f))) {
-        state.screen = AppScreen::ProjectHub;
-    }
-    ImGui::PopStyleColor();
-}
 
 } // namespace nge

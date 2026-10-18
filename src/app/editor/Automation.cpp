@@ -200,6 +200,32 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         else if (m == "portals") state.editMode = EditMode::Portals;
         else if (m == "mobs") state.editMode = EditMode::Mobs;
     }
+    else if (cmd == "environment") {
+        // environment <globallight|ambient|diffuse|background> <r> <g> <b> | fog <tiefe> <r> <g> <b>
+        //             | frustum <weite> | reset: setzt die SHMD-Umgebung wie das Umgebungs-Panel (ein Undo-Schritt).
+        std::string what; in >> what;
+        core::SceneEnvironment env = state.placementSet.environment;
+        float* target = what == "globallight" ? env.globalLight : what == "ambient" ? env.directionLightAmbient
+                      : what == "diffuse" ? env.directionLightDiffuse : what == "background" ? env.backgroundColor
+                      : what == "fog" ? env.fog : what == "frustum" ? &env.frustumFar : nullptr;
+        const int count = what == "fog" ? 4 : what == "frustum" ? 1 : 3;
+        if (what == "reset") env = state.environmentAtLoad;
+        else if (target) for (int i = 0; i < count; ++i) in >> target[i];
+        if (what == "reset" || (target && in)) {
+            SetSceneEnvironment(state, env);
+            std::printf("[environment] %s ok=1\n", what.c_str());
+        } else {
+            std::printf("[environment] %s ok=0 (unbekannt oder unvollständig)\n", what.c_str());
+        }
+        std::fflush(stdout);
+    }
+    else if (cmd == "window") {
+        // window <ImGui-Fenstername>: holt ein angedocktes Fenster (Tab) nach vorn, z.B. Umgebung##environmentPanel.
+        std::string name; std::getline(in >> std::ws, name);
+        ImGui::SetWindowFocus(name.c_str());
+    }
+    else if (cmd == "mapundo") UndoMapEdit(state);
+    else if (cmd == "mapredo") RedoMapEdit(state);
     else if (cmd == "project") {
         // project <Client-Ordner>|<Server-Ordner>: setzt die Projekt-Quellordner (read-only Quellen).
         std::string rest; std::getline(in >> std::ws, rest);

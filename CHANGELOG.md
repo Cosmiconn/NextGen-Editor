@@ -1,3 +1,17 @@
+## Map — environment panel (light, fog, sky); cleanup
+- New **Environment** tab next to Scene, Layers and Visibility in the map editor. It edits the scene values of `<map>.shmd`:
+  - `GlobalLight`, `DirectionLightAmbient` and `DirectionLightDiffuse` (sun color) as color pickers (values above 1 allowed);
+  - fog depth, fog color and view distance (`Fog`, `Frustum`), plus **Fog color = background** as in many originals;
+  - background color (`BackGroundColor`);
+  - the `Sky`/`Water`/`GroundObject` model lists: remove an entry, or append a model path.
+- The 3D view shows every change immediately; preview switches for map lighting, background and fog sit in the panel.
+- Undo: one slider drag or text entry is one step (Ctrl+Z / Ctrl+Y). Environment changes use their own light history domain, so undo does not reload the object renderers. **Restore values at open** resets all scene values (also undoable).
+- Saving happens with the map. On Rou only the six scene lines change; all other bytes stay identical (checked by automation and by the new test). Non-canonical SHMD files are written in canonical form on the first changed save.
+- New automation commands `environment <globallight|ambient|diffuse|background> r g b`, `environment fog <depth> r g b`, `environment frustum <v>`, `environment reset`, `mapundo`, `mapredo` and `window <name>`.
+- Removed dead placeholders: the edit modes `NpcAi`/`MobAi` (they only showed "Not implemented yet" and could not be reached), the `ComingSoon` screen and 34 unused hub-card translations. The manual section on AI now points to where AI is really edited.
+- Docs brought in line with the code: DDS writer exists (`FIESTA_FORMAT_STATUS.md`), minimap export exists (`LEVEL_EDITOR_PARITY.md`), KFM field editing exists (`V14_VALIDATION.md`), PineScript files are editable in the AI workspace (`HANDOFF.md`), window element positions are written since the layout PR (`CHANGELOG.md`).
+- Tests: `test_object_placement` changes all six scene values of Rou.shmd, checks that exactly those lines differ and that the values come back on load.
+
 ## Start page with two fields, complete icon set
 - The start page now shows exactly two large fields:
   - **Map Editor** (left): everything on a map — create and open maps, terrain and textures, foliage, Block & Walk, objects and prefabs, Sky/Water/GroundObject, NPCs, mob spawns, routes, portals, minimap and map check.
@@ -93,7 +107,7 @@
   - For DDS only the touched blocks change.
   - For uncompressed TGA only the region's pixels change (`core::SpliceTgaRegion`); header, image ID and footer stay byte-identical.
   - Verified on `game/Attend.tga` (AttendWin close button): same file size, footer kept, only the 26×26 region changed.
-- Honest limit: element positions and sizes are not written, because there is no verified NIF writer for these blocks yet. Only textures change.
+- Honest limit: element positions and sizes are not written, because there is no verified NIF writer for these blocks yet. Only textures change. (Lifted later, see "Interface — move and resize window elements".)
 - New automation commands `uilayout <nif> [element]` and `uilayoutreplace <source>`. Manual section "Window layouts" and tooltips added.
 - Tests:
   - `test_image_io`: TGA region splicing with footer and mixed row order;

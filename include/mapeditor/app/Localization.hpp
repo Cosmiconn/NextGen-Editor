@@ -53,49 +53,7 @@ inline const std::unordered_map<std::string, std::pair<const char*, const char*>
         {"nav.back", {"Zurück", "Back"}},
         {"nav.language", {"Sprache", "Language"}},
 
-        {"card.kfm.title", {"Animationen / KFM", "Animations / KFM"}},
-        {"card.extensions.title", {"Erweiterungen", "Extensions"}},
-        {"card.extensions.f1", {"Interface Editor", "Interface Editor"}},
-        {"card.extensions.f2", {"Drop Table Editor", "Drop Table Editor"}},
-        {"card.extensions.f3", {"AI Workspace", "AI Workspace"}},
-        {"card.extensions.f4", {"NIF / Material Editing", "NIF / Material Editing"}},
-
-        // Editor-Karten im Projekt-Hub
-        {"card.mapeditor.title", {"MapEditor", "MapEditor"}},
-        {"card.mapeditor.f1", {"Hightmap", "Hightmap"}},
-        {"card.mapeditor.f2", {"Map Texturen", "Map Textures"}},
-        {"card.mapeditor.f3", {"Walk & Block", "Walk & Block"}},
-        {"card.mapeditor.f4", {"Objekt Platzierung", "Object Placement"}},
-        {"card.mapeditor.f5", {"NPC Platzierung", "NPC Placement"}},
-        {"card.mapeditor.f6", {"NPC AI", "NPC AI"}},
-        {"card.mapeditor.f7", {"Monster Spawns", "Monster Spawns"}},
-        {"card.mapeditor.f8", {"Monster AI", "Monster AI"}},
-
-        {"card.shn.title", {"SHN Editor", "SHN Editor"}},
-        {"card.shn.f1", {"Solo Bearbeitung", "Solo Editing"}},
-        {"card.shn.f2", {"Paired Bearbeitung", "Paired Editing"}},
-        {"card.shn.f3", {"Easy Xp rate up", "Easy Xp rate up"}},
-        {"card.shn.f4", {"Easy Price edit", "Easy Price edit"}},
-
-        {"card.quest.title", {"Quest Editor", "Quest Editor"}},
-        {"card.quest.f1", {"Easy Quest Create", "Easy Quest Create"}},
-        {"card.quest.f2", {"Easy Quest Edit", "Easy Quest Edit"}},
-
-        {"card.interface.title", {"Interface Editor", "Interface Editor"}},
-        {"card.interface.f1", {"Interface Edit", "Interface Edit"}},
-        {"card.interface.f2", {"Texturing", "Texturing"}},
-
-        {"card.droptable.title", {"Drop Table", "Drop Table"}},
-        {"card.droptable.f1", {"Drop Table edit", "Drop Table edit"}},
-        {"card.droptable.f2", {"Drop Group edit", "Drop Group edit"}},
-
-        {"card.skill.title", {"Skill + Action", "Skill + Action"}},
-        {"card.skill.f1", {"Skill Creator", "Skill Creator"}},
-        {"card.skill.f2", {"Skill Editor", "Skill Editor"}},
-        {"card.skill.f3", {"Action Editor", "Action Editor"}},
-
-        {"card.comingsoon", {"Dieser Editor ist noch nicht implementiert.",
-                              "This editor is not implemented yet."}},
+        // Start-Knopf der Felder auf der Startseite
         {"card.start", {"Start", "Start"}},
 
         // Neues Projekt konfigurieren
@@ -150,7 +108,6 @@ inline const std::unordered_map<std::string, std::pair<const char*, const char*>
         {"workspace.brushes", {"Brushes", "Brushes"}},
         {"workspace.2dview", {"2D View", "2D View"}},
         {"workspace.3dview", {"3D View", "3D View"}},
-        {"workspace.notimplemented", {"Noch nicht implementiert.", "Not implemented yet."}},
         {"workspace.savedas", {"Gespeichert als: ", "Saved as: "}},
         {"workspace.centercamera", {"Kamera zentrieren", "Center camera"}},
         {"workspace.wireframe", {"Wireframe (3D)", "Wireframe (3D)"}},

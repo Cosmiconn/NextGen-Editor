@@ -418,6 +418,7 @@ void InvalidateMapHistoryRedo(EditorState& state) {
     state.walkUndo.ClearRedo();
     state.objectRedo.clear();
     state.textureLayerRedo.clear();
+    state.environmentRedo.clear();
 }
 void RegisterMapHistoryAction(EditorState& state, MapHistoryDomain domain) {
     ++state.mapEditRevision;
@@ -436,6 +437,9 @@ void ClearMapHistory(EditorState& state) {
     state.textureLayerRedo.clear();
     state.pendingObjectEdit.reset();
     state.pendingObjectEditChanged = false;
+    state.environmentUndo.clear();
+    state.environmentRedo.clear();
+    state.pendingEnvironmentEdit.reset();
 }
 void PushHeightmapHistory(EditorState& state, core::UndoPatch patch) {
     if (patch.entries.empty()) return;
@@ -478,9 +482,37 @@ void FinishObjectMutation(EditorState& state, std::optional<ObjectEditSnapshot> 
     else if (before) PushObjectHistory(state, std::move(*before));
     state.mapDirty = true;
 }
+static bool SameEnvironment(const core::SceneEnvironment& a, const core::SceneEnvironment& b) {
+    return std::equal(std::begin(a.globalLight), std::end(a.globalLight), std::begin(b.globalLight)) &&
+           std::equal(std::begin(a.fog), std::end(a.fog), std::begin(b.fog)) &&
+           std::equal(std::begin(a.backgroundColor), std::end(a.backgroundColor), std::begin(b.backgroundColor)) &&
+           a.frustumFar == b.frustumFar &&
+           std::equal(std::begin(a.directionLightAmbient), std::end(a.directionLightAmbient), std::begin(b.directionLightAmbient)) &&
+           std::equal(std::begin(a.directionLightDiffuse), std::end(a.directionLightDiffuse), std::begin(b.directionLightDiffuse));
+}
+void SetSceneEnvironment(EditorState& state, const core::SceneEnvironment& value) {
+    if (SameEnvironment(state.placementSet.environment, value)) return;
+    if (!state.pendingEnvironmentEdit) {
+        RegisterMapHistoryAction(state, MapHistoryDomain::Environment);
+        state.environmentUndo.push_back(state.placementSet.environment);
+    } else {
+        ++state.mapEditRevision;
+    }
+    state.placementSet.environment = value;
+    state.mapDirty = true;
+}
+void CommitEnvironmentEdit(EditorState& state) {
+    if (!state.pendingEnvironmentEdit) return;
+    const core::SceneEnvironment before = *state.pendingEnvironmentEdit;
+    state.pendingEnvironmentEdit.reset();
+    if (SameEnvironment(before, state.placementSet.environment)) return;
+    RegisterMapHistoryAction(state, MapHistoryDomain::Environment);
+    state.environmentUndo.push_back(before);
+}
 bool CanUndoMapEdit(const EditorState& state) { return !state.mapHistoryUndo.empty(); }
 bool CanRedoMapEdit(const EditorState& state) { return !state.mapHistoryRedo.empty(); }
 bool UndoMapEdit(EditorState& state) {
+    CommitEnvironmentEdit(state);
     if (state.mapHistoryUndo.empty()) return false;
     ++state.mapEditRevision;
     const auto domain = state.mapHistoryUndo.back();
@@ -517,6 +549,14 @@ bool UndoMapEdit(EditorState& state) {
                 state.objectUndo.pop_back();
                 state.objectRedo.push_back(CaptureObjectEditSnapshot(state));
                 RestoreObjectEditSnapshot(state, std::move(before));
+                ok = true;
+            }
+            break;
+        case MapHistoryDomain::Environment:
+            if (!state.environmentUndo.empty()) {
+                state.environmentRedo.push_back(state.placementSet.environment);
+                state.placementSet.environment = state.environmentUndo.back();
+                state.environmentUndo.pop_back();
                 ok = true;
             }
             break;
@@ -564,6 +604,14 @@ bool RedoMapEdit(EditorState& state) {
                 state.objectRedo.pop_back();
                 state.objectUndo.push_back(CaptureObjectEditSnapshot(state));
                 RestoreObjectEditSnapshot(state, std::move(after));
+                ok = true;
+            }
+            break;
+        case MapHistoryDomain::Environment:
+            if (!state.environmentRedo.empty()) {
+                state.environmentUndo.push_back(state.placementSet.environment);
+                state.placementSet.environment = state.environmentRedo.back();
+                state.environmentRedo.pop_back();
                 ok = true;
             }
             break;

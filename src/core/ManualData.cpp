@@ -283,6 +283,23 @@ Animations: motion stored in the NIF itself (windmill blades, rocking boats, sig
 - 'NPC names and facing arrows': names and facing direction of NPCs in the 3D image (NPC mode).
 - If NPCs lack a model they are listed here by name.)MAN",
      "sichtbarkeit visibility ausblenden einblenden kategorie layer"},
+    {"map.environment", "map",
+     "Umgebung: Licht, Nebel, Himmel", "Environment: light, fog, sky",
+     R"MAN(Der Tab 'Umgebung' (links neben Szene, Layer und Sichtbarkeit) bearbeitet die Szene-Werte der <Karte>.shmd:
+- GlobalLight: Umgebungslicht, das jede Fläche erhält. DirectionLightAmbient kommt im Editor-Renderer hinzu.
+- DirectionLightDiffuse: Farbe des gerichteten Lichts (Sonne). Die Richtung steht in keiner Kartendatei; der Editor nimmt waagerechtes Licht an (siehe docs/RENDERER.md).
+- Nebeltiefe, Nebelfarbe und Sichtweite (Fog und Frustum): Der Nebel beginnt bei Sichtweite × (1 − Tiefe) und ist an der Sichtweite voll. Diese Lesart ist eine dokumentierte Näherung, nicht aus dem Client belegt. In vielen Originalen ist die Nebelfarbe gleich der Hintergrundfarbe; 'Nebelfarbe = Hintergrund' übernimmt sie.
+- Hintergrundfarbe (BackGroundColor): Himmelsfarbe hinter allen Modellen.
+- Sky / Water / GroundObject: die Modelllisten der SHMD. X entfernt einen Eintrag, 'Modell hinzufügen' hängt den Pfad aus dem Eingabefeld an (z. B. resmap\field\Rou\Rou_Sky.nif).
+Die 3D-Ansicht zeigt jede Änderung sofort, sofern unter 'Vorschau' Kartenlicht, Hintergrund bzw. Nebel eingeschaltet sind. Ein Reglerzug ist ein Undo-Schritt (Strg+Z). 'Werte beim Öffnen wiederherstellen' setzt alle Szene-Werte auf den Stand beim Laden zurück (ebenfalls rückgängig machbar). Gespeichert wird mit der Karte; in der SHMD ändern sich nur die betroffenen Zeilen. SHMD-Dateien, die nicht in der kanonischen Form vorliegen, werden beim ersten geänderten Speichern kanonisch geschrieben (gleicher Inhalt, 6 Nachkommastellen).)MAN",
+     R"MAN(The 'Environment' tab (on the left next to Scene, Layers and Visibility) edits the scene values of <map>.shmd:
+- GlobalLight: ambient light every surface receives. DirectionLightAmbient is added in the editor renderer.
+- DirectionLightDiffuse: color of the directional light (sun). The direction is not stored in any map file; the editor assumes horizontal light (see docs/RENDERER.md).
+- Fog depth, fog color and view distance (Fog and Frustum): fog starts at view distance × (1 − depth) and is full at the view distance. This reading is a documented approximation, not confirmed from the client. In many originals the fog color equals the background color; 'Fog color = background' copies it.
+- Background color (BackGroundColor): sky color behind all models.
+- Sky / Water / GroundObject: the model lists of the SHMD. X removes an entry, 'Add model' appends the path from the input field (e.g. resmap\field\Rou\Rou_Sky.nif).
+The 3D view shows every change immediately if map lighting, background or fog are switched on under 'Preview'. One slider drag is one undo step (Ctrl+Z). 'Restore values at open' resets all scene values to the state at load (also undoable). Saving happens with the map; in the SHMD only the affected lines change. SHMD files that are not in canonical form are written canonically on the first changed save (same content, 6 decimals).)MAN",
+     "umgebung environment licht light nebel fog himmel sky hintergrund background frustum sichtweite globallight directionlight water groundobject"},
     {"map.leveltools", "map",
      "Level-Editor-Werkzeuge (Viewport-Leiste, Spieltest, Ausgabe)", "Level editor tools (viewport toolbar, playtest, output log)",
      R"MAN(Die Leiste oben im 3D-Bild bündelt die Level-Editor-Werkzeuge. Alles davon ist reiner Editor-Zustand und verändert keine Fiesta-Datei.
@@ -350,9 +367,9 @@ NPC models are loaded from the client: reschar/<name>/<name>.nif (or another res
 The mapping 'direction -> facing angle' is not proven by data. If the arrow does not match the game for a known NPC, change 'Rotation sense' and 'Facing at direction 0' (applies to all NPCs).)MAN",
      "npc platzierung richtung rolle merchant dialog händler blickrichtung"},
     {"map.ai", "map",
-     "Tabs NPC AI und Mob AI", "NPC AI and Mob AI tabs",
-     R"MAN(Diese beiden Tabs haben noch keine eigenen Werkzeuge. Das Verhalten von NPCs und Mobs bearbeitest Du an ihrem jeweiligen Tab: 'KI-Skript (Lua) bearbeiten' und 'Patrouillenroute bearbeiten' im NPC-Tab, 'KI' und 'Route' je Monster im Mob-Tab.)MAN",
-     R"MAN(These two tabs do not have their own tools yet. You edit the behaviour of NPCs and mobs in their respective tab: 'Edit AI script (Lua)' and 'Edit patrol route' in the NPC tab, 'AI' and 'Route' per monster in the mob tab.)MAN",
+     "KI von NPCs und Mobs", "AI of NPCs and mobs",
+     R"MAN(Das Verhalten von NPCs und Mobs bearbeitest Du direkt an ihrem Werkzeug: 'KI-Skript (Lua) bearbeiten' und 'Patrouillenroute bearbeiten' im NPC-Werkzeug, 'KI' und 'Route' je Monster im Mob-Werkzeug. Alle Skripte einer Installation zeigt der Datei Editor im Unterreiter 'AI Scripts' (Lua-AIScripts und PineScript-Routen).)MAN",
+     R"MAN(You edit the behaviour of NPCs and mobs directly at their tool: 'Edit AI script (Lua)' and 'Edit patrol route' in the NPC tool, 'AI' and 'Route' per monster in the mob tool. All scripts of an installation are shown by the File Editor in the 'AI Scripts' sub-tab (Lua AIScripts and PineScript routes).)MAN",
      "ai ki lua patrouille"},
     {"map.mobs", "map",
      "Tab Mobs (Monster-Spawns)", "Mobs tab (monster spawns)",
@@ -1050,6 +1067,27 @@ const TipRow kTips[] = {
     {"T:mapeditor.cancel", "Bricht ab.", "Cancels."},
     {"T:mapeditor.open", "Öffnet die gewählte Karte.", "Opens the chosen map."},
     {"T:card.start", "Startet diesen Editor.", "Starts this editor."},
+    {"ColorEdit3:##envGlobalLight", "GlobalLight der SHMD: Umgebungslicht für alle Flächen (Werte über 1 erlaubt).", "SHMD GlobalLight: ambient light for all surfaces (values above 1 allowed)."},
+    {"ColorEdit3:##envDirAmbient", "DirectionLightAmbient der SHMD: zusätzliches Umgebungslicht.", "SHMD DirectionLightAmbient: additional ambient light."},
+    {"ColorEdit3:##envDirDiffuse", "DirectionLightDiffuse der SHMD: Farbe des gerichteten Lichts (Sonne).", "SHMD DirectionLightDiffuse: color of the directional light (sun)."},
+    {"ColorEdit3:##envFogColor", "Nebelfarbe (Fog, Werte 2–4).", "Fog color (Fog, values 2–4)."},
+    {"ColorEdit3:##envBackground", "BackGroundColor der SHMD: Himmelsfarbe hinter allen Modellen.", "SHMD BackGroundColor: sky color behind all models."},
+    {"SliderFloat:##envFogDepth", "Fog-Tiefe: Anteil der Sichtweite, über den sich der Nebel aufbaut (0 = kein Nebel).", "Fog depth: share of the view distance over which fog builds up (0 = no fog)."},
+    {"DragFloat:##envFrustum", "Frustum: Sichtweite der Karte; der Nebel ist hier voll.", "Frustum: view distance of the map; fog is full here."},
+    {"Button:Werte beim Öffnen wiederherstellen##env", "Setzt Licht, Nebel, Hintergrund und Sichtweite auf den Stand beim Öffnen (Strg+Z nimmt es zurück).", "Resets light, fog, background and view distance to the state at open (Ctrl+Z reverts it)."},
+    {"Button:Restore values at open##env", "Setzt Licht, Nebel, Hintergrund und Sichtweite auf den Stand beim Öffnen (Strg+Z nimmt es zurück).", "Resets light, fog, background and view distance to the state at open (Ctrl+Z reverts it)."},
+    {"SmallButton:Nebelfarbe = Hintergrund##env", "Übernimmt die Hintergrundfarbe als Nebelfarbe (wie in vielen Originalkarten).", "Copies the background color into the fog color (as in many original maps)."},
+    {"SmallButton:Fog color = background##env", "Übernimmt die Hintergrundfarbe als Nebelfarbe (wie in vielen Originalkarten).", "Copies the background color into the fog color (as in many original maps)."},
+    {"SmallButton:X##envModel", "Entfernt diesen Eintrag aus der Modellliste (Strg+Z nimmt es zurück).", "Removes this entry from the model list (Ctrl+Z reverts it)."},
+    {"SmallButton:Modell hinzufügen##envModel", "Hängt den Pfad aus dem Eingabefeld unten an diese Liste an.", "Appends the path from the input field below to this list."},
+    {"SmallButton:Add model##envModel", "Hängt den Pfad aus dem Eingabefeld unten an diese Liste an.", "Appends the path from the input field below to this list."},
+    {"InputText:##envModelPath", "Modellpfad wie in der SHMD, z. B. resmap\\field\\Rou\\Rou_Sky.nif.", "Model path as in the SHMD, e.g. resmap\\field\\Rou\\Rou_Sky.nif."},
+    {"Checkbox:Kartenlicht##env", "3D-Ansicht mit dem Licht aus der SHMD statt Editor-Standardlicht.", "3D view with the light from the SHMD instead of the editor default light."},
+    {"Checkbox:Map lighting##env", "3D-Ansicht mit dem Licht aus der SHMD statt Editor-Standardlicht.", "3D view with the light from the SHMD instead of the editor default light."},
+    {"Checkbox:Hintergrundfarbe##envPreview", "BackGroundColor als Hintergrund der 3D-Ansicht.", "BackGroundColor as background of the 3D view."},
+    {"Checkbox:Background color##envPreview", "BackGroundColor als Hintergrund der 3D-Ansicht.", "BackGroundColor as background of the 3D view."},
+    {"Checkbox:Nebel##env", "Nebel in der 3D-Ansicht zeigen (im Spieltest immer an).", "Show fog in the 3D view (always on in playtest)."},
+    {"Checkbox:Fog##env", "Nebel in der 3D-Ansicht zeigen (im Spieltest immer an).", "Show fog in the 3D view (always on in playtest)."},
     {"Button:Neue Karte##hubNewMap", "Öffnet den Assistenten für eine neue Karte (Terrain, SHN-Zeilen, Field.txt, Minimap, Ladebild).", "Opens the new map wizard (terrain, SHN rows, Field.txt, minimap, loading image)."},
     {"Button:New map##hubNewMap", "Öffnet den Assistenten für eine neue Karte (Terrain, SHN-Zeilen, Field.txt, Minimap, Ladebild).", "Opens the new map wizard (terrain, SHN rows, Field.txt, minimap, loading image)."},
     {"Button:Karte öffnen##hubOpenMap", "Zeigt die Kartenliste des Clients und die zuletzt geöffneten Karten.", "Shows the client's map list and recently opened maps."},

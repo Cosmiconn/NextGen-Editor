@@ -12,6 +12,7 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <string>
 #include <vector>
 
 using namespace theseed::mapeditor::core;
@@ -160,6 +161,52 @@ void TestLegacyShmdByteExactRoundtrip(const std::filesystem::path& shmdPath) {
     std::filesystem::remove(exportPath);
 }
 
+// Umgebungs-Panel: geänderte Szene-Werte landen in genau ihren SHMD-Zeilen, alles andere bleibt bytegleich.
+void TestShmdEnvironmentEdit(const std::filesystem::path& shmdPath) {
+    auto parsed = legacy::ParseLegacyShmd(shmdPath);
+    Check(parsed.has_value(), "Umgebung: Rou.shmd geladen");
+    if (!parsed) return;
+    auto& env = parsed->environment;
+    const float globalLight[3] = {1.25f, 0.5f, 0.375f};
+    std::copy(std::begin(globalLight), std::end(globalLight), env.globalLight);
+    env.fog[0] = 0.25f; env.fog[1] = 0.5f; env.fog[2] = 0.75f; env.fog[3] = 1.0f;
+    env.backgroundColor[0] = 0.125f;
+    env.frustumFar = 3200.0f;
+    env.directionLightAmbient[2] = 0.0625f;
+    env.directionLightDiffuse[0] = 0.5f;
+
+    const auto exportPath = std::filesystem::temp_directory_path() / "map_editor_shmd_environment_test.shmd";
+    Check(legacy::SerializeLegacyShmd(*parsed, exportPath).has_value(), "Umgebung: geänderte SHMD geschrieben");
+    const auto splitLines = [](const std::vector<char>& bytes) {
+        std::vector<std::string> lines(1);
+        for (char c : bytes) { if (c == '\n') lines.emplace_back(); else lines.back() += c; }
+        return lines;
+    };
+    const auto before = splitLines(ReadAllBytes(shmdPath));
+    const auto after = splitLines(ReadAllBytes(exportPath));
+    Check(before.size() == after.size(), "Umgebung: gleiche Zeilenzahl");
+    std::vector<std::string> changedKeys;
+    for (std::size_t i = 0; i < std::min(before.size(), after.size()); ++i) {
+        if (before[i] == after[i]) continue;
+        changedKeys.push_back(after[i].substr(0, after[i].find(' ')));
+    }
+    const std::vector<std::string> expected = {"GlobalLight", "Fog", "BackGroundColor", "Frustum",
+                                               "DirectionLightAmbient", "DirectionLightDiffuse"};
+    Check(changedKeys == expected, "Umgebung: genau die sechs Szene-Zeilen geändert");
+
+    auto reloaded = legacy::ParseLegacyShmd(exportPath);
+    Check(reloaded.has_value(), "Umgebung: geänderte SHMD lädt wieder");
+    if (reloaded) {
+        const auto& r = reloaded->environment;
+        Check(r.globalLight[0] == 1.25f && r.globalLight[2] == 0.375f && r.fog[0] == 0.25f && r.fog[3] == 1.0f &&
+                  r.backgroundColor[0] == 0.125f && r.frustumFar == 3200.0f &&
+                  r.directionLightAmbient[2] == 0.0625f && r.directionLightDiffuse[0] == 0.5f,
+              "Umgebung: neue Werte kommen beim Laden an");
+        Check(reloaded->Count() == parsed->Count(), "Umgebung: Objekte unverändert");
+    }
+    std::filesystem::remove(exportPath);
+}
+
 void TestLegacyIdmByteExactRoundtrip(const std::filesystem::path& idmPath) {
     auto parsed = legacy::ParseLegacyIdm(idmPath);
     Check(parsed.has_value(), "ParseLegacyIdm(Rou.idm) erfolgreich");
@@ -294,6 +341,7 @@ int main(int argc, char** argv) {
     if (argc >= 4) {
         std::printf("\n== Legacy-shmd-Roundtrip (Byte-f\u00fcr-Byte) ==\n");
         TestLegacyShmdByteExactRoundtrip(argv[1]);
+        TestShmdEnvironmentEdit(argv[1]);
         std::printf("\n== Legacy-idm-Roundtrip (Byte-f\u00fcr-Byte) ==\n");
         TestLegacyIdmByteExactRoundtrip(argv[2]);
         std::printf("\n== Legacy-aid-Roundtrip (Byte-f\u00fcr-Byte) ==\n");

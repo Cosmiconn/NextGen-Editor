@@ -94,7 +94,7 @@ Weiterhin offen – jeweils mit dem, was dafür fehlt:
 | NIF Parser | **A strukturell** | strukturelles Laden ist weitgehend verifiziert; visuelle Semantik ist getrennt zu bewerten. |
 | NIF Material Rendering | **B/C** | klassische Slots weitgehend da; proprietäre Shader/TextureEffect/Renderstates noch nicht vollständig. |
 | NIF visuelle Regression | **C** | echte OpenGL-Smokes existieren, aber kein systematischer Referenzbildvergleich gegen Client/NifSkope. |
-| Minimap Editor Preview | **B** | Editor-Preview vorhanden; Fiesta-Exportformat weiterhin absichtlich gesperrt. |
+| Minimap | **B** | Editor-Preview und Export: `resmenu/minimap/<Karte>.dds` (512×512 DXT1, Ausschnitt wie die Originale belegt), auch im Assistenten „Neue Karte“. Ob jede Karte im Client exakt so zugeschnitten wird, ist nur für die geprüften Karten belegt. |
 | SHN / Quest / Skill / KFM | **B** | viele reale Workflows vorhanden; je Modul weitere Tiefensemantik/Politur offen. |
 | vollständiger Kartenexport | **C/D** | abgeleitete Daten wie IDM können nach Bearbeitung veraltet sein. |
 
@@ -320,7 +320,7 @@ Deshalb:
 - Dirty-Derived-Data-Status explizit anzeigen;
 - Exportwarnung, wenn IDM/andere abhängige Daten nicht neu berechnet werden können;
 - niemals „vollständig spielbereit“ behaupten, solange die Neuberechnung nicht verifiziert ist;
-- Minimap-Export weiterhin gesperrt lassen, bis das echte Format belegt ist.
+- Minimap-Export: umgesetzt (DDS 512×512 DXT1, Format an den Original-Minimaps belegt); bei neuen Kartengrößen im Spiel gegenprüfen.
 
 ---
 
