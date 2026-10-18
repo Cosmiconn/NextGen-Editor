@@ -1,3 +1,16 @@
+## File Editor — mob attack sequences, effect file check
+- New **Attack sequences** tab (File Editor, also a quick button on the start page) for `Server/9Data/Shine/MobAttackSequence/<mob>.txt` (297 files in NA2016):
+  - steps (AttSeq) with a skill picker from the server ActiveSkill, move up/down, insert, delete; `-` (empty step) and `*RepeatStart` (assumed: repeat from here) as special values; unknown skills highlighted;
+  - rules (SkillChange: HPLow_ChangeOrder, OutOfRange, HPLow, NextSkill) with value, From and To; the table is created when the first rule is added;
+  - create a sequence for another mob as a copy; save as a project copy; every change is one undo step;
+  - mob skills have Korean (EUC-KR) names in NA2016, so the skill ID is shown instead of unreadable text;
+  - the mob editor shows **Open attack sequence** when a file exists for the mob.
+- Order numbers are always written 0..n-1 so file order and Order agree; inserting or deleting shifts values instead of reordering lines, so the file keeps its form. One NA2016 file (ViciousLeviathan) has irregular Order values and is renumbered on its first change (shown in the editor).
+- **Effect file check** in the skill editor: effect columns of ActiveSkillView and AbStateView are checked against the client's `reseffect` folder; a click jumps to the skill or state, and a state's missing effects appear among its problems. `MyWeapon` (Tomahawk skills) is listed as a special value. NA2016: 12 state effect references without a file, 6 MyWeapon entries.
+- New core modules `core::legacy::MobAttackSequence` and `core::legacy::EffectRefs`; new automation commands `attackseq*` and `effectcheck`.
+- Checked on NA2016: applying the unchanged sequence leaves 296 of 297 files byte-identical (the irregular file is skipped); inserting `*RepeatStart` in AdlFH_Eglack and adding a rule changed exactly the shifted records, one appended record and one rule line; a copy for a new mob is byte-identical to its source.
+- Tests: new `test_mob_attack_sequence` (optionally over a directory of real files) and `test_effect_refs`.
+
 ## File Editor — item systems
 - New **Item systems** tab (File Editor, also a quick button on the start page) for the grouped item tables, where several rows with the same key form one entry:
   - **Sets**: SetItem (server), SetEffect (client and server) and SetItemName (client) side by side, with the items of the set from `ItemInfo.SetItemIndex` (a click opens the item editor);

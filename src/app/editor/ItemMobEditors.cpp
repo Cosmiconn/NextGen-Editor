@@ -193,6 +193,14 @@ void DrawMobHeader(EditorState& state, const dataform::Docs& docs, long long id)
         }
         if (shown == 0) ImGui::TextDisabled("%s", L("Keine Zeile in ItemDropTable.txt (droppt nichts).", "No row in ItemDropTable.txt (drops nothing)."));
     }
+    // Angriffsfolge (MobAttackSequence/<InxName>.txt).
+    if (!inx.empty()) {
+        if (AttackSequenceExists(state, inx)) {
+            if (UI::SmallButton(L("Angriffsfolge öffnen##mobAttackSeq", "Open attack sequence##mobAttackSeq"))) OpenAttackSequence(state, inx);
+        } else {
+            ImGui::TextDisabled("%s", L("Keine Angriffsfolge (MobAttackSequence).", "No attack sequence (MobAttackSequence)."));
+        }
+    }
     // Platzierung (World/NPC.txt) und Gespräch (NpcDialogData).
     if (const auto* npc = FindQuestNpc(state, static_cast<int>(id)); npc && !npc->placements.empty())
         ImGui::TextDisabled(L("Platziert: %s", "Placed: %s"), QuestNpcPlacementText(*npc).c_str());

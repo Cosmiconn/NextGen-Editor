@@ -51,7 +51,7 @@ void DrawProjectHub(EditorState& state) {
          {L("SHN-Tabellen einzeln und mehrere gleichzeitig","SHN tables one at a time or several at once"),
           L("Items, Mobs, Skills, Passive, Zustände","Items, mobs, skills, passives, states"),
           L("Item-Systeme: Sets, Aufwertung, Mix, Zufallsoptionen, Pakete","Item systems: sets, upgrade, mix, random options, packages"),
-          L("Quests, Drops, Preise, XP, KI-Skripte","Quests, drops, prices, XP, AI scripts"),
+          L("Quests, Drops, Preise, XP, KI-Skripte, Angriffsfolgen der Mobs","Quests, drops, prices, XP, AI scripts, mob attack sequences"),
           L("Interface: Ladebilder, Icons, Porträts, Fenster","Interface: loading screens, icons, portraits, windows"),
           L("Texte und Lokalisierung (CSV für Übersetzungen)","Texts and localization (CSV for translations)"),
           L("Animationen (KFM)","Animations (KFM)")},
@@ -64,6 +64,7 @@ void DrawProjectHub(EditorState& state) {
           {L("Interface##hubInterface","Interface##hubInterface"), 9, AppScreen::ShnEditor, LV::Browse},
           {L("Texte##hubTexts","Texts##hubTexts"), 15, AppScreen::ShnEditor, LV::Browse},
           {L("Item-Systeme##hubItemSystems","Item systems##hubItemSystems"), 16, AppScreen::ShnEditor, LV::Browse},
+          {L("Angriffsfolgen##hubAttackSeq","Attack sequences##hubAttackSeq"), 17, AppScreen::ShnEditor, LV::Browse},
           {L("Animationen##hubKfm","Animations##hubKfm"), -1, AppScreen::KfmBrowser, LV::Browse}},
          AppScreen::ShnEditor, 0},
     };

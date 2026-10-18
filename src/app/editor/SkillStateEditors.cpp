@@ -214,6 +214,7 @@ std::vector<std::string> AbStateProblems(EditorState& state, const dataform::Doc
     const std::string sub = TrimAscii(FormCellRead(state, docs, 0, "SubAbState", id));
     if (!sub.empty() && sub != "-" && !InxExists(state, "SubAbState.shn", EditorState::ShnSource::Server, sub))
         out.push_back(std::string(L("SubAbState nicht gefunden: ", "SubAbState not found: ")) + sub);
+    for (auto& missing : MissingEffectsFor(state, true, id)) out.push_back(std::move(missing));
     return out;
 }
 
