@@ -1,3 +1,12 @@
+## NIF writer v1
+- New core module `core::NifWriter` for strictly parsed NIFs (Gamebryo 20.0.0.4 / 10.x): rewrites a NiSourceTexture file name (any length; external textures only), a NiAVObject transform (translation, rotation, scale) or NiMaterialProperty colors (ambient, diffuse, specular, emissive, glossiness, alpha). These versions have no block size or offset tables and references are block indices, so the file is reassembled block by block: unchanged blocks are copied raw, only the edited block is rewritten.
+- Every output is reloaded strictly before it is returned: same block count and types, header, footer and all other blocks byte-identical, the new value arrives. Otherwise an error is returned instead of a file.
+- `LoadNifByteLayout` now also records the texture name field, material colors and the footer position.
+- Window layouts: **Other file...** next to a texture writes another texture name into the window NIF (project copy, Ctrl+Z). New automation `uilayouttexture <old> <new>`.
+- Checked: all 101 fixture NIFs and 3,864 NA2016 NIFs (resmenu 310, resitem 1,503, reseffect 2,051) load strictly; 1,245 external texture names were renamed to a longer name and back, and a transform and material per file were changed and restored - always byte-identical to the original; embedded textures are refused. AttendWin.nif with `Attend.tga -> AttendNextGenTest.tga` grew by exactly the 11 extra characters; Ctrl+Z removes the project copy.
+- Not supported: adding or removing blocks, changing geometry, files that only load via recovery heuristics.
+- Tests: new `test_nif_writer` (fixtures; optionally any NIF folder).
+
 ## File Editor — guild, kingdom quests and gambling
 - New **Guild/KQ** tab (File Editor, also on the start page), another group editor category with ten systems:
   - **Guild grades**, **guild academy** (buffs checked against AbState), **guild tournament** (schedule, requirements, level gap, occupy, master buff, score, rewards) and **tournament skills** (with descriptions);

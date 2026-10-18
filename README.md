@@ -110,8 +110,10 @@ bleiben erhalten, weil Fiesta diese Formate selbst verwendet.
 Die eigenen Zwischenformate TSHM/TSTEX/TSWALK/TSOBJ wurden aus API und Oberfläche entfernt.
 Begleitdateien werden unverändert mitgeführt; der Formatbericht benennt, welche abgeleiteten
 Daten nach Änderungen noch nicht neu erzeugt werden. Vollständige Spiel- oder NifSkope-
-Darstellungsgleichheit, Partikelsimulation und ein allgemeiner NIF-Writer sind noch nicht nachgewiesen bzw. umgesetzt;
-für Fenster-Layouts gibt es einen geprüften In-Place-Patch (Eckpunkte und Bounding-Sphere von NiTriShapeData).
+Darstellungsgleichheit und Partikelsimulation sind noch nicht nachgewiesen bzw. umgesetzt. Für NIFs gibt es einen
+geprüften Writer v1 (`core::NifWriter`: Texturnamen beliebiger Länge, Transformationen, Materialfarben; Block für
+Block neu zusammengesetzt und gegengeprüft) und für Fenster-Layouts einen In-Place-Patch der Eckpunkte; neue
+Blöcke anlegen oder Geometrie umbauen kann der Editor nicht.
 
 Koreanische Texte (CP949) werden übersetzt angezeigt (mitgeliefertes Wörterbuch `assets/i18n`,
 eigenes Projekt-Wörterbuch, sonst Glossar + Umschrift) und auf Knopfdruck englisch in die Daten

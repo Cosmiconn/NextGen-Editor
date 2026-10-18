@@ -453,6 +453,14 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         std::printf("[uilayoutmove] %s #%d ok=%d %s\n", state.layoutSelected.c_str(), state.layoutPart, ok ? 1 : 0, message.c_str());
         std::fflush(stdout);
     }
+    else if (cmd == "uilayouttexture") {
+        // uilayouttexture <alter Name> <neuer Name>: Texturdatei des gewählten Fensters umstellen (NIF-Writer).
+        std::string oldName, newName; in >> oldName >> newName;
+        std::string message;
+        const bool ok = AssignLayoutTexture(state, state.layoutSelected, oldName, newName, message);
+        std::printf("[uilayouttexture] ok=%d %s\n", ok ? 1 : 0, message.c_str());
+        std::fflush(stdout);
+    }
     else if (cmd == "uilayoutreplace") {
         // uilayoutreplace <Quelldatei>: "Ausschnitt ersetzen" für das gewählte Element mit dieser Quelle.
         std::string source; std::getline(in >> std::ws, source);

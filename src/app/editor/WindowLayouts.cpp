@@ -9,6 +9,7 @@
 
 #include "EditorShared.hpp"
 #include "mapeditor/core/NifPatch.hpp"
+#include "mapeditor/core/NifWriter.hpp"
 
 namespace nge {
 
@@ -158,6 +159,43 @@ bool MoveLayoutElement(EditorState& state, const std::string& nifRel, int part, 
         return false;
     }
     message = std::string(L("Element verschoben: ", "Element moved: ")) + label;
+    return true;
+}
+
+// Texturdatei eines Fensters umstellen: alle NiSourceTexture-Blöcke mit diesem Namen (Groß/Klein egal)
+// bekommen den neuen Dateinamen - NIF-Writer v1, jede Ausgabe gegengeprüft, Projektkopie mit Strg+Z.
+bool AssignLayoutTexture(EditorState& state, const std::string& nifRel, const std::string& oldName, const std::string& newName,
+                         std::string& message) {
+    const auto path = ResmenuEffectivePath(state, nifRel);
+    std::ifstream in(path, std::ios::binary);
+    std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    in.close();
+    const auto layout = core::LoadNifByteLayout(bytes);
+    if (!layout) {
+        message = std::string(L("NIF nicht strikt lesbar: ", "NIF not strictly readable: ")) + layout.error();
+        return false;
+    }
+    std::size_t changed = 0;
+    for (const auto& tex : core::NifTextureSources(*layout)) {
+        if (LowerAscii(tex.file) != LowerAscii(oldName)) continue;
+        auto rewritten = core::RewriteNifTextureFile(bytes, tex.block, newName);
+        if (!rewritten) {
+            message = "#" + std::to_string(tex.block) + ": " + rewritten.error();
+            return false;
+        }
+        bytes = std::move(*rewritten);
+        ++changed;
+    }
+    if (changed == 0) {
+        message = std::string(L("Keine externe Textur mit diesem Namen: ", "No external texture with this name: ")) + oldName;
+        return false;
+    }
+    const std::string label = std::filesystem::path(nifRel).filename().string() + ": " + oldName + " -> " + newName;
+    if (!WriteResmenuOverride(state, nifRel, bytes, label)) {
+        message = state.statusMessage;
+        return false;
+    }
+    message = std::string(L("Textur zugewiesen (", "Texture assigned (")) + std::to_string(changed) + "x): " + label;
     return true;
 }
 
@@ -428,6 +466,26 @@ void DrawWindowLayoutViewer(EditorState& state) {
             ImGui::BeginDisabled(state.project.projectFolder[0] == '\0');
             if (UI::SmallButton(L("Ersetzen...##layoutTex", "Replace...##layoutTex"))) OpenImageReplaceDialog(state, texRel, texRel);
             ImGui::EndDisabled();
+        }
+        // Andere Datei zuweisen (schreibt den Namen in die NIF, auch mit anderer Länge).
+        ImGui::SameLine();
+        ImGui::BeginDisabled(state.project.projectFolder[0] == '\0');
+        static char assignName[256] = "";
+        if (UI::SmallButton(L("Andere Datei...##layoutTexAssign", "Other file...##layoutTexAssign"))) {
+            std::snprintf(assignName, sizeof(assignName), "%s", texture.c_str());
+            ImGui::OpenPopup("##layoutTexAssignPopup");
+        }
+        ImGui::EndDisabled();
+        if (ImGui::BeginPopup("##layoutTexAssignPopup")) {
+            ImGui::TextWrapped(L("Neuer Texturname für %s (wie in der NIF, z. B. relativ zum Fenster-Ordner).",
+                                 "New texture name for %s (as stored in the NIF, e.g. relative to the window folder)."), texture.c_str());
+            ImGui::SetNextItemWidth(320.0f);
+            UI::InputText("##layoutTexAssignName", assignName, sizeof(assignName));
+            if (UI::Button(L("Zuweisen##layoutTexAssign", "Assign##layoutTexAssign"))) {
+                AssignLayoutTexture(state, nifRel, texture, TrimAscii(assignName), state.layoutMoveStatus);
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
         }
         ImGui::PopID();
     }
