@@ -15,6 +15,7 @@
 
 #include <cstdio>
 #include <fstream>
+#include <sstream>
 
 using namespace theseed::mapeditor;
 
@@ -637,6 +638,68 @@ int main() {
         Check(PortraitUsers(st, 0, "SlimeFace").size() == 1 && PortraitUsers(st, 0, "KingFace").size() == 1, "Verwendungen neu gezählt");
         Check(st.dataHistory.UndoCount() == 1 && DataUndo(st) && PortraitUsers(st, 0, "SlimeFace").size() == 2,
               "ein Undo stellt beide Seiten wieder her");
+    }
+
+    std::printf("\n== Gruppen-Editor: Mover kopieren (freie Nummer, Client und Server) ==\n");
+    {
+        const auto makeTable = [](std::vector<core::legacy::ShnColumn> cols, std::vector<std::vector<core::legacy::ShnValue>> rows) {
+            core::legacy::ShnFile f;
+            f.encrypted = false;
+            f.columns = std::move(cols);
+            for (auto& v : rows) { core::legacy::ShnRow r; r.values = std::move(v); f.rows.push_back(std::move(r)); }
+            return f;
+        };
+        const auto moverMain = makeTable({UIntColumn("MoverID"), StringColumn("MoverIDX", 32), UIntColumn("RunSpeed")},
+                                         {{7u, std::string("M_Alpha"), 2400u}, {9u, std::string("M_Beta"), 2000u}});
+        const auto moverItem = makeTable({StringColumn("MoverIDX", 32), StringColumn("ItemIDX", 32)},
+                                         {{std::string("M_Alpha"), std::string("ItemAlpha")}, {std::string("M_Beta"), std::string("ItemBeta")}});
+        const auto moverView = makeTable({StringColumn("MoverIDX", 32), StringColumn("Name", 32), StringColumn("MoverTypeIDX", 16)},
+                                         {{std::string("M_Alpha"), std::string("Alpha Bike"), std::string("Leg1")},
+                                          {std::string("M_Beta"), std::string("Beta Board"), std::string("Leg1")}});
+        const auto upgrade = makeTable({UIntColumn("RunSpeed"), StringColumn("AbStateIDX", 32)},
+                                       {{0u, std::string("-")}, {200u, std::string("-")}});
+        for (const auto& dir : {ressystem, shine}) {
+            (void)core::legacy::SaveShnFile(moverMain, dir / "MoverMain.shn");
+            (void)core::legacy::SaveShnFile(moverItem, dir / "MoverItem.shn");
+            (void)core::legacy::SaveShnFile(upgrade, dir / "MoverUpgradeEffect.shn");
+        }
+        (void)core::legacy::SaveShnFile(moverView, ressystem / "MoverView.shn");
+        const auto run = [&](const std::string& cmd, const std::string& args) {
+            std::istringstream in(args);
+            const std::string out = GroupSystemsAutomation(st, cmd, in);
+            std::printf("         %s %s -> %s\n", cmd.c_str(), args.c_str(), out.c_str());
+            return out;
+        };
+        // Anzahl Prüfungsmeldungen aus der Automationszeile (ItemInfo der Fixtures kennt die Test-Items nicht -> Grundwert).
+        const auto problems = [](const std::string& out) {
+            const auto p = out.find("problems=");
+            return p == std::string::npos ? -1 : std::atoi(out.c_str() + p + 9);
+        };
+        st.dataHistory.Clear();
+        const std::string first = run("groupsystem", "mounts mover M_Alpha");
+        const int base = problems(first);
+        Check(base >= 0 && first.find("keys=2") != std::string::npos, "Mover-Liste aus MoverMain/MoverItem/MoverView");
+        Check(run("groupsystemcopy", "M_Gamma").find("copy ok") != std::string::npos, "M_Alpha als M_Gamma kopiert");
+        bool idsOk = true;
+        for (const auto side : {EditorState::ShnSource::Client, EditorState::ShnSource::Server}) {
+            const int doc = SharedShnDoc(st, "MoverMain.shn", side, side == EditorState::ShnSource::Client ? st.shnClientRoot : st.shnServerRoot);
+            const auto& f = ShnDocFile(st, doc);
+            const int row = RowOf(f, "10");
+            idsOk = idsOk && f.rows.size() == 3 && row == 2 && ShnCellText(f, 2, "MoverIDX") == "M_Gamma" && ShnCellText(f, 2, "RunSpeed") == "2400";
+        }
+        Check(idsOk, "neue MoverID 10 (höchste + 1) in Client und Server, Werte der Vorlage");
+        const int viewDoc = SharedShnDoc(st, "MoverView.shn", EditorState::ShnSource::Client, st.shnClientRoot);
+        Check(ShnDocFile(st, viewDoc).rows.size() == 3 && ShnCellText(ShnDocFile(st, viewDoc), 2, "Name") == "Alpha Bike", "MoverView-Zeile mitkopiert");
+        Check(problems(run("groupsystem", "mounts mover M_Gamma")) == base + 1, "Prüfung: rufendes Item wird auch von M_Alpha benutzt");
+        run("groupsystemset", "MoverItem.shn 0 ItemIDX ItemGamma");
+        Check(problems(run("groupsystem", "mounts mover M_Gamma")) == base, "eigenes Item: Meldung verschwindet");
+        Check(run("groupsystem", "mounts moverupgrade").find("* problems=0 keys=1") != std::string::npos, "Tabelle ohne Schlüssel: eine Gruppe mit allen Zeilen");
+        run("groupsystemrow", "MoverUpgradeEffect.shn");
+        const int upDoc = SharedShnDoc(st, "MoverUpgradeEffect.shn", EditorState::ShnSource::Server, st.shnServerRoot);
+        Check(ShnDocFile(st, upDoc).rows.size() == 3, "+ Zeile hängt an Tabellen ohne Schlüssel an");
+        while (DataUndo(st)) {}
+        const int mainDoc = SharedShnDoc(st, "MoverMain.shn", EditorState::ShnSource::Server, st.shnServerRoot);
+        Check(ShnDocFile(st, mainDoc).rows.size() == 2 && ShnDocFile(st, upDoc).rows.size() == 2, "Strg+Z nimmt Kopie und Zeile zurück");
     }
 
     std::printf("\n== Fenster-Layouts: UV-Ausschnitt eines Elements ==\n");

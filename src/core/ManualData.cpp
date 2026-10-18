@@ -659,6 +659,27 @@ Usage:
 - 'Create as copy' creates the entry under the new key as a copy of the selected one in all tables, 'Rename selected' changes the key everywhere, 'Delete selected' removes all rows (with a note about referencing items).
 - Tables on both sides are changed together: the n-th row of an entry on the client matches the n-th on the server. Everything goes through the data history (Ctrl+Z) and is written with 'Save all changed SHN' as a project copy.)MAN",
      "item system sets set effekt upgrade aufwertung mix random zufall option paket package itemupgrade upgradeinfo randomoption"},
+    {"shn.mounts", "shn",
+     "Reittiere und Haustiere", "Mounts and pets",
+     R"MAN(Der Tab 'Reittiere' bearbeitet Mover (Reittiere/Fahrzeuge) und Pups (Haustiere). Er funktioniert wie die Item-Systeme: links die Einträge, rechts alle Zeilen des Eintrags in jeder beteiligten Tabelle, Client und Server gemeinsam, Strg+Z.
+- Mover (Schlüssel MoverIDX, 461 in NA2016): MoverMain (Nummer MoverID, Zauberzeit CastingTime und Abklingzeit CoolTime in ms, RunSpeed/WalkSpeed, DurationHour = Dauer in Stunden, 0 = dauerhaft, MaxCharSlot = Sitzplätze), MoverItem (Item, das den Mover ruft), MoverHG (Hunger: FeedType = Futter-Item, RestoreAmount, MaxHG, CreateHG, Tick in ms, ConsumeHG - Bedeutung teils vermutet), MoverView (Name, Modellordner FolderName, Bilder Normalmage/HungryImage/EatImage, MoverTypeIDX), MoverSlotView (Sitzplätze, ob der Charakter sichtbar ist). MoverAbility und MoverUseSkill sind in NA2016 leer. Oben im Eintrag steht das Bild aus resmenu/game/MobPortrait/<Normalmage>.
+- Mover-Typen (Schlüssel MoverTypeIDX): MoverSlotCharAni - Reit-Animationen je Sitzplatz und Charakter-Animation (RideLegECode/RideAniECode, vermutet). Darunter alle Mover dieses Typs; ein Klick wählt den Mover.
+- Mover-Aufwertung: MoverUpgradeEffect (eine Tabelle ohne Schlüssel, alle Zeilen = Stufen 0..5, vermutet) mit Tempo, Erholung, Zauberzeiten, Effekt und Zustand (AbStateIDX muss in AbState existieren).
+- Pups (Schlüssel PupIDX): PupMain (Nummer PupID, Item, Tempo), PupView (Name, Modell, Größe), PupServer (Laune- und Stress-Spanne), PupCaseDesc (Reaktionen mit Meldung SM_Inx aus ScriptMsg, Effekt und Sound). Der Eintrag '-' enthält die Reaktionen für alle Pups (vermutet).
+- Pup-Verhalten: PupCase, PupMind, PupPriority, PupFactorCondition (Server, ohne Schlüssel; Wirkung vermutet).
+- 'Als Kopie anlegen' kopiert den Eintrag in allen Tabellen unter dem neuen Schlüssel; MoverMain.MoverID und PupMain.PupID bekommen automatisch die nächste freie Nummer (in Client und Server gleich). Danach bitte das rufende Item ändern: Die Prüfung meldet ein Item, das schon ein anderer Mover/Pup benutzt. Das neue Item legst Du im Item-Editor an ('Neu aus diesem anlegen').
+- Modelle der Mover und Pups (Ordner FolderName/FileName) sind in den NA2016-Daten nicht enthalten; eine 3D-Vorschau gibt es deshalb nicht.
+Gespeichert wird mit 'Alle geänderten SHN speichern' als Projektkopie.)MAN",
+     R"MAN(The 'Mounts' tab edits movers (mounts/vehicles) and pups (pets). It works like the item systems: entries on the left, all rows of the entry in every table involved on the right, client and server together, Ctrl+Z.
+- Movers (key MoverIDX, 461 in NA2016): MoverMain (number MoverID, cast time CastingTime and cooldown CoolTime in ms, RunSpeed/WalkSpeed, DurationHour = duration in hours, 0 = permanent, MaxCharSlot = seats), MoverItem (item that summons the mover), MoverHG (hunger: FeedType = feed item, RestoreAmount, MaxHG, CreateHG, Tick in ms, ConsumeHG - meaning partly assumed), MoverView (name, model folder FolderName, images Normalmage/HungryImage/EatImage, MoverTypeIDX), MoverSlotView (seats, whether the character is visible). MoverAbility and MoverUseSkill are empty in NA2016. The entry shows the image from resmenu/game/MobPortrait/<Normalmage> at the top.
+- Mover types (key MoverTypeIDX): MoverSlotCharAni - ride animations per seat and character animation (RideLegECode/RideAniECode, assumed). Below are all movers of this type; a click selects the mover.
+- Mover upgrade: MoverUpgradeEffect (a table without key, all rows = levels 0..5, assumed) with speed, recovery, cast times, effect and state (AbStateIDX must exist in AbState).
+- Pups (key PupIDX): PupMain (number PupID, item, speed), PupView (name, model, size), PupServer (mood and stress range), PupCaseDesc (reactions with message SM_Inx from ScriptMsg, effect and sound). The entry '-' holds the reactions for all pups (assumed).
+- Pup behavior: PupCase, PupMind, PupPriority, PupFactorCondition (server, without key; effect assumed).
+- 'Create as copy' copies the entry in all tables under the new key; MoverMain.MoverID and PupMain.PupID automatically get the next free number (the same on client and server). Then change the summoning item: the check reports an item that another mover/pup already uses. Create the new item in the item editor ('Create new from this one').
+- Mover and pup models (folders FolderName/FileName) are not part of the NA2016 data, so there is no 3D preview.
+Saving happens with 'Save all changed SHN' as a project copy.)MAN",
+     "reittier mount mover haustier pet pup moverview movermain hunger futter slot sitzplatz aufwertung upgrade pupcase"},
     {"shn.attackseq", "shn",
      "Angriffsfolgen der Mobs und Effekt-Prüfung", "Mob attack sequences and effect check",
      R"MAN(Der Tab 'Angriffsfolgen' bearbeitet Server/9Data/Shine/MobAttackSequence/<Mob>.txt (297 Dateien in NA2016, der Dateiname ist der InxName des Mobs). Im Mob-Editor öffnet 'Angriffsfolge öffnen' die passende Datei.
@@ -1161,6 +1182,8 @@ const TipRow kTips[] = {
     {"T:mapeditor.cancel", "Bricht ab.", "Cancels."},
     {"T:mapeditor.open", "Öffnet die gewählte Karte.", "Opens the chosen map."},
     {"T:card.start", "Startet diesen Editor.", "Starts this editor."},
+    {"Button:Reittiere & Pets##hubMounts", "Reittiere (Mover) und Haustiere (Pups): alle Tabellen eines Eintrags, Kopieren mit freier Nummer.", "Mounts (movers) and pets (pups): all tables of an entry, copy with a free number."},
+    {"Button:Mounts & pets##hubMounts", "Reittiere (Mover) und Haustiere (Pups): alle Tabellen eines Eintrags, Kopieren mit freier Nummer.", "Mounts (movers) and pets (pups): all tables of an entry, copy with a free number."},
     {"Button:Angriffsfolgen##hubAttackSeq", "Angriffsfolgen der Mobs: Skill-Reihenfolge und Regeln.", "Mob attack sequences: skill order and rules."},
     {"Button:Attack sequences##hubAttackSeq", "Angriffsfolgen der Mobs: Skill-Reihenfolge und Regeln.", "Mob attack sequences: skill order and rules."},
     {"Button:Speichern##attackSeq", "Schreibt die Angriffsfolge als Projektkopie (Strg+S).", "Writes the attack sequence as a project copy (Ctrl+S)."},

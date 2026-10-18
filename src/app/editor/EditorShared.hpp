@@ -1162,9 +1162,13 @@ struct EditorState {
         char newKey[64] = "";
         std::string listKey;
         std::vector<std::string> keys;
+        std::vector<std::string> labels;           // Listeneintrag je Schlüssel (mit Anzeigename)
         std::vector<std::string> report;
         std::unordered_set<std::string> missing; // "Wurzel|Datei" ohne Datei
-    } itemSystems;
+    };
+    // Gruppen-Editoren (GroupSystems.hpp): Item-Systeme (Unterreiter 16), Reittiere & Haustiere (18).
+    ItemSystemsState itemSystems;
+    ItemSystemsState mountSystems;
     // Angriffsfolgen (Datei Editor, Unterreiter 17): MobAttackSequence/<Mob>.txt.
     struct AttackSeqState {
         std::string listRoot;               // Server-Ordner|Projektordner der Dateiliste
@@ -2326,6 +2330,10 @@ void DrawPassiveSkillEditor(EditorState& state);
 void DrawAbStateEditor(EditorState& state);
 void DrawTextEditor(EditorState& state);
 void DrawItemSystemsEditor(EditorState& state);
+void DrawMountSystemsEditor(EditorState& state); // Reittiere (Mover) und Haustiere (Pup), Unterreiter 18
+// Automation aller Gruppen-Editoren: groupsystem <Kategorie> <System> [Schlüssel] | groupsystemcopy <neu> |
+// groupsystemset <Datei> <n> <Spalte> <Wert> | groupsystemrow <Datei> | groupsystemdelete (wirkt auf die zuletzt geöffnete Kategorie).
+std::string GroupSystemsAutomation(EditorState& state, const std::string& cmd, std::istream& in);
 // Automation der Item-Systeme: itemsystem <id> [Schlüssel] | itemsystemcopy <neu> | itemsystemset <Datei> <n> <Spalte> <Wert>
 // | itemsystemrow <Datei> | itemsystemdelete. Rückgabe: Ergebniszeile für die Ausgabe.
 std::string ItemSystemsAutomation(EditorState& state, const std::string& cmd, std::istream& in);
