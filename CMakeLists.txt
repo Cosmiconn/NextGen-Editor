@@ -293,10 +293,11 @@ target_link_libraries(map_editor PRIVATE
 )
 if (WIN32)
     # Für den nativen "Ordner wählen"-Dialog (SHBrowseForFolder/CoTaskMemFree) in editor/MapFiles.cpp.
-    target_link_libraries(map_editor PRIVATE Shell32 Ole32 Windowscodecs)
-    # Optionale Online-Übersetzung koreanischer Texte (editor/KoreanOnlineTranslate.cpp): HTTPS über
-    # WinHTTP, API-Schlüssel per DPAPI verschlüsselt (CryptProtectData).
-    target_link_libraries(map_editor PRIVATE winhttp crypt32)
+    # Shell32/Ole32/Windowscodecs: Ordner- und Dateidialoge, WIC-Bilder. winhttp/crypt32: optionale
+    # Online-Übersetzung koreanischer Texte (editor/KoreanOnlineTranslate.cpp) über HTTPS, API-Schlüssel
+    # per DPAPI verschlüsselt. Gilt für jedes Ziel mit den Editor-Modulen (auch die Tests unten).
+    set(NEXTGEN_EDITOR_WIN32_LIBS Shell32 Ole32 Windowscodecs winhttp crypt32)
+    target_link_libraries(map_editor PRIVATE ${NEXTGEN_EDITOR_WIN32_LIBS})
 endif()
 endif() # NEXTGEN_EDITOR_BUILD_GUI
 
@@ -572,7 +573,7 @@ target_link_libraries(test_npc_orientation PRIVATE
     OpenGL::GL
 )
 if (WIN32)
-    target_link_libraries(test_npc_orientation PRIVATE Shell32 Ole32 Windowscodecs)
+    target_link_libraries(test_npc_orientation PRIVATE ${NEXTGEN_EDITOR_WIN32_LIBS})
 endif()
 add_test(NAME npc_orientation COMMAND test_npc_orientation)
 
@@ -597,7 +598,7 @@ target_link_libraries(test_data_editors PRIVATE
     OpenGL::GL
 )
 if (WIN32)
-    target_link_libraries(test_data_editors PRIVATE Shell32 Ole32 Windowscodecs)
+    target_link_libraries(test_data_editors PRIVATE ${NEXTGEN_EDITOR_WIN32_LIBS})
 endif()
 add_test(NAME data_editors COMMAND test_data_editors)
 
