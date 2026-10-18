@@ -50,6 +50,7 @@ void DrawProjectHub(EditorState& state) {
            "Client and server are edited together, Ctrl+Z reverts changes."),
          {L("SHN-Tabellen einzeln und mehrere gleichzeitig","SHN tables one at a time or several at once"),
           L("Items, Mobs, Skills, Passive, Zustände","Items, mobs, skills, passives, states"),
+          L("Item-Systeme: Sets, Aufwertung, Mix, Zufallsoptionen, Pakete","Item systems: sets, upgrade, mix, random options, packages"),
           L("Quests, Drops, Preise, XP, KI-Skripte","Quests, drops, prices, XP, AI scripts"),
           L("Interface: Ladebilder, Icons, Porträts, Fenster","Interface: loading screens, icons, portraits, windows"),
           L("Texte und Lokalisierung (CSV für Übersetzungen)","Texts and localization (CSV for translations)"),
@@ -62,6 +63,7 @@ void DrawProjectHub(EditorState& state) {
           {L("Drops##hubDrops","Drops##hubDrops"), 10, AppScreen::ShnEditor, LV::Browse},
           {L("Interface##hubInterface","Interface##hubInterface"), 9, AppScreen::ShnEditor, LV::Browse},
           {L("Texte##hubTexts","Texts##hubTexts"), 15, AppScreen::ShnEditor, LV::Browse},
+          {L("Item-Systeme##hubItemSystems","Item systems##hubItemSystems"), 16, AppScreen::ShnEditor, LV::Browse},
           {L("Animationen##hubKfm","Animations##hubKfm"), -1, AppScreen::KfmBrowser, LV::Browse}},
          AppScreen::ShnEditor, 0},
     };

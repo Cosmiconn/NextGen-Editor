@@ -1,3 +1,19 @@
+## File Editor — item systems
+- New **Item systems** tab (File Editor, also a quick button on the start page) for the grouped item tables, where several rows with the same key form one entry:
+  - **Sets**: SetItem (server), SetEffect (client and server) and SetItemName (client) side by side, with the items of the set from `ItemInfo.SetItemIndex` (a click opens the item editor);
+  - **Set effects**: SetItemEffect (server);
+  - **Upgrade**: UpgradeInfo (client and server); the link from items via `ItemInfo.BasicUpInx` is marked as assumed;
+  - **Upgrade chances**: ItemUpgrade (server), one row per level (assumed);
+  - **Item mix**: ItemMix (client and server);
+  - **Random options**: RandomOption and RandomOptionCount (server), with the items from `ItemInfoServer.RandomOptionDropGroup`;
+  - **Item packages**: ItemPackage (server).
+- Referencing cells show the name or description of their target (SetItem.Effect -> SetItemEffect, SetEffect.ItemActionID -> ItemActionEffectDesc, item InxNames -> ItemInfo name); unknown targets are marked and can be filtered ("Problems only").
+- Add/delete rows inside an entry, create an entry as a copy under a new key, rename an entry everywhere, delete an entry (with a note about referencing items). Client and server copies change together (n-th row of the entry), all through the data history (Ctrl+Z).
+- New core module `core::legacy::ShnGroups` (groups in order of first appearance, rows of a group, insert position behind the last group row).
+- New automation commands `itemsystem <id> [key]`, `itemsystemcopy <key>`, `itemsystemset <file> <n> <column> <value>`, `itemsystemrow <file>`, `itemsystemdelete`.
+- Checked on NA2016: copying AssimilationSet to a new set wrote exactly three new SetItem rows, three SetEffect rows on client and server and one SetItemName row; the edited ItemActionID changed on both sides; nothing else in the files changed.
+- Tests: new `test_shn_groups`.
+
 ## File Editor — texts and localization
 - New **Texts** tab (File Editor, also a quick button on the start page) for all text tables of client and server:
   - client: TextData, TextData2, TextData3, ScriptMsg, QuestDialog, MobKillAnnounceText, AbStateMsg, BasicInfoTip, ItemActionEffectDesc, SetItemName, KingdomQuestDesc, KQVoteDesc, CollectCardGroupDesc;

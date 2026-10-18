@@ -260,6 +260,10 @@ void RunAutomationStep(EditorState& state, AutomationScript& script) {
         }
         std::fflush(stdout);
     }
+    else if (cmd.rfind("itemsystem", 0) == 0) {
+        std::printf("[%s] %s\n", cmd.c_str(), ItemSystemsAutomation(state, cmd, in).c_str());
+        std::fflush(stdout);
+    }
     else if (cmd == "mapundo") UndoMapEdit(state);
     else if (cmd == "mapredo") RedoMapEdit(state);
     else if (cmd == "project") {
