@@ -703,6 +703,35 @@ Gespeichert wird mit 'Alle geänderten SHN speichern' als Projektkopie.)MAN",
 - 'Create as copy' copies only the existing rows of the entry; Handle or CC_RewardID get free numbers. For a new house or furniture piece first create the item in the item editor and use its InxName as the new key.
 Saving happens with 'Save all changed SHN' as a project copy.)MAN",
      "minihaus mini house minihouse möbel furniture sammelkarte collect card karte mobgruppe belohnung reward haus"},
+    {"shn.guild", "shn",
+     "Gilde, Kingdom Quests und Glücksspiel", "Guild, kingdom quests and gambling",
+     R"MAN(Der Tab 'Gilde/KQ' bearbeitet die Tabellen der Gilden, Kingdom Quests und Glücksspiele - wie die Item-Systeme, Client und Server gemeinsam, Strg+Z. Die meisten sind kleine Einstellungstabellen ohne Schlüssel: links steht dann nur '(alle Zeilen)', rechts jede Tabelle mit allen Zeilen; '+ Zeile' hängt eine Kopie der letzten Zeile an, 'X' löscht.
+- Gilden-Stufen: GuildGradeData (benötigter Ruhm, maximale Mitglieder), GuildGradeScoreData, GuildLevelScoreData.
+- Gilden-Akademie: GuildAcademy, GuildAcademyLevelUp, GuildAcademyRank; Buffs sind AbState-InxNames und werden geprüft.
+- Gilden-Turnier: GuildTournament (Termine und Runden), GuildTournamentRequire (Client und Server), Level-Abstand, Besetzen, Meister-Buff, Punkte und Belohnungen je Rang (RewardType/Value, vermutet). Turnier-Skills: GuildTournamentSkill (Client und Server) und die Beschreibung GuildTournamentSkillDesc (Client).
+- Kingdom Quests (Schlüssel ID): KingdomQuest (Server: Titel, Zeitlimit, Startzeit, Wiederholung, Level- und Spielerbereich, Belohnung RewardIndex, Karte MapLink, Skript), KQIsVote und KQTeam (Client und Server). Die Liste zeigt den Titel. RewardIndex muss in KingdomQuestRew existieren. Die Beschreibungen stehen im Text-Editor (KingdomQuestDesc).
+- KQ-Belohnungen (Schlüssel ID): KingdomQuestRew mit Belohnungskiste und Raten; darunter die Kingdom Quests mit dieser Belohnung (Klick öffnet sie).
+- KQ-Einstellungen: KingdomQuestMap (Zeile = MapLink, vermutet), KQItem, KQVoteDesc, KQVoteMajorityRate.
+- Würfelspiel: DiceGame (Würfel-Item über die Item-ID), DiceDividind (Auszahlung), DiceRate (216 Ergebnisse), BelongDice.
+- Spielhaus: GBHouse, GBDice*, GBBanTime, GBEventCode, GBExchangeMaxCoin, GBJoinGameMember, GBReward, GBTaxRate.
+- Spielautomat: GBSMNPC (Automaten-Mobs), GBSMBetCoin, GBSMGroup, GBSMCardRate, GBSMAll/Line/Center, GBSMJPRate. Die genaue Rechnung ist nicht aus dem Server belegt (vermutet).
+- Tabellen mit vielen Spalten (z. B. KingdomQuestRew mit 33) haben feste Spaltenbreiten und einen horizontalen Rollbalken.
+- Achtung bei '+ Zeile' in Tabellen wie DiceGame: Die neue Zeile ist eine Kopie der letzten und hat dasselbe Item - bitte anpassen.
+Gespeichert wird mit 'Alle geänderten SHN speichern' als Projektkopie.)MAN",
+     R"MAN(The 'Guild/KQ' tab edits the tables of guilds, kingdom quests and gambling - like the item systems, client and server together, Ctrl+Z. Most of them are small settings tables without key: the left side then only shows '(all rows)', the right side every table with all rows; '+ Row' appends a copy of the last row, 'X' deletes.
+- Guild grades: GuildGradeData (required fame, maximum members), GuildGradeScoreData, GuildLevelScoreData.
+- Guild academy: GuildAcademy, GuildAcademyLevelUp, GuildAcademyRank; buffs are AbState InxNames and are checked.
+- Guild tournament: GuildTournament (dates and rounds), GuildTournamentRequire (client and server), level gap, occupy, master buff, score and rewards per rank (RewardType/Value, assumed). Tournament skills: GuildTournamentSkill (client and server) and the description GuildTournamentSkillDesc (client).
+- Kingdom quests (key ID): KingdomQuest (server: title, time limit, start time, repetition, level and player range, reward RewardIndex, map MapLink, script), KQIsVote and KQTeam (client and server). The list shows the title. RewardIndex must exist in KingdomQuestRew. The descriptions are in the text editor (KingdomQuestDesc).
+- KQ rewards (key ID): KingdomQuestRew with reward box and rates; below are the kingdom quests with this reward (a click opens them).
+- KQ settings: KingdomQuestMap (row = MapLink, assumed), KQItem, KQVoteDesc, KQVoteMajorityRate.
+- Dice game: DiceGame (dice item via the item ID), DiceDividind (payout), DiceRate (216 results), BelongDice.
+- Gamble house: GBHouse, GBDice*, GBBanTime, GBEventCode, GBExchangeMaxCoin, GBJoinGameMember, GBReward, GBTaxRate.
+- Slot machine: GBSMNPC (machine mobs), GBSMBetCoin, GBSMGroup, GBSMCardRate, GBSMAll/Line/Center, GBSMJPRate. The exact calculation is not confirmed from the server (assumed).
+- Tables with many columns (e.g. KingdomQuestRew with 33) have fixed column widths and a horizontal scroll bar.
+- Careful with '+ Row' in tables like DiceGame: the new row is a copy of the last one and has the same item - please adjust it.
+Saving happens with 'Save all changed SHN' as a project copy.)MAN",
+     "gilde guild turnier tournament akademie academy kingdom quest kq belohnung reward würfel dice glücksspiel gamble spielhaus slot automat"},
     {"shn.attackseq", "shn",
      "Angriffsfolgen der Mobs und Effekt-Prüfung", "Mob attack sequences and effect check",
      R"MAN(Der Tab 'Angriffsfolgen' bearbeitet Server/9Data/Shine/MobAttackSequence/<Mob>.txt (297 Dateien in NA2016, der Dateiname ist der InxName des Mobs). Im Mob-Editor öffnet 'Angriffsfolge öffnen' die passende Datei.
@@ -1209,6 +1238,8 @@ const TipRow kTips[] = {
     {"Button:Mounts & pets##hubMounts", "Reittiere (Mover) und Haustiere (Pups): alle Tabellen eines Eintrags, Kopieren mit freier Nummer.", "Mounts (movers) and pets (pups): all tables of an entry, copy with a free number."},
     {"Button:MiniHaus & Karten##hubHousing", "Mini-Häuser, Möbel und Sammelkarten mit allen Tabellen eines Eintrags.", "Mini houses, furniture and collect cards with all tables of an entry."},
     {"Button:Mini house & cards##hubHousing", "Mini-Häuser, Möbel und Sammelkarten mit allen Tabellen eines Eintrags.", "Mini houses, furniture and collect cards with all tables of an entry."},
+    {"Button:Gilde, KQ & Spiel##hubGuild", "Gilden-Stufen, Akademie, Turnier, Kingdom Quests, Würfelspiel, Spielhaus und Spielautomat.", "Guild grades, academy, tournament, kingdom quests, dice game, gamble house and slot machine."},
+    {"Button:Guild, KQ & games##hubGuild", "Gilden-Stufen, Akademie, Turnier, Kingdom Quests, Würfelspiel, Spielhaus und Spielautomat.", "Guild grades, academy, tournament, kingdom quests, dice game, gamble house and slot machine."},
     {"Button:Angriffsfolgen##hubAttackSeq", "Angriffsfolgen der Mobs: Skill-Reihenfolge und Regeln.", "Mob attack sequences: skill order and rules."},
     {"Button:Attack sequences##hubAttackSeq", "Angriffsfolgen der Mobs: Skill-Reihenfolge und Regeln.", "Mob attack sequences: skill order and rules."},
     {"Button:Speichern##attackSeq", "Schreibt die Angriffsfolge als Projektkopie (Strg+S).", "Writes the attack sequence as a project copy (Ctrl+S)."},

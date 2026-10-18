@@ -1,3 +1,11 @@
+## File Editor — guild, kingdom quests and gambling
+- New **Guild/KQ** tab (File Editor, also on the start page), another group editor category with ten systems:
+  - **Guild grades**, **guild academy** (buffs checked against AbState), **guild tournament** (schedule, requirements, level gap, occupy, master buff, score, rewards) and **tournament skills** (with descriptions);
+  - **Kingdom quests** (KingdomQuest, KQIsVote, KQTeam per ID; the list shows the title, RewardIndex is checked against KingdomQuestRew), **KQ rewards** (with the kingdom quests that use each reward) and **KQ settings** (maps, special items, vote reasons, majority);
+  - **Dice game**, **gamble house** and **slot machine** (all GB*/Dice* tables, slot machine mobs checked against MobInfo).
+- Group tables with more than ten columns get fixed column widths and a horizontal scroll bar instead of being squeezed (e.g. KingdomQuestRew with 33 columns); text columns are as wide as their field length.
+- Checked on NA2016: all ten systems open without problems; copying kingdom quest 0 as 100 wrote exactly KingdomQuest (server) and KQIsVote (client and server) - KQTeam has no row for quest 0 and got none; '+ Row' in DiceGame appended one row; no existing row changed.
+
 ## File Editor — mini house and collect cards
 - New **Mini house** tab (File Editor, also a quick button on the start page), another group editor category:
   - **Mini houses** (MiniHouse, key = house item) with the background image from `resmenu/game/MiniHouse` and the item name in the list;
