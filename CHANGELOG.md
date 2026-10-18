@@ -1,3 +1,13 @@
+## File Editor — mini house and collect cards
+- New **Mini house** tab (File Editor, also a quick button on the start page), another group editor category:
+  - **Mini houses** (MiniHouse, key = house item) with the background image from `resmenu/game/MiniHouse` and the item name in the list;
+  - **Furniture** (MiniHouseFurniture, MiniHouseFurnitureObjEffect) and **furniture animations** (MiniHouseObjAni, linked via the numeric item ID);
+  - **House settings** (MiniHouseEndure, MiniHouseDummy);
+  - **Collect cards** (CollectCard, CollectCardView with the card image from `resmenu/Collect/Max`, CollectCardDropRate), **card mob groups** (CollectCardGroupDesc, CollectCardMobGroup, with the cards of the group) and **card rewards** (CollectCardReward, CollectCardTitle, CollectCardStarRate).
+- `Handle` and `CC_RewardID` get free numbers when copying or adding rows; a card item used by two cards is reported.
+- Fixed: "Create as copy" no longer invents a row in tables where the template has none (copying a chair used to add a teleport effect row taken from the last line of MiniHouseFurnitureObjEffect).
+- Checked on NA2016: copying PyramidHouse01_1, IN_NormalChair02, IN_ValDn01 and card 1 wrote exactly the rows of the template (Handle 359/1009/1010, card 900 in CollectCard, CollectCardView and CollectCardDropRate); a reward row got CC_RewardID 15; no existing row changed; item set copies still write the same rows as before.
+
 ## File Editor — mounts and pets (movers, pups)
 - New **Mounts** tab (File Editor, also a quick button on the start page) for movers and pups, built on the group editor of the item systems:
   - **Mover** (key MoverIDX, 461 in NA2016): MoverMain, MoverItem, MoverHG, MoverView, MoverSlotView, MoverAbility and MoverUseSkill side by side; the list shows the mover name, the entry shows its image from `resmenu/game/MobPortrait/<Normalmage>`;

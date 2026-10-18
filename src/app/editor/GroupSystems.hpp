@@ -90,6 +90,7 @@ inline Lookup ItemName(const char* column) { return {column, "ItemInfo.shn", Sou
 
 const Category& ItemCategory();   // ItemSystemsEditor.cpp
 const Category& MountCategory();  // MountSystems.cpp
+const Category& HouseCategory();  // HouseSystems.cpp
 
 void DrawGroupSystemsEditor(EditorState& state, const Category& category);
 std::string GroupSystemsAutomation(EditorState& state, const Category& category, const std::string& cmd, std::istream& in);

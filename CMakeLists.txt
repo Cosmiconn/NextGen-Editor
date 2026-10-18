@@ -239,6 +239,7 @@ set(NEXTGEN_EDITOR_MODULES
     src/app/editor/EffectCheck.cpp
     src/app/editor/KoreanDisplay.cpp
     src/app/editor/MountSystems.cpp
+    src/app/editor/HouseSystems.cpp
     src/app/editor/KoreanOnlineTranslate.cpp
     src/app/editor/MapWorkspace.cpp
     src/app/editor/Automation.cpp

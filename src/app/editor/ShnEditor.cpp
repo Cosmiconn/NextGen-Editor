@@ -2000,6 +2000,7 @@ void DrawShnEditor(EditorState& state) {
         {"itemSystems",L("Item-Systeme","Item systems"),DrawIconGem,"module.prices",16,-1},
         {"attackSeq",L("Angriffsfolgen","Attack seq."),DrawIconSword,"module.ai",17,-1},
         {"mounts",L("Reittiere","Mounts"),DrawIconSpawn,"module.custom_mob",18,-1},
+        {"housing",L("MiniHaus","Mini house"),DrawIconPortal,"module.interface",19,-1},
     };
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(5.0f, 5.0f));
     for (int i = 0; i < static_cast<int>(std::size(dataTools)); ++i) {
@@ -2137,6 +2138,7 @@ void DrawShnEditor(EditorState& state) {
     else if(state.shnSubTab==15) { DrawTextEditor(state); }
     else if(state.shnSubTab==16) { DrawItemSystemsEditor(state); }
     else if(state.shnSubTab==18) { DrawMountSystemsEditor(state); }
+    else if(state.shnSubTab==19) { DrawHouseSystemsEditor(state); }
     else { DrawAttackSequenceEditor(state); }
     ImGui::EndChild(); ImGui::EndChild(); ImGui::PopStyleColor();
 }

@@ -51,7 +51,7 @@ void DrawProjectHub(EditorState& state) {
          {L("SHN-Tabellen einzeln und mehrere gleichzeitig","SHN tables one at a time or several at once"),
           L("Items, Mobs, Skills, Passive, Zustände","Items, mobs, skills, passives, states"),
           L("Item-Systeme: Sets, Aufwertung, Mix, Zufallsoptionen, Pakete","Item systems: sets, upgrade, mix, random options, packages"),
-          L("Reittiere (Mover) und Haustiere (Pups)","Mounts (movers) and pets (pups)"),
+          L("Reittiere (Mover) und Haustiere (Pups), MiniHaus und Sammelkarten","Mounts (movers) and pets (pups), mini house and collect cards"),
           L("Quests, Drops, Preise, XP, KI-Skripte, Angriffsfolgen der Mobs","Quests, drops, prices, XP, AI scripts, mob attack sequences"),
           L("Interface: Ladebilder, Icons, Porträts, Fenster","Interface: loading screens, icons, portraits, windows"),
           L("Texte und Lokalisierung (CSV für Übersetzungen)","Texts and localization (CSV for translations)"),
@@ -67,6 +67,7 @@ void DrawProjectHub(EditorState& state) {
           {L("Item-Systeme##hubItemSystems","Item systems##hubItemSystems"), 16, AppScreen::ShnEditor, LV::Browse},
           {L("Angriffsfolgen##hubAttackSeq","Attack sequences##hubAttackSeq"), 17, AppScreen::ShnEditor, LV::Browse},
           {L("Reittiere & Pets##hubMounts","Mounts & pets##hubMounts"), 18, AppScreen::ShnEditor, LV::Browse},
+          {L("MiniHaus & Karten##hubHousing","Mini house & cards##hubHousing"), 19, AppScreen::ShnEditor, LV::Browse},
           {L("Animationen##hubKfm","Animations##hubKfm"), -1, AppScreen::KfmBrowser, LV::Browse}},
          AppScreen::ShnEditor, 0},
     };
