@@ -18,13 +18,13 @@ const Section kSections[] = {
      "Überblick", "Overview",
      R"MAN(Der Editor besteht aus zwei großen Bereichen; die Startseite zeigt genau diese zwei Felder:
 - Map Editor (links): alles, was auf einer Karte liegt. Karten anlegen (Assistent) und öffnen, Höhenkarte und Texturen, Foliage, Begehbarkeit (Block & Walk), Objekte und Prefabs, Sky/Water/GroundObject, NPCs, Mobs (Monster-Spawns), Routen und Portale, Minimap und Kartenprüfung. Alle Bereiche zeigen dieselbe Karte in einer 2D-Draufsicht (zum Bearbeiten) und einer 3D-Ansicht (zum Prüfen und Ausrichten).
-- Datei Editor (rechts): alle Spieldaten-Dateien unabhängig von einer Karte, aus Client (ressystem, resmenu) und Server (9Data/Shine). SHN-Tabellen einzeln oder mehrere zugleich, Items, Mobs, Skills, Passive, Zustände, Quests, Drops, Preise, XP, KI-Skripte, Texte und Lokalisierung, Interface (Ladebilder, Icons, Porträts, Fenster-Layouts) und Animationen (KFM).
+- Datei Editor (rechts): alle Spieldaten-Dateien unabhängig von einer Karte, aus Client (ressystem, resmenu) und Server (9Data/Shine). SHN-Tabellen einzeln oder mehrere zugleich, Items, Mobs, Skills, Passive, Zustände, Item-Systeme (Sets, Aufwertung, Mix, Zufallsoptionen, Pakete), Quests, Drops, Preise, XP, KI-Skripte, Texte und Lokalisierung, Interface (Ladebilder, Icons, Porträts, Fenster-Layouts) und Animationen (KFM).
 Unter jeder Beschreibung führen Schnellknöpfe direkt in einen Unterbereich (z. B. Neue Karte, Items, Interface, Animationen).
 Es wird NICHTS automatisch gespeichert. Jede Änderung liegt zunächst nur im Speicher; die jeweiligen Speichern-Knöpfe schreiben die Dateien. Angepasste SHN-Dateien sind in den Listen mit * markiert.
 Lege vor dem ersten Speichern eine Sicherung Deiner Client- und Server-Ordner an.)MAN",
      R"MAN(The editor has two main areas; the start page shows exactly these two fields:
 - Map Editor (left): everything that lives on a map. Create maps (wizard) and open them, heightmap and textures, foliage, walkability (Block & Walk), objects and prefabs, Sky/Water/GroundObject, NPCs, mobs (monster spawns), routes and portals, minimap and map check. All areas show the same map as a 2D top view (for editing) and a 3D view (for checking and aligning).
-- File Editor (right): all game data files independent of a map, from client (ressystem, resmenu) and server (9Data/Shine). SHN tables one at a time or several at once, items, mobs, skills, passives, states, quests, drops, prices, XP, AI scripts, texts and localization, interface (loading screens, icons, portraits, window layouts) and animations (KFM).
+- File Editor (right): all game data files independent of a map, from client (ressystem, resmenu) and server (9Data/Shine). SHN tables one at a time or several at once, items, mobs, skills, passives, states, item systems (sets, upgrade, mix, random options, packages), quests, drops, prices, XP, AI scripts, texts and localization, interface (loading screens, icons, portraits, window layouts) and animations (KFM).
 Below each description, quick buttons lead straight into a sub-area (e.g. New map, Items, Interface, Animations).
 NOTHING is saved automatically. Every change first exists only in memory; the respective Save buttons write the files. Modified SHN files are marked with * in the lists.
 Make a backup of your client and server folders before the first save.)MAN",
@@ -493,6 +493,7 @@ Relations between tables use ID and InxName (text key). An InxName is referenced
 - Items / Mobs: Formular-Editoren für Items (ItemInfo, ItemInfoServer, ItemViewInfo) und Mobs (MobInfo, MobInfoServer, MobViewInfo).
 - Passiv / Zustände: Passiv-Skills (PassiveSkill, PassiveSkillView) und Zustände (AbState, AbStateView, SubAbState).
 - Texte: alle Text- und Lokalisierungstabellen (TextData, ScriptMsg, QuestDialog, AnnounceData ...) mit Suche und CSV-Austausch.
+- Item-Systeme: Sets, Set-Effekte, Aufwertung, Aufwertungs-Chancen, Item-Mix, Zufallsoptionen und Item-Pakete.
 Die Prozent-Editoren ändern ALLE Zeilen der Spalte - vorher prüfen, dann speichern.)MAN",
      R"MAN(- Single SHN Editor: edit any table as a grid.
 - Multi SHN Editor: choose a task (new item, new NPC, new mob, new skill, shop/price, new quest, XP/rate); the editor marks the relevant tables in CLIENT and SERVER yellow as candidates. This is an orientation aid, not a proven dependency.
@@ -506,6 +507,7 @@ Die Prozent-Editoren ändern ALLE Zeilen der Spalte - vorher prüfen, dann speic
 - Items / Mobs: form editors for items (ItemInfo, ItemInfoServer, ItemViewInfo) and mobs (MobInfo, MobInfoServer, MobViewInfo).
 - Passive / States: passive skills (PassiveSkill, PassiveSkillView) and states (AbState, AbStateView, SubAbState).
 - Texts: all text and localization tables (TextData, ScriptMsg, QuestDialog, AnnounceData ...) with search and CSV exchange.
+- Item systems: sets, set effects, upgrade, upgrade chances, item mix, random options and item packages.
 The percentage editors change ALL rows of the column - check first, then save.)MAN",
      "tabs multi xp rate buy sell quest single"},
     {"shn.quest", "shn",
@@ -607,6 +609,35 @@ Gespeichert wird mit 'Alle geänderten SHN speichern' (Strg+S) als Projektkopie.
 - Placeholders such as %s, %d, [NAME], [LINE] must be kept when translating.
 Saving happens with 'Save all changed SHN' (Ctrl+S) as a project copy.)MAN",
      "text texte lokalisierung localization übersetzung translation csv textdata scriptmsg questdialog announce errorcode suche search"},
+    {"shn.itemsystems", "shn",
+     "Item-Systeme", "Item systems",
+     R"MAN(Der Tab 'Item-Systeme' bearbeitet Tabellen, in denen mehrere Zeilen mit demselben Schlüssel einen Eintrag bilden. Oben wählst Du das System:
+- Sets: SetItem (Server: Teilezahl -> Effektname aus SetItemEffect), SetEffect (Client und Server: Teilezahl -> Item-Aktion, Beschreibung aus ItemActionEffectDesc) und SetItemName (Client: Anzeigename). Unten stehen die Items mit ItemInfo.SetItemIndex = Set (Klick öffnet den Item-Editor).
+- Set-Effekte: SetItemEffect (Server) - Beschreibung, Skill-Gruppe, Stufenbereich From/To, Index und Argument.
+- Aufwertung: UpgradeInfo (Client und Server) - Werte je Aufwertungsstufe einer Gruppe. Dass Items über ItemInfo.BasicUpInx auf die ID verweisen, ist vermutet.
+- Aufwertungs-Chancen: ItemUpgrade (Server) - je ID eine Zeile pro Stufe (vermutet) mit den Fehlschlag- und Glückswerten.
+- Item-Mix: ItemMix (Client und Server) - Ausgangs-Item -> Ergebnis-Item.
+- Zufallsoptionen: RandomOption und RandomOptionCount (Server); Items verweisen über ItemInfoServer.RandomOptionDropGroup.
+- Item-Pakete: ItemPackage (Server) - Paket-Item, Inhalt und Anzahl.
+Bedienung:
+- Links die Einträge (Filter, 'Nur mit Problemen' zeigt Einträge mit Verweisen auf unbekannte Items oder Effekte). Rechts alle Zeilen des Eintrags in jeder beteiligten Tabelle; jede Zelle wird beim Verlassen übernommen. Neben verweisenden Zellen steht der Name bzw. die Beschreibung des Ziels, unbekannte Ziele sind markiert.
+- '+ Zeile' kopiert die letzte Zeile des Eintrags und fügt sie direkt dahinter ein, 'X' löscht eine Zeile.
+- 'Als Kopie anlegen' legt den Eintrag unter dem neuen Schlüssel als Kopie des gewählten in allen Tabellen an, 'Gewählten umbenennen' ändert den Schlüssel überall, 'Gewählten löschen' entfernt alle Zeilen (mit Hinweis auf verweisende Items).
+- Tabellen auf beiden Seiten werden gemeinsam geändert: die n-te Zeile eines Eintrags im Client entspricht der n-ten im Server. Alles geht über den Daten-Verlauf (Strg+Z) und wird mit 'Alle geänderten SHN speichern' als Projektkopie geschrieben.)MAN",
+     R"MAN(The 'Item systems' tab edits tables in which several rows with the same key form one entry. Pick the system at the top:
+- Sets: SetItem (server: piece count -> effect name from SetItemEffect), SetEffect (client and server: piece count -> item action, description from ItemActionEffectDesc) and SetItemName (client: display name). Below are the items with ItemInfo.SetItemIndex = set (a click opens the item editor).
+- Set effects: SetItemEffect (server) - description, skill group, level range From/To, index and argument.
+- Upgrade: UpgradeInfo (client and server) - values per upgrade level of a group. That items reference the ID via ItemInfo.BasicUpInx is assumed.
+- Upgrade chances: ItemUpgrade (server) - per ID one row per level (assumed) with the failure and luck values.
+- Item mix: ItemMix (client and server) - source item -> result item.
+- Random options: RandomOption and RandomOptionCount (server); items reference them via ItemInfoServer.RandomOptionDropGroup.
+- Item packages: ItemPackage (server) - package item, content and count.
+Usage:
+- Entries on the left (filter, 'Problems only' shows entries referencing unknown items or effects). On the right all rows of the entry in every table involved; each cell is applied when leaving it. Next to referencing cells the name or description of the target is shown, unknown targets are marked.
+- '+ Row' copies the last row of the entry and inserts it right behind it, 'X' deletes a row.
+- 'Create as copy' creates the entry under the new key as a copy of the selected one in all tables, 'Rename selected' changes the key everywhere, 'Delete selected' removes all rows (with a note about referencing items).
+- Tables on both sides are changed together: the n-th row of an entry on the client matches the n-th on the server. Everything goes through the data history (Ctrl+Z) and is written with 'Save all changed SHN' as a project copy.)MAN",
+     "item system sets set effekt upgrade aufwertung mix random zufall option paket package itemupgrade upgradeinfo randomoption"},
     {"shn.interface", "shn",
      "Interface-Bilder ersetzen", "Replacing interface images",
      R"MAN(Tab 'Interface' im SHN-Editor: alle Dateien unter Client/resmenu (Bilder und Fenster-NIFs). Originale werden nie verändert; jede Änderung ist eine Projektkopie unter <Projekt>/Client/resmenu/... (Markierung OVR* = geändert, OVR= = gleich, NEW = nur im Projekt).
@@ -1092,6 +1123,26 @@ const TipRow kTips[] = {
     {"T:mapeditor.cancel", "Bricht ab.", "Cancels."},
     {"T:mapeditor.open", "Öffnet die gewählte Karte.", "Opens the chosen map."},
     {"T:card.start", "Startet diesen Editor.", "Starts this editor."},
+    {"Button:Item-Systeme##hubItemSystems", "Item-Systeme: Sets, Aufwertung, Mix, Zufallsoptionen, Pakete.", "Item systems: sets, upgrade, mix, random options, packages."},
+    {"Button:Item systems##hubItemSystems", "Item-Systeme: Sets, Aufwertung, Mix, Zufallsoptionen, Pakete.", "Item systems: sets, upgrade, mix, random options, packages."},
+    {"Button:Alle geänderten SHN speichern##itemSystems", "Speichert alle geänderten SHN-Dateien als Projektkopie (Strg+S).", "Saves all changed SHN files as a project copy (Ctrl+S)."},
+    {"Button:Save all changed SHN##itemSystems", "Speichert alle geänderten SHN-Dateien als Projektkopie (Strg+S).", "Saves all changed SHN files as a project copy (Ctrl+S)."},
+    {"Checkbox:Nur mit Problemen##itemSystems", "Nur Einträge mit Verweisen auf unbekannte Items oder Effekte zeigen.", "Show only entries referencing unknown items or effects."},
+    {"Checkbox:Problems only##itemSystems", "Nur Einträge mit Verweisen auf unbekannte Items oder Effekte zeigen.", "Show only entries referencing unknown items or effects."},
+    {"InputText:##itemSystemNewKey", "Schlüssel für 'Als Kopie anlegen' bzw. 'Gewählten umbenennen'.", "Key for 'Create as copy' or 'Rename selected'."},
+    {"Button:Als Kopie anlegen##itemSystems", "Legt den neuen Schlüssel als Kopie des gewählten Eintrags in allen beteiligten Tabellen an (Client und Server, Strg+Z).", "Creates the new key as a copy of the selected entry in all tables involved (client and server, Ctrl+Z)."},
+    {"Button:Create as copy##itemSystems", "Legt den neuen Schlüssel als Kopie des gewählten Eintrags in allen beteiligten Tabellen an (Client und Server, Strg+Z).", "Creates the new key as a copy of the selected entry in all tables involved (client and server, Ctrl+Z)."},
+    {"Button:Gewählten umbenennen##itemSystems", "Ändert den Schlüssel des gewählten Eintrags in allen Tabellen. Verweise in Items werden nicht angepasst.", "Changes the key of the selected entry in all tables. References in items are not adjusted."},
+    {"Button:Rename selected##itemSystems", "Ändert den Schlüssel des gewählten Eintrags in allen Tabellen. Verweise in Items werden nicht angepasst.", "Changes the key of the selected entry in all tables. References in items are not adjusted."},
+    {"Button:Gewählten löschen##itemSystems", "Löscht alle Zeilen des gewählten Eintrags in allen Tabellen - mit Rückfrage.", "Deletes all rows of the selected entry in all tables - with confirmation."},
+    {"Button:Delete selected##itemSystems", "Löscht alle Zeilen des gewählten Eintrags in allen Tabellen - mit Rückfrage.", "Deletes all rows of the selected entry in all tables - with confirmation."},
+    {"Button:Löschen##itemSystemDelete", "Jetzt löschen (Strg+Z nimmt es zurück).", "Delete now (Ctrl+Z reverts it)."},
+    {"Button:Delete##itemSystemDelete", "Jetzt löschen (Strg+Z nimmt es zurück).", "Delete now (Ctrl+Z reverts it)."},
+    {"Button:Abbrechen##itemSystemDelete", "Nichts löschen.", "Delete nothing."},
+    {"Button:Cancel##itemSystemDelete", "Nichts löschen.", "Delete nothing."},
+    {"SmallButton:X##groupRow", "Löscht diese Zeile (Client und Server, Strg+Z).", "Deletes this row (client and server, Ctrl+Z)."},
+    {"SmallButton:+ Zeile##groupRow", "Kopiert die letzte Zeile des Eintrags und fügt sie direkt dahinter ein.", "Copies the last row of the entry and inserts it right behind it."},
+    {"SmallButton:+ Row##groupRow", "Kopiert die letzte Zeile des Eintrags und fügt sie direkt dahinter ein.", "Copies the last row of the entry and inserts it right behind it."},
     {"Button:Texte##hubTexts", "Texte und Lokalisierung: alle Texttabellen, Suche, CSV für Übersetzungen.", "Texts and localization: all text tables, search, CSV for translations."},
     {"Button:Texts##hubTexts", "Texte und Lokalisierung: alle Texttabellen, Suche, CSV für Übersetzungen.", "Texts and localization: all text tables, search, CSV for translations."},
     {"Button:Alle geänderten SHN speichern##texts", "Speichert alle geänderten SHN-Dateien als Projektkopie (Strg+S).", "Saves all changed SHN files as a project copy (Ctrl+S)."},

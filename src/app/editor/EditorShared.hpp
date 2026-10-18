@@ -1151,6 +1151,18 @@ struct EditorState {
         std::string luaIndexRoot;
         std::unordered_map<std::string, std::vector<std::string>> luaLiterals;
     } textEditor;
+    // Item-Systeme (Datei Editor, Unterreiter 16): gruppierte Tabellen (Sets, Aufwertung, Mix ...).
+    struct ItemSystemsState {
+        int system = 0;
+        std::string selected;       // Schlüssel der gewählten Gruppe
+        char filter[96] = "";
+        bool onlyProblems = false;
+        char newKey[64] = "";
+        std::string listKey;
+        std::vector<std::string> keys;
+        std::vector<std::string> report;
+        std::unordered_set<std::string> missing; // "Wurzel|Datei" ohne Datei
+    } itemSystems;
     // Drop-Gruppen (World/ItemDropGroup.txt): eine Kopie im Speicher, die der Gruppen-Editor bearbeitet
     // und aus der der Katalog für die Drop-Tabelle (dropGroups) aufgebaut wird.
     int dropEditorTab = 0; // 0 Mob-Drop-Tabelle, 1 Drop-Gruppen
@@ -2296,6 +2308,10 @@ void DrawMobEditor(EditorState& state);
 void DrawPassiveSkillEditor(EditorState& state);
 void DrawAbStateEditor(EditorState& state);
 void DrawTextEditor(EditorState& state);
+void DrawItemSystemsEditor(EditorState& state);
+// Automation der Item-Systeme: itemsystem <id> [Schlüssel] | itemsystemcopy <neu> | itemsystemset <Datei> <n> <Spalte> <Wert>
+// | itemsystemrow <Datei> | itemsystemdelete. Rückgabe: Ergebniszeile für die Ausgabe.
+std::string ItemSystemsAutomation(EditorState& state, const std::string& cmd, std::istream& in);
 // Text-Editor: Tabelle nach Dateiname (-1 unbekannt), CSV-Export (onlyTable -1 = alle) und -Import
 // (nur geänderte Zellen, Client und Server, ein Undo-Schritt).
 int TextTableIndex(const std::string& file);
