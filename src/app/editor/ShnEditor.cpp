@@ -1968,6 +1968,7 @@ void DrawShnEditor(EditorState& state) {
         {"mobs","Mobs",DrawIconSpawn,"module.custom_mob",12,-1},
         {"passive",L("Passiv","Passive"),DrawIconBolt,"module.skill",13,-1},
         {"states",L("Zustände","States"),DrawIconBolt,"module.skill",14,-1},
+        {"texts",L("Texte","Texts"),DrawIconBook,"module.shn.single",15,-1},
     };
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(5.0f, 5.0f));
     for (int i = 0; i < static_cast<int>(std::size(dataTools)); ++i) {
@@ -2101,7 +2102,8 @@ void DrawShnEditor(EditorState& state) {
     else if(state.shnSubTab==11) { DrawItemEditor(state); }
     else if(state.shnSubTab==12) { DrawMobEditor(state); }
     else if(state.shnSubTab==13) { DrawPassiveSkillEditor(state); }
-    else { DrawAbStateEditor(state); }
+    else if(state.shnSubTab==14) { DrawAbStateEditor(state); }
+    else { DrawTextEditor(state); }
     ImGui::EndChild(); ImGui::EndChild(); ImGui::PopStyleColor();
 }
 

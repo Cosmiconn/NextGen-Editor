@@ -18,13 +18,13 @@ const Section kSections[] = {
      "Überblick", "Overview",
      R"MAN(Der Editor besteht aus zwei großen Bereichen; die Startseite zeigt genau diese zwei Felder:
 - Map Editor (links): alles, was auf einer Karte liegt. Karten anlegen (Assistent) und öffnen, Höhenkarte und Texturen, Foliage, Begehbarkeit (Block & Walk), Objekte und Prefabs, Sky/Water/GroundObject, NPCs, Mobs (Monster-Spawns), Routen und Portale, Minimap und Kartenprüfung. Alle Bereiche zeigen dieselbe Karte in einer 2D-Draufsicht (zum Bearbeiten) und einer 3D-Ansicht (zum Prüfen und Ausrichten).
-- Datei Editor (rechts): alle Spieldaten-Dateien unabhängig von einer Karte, aus Client (ressystem, resmenu) und Server (9Data/Shine). SHN-Tabellen einzeln oder mehrere zugleich, Items, Mobs, Skills, Passive, Zustände, Quests, Drops, Preise, XP, KI-Skripte, Interface (Ladebilder, Icons, Porträts, Fenster-Layouts) und Animationen (KFM).
+- Datei Editor (rechts): alle Spieldaten-Dateien unabhängig von einer Karte, aus Client (ressystem, resmenu) und Server (9Data/Shine). SHN-Tabellen einzeln oder mehrere zugleich, Items, Mobs, Skills, Passive, Zustände, Quests, Drops, Preise, XP, KI-Skripte, Texte und Lokalisierung, Interface (Ladebilder, Icons, Porträts, Fenster-Layouts) und Animationen (KFM).
 Unter jeder Beschreibung führen Schnellknöpfe direkt in einen Unterbereich (z. B. Neue Karte, Items, Interface, Animationen).
 Es wird NICHTS automatisch gespeichert. Jede Änderung liegt zunächst nur im Speicher; die jeweiligen Speichern-Knöpfe schreiben die Dateien. Angepasste SHN-Dateien sind in den Listen mit * markiert.
 Lege vor dem ersten Speichern eine Sicherung Deiner Client- und Server-Ordner an.)MAN",
      R"MAN(The editor has two main areas; the start page shows exactly these two fields:
 - Map Editor (left): everything that lives on a map. Create maps (wizard) and open them, heightmap and textures, foliage, walkability (Block & Walk), objects and prefabs, Sky/Water/GroundObject, NPCs, mobs (monster spawns), routes and portals, minimap and map check. All areas show the same map as a 2D top view (for editing) and a 3D view (for checking and aligning).
-- File Editor (right): all game data files independent of a map, from client (ressystem, resmenu) and server (9Data/Shine). SHN tables one at a time or several at once, items, mobs, skills, passives, states, quests, drops, prices, XP, AI scripts, interface (loading screens, icons, portraits, window layouts) and animations (KFM).
+- File Editor (right): all game data files independent of a map, from client (ressystem, resmenu) and server (9Data/Shine). SHN tables one at a time or several at once, items, mobs, skills, passives, states, quests, drops, prices, XP, AI scripts, texts and localization, interface (loading screens, icons, portraits, window layouts) and animations (KFM).
 Below each description, quick buttons lead straight into a sub-area (e.g. New map, Items, Interface, Animations).
 NOTHING is saved automatically. Every change first exists only in memory; the respective Save buttons write the files. Modified SHN files are marked with * in the lists.
 Make a backup of your client and server folders before the first save.)MAN",
@@ -492,6 +492,7 @@ Relations between tables use ID and InxName (text key). An InxName is referenced
 - Drops: Mob-Drop-Tabelle und Drop-Gruppen.
 - Items / Mobs: Formular-Editoren für Items (ItemInfo, ItemInfoServer, ItemViewInfo) und Mobs (MobInfo, MobInfoServer, MobViewInfo).
 - Passiv / Zustände: Passiv-Skills (PassiveSkill, PassiveSkillView) und Zustände (AbState, AbStateView, SubAbState).
+- Texte: alle Text- und Lokalisierungstabellen (TextData, ScriptMsg, QuestDialog, AnnounceData ...) mit Suche und CSV-Austausch.
 Die Prozent-Editoren ändern ALLE Zeilen der Spalte - vorher prüfen, dann speichern.)MAN",
      R"MAN(- Single SHN Editor: edit any table as a grid.
 - Multi SHN Editor: choose a task (new item, new NPC, new mob, new skill, shop/price, new quest, XP/rate); the editor marks the relevant tables in CLIENT and SERVER yellow as candidates. This is an orientation aid, not a proven dependency.
@@ -504,6 +505,7 @@ Die Prozent-Editoren ändern ALLE Zeilen der Spalte - vorher prüfen, dann speic
 - Drops: mob drop table and drop groups.
 - Items / Mobs: form editors for items (ItemInfo, ItemInfoServer, ItemViewInfo) and mobs (MobInfo, MobInfoServer, MobViewInfo).
 - Passive / States: passive skills (PassiveSkill, PassiveSkillView) and states (AbState, AbStateView, SubAbState).
+- Texts: all text and localization tables (TextData, ScriptMsg, QuestDialog, AnnounceData ...) with search and CSV exchange.
 The percentage editors change ALL rows of the column - check first, then save.)MAN",
      "tabs multi xp rate buy sell quest single"},
     {"shn.quest", "shn",
@@ -582,6 +584,29 @@ The percentage editors change ALL rows of the column - check first, then save.)M
 - In the skill editor every state (StaNameA-D) has an 'Open' button that jumps to this tab.
 - Icons: the state atlases AbState00-04 are 128x128 with 16 px cells (8x8); the editor detects this from the atlas size.)MAN",
      "passiv passive zustand state abstate subabstate buff debuff stufe level mastery waffe icon"},
+    {"shn.texts", "shn",
+     "Texte und Lokalisierung", "Texts and localization",
+     R"MAN(Der Tab 'Texte' sammelt alle Texttabellen von Client und Server: TextData, TextData2, TextData3, ScriptMsg, QuestDialog, MobKillAnnounceText, AbStateMsg, BasicInfoTip, ItemActionEffectDesc, SetItemName, KingdomQuestDesc, KQVoteDesc, CollectCardGroupDesc (Client) sowie AnnounceData, MsgWorldManager, ErrorCodeTable und QuestDialog (Server). [C], [S] bzw. [C+S] zeigt die Seite.
+- Suche: Das Feld oben durchsucht alle Tabellen nach Schlüssel und Inhalt (ab 2 Zeichen, höchstens 500 Treffer). Ein Klick springt zur Zeile.
+- Bearbeiten: Textspalten (variable Zeichenketten und feste ab 64 Byte) als mehrzeiliges Feld; übernommen wird beim Verlassen des Feldes, ein Undo-Schritt (Strg+Z). Feste Spalten zeigen 'belegt / erlaubt' in Byte; zu lange Texte werden abgelehnt. Die übrigen Spalten (z. B. SM_Inx, Farbe, Dauer bei ScriptMsg) stehen darunter. Tabellen auf beiden Seiten (QuestDialog, CollectCardGroupDesc) werden in Client und Server gleich geändert.
+- Schlüssel: der Wert der ersten Spalte; doppelte Werte heißen beim zweiten Vorkommen <Wert>#2 usw., Tabellen ohne Schlüsselspalte werden nach Zeile adressiert (#0, #1 ...).
+- Verwendet von: ScriptMsg zeigt die Lua-Skripte (LuaScript), die den SM_Inx aufrufen, und FaceCutMsg-Zeilen; MobKillAnnounceText zeigt die Mobs aus MobKillAnnounce.shn; AbStateMsg den Zustand aus AbState.shn.
+- Neue Zeile: kopiert die gewählte Zeile mit der nächsten freien ID und leeren Texten (bei ScriptMsg SM_Inx = NewMsg_<ID>). Bei TextData* ist das gesperrt, weil die Text-ID ein Hash aus dem Client-Code ist - neue Zeilen würden nie angezeigt. Ebenso bei AnnounceData (Typ fest im Server) und den nach Zeile adressierten Tabellen.
+- Zeile löschen: mit Rückfrage und Liste der Verwendungen; Client und Server, Strg+Z.
+- CSV für Übersetzungen: 'Diese Tabelle exportieren' bzw. 'Alle Tabellen exportieren' schreibt table,key,column,text (RFC 4180, Kommas und Zeilenumbrüche in Anführungszeichen). Übersetzen, dann 'CSV importieren': nur Zellen, deren Text sich unterscheidet, werden übernommen - alles als ein Undo-Schritt. Unbekannte Schlüssel, Nicht-Textspalten und zu lange Texte werden aufgelistet und übersprungen. Der Text wird bytegenau übernommen (keine Umkodierung); die NA-Daten sind ASCII/Latin-1.
+- Platzhalter wie %s, %d, [NAME], [LINE] müssen beim Übersetzen erhalten bleiben.
+Gespeichert wird mit 'Alle geänderten SHN speichern' (Strg+S) als Projektkopie.)MAN",
+     R"MAN(The 'Texts' tab collects all text tables of client and server: TextData, TextData2, TextData3, ScriptMsg, QuestDialog, MobKillAnnounceText, AbStateMsg, BasicInfoTip, ItemActionEffectDesc, SetItemName, KingdomQuestDesc, KQVoteDesc, CollectCardGroupDesc (client) and AnnounceData, MsgWorldManager, ErrorCodeTable and QuestDialog (server). [C], [S] or [C+S] shows the side.
+- Search: the field at the top searches all tables by key and content (from 2 characters, at most 500 hits). A click jumps to the row.
+- Editing: text columns (variable strings and fixed ones from 64 bytes) as a multi-line field; applied when leaving the field, one undo step (Ctrl+Z). Fixed columns show 'used / allowed' in bytes; texts that are too long are refused. The other columns (e.g. SM_Inx, color, duration for ScriptMsg) are listed below. Tables on both sides (QuestDialog, CollectCardGroupDesc) are changed identically on client and server.
+- Key: the value of the first column; repeated values are called <value>#2 etc. from the second occurrence, tables without a key column are addressed by row (#0, #1 ...).
+- Used by: ScriptMsg shows the Lua scripts (LuaScript) that call the SM_Inx, and FaceCutMsg rows; MobKillAnnounceText shows the mobs from MobKillAnnounce.shn; AbStateMsg the state from AbState.shn.
+- New row: copies the selected row with the next free ID and empty texts (for ScriptMsg SM_Inx = NewMsg_<ID>). Disabled for TextData* because the text ID is a hash from the client code - new rows would never be shown. Also for AnnounceData (type fixed in the server) and the tables addressed by row.
+- Delete row: with confirmation and list of usages; client and server, Ctrl+Z.
+- CSV for translations: 'Export this table' or 'Export all tables' writes table,key,column,text (RFC 4180, commas and line breaks in quotes). Translate, then 'Import CSV': only cells whose text differs are applied - all as one undo step. Unknown keys, non-text columns and texts that are too long are listed and skipped. Text is taken byte for byte (no re-encoding); the NA data is ASCII/Latin-1.
+- Placeholders such as %s, %d, [NAME], [LINE] must be kept when translating.
+Saving happens with 'Save all changed SHN' (Ctrl+S) as a project copy.)MAN",
+     "text texte lokalisierung localization übersetzung translation csv textdata scriptmsg questdialog announce errorcode suche search"},
     {"shn.interface", "shn",
      "Interface-Bilder ersetzen", "Replacing interface images",
      R"MAN(Tab 'Interface' im SHN-Editor: alle Dateien unter Client/resmenu (Bilder und Fenster-NIFs). Originale werden nie verändert; jede Änderung ist eine Projektkopie unter <Projekt>/Client/resmenu/... (Markierung OVR* = geändert, OVR= = gleich, NEW = nur im Projekt).
@@ -1067,6 +1092,25 @@ const TipRow kTips[] = {
     {"T:mapeditor.cancel", "Bricht ab.", "Cancels."},
     {"T:mapeditor.open", "Öffnet die gewählte Karte.", "Opens the chosen map."},
     {"T:card.start", "Startet diesen Editor.", "Starts this editor."},
+    {"Button:Texte##hubTexts", "Texte und Lokalisierung: alle Texttabellen, Suche, CSV für Übersetzungen.", "Texts and localization: all text tables, search, CSV for translations."},
+    {"Button:Texts##hubTexts", "Texte und Lokalisierung: alle Texttabellen, Suche, CSV für Übersetzungen.", "Texts and localization: all text tables, search, CSV for translations."},
+    {"Button:Alle geänderten SHN speichern##texts", "Speichert alle geänderten SHN-Dateien als Projektkopie (Strg+S).", "Saves all changed SHN files as a project copy (Ctrl+S)."},
+    {"Button:Save all changed SHN##texts", "Speichert alle geänderten SHN-Dateien als Projektkopie (Strg+S).", "Saves all changed SHN files as a project copy (Ctrl+S)."},
+    {"Button:Diese Tabelle exportieren##textCsv", "Schreibt alle Textzellen dieser Tabelle als CSV (table,key,column,text) in die Datei darüber.", "Writes all text cells of this table as CSV (table,key,column,text) to the file above."},
+    {"Button:Export this table##textCsv", "Schreibt alle Textzellen dieser Tabelle als CSV (table,key,column,text) in die Datei darüber.", "Writes all text cells of this table as CSV (table,key,column,text) to the file above."},
+    {"Button:Alle Tabellen exportieren##textCsv", "Schreibt die Textzellen aller Texttabellen in eine CSV-Datei.", "Writes the text cells of all text tables to one CSV file."},
+    {"Button:Export all tables##textCsv", "Schreibt die Textzellen aller Texttabellen in eine CSV-Datei.", "Writes the text cells of all text tables to one CSV file."},
+    {"Button:CSV importieren (nur Änderungen)##textCsv", "Liest die CSV-Datei und übernimmt nur Zellen mit anderem Text (Client und Server, ein Undo-Schritt). Probleme werden aufgelistet.", "Reads the CSV file and applies only cells with different text (client and server, one undo step). Problems are listed."},
+    {"Button:Import CSV (changes only)##textCsv", "Liest die CSV-Datei und übernimmt nur Zellen mit anderem Text (Client und Server, ein Undo-Schritt). Probleme werden aufgelistet.", "Reads the CSV file and applies only cells with different text (client and server, one undo step). Problems are listed."},
+    {"InputText:##textCsvPath", "Pfad der CSV-Datei für Export und Import.", "Path of the CSV file for export and import."},
+    {"Button:Neue Zeile##texts", "Kopiert die gewählte Zeile mit der nächsten freien ID und leeren Texten (Client und Server).", "Copies the selected row with the next free ID and empty texts (client and server)."},
+    {"Button:New row##texts", "Kopiert die gewählte Zeile mit der nächsten freien ID und leeren Texten (Client und Server).", "Copies the selected row with the next free ID and empty texts (client and server)."},
+    {"Button:Zeile löschen##texts", "Löscht die gewählte Zeile in Client und Server - mit Rückfrage und Liste der Verwendungen.", "Deletes the selected row on client and server - with confirmation and list of usages."},
+    {"Button:Delete row##texts", "Löscht die gewählte Zeile in Client und Server - mit Rückfrage und Liste der Verwendungen.", "Deletes the selected row on client and server - with confirmation and list of usages."},
+    {"Button:Löschen##textDelete", "Zeile jetzt löschen (Strg+Z nimmt es zurück).", "Delete the row now (Ctrl+Z reverts it)."},
+    {"Button:Delete##textDelete", "Zeile jetzt löschen (Strg+Z nimmt es zurück).", "Delete the row now (Ctrl+Z reverts it)."},
+    {"Button:Abbrechen##textDelete", "Nichts löschen.", "Delete nothing."},
+    {"Button:Cancel##textDelete", "Nichts löschen.", "Delete nothing."},
     {"ColorEdit3:##envGlobalLight", "GlobalLight der SHMD: Umgebungslicht für alle Flächen (Werte über 1 erlaubt).", "SHMD GlobalLight: ambient light for all surfaces (values above 1 allowed)."},
     {"ColorEdit3:##envDirAmbient", "DirectionLightAmbient der SHMD: zusätzliches Umgebungslicht.", "SHMD DirectionLightAmbient: additional ambient light."},
     {"ColorEdit3:##envDirDiffuse", "DirectionLightDiffuse der SHMD: Farbe des gerichteten Lichts (Sonne).", "SHMD DirectionLightDiffuse: color of the directional light (sun)."},

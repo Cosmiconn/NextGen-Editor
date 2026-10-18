@@ -1132,6 +1132,25 @@ struct EditorState {
     DataFormState mobForm;
     DataFormState passiveForm; // PassiveSkill / PassiveSkillView
     DataFormState stateForm;   // AbState / AbStateView (+ SubAbState-Stufen)
+    // Text-/Lokalisierungs-Editor (Datei Editor, Unterreiter 15).
+    struct TextEditorState {
+        int table = 0;              // Index in der festen Tabellenliste (TextEditor.cpp)
+        int selectedRow = -1;       // Zeile im Hauptdokument (Client, sonst Server)
+        char filter[128] = "";      // Filter der Zeilenliste dieser Tabelle
+        char search[128] = "";      // Suche über alle Texttabellen
+        char csvPath[1024] = "";
+        std::string listKey;
+        std::vector<int> visible;
+        std::string searchKey;
+        struct Hit { int table; int row; std::string key; std::string text; };
+        std::vector<Hit> hits;
+        std::vector<std::string> report;
+        bool scrollToRow = false;   // nach einem Suchtreffer die Zeilenliste zur Auswahl rollen
+        std::unordered_set<std::string> missing; // "Wurzel|Datei" ohne Datei - nicht jedes Bild neu suchen
+        // Lua-Verweise (ScriptMsg): Zeichenkettenliteral -> Dateien, einmal je Server-Ordner aufgebaut.
+        std::string luaIndexRoot;
+        std::unordered_map<std::string, std::vector<std::string>> luaLiterals;
+    } textEditor;
     // Drop-Gruppen (World/ItemDropGroup.txt): eine Kopie im Speicher, die der Gruppen-Editor bearbeitet
     // und aus der der Katalog für die Drop-Tabelle (dropGroups) aufgebaut wird.
     int dropEditorTab = 0; // 0 Mob-Drop-Tabelle, 1 Drop-Gruppen
@@ -2276,6 +2295,13 @@ void DrawItemEditor(EditorState& state);
 void DrawMobEditor(EditorState& state);
 void DrawPassiveSkillEditor(EditorState& state);
 void DrawAbStateEditor(EditorState& state);
+void DrawTextEditor(EditorState& state);
+// Text-Editor: Tabelle nach Dateiname (-1 unbekannt), CSV-Export (onlyTable -1 = alle) und -Import
+// (nur geänderte Zellen, Client und Server, ein Undo-Schritt).
+int TextTableIndex(const std::string& file);
+std::expected<std::size_t, std::string> ExportTextCsv(EditorState& state, const std::filesystem::path& path, int onlyTable);
+std::expected<std::size_t, std::string> ImportTextCsv(EditorState& state, const std::filesystem::path& path,
+                                                      std::vector<std::string>& problems);
 dataform::Spec& PassiveFormSpec();
 dataform::Spec& AbStateFormSpec();
 // ID eines Zustands (AbState.InxName) oder -1 - für Sprünge aus dem Skill-Editor.

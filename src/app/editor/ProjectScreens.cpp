@@ -52,6 +52,7 @@ void DrawProjectHub(EditorState& state) {
           L("Items, Mobs, Skills, Passive, Zustände","Items, mobs, skills, passives, states"),
           L("Quests, Drops, Preise, XP, KI-Skripte","Quests, drops, prices, XP, AI scripts"),
           L("Interface: Ladebilder, Icons, Porträts, Fenster","Interface: loading screens, icons, portraits, windows"),
+          L("Texte und Lokalisierung (CSV für Übersetzungen)","Texts and localization (CSV for translations)"),
           L("Animationen (KFM)","Animations (KFM)")},
          {{L("Tabellen##hubShn","Tables##hubShn"), 0, AppScreen::ShnEditor, LV::Browse},
           {L("Items##hubItems","Items##hubItems"), 11, AppScreen::ShnEditor, LV::Browse},
@@ -60,6 +61,7 @@ void DrawProjectHub(EditorState& state) {
           {L("Quests##hubQuests","Quests##hubQuests"), 4, AppScreen::ShnEditor, LV::Browse},
           {L("Drops##hubDrops","Drops##hubDrops"), 10, AppScreen::ShnEditor, LV::Browse},
           {L("Interface##hubInterface","Interface##hubInterface"), 9, AppScreen::ShnEditor, LV::Browse},
+          {L("Texte##hubTexts","Texts##hubTexts"), 15, AppScreen::ShnEditor, LV::Browse},
           {L("Animationen##hubKfm","Animations##hubKfm"), -1, AppScreen::KfmBrowser, LV::Browse}},
          AppScreen::ShnEditor, 0},
     };
