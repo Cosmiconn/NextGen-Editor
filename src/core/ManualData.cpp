@@ -680,6 +680,29 @@ Gespeichert wird mit 'Alle geänderten SHN speichern' als Projektkopie.)MAN",
 - Mover and pup models (folders FolderName/FileName) are not part of the NA2016 data, so there is no 3D preview.
 Saving happens with 'Save all changed SHN' as a project copy.)MAN",
      "reittier mount mover haustier pet pup moverview movermain hunger futter slot sitzplatz aufwertung upgrade pupcase"},
+    {"shn.housing", "shn",
+     "MiniHaus und Sammelkarten", "Mini house and collect cards",
+     R"MAN(Der Tab 'MiniHaus' bearbeitet Mini-Häuser, Möbel und Sammelkarten - wie die Item-Systeme: links die Einträge, rechts alle Zeilen in jeder beteiligten Tabelle, Client und Server gemeinsam, Strg+Z.
+- Mini-Häuser (Schlüssel ItemID = Item-InxName, 356 in NA2016): MiniHouse mit Handle (laufende Nummer), DummyType (Modell), Backimage (Hintergrund, oben als Bild aus resmenu/game/MiniHouse), KeepTime_Hour (0 = dauerhaft), HP/SP-Erholung je Tick, Casting und Slot (Möbelplätze). Die Liste zeigt den Item-Namen.
+- Möbel (Schlüssel ItemID): MiniHouseFurniture (Art, Aufstellort WALL/BOTTOM/CEILING, Gewicht, Dauer, Haltbarkeit, MaxSlot, Emotion) und MiniHouseFurnitureObjEffect (Wirkung, z. B. Teleport-Rolle; NeedItem muss existieren).
+- Möbel-Animationen (Schlüssel = numerische Item-ID aus ItemInfo.ID): MiniHouseObjAni mit Animationsgruppe, Ereignis-Code, nächster Animation und Figuren (Actor/Actee, vermutet).
+- Haus-Einstellungen: MiniHouseEndure (Haltbarkeitsstufen, vermutet) und MiniHouseDummy (Standard-Haus) - Tabellen ohne Schlüssel.
+- Sammelkarten (Schlüssel CC_CardID, 334): CollectCard (Karten-Item, Seltenheit, Mob-Gruppe), CollectCardView (Bild aus resmenu/Collect/Max, oben angezeigt, Name, Beschreibung, Mob, Saison) und CollectCardDropRate (Drop-Chance, vermutet Promille). Ein Karten-Item darf nur zu einer Karte gehören (sonst Meldung).
+- Karten-Mobgruppen (Schlüssel CC_CardMobGroup): Name (CollectCardGroupDesc) und die Mobs der Gruppe (CollectCardMobGroup); darunter die Karten der Gruppe, ein Klick öffnet die Karte.
+- Karten-Belohnungen: CollectCardReward (Belohnung ab einer Kartenzahl), CollectCardTitle und CollectCardStarRate - Tabellen ohne Schlüssel.
+- 'Als Kopie anlegen' kopiert nur die vorhandenen Zeilen des Eintrags; Handle bzw. CC_RewardID bekommen freie Nummern. Für ein neues Haus oder Möbelstück zuerst das Item im Item-Editor anlegen und dessen InxName als neuen Schlüssel verwenden.
+Gespeichert wird mit 'Alle geänderten SHN speichern' als Projektkopie.)MAN",
+     R"MAN(The 'Mini house' tab edits mini houses, furniture and collect cards - like the item systems: entries on the left, all rows in every table involved on the right, client and server together, Ctrl+Z.
+- Mini houses (key ItemID = item InxName, 356 in NA2016): MiniHouse with Handle (running number), DummyType (model), Backimage (background, shown at the top from resmenu/game/MiniHouse), KeepTime_Hour (0 = permanent), HP/SP recovery per tick, Casting and Slot (furniture slots). The list shows the item name.
+- Furniture (key ItemID): MiniHouseFurniture (kind, placement WALL/BOTTOM/CEILING, weight, duration, durability, MaxSlot, emotion) and MiniHouseFurnitureObjEffect (effect, e.g. teleport scroll; NeedItem must exist).
+- Furniture animations (key = numeric item ID from ItemInfo.ID): MiniHouseObjAni with animation group, event code, next animation and figures (actor/actee, assumed).
+- House settings: MiniHouseEndure (durability levels, assumed) and MiniHouseDummy (default house) - tables without key.
+- Collect cards (key CC_CardID, 334): CollectCard (card item, rarity, mob group), CollectCardView (image from resmenu/Collect/Max, shown at the top, name, description, mob, season) and CollectCardDropRate (drop chance, assumed per mille). A card item may belong to one card only (otherwise reported).
+- Card mob groups (key CC_CardMobGroup): name (CollectCardGroupDesc) and the mobs of the group (CollectCardMobGroup); below are the cards of the group, a click opens the card.
+- Card rewards: CollectCardReward (reward from a number of cards), CollectCardTitle and CollectCardStarRate - tables without key.
+- 'Create as copy' copies only the existing rows of the entry; Handle or CC_RewardID get free numbers. For a new house or furniture piece first create the item in the item editor and use its InxName as the new key.
+Saving happens with 'Save all changed SHN' as a project copy.)MAN",
+     "minihaus mini house minihouse möbel furniture sammelkarte collect card karte mobgruppe belohnung reward haus"},
     {"shn.attackseq", "shn",
      "Angriffsfolgen der Mobs und Effekt-Prüfung", "Mob attack sequences and effect check",
      R"MAN(Der Tab 'Angriffsfolgen' bearbeitet Server/9Data/Shine/MobAttackSequence/<Mob>.txt (297 Dateien in NA2016, der Dateiname ist der InxName des Mobs). Im Mob-Editor öffnet 'Angriffsfolge öffnen' die passende Datei.
@@ -1184,6 +1207,8 @@ const TipRow kTips[] = {
     {"T:card.start", "Startet diesen Editor.", "Starts this editor."},
     {"Button:Reittiere & Pets##hubMounts", "Reittiere (Mover) und Haustiere (Pups): alle Tabellen eines Eintrags, Kopieren mit freier Nummer.", "Mounts (movers) and pets (pups): all tables of an entry, copy with a free number."},
     {"Button:Mounts & pets##hubMounts", "Reittiere (Mover) und Haustiere (Pups): alle Tabellen eines Eintrags, Kopieren mit freier Nummer.", "Mounts (movers) and pets (pups): all tables of an entry, copy with a free number."},
+    {"Button:MiniHaus & Karten##hubHousing", "Mini-Häuser, Möbel und Sammelkarten mit allen Tabellen eines Eintrags.", "Mini houses, furniture and collect cards with all tables of an entry."},
+    {"Button:Mini house & cards##hubHousing", "Mini-Häuser, Möbel und Sammelkarten mit allen Tabellen eines Eintrags.", "Mini houses, furniture and collect cards with all tables of an entry."},
     {"Button:Angriffsfolgen##hubAttackSeq", "Angriffsfolgen der Mobs: Skill-Reihenfolge und Regeln.", "Mob attack sequences: skill order and rules."},
     {"Button:Attack sequences##hubAttackSeq", "Angriffsfolgen der Mobs: Skill-Reihenfolge und Regeln.", "Mob attack sequences: skill order and rules."},
     {"Button:Speichern##attackSeq", "Schreibt die Angriffsfolge als Projektkopie (Strg+S).", "Writes the attack sequence as a project copy (Ctrl+S)."},

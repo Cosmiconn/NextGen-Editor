@@ -664,6 +664,10 @@ int main() {
             (void)core::legacy::SaveShnFile(upgrade, dir / "MoverUpgradeEffect.shn");
         }
         (void)core::legacy::SaveShnFile(moverView, ressystem / "MoverView.shn");
+        // Sitzplätze nur für M_Alpha: eine Kopie von M_Beta darf dort keine Zeile erfinden.
+        (void)core::legacy::SaveShnFile(makeTable({StringColumn("MoverIDX", 32), UIntColumn("MoverSlotPosition")},
+                                                  {{std::string("M_Alpha"), 1u}}),
+                                        ressystem / "MoverSlotView.shn");
         const auto run = [&](const std::string& cmd, const std::string& args) {
             std::istringstream in(args);
             const std::string out = GroupSystemsAutomation(st, cmd, in);
@@ -697,6 +701,10 @@ int main() {
         run("groupsystemrow", "MoverUpgradeEffect.shn");
         const int upDoc = SharedShnDoc(st, "MoverUpgradeEffect.shn", EditorState::ShnSource::Server, st.shnServerRoot);
         Check(ShnDocFile(st, upDoc).rows.size() == 3, "+ Zeile hängt an Tabellen ohne Schlüssel an");
+        run("groupsystem", "mounts mover M_Beta");
+        Check(run("groupsystemcopy", "M_Delta").find("copy ok") != std::string::npos, "M_Beta als M_Delta kopiert");
+        const int slotDoc = SharedShnDoc(st, "MoverSlotView.shn", EditorState::ShnSource::Client, st.shnClientRoot);
+        Check(ShnDocFile(st, slotDoc).rows.size() == 2, "Kopie erfindet keine Zeile, wo die Vorlage keine hat (MoverSlotView: nur die M_Gamma-Kopie)");
         while (DataUndo(st)) {}
         const int mainDoc = SharedShnDoc(st, "MoverMain.shn", EditorState::ShnSource::Server, st.shnServerRoot);
         Check(ShnDocFile(st, mainDoc).rows.size() == 2 && ShnDocFile(st, upDoc).rows.size() == 2, "Strg+Z nimmt Kopie und Zeile zurück");

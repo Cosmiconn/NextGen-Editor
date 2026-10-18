@@ -238,7 +238,7 @@ bool CopyGroup(EditorState& state, ItemSystemsState& is, const System& sys, cons
         const Copies c = CopiesOf(state, is, t);
         const int main = MainOf(c);
         if (main < 0) continue;
-        const std::size_t count = std::max<std::size_t>(1, RowsOf(ShnDocFile(state, main), t, from).size());
+        const std::size_t count = RowsOf(ShnDocFile(state, main), t, from).size();
         const auto unique = FreeUniqueValues(state, t, c, count); // gleiche neue Nummern in Client und Server
         for (const int doc : {c.client, c.server}) {
             if (doc < 0) continue;
@@ -250,8 +250,7 @@ bool CopyGroup(EditorState& state, ItemSystemsState& is, const System& sys, cons
                 if (auto v = legacy::ParseShnValue(f.columns[static_cast<std::size_t>(keyCol)], to)) row.values[static_cast<std::size_t>(keyCol)] = *v;
                 copies.push_back(std::move(row));
             }
-            if (copies.empty())
-                if (auto row = TemplateRow(f, t, from, to)) copies.push_back(std::move(*row));
+            // Tabellen ohne Zeile der Vorlage bleiben ohne Zeile (z. B. Möbel ohne Wirkung).
             for (std::size_t n = 0; n < copies.size(); ++n) {
                 if (n < unique.size()) SetUnique(f, t, copies[n], unique[n]);
                 InsertShnRowWithHistory(state, doc, static_cast<int>(ShnDocFile(state, doc).rows.size()), std::move(copies[n]));
@@ -661,7 +660,7 @@ std::string GroupSystemsAutomation(EditorState& state, const std::string& cmd, s
     std::string sub = cmd.substr(std::string("groupsystem").size());
     if (sub.empty()) {
         std::string category; in >> category;
-        for (const auto* c : {&groups::ItemCategory(), &groups::MountCategory()})
+        for (const auto* c : {&groups::ItemCategory(), &groups::MountCategory(), &groups::HouseCategory()})
             if (category == c->id) current = c;
         sub = "open";
     }
